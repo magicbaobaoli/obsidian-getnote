@@ -33,6 +33,7 @@ class Plugin {
   addSettingTab(tab) { calls.settings.push(tab) }
   registerInterval(id) { calls.intervals.push(id); return id }
   register(fn) { this.disposers.push(fn); return fn }
+  registerEvent(ref) { this.disposers.push(ref); return ref }
 }
 
 class PluginSettingTab {
@@ -185,7 +186,17 @@ function makeAdapter() {
 
 const adapter = makeAdapter()
 const app = {
-  vault: { adapter, configDir: '.obsidian' },
+  vault: {
+    adapter,
+    configDir: '.obsidian',
+    // Obsidian 的 Events.on：插件用它在库变动时丢扫描缓存。测试里只记下
+    // 回调，需要时手动触发（见「库变动会让扫描缓存失效」那条）。
+    handlers: {},
+    on(name, cb) {
+      ;(this.handlers[name] = this.handlers[name] || []).push(cb)
+      return { name, cb }
+    },
+  },
   workspace: {
     getLeavesOfType: () => [],
     revealLeaf: () => {},
@@ -273,6 +284,44 @@ test('面板能打到本地服务，并且走的是 adapter 后端', async () =>
   // img/audio 加不了头，走 ?t= 查询参数，这条通道必须能用
   const viaQuery = await fetch(origin + '/getnote/status?t=' + encodeURIComponent(plugin.server.token))
   assert.equal(viaQuery.status, 200, '查询参数里的令牌也该放行')
+})
+
+test('扫描缓存不会给出过期数据：库在别处被改，面板立刻看到新内容', async () => {
+  const origin = plugin.server.origin
+  const call = async (path) => {
+    const res = await fetch(origin + '/getnote' + path, { headers: { 'x-getnote-token': plugin.server.token } })
+    return { status: res.status, json: await res.json().catch(() => null) }
+  }
+
+  const rel = '随手记/缓存验收.md'
+  // 第一次扫描：文件还不存在，指纹是空的
+  const before = await call('/tree')
+  assert.equal(before.status, 200)
+  assert.ok(!JSON.stringify(before.json).includes('缓存验收'), '这时还没有这篇')
+
+  // 绕过插件直接写 adapter（模拟用户在 Obsidian 里新建/编辑笔记）
+  await adapter.write('得到大脑/' + rel, '# 缓存验收\n\n第一版。\n')
+
+  // 不手动清缓存也必须看到它——缓存键带 mtime/size，文件变了键就变了。
+  const after = await call('/tree')
+  assert.equal(after.status, 200)
+  assert.ok(JSON.stringify(after.json).includes('缓存验收'), '新文件应该立刻出现在树里')
+
+  // 改内容（大小也变），摘要要跟着变
+  await adapter.write('得到大脑/' + rel, '# 缓存验收\n\n第二版，内容更长一些。\n')
+  const read = await call('/read?path=' + encodeURIComponent(rel))
+  assert.equal(read.status, 200)
+  assert.match(read.json.content, /第二版/, '读到的必须是最新内容')
+
+  // 插件自己写（走 service）之后再读，同样不能拿到缓存里的旧版本
+  const saved = await fetch(origin + '/getnote/save', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': plugin.server.token },
+    body: JSON.stringify({ path: rel, content: '# 缓存验收\n\n第三版，面板里改的。\n' }),
+  })
+  assert.equal(saved.status, 200)
+  const read2 = await call('/read?path=' + encodeURIComponent(rel))
+  assert.match(read2.json.content, /第三版/)
 })
 
 test('插件自己的状态落在库内 .obsidian/plugins/<id>，不往库里撒野', async () => {

@@ -59,6 +59,7 @@ class Plugin {
   addSettingTab(tab) { calls.settings.push(tab) }
   registerInterval(id) { calls.intervals.push(id); return id }
   register(fn) { return fn }
+  registerEvent(ref) { return ref }
 }
 class PluginSettingTab { constructor(app, plugin) { this.app = app; this.plugin = plugin; this.containerEl = null } }
 class Setting {
@@ -129,7 +130,7 @@ const adapter = {
 }
 
 const app = {
-  vault: { adapter, configDir: '.obsidian' },
+  vault: { adapter, configDir: '.obsidian', on() { return {} } },
   workspace: {
     getLeavesOfType: () => [],
     revealLeaf: () => undefined,

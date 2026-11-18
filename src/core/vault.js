@@ -177,7 +177,103 @@ export function excerptOf(body, limit = 140) {
  * 不建任何持久索引：笔记数量在几千级以内时够快，而且永远不会出现「索引和文件
  * 不一致」这种最让人焦虑的问题——文件就是唯一真相。
  */
-export async function scanVault(root) {
+// ── 扫描缓存 ─────────────────────────────────────────────────────────────────
+//
+// 面板一进来就打 /status + /tree，切目录、搜一次、点一篇笔记又各打一次；每次
+// 都是全库 walk + 逐文件读 + 解析 frontmatter。8000 篇的库上单次能到几百毫秒，
+// 而这些请求里绝大多数拿的是同一份数据。
+//
+// 缓存键是「库根 + 库内所有参与扫描的文件的 mtime/size 指纹」——不缓存时间，
+// 而是每次花一次 readdir 拿目录树（比读文件便宜一个量级），指纹没变就直接
+// 返回上一次的结果。这样即使有别的程序（Obsidian 自己、git、用户在资源管理器
+// 里改名）改了文件，也不会读到过期数据；插件自己的写入还会主动 invalidate。
+const scanCache = new Map()
+const SCAN_CACHE_MAX = 4
+
+// 逐文件记忆：指纹变了（库里改了一篇）时，整库只有那一篇需要重新读+解析。
+// 键里带 mtime 和 size，所以任何真实的文件改动都会让它失效——这不是「缓存
+// 多久」的问题，而是「这份文件还是不是那一份」的判断。
+const entryMemo = new Map()
+const ENTRY_MEMO_MAX = 20000
+
+/** 丢掉某个库根的扫描缓存；不传就全丢。插件写完文件后调它。 */
+export function invalidateScan(root) {
+  // 只丢「整库指纹 → 扫描结果」这一层。逐文件记忆不用清：它的键里带着
+  // mtime 和 size，文件真变了自然就换键，没变的那些还留着省一次读盘+解析。
+  // 不传 root 是彻底重置（换库、测试收尾时用）。
+  if (typeof root !== 'string' || root === '') entryMemo.clear()
+  if (typeof root === 'string' && root !== '') {
+    for (const key of [...scanCache.keys()]) {
+      if (key === root || key.startsWith(root)) scanCache.delete(key)
+    }
+    return
+  }
+  scanCache.clear()
+}
+
+/**
+ * 指纹：目录结构 + 每个文件的 mtimeMs/size。
+ *
+ * 只 stat 不读内容，成本远低于重新解析全库。指纹里带上文件大小是因为
+ * 有些文件系统（尤其网络盘、FAT）的 mtime 精度只有 2 秒，同一秒内改两次
+ * 大小不同的内容时 mtime 不变。
+ */
+async function fingerprintVault(root) {
+  const parts = []
+  async function walk(dir, relDir, depth) {
+    if (depth > MAX_DEPTH) return
+    let dirents
+    try {
+      dirents = await readdir(dir, { withFileTypes: true })
+    } catch {
+      parts.push(`!${relDir}`)
+      return
+    }
+    const names = []
+    for (const dirent of dirents) {
+      const name = dirent.name
+      if (dirent.isDirectory()) {
+        if (IGNORED_DIRS.has(name)) continue
+        await walk(join(dir, name), relDir === '' ? name : `${relDir}/${name}`, depth + 1)
+        continue
+      }
+      if (!dirent.isFile()) continue
+      if (extname(name).toLowerCase() !== NOTE_EXT) continue
+      const rel = relDir === '' ? name : `${relDir}/${name}`
+      try {
+        const st = await stat(join(dir, name))
+        names.push(`${rel}:${st.mtimeMs}:${st.size}`)
+      } catch {
+        names.push(`${rel}:?`)
+      }
+    }
+    names.sort()
+    parts.push(`${relDir}|${names.join(',')}`)
+  }
+  await walk(root, '', 0)
+  return parts.join('\n')
+}
+
+/**
+ * 扫库（带缓存）。
+ *
+ * `options.fresh` 为真时跳过缓存重新扫：同步、归档这类「必须看到磁盘真相」的
+ * 路径用它，避免拿着上一次的结果做覆盖写。
+ */
+export async function scanVault(root, options = {}) {
+  const fresh = options !== null && typeof options === 'object' && options.fresh === true
+  let key = null
+  if (!fresh) {
+    try {
+      key = `${root}\u0000${await fingerprintVault(root)}`
+      const hit = scanCache.get(key)
+      if (hit !== undefined) return hit
+    } catch {
+      // 指纹算不出来（库被删了之类）就走完整扫描，让它把错误报出来
+      key = null
+    }
+  }
+
   const entries = []
   const errors = []
   let truncated = false
@@ -212,9 +308,17 @@ export async function scanVault(root) {
           errors.push({ path: rel, message: `文件超过 ${Math.round(MAX_READ / 1024 / 1024)}MB，已跳过` })
           continue
         }
+        const memoKey = `${abs}\u0000${st.mtimeMs}\u0000${st.size}`
+        const memo = entryMemo.get(memoKey)
+        if (memo !== undefined) {
+          // 同一个文件、同一个 mtime 和大小：内容必然一样，不必再读一遍。
+          // 目录可能被改名，所以 path/dir/name 用这次的，其余沿用记忆。
+          entries.push({ ...memo, path: rel, name, dir: relDir })
+          continue
+        }
         const text = await readFile(abs, 'utf8')
         const { data, body } = parseFrontmatter(text)
-        entries.push({
+        const entry = {
           path: rel,
           name,
           dir: relDir,
@@ -226,7 +330,14 @@ export async function scanVault(root) {
           bytes: st.size,
           mtimeMs: st.mtimeMs,
           excerpt: excerptOf(body),
-        })
+        }
+        entries.push(entry)
+        entryMemo.set(memoKey, entry)
+        if (entryMemo.size > ENTRY_MEMO_MAX) {
+          // 简单的 FIFO 淘汰：Map 的插入顺序就是我们要的顺序
+          const oldest = entryMemo.keys().next()
+          if (!oldest.done) entryMemo.delete(oldest.value)
+        }
       } catch (error) {
         errors.push({ path: rel, message: String(error && error.message ? error.message : error) })
       }
@@ -240,7 +351,19 @@ export async function scanVault(root) {
     if (da !== db) return db.localeCompare(da)
     return b.mtimeMs - a.mtimeMs
   })
-  return { entries, errors, truncated }
+  const result = { entries, errors, truncated }
+  if (key !== null) {
+    // 只缓存「扫得干净」的结果：有错误或截断时下一次应当重试，而不是把
+    // 一次不完整的快照当成真相缓存下来。
+    if (errors.length === 0 && !truncated) {
+      scanCache.set(key, result)
+      if (scanCache.size > SCAN_CACHE_MAX) {
+        const oldest = scanCache.keys().next()
+        if (!oldest.done) scanCache.delete(oldest.value)
+      }
+    }
+  }
+  return result
 }
 
 /** 由扁平条目建目录树（只含真正有笔记的目录，空目录不显示）。 */
@@ -404,6 +527,7 @@ export async function writeNote(root, rel, content, options = {}) {
   await writeFile(tmp, content, 'utf8')
   await rename(tmp, abs)
   const st = await stat(abs)
+  invalidateScan(root)
   return { path: normalized, bytes: st.size, mtimeMs: st.mtimeMs }
 }
 
@@ -462,6 +586,7 @@ export async function trashNote(root, rel) {
   const target = join(trashDir, `${stamp}__${basename(abs)}`)
   await mkdir(trashDir, { recursive: true })
   await rename(abs, target)
+  invalidateScan(root)
   return { path: normalized, trashedTo: toPosix(relative(root, target)) }
 }
 
@@ -585,6 +710,7 @@ export async function restoreNote(root, trashPath, targetRel) {
   const { abs: absFinal } = resolveInside(root, candidate, { create: true })
   await mkdir(dirname(absFinal), { recursive: true })
   await rename(absTrash, absFinal)
+  invalidateScan(root)
   return { path: candidate, restoredFrom: trashRel, title: meta.originalName }
 }
 
@@ -611,6 +737,7 @@ export async function purgeTrash(root, trashPath) {
     await rm(join(trashDir, dirent.name), { force: true })
     purged.push(toPosix(join(TRASH_DIR, dirent.name)))
   }
+  if (purged.length > 0) invalidateScan(root)
   return { purged }
 }
 
@@ -1167,6 +1294,7 @@ export async function createDir(root, dirInput) {
   } catch (error) {
     throw Object.assign(new Error(`建目录失败：${error && error.message ? error.message : error}`), { status: 500 })
   }
+  invalidateScan(root)
   return { ok: true, path: rel }
 }
 
@@ -1211,6 +1339,7 @@ export async function removeDir(root, dirInput) {
   } catch (error) {
     throw Object.assign(new Error(`删目录失败：${error && error.message ? error.message : error}`), { status: 500 })
   }
+  invalidateScan(root)
   return { ok: true, path: rel }
 }
 

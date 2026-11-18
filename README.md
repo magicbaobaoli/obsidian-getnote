@@ -70,7 +70,7 @@
 ```bash
 npm install
 npm run build      # 产出 main.js，并把 card/ 与 locale/ 复制到插件根
-npm test           # 538 项离线测试（需 Node ≥ 22，jsdom 31 依赖 Node 22 的 zstd API）
+npm test           # 540 项离线测试（需 Node ≥ 22，jsdom 31 依赖 Node 22 的 zstd API）
 ```
 
 开发时用 `npm run dev` 进入 watch 模式。
@@ -150,11 +150,12 @@ npm test
 **9 项文件系统适配层验收**（`app.vault.adapter` 与 `node:fs` 的语义差异：`list()` 回裸文件名
 还是完整路径都得吃得住、`mkdir` 不建父目录要自己逐级补齐、删目录得走 `rmdir(recursive)`
 而不是 `remove`）、**236 项 HTTP 路由验收**（真起服务、真打请求、真读文件，含 Range 206/416、路径逃逸拒绝、
-凭证打码、定时同步边界、录音卡环境探测等）、**6 项启动验收**——把打包后的 `main.js`
+凭证打码、定时同步边界、录音卡环境探测等）、**8 项启动验收**——把打包后的 `main.js`
 真的 `require` 起来，用假的 `obsidian` 模块与内存 adapter 驱动 `onload`（库根故意用
 带中文和空格的临时目录，跟真实用户路径一致），确认视图/命令/服务都注册成功、
 写入真的走 `app.vault.adapter` 而不是直接落盘、插件状态只落在
-`.obsidian/plugins/<id>` 里——
+`.obsidian/plugins/<id>` 里、无令牌请求被 401 挡住、同一动作重放只落一份、
+扫描缓存不会给出过期数据——
 **4 项面板渲染验收**：用 jsdom 造浏览器环境，把 8000 行的 React 面板真渲染出来，
 确认它不掉进错误边界、发出的请求全部指向本地服务、六个标签页逐个切换都不炸——
 以及 **4 项视图层验收**：同样在 jsdom 里 new 一个真的 `ItemView` 并调 `onOpen`，

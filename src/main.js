@@ -21,6 +21,7 @@ import { join } from 'node:path'
 import * as settingsStore from './core/settings.js'
 import { configure as configureVfs, mkdir as vfsMkdir } from './core/vfs.js'
 import { configureCardScripts } from './core/card.js'
+import { invalidateScan } from './core/vault.js'
 import { startAutoSync, markPanelVisible } from './core/service.js'
 import { startLocalServer } from './host/server.js'
 import { setApiOrigin, setApiToken, setOpenExternal, setSaveFile } from './view/panel.js'
@@ -139,6 +140,19 @@ export default class GetnoteObsidianPlugin extends Plugin {
     })
 
     this.addSettingTab(new GetnoteSettingTab(this.app, this))
+
+    // 库变了就让扫描缓存失效。
+    //
+    // scanVault 的缓存键是「全库文件的 mtime + size 指纹」，所以它本来就不会
+    // 给出过期的数据——但算指纹本身要遍历一遍目录。用户在 Obsidian 里正常
+    // 编辑笔记（不走我们面板）时，文件事件会告诉我们「变了」，这时直接把整库
+    // 那一层丢掉，下一次扫描只需重新读变过的那几篇（逐文件记忆还在）。
+    // 这是纯优化：即使事件漏了，指纹比较仍然保证不会读到旧内容。
+    const bump = () => invalidateScan()
+    this.registerEvent(this.app.vault.on('modify', bump))
+    this.registerEvent(this.app.vault.on('create', bump))
+    this.registerEvent(this.app.vault.on('delete', bump))
+    this.registerEvent(this.app.vault.on('rename', bump))
 
     // 自动同步：DSH 版由 ctx.effect 托管，这里由 onunload 托管
     this.stopAutoSync = startAutoSync()

@@ -25,6 +25,11 @@ const options = {
   external: ['obsidian', 'electron'],
   sourcemap: false,
   minify: false,
+  // react / react-dom 的入口是 `if (process.env.NODE_ENV === 'production') ...`
+  // 这种运行时判断，esbuild 静态分析不了，于是开发版和生产版两份都会打进来
+  // （光 react-dom 的开发版就 890KB，占了整个插件的半壁）。这里把 NODE_ENV
+  // 钉成字面量，分支在打包期就折叠掉，开发版整份消失。
+  define: { 'process.env.NODE_ENV': '"production"' },
   logLevel: 'info',
 }
 
