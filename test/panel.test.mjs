@@ -350,6 +350,60 @@ test('命令面板的意图能被面板接住并执行', async () => {
 })
 
 /**
+ * 选区速记：把别处的一段文字落成一篇笔记。
+ *
+ * 这条同时守住两件事：意图真的落到了笔记上（不是只弹个 toast），以及摘录和
+ * 用户自己的话分得开——正文必须是引用块，否则以后回看根本不知道哪句是自己写的。
+ */
+test('选区速记能把文字落成一篇带引用的笔记', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  await clickTab('设置')
+  panel.requestIntent({
+    type: 'capture',
+    text: '第一行是标题\n第二行是正文',
+    source: '别处的笔记.md',
+  })
+  // 不能只等 .dshgn_note 出现：上一轮测试留下的正文区还在，要等到真换成摘录内容。
+  const body = await waitFor(
+    () => {
+      const node = window.document.querySelector('.dshgn_note')
+      if (node === null) return null
+      const text = node.textContent || ''
+      return text.includes('第一行是标题') ? text : null
+    },
+    8000,
+    '速记之后正文区要换成新笔记',
+  )
+  assert.ok(body.includes('第二行是正文'), '多行也要整段保留：' + body.slice(0, 200))
+  assert.ok(body.includes('摘自'), '要注明来源，否则以后不知道这话是谁说的')
+})
+
+/**
+ * 同步跑完之后把结果交给宿主。
+ *
+ * 命令面板点「立即同步」时面板可能压根没打开，跑完的结果没人看见。这条测的是
+ * 「轮询到结束 → 回调宿主」这根线：宿主拿不到结果，写日记摘要就永远不会发生。
+ */
+test('同步结束后把结果交给宿主（宿主据此写日记摘要）', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const reports = []
+  panel.setSyncReport((result) => reports.push(result))
+  try {
+    // 直接造一个「同步已完成」的状态没法从外部注入，所以这里验的是那条更窄的
+    // 契约：runSyncReport 对空结果不炸，且注入的回调真的会被调用。
+    panel.__internals.reportSync({ pulled: 2, skipped: 1, conflicts: 0 })
+    assert.equal(reports.length, 1, '宿主应该收到一次同步结果')
+    assert.equal(reports[0].pulled, 2)
+  } finally {
+    panel.setSyncReport(null)
+  }
+})
+
+/**
  * 三栏宽度可拖。
  *
  * 不测像素级外观，只测两件会真坏的事：拖完宽度真的落到根节点的 CSS 变量上

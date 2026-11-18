@@ -19,7 +19,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import * as settingsStore from './core/settings.js'
-import { configure as configureVfs, mkdir as vfsMkdir } from './core/vfs.js'
+import { configure as configureVfs, mkdir as vfsMkdir, readFile as vfsRead, writeFile as vfsWrite } from './core/vfs.js'
 import { configureCardScripts } from './core/card.js'
 import { invalidateScan } from './core/vault.js'
 import { startAutoSync, markPanelVisible } from './core/service.js'
@@ -32,6 +32,7 @@ import {
   setNoteMenu,
   setHostLocale,
   requestIntent,
+  setSyncReport,
 } from './view/panel.js'
 import { GetnoteView, VIEW_TYPE_GETNOTE, PanelIcon } from './view/view.js'
 
@@ -194,6 +195,47 @@ export default class GetnoteObsidianPlugin extends Plugin {
     intentCommand('sync-now', '立即同步得到大脑', { type: 'sync' })
     intentCommand('scan-card', '扫描录音卡', { type: 'card' })
 
+    // 选区速记：编辑器里选中一段文字，命令面板敲「速记」就落成一篇笔记。
+    // 没有选中时拿当前整行/整段——用户按下命令的那一刻总得有点东西可摘。
+    this.addCommand({
+      id: 'capture-selection',
+      name: '把选中的文字存进得到大脑',
+      editorCallback: (editor, view) => {
+        const selection =
+          typeof editor.getSelection === 'function' ? editor.getSelection() : ''
+        const text = selection.trim() !== '' ? selection : editor.getLine(editor.getCursor().line)
+        if (String(text || '').trim() === '') {
+          new Notice('得到大脑：先选中要摘的文字')
+          return
+        }
+        const source =
+          view && view.file && typeof view.file.path === 'string' ? view.file.path : ''
+        void this.activateView().then(() => requestIntent({ type: 'capture', text, source }))
+      },
+    })
+
+    // obsidian://getnote?... 深链：从浏览器、其他应用、快捷指令直接唤起面板。
+    // 只做导航不做写操作——一个能被任意网页触发的 URL 不该有删笔记的能力。
+    if (typeof this.registerObsidianProtocolHandler === 'function') {
+      this.registerObsidianProtocolHandler('getnote', (params) => {
+        const action = params && typeof params.action === 'string' ? params.action : 'open'
+        const query = params && typeof params.q === 'string' ? params.q : ''
+        const intent =
+          action === 'search'
+            ? { type: 'search', q: query }
+            : action === 'new'
+              ? { type: 'new' }
+              : action === 'today'
+                ? { type: 'today' }
+                : action === 'sync'
+                  ? { type: 'sync' }
+                  : null
+        void this.activateView().then(() => {
+          if (intent !== null) requestIntent(intent)
+        })
+      })
+    }
+
     // 状态栏：一个能看见「插件在跑、服务在哪个端口」的小字，点一下打开面板。
     // 没有它，用户遇到问题（比如端口被占）时完全没有线索。
     if (this.server) {
@@ -219,6 +261,15 @@ export default class GetnoteObsidianPlugin extends Plugin {
     this.registerEvent(this.app.vault.on('delete', bump))
     this.registerEvent(this.app.vault.on('rename', bump))
 
+    // 一轮同步跑完之后，把「今天补进来几篇」写进当天的日记。
+    //
+    // 为什么放在宿主而不是面板：日记在哪、叫什么名字，是 Obsidian 的日常笔记
+    // 配置说了算，面板不该去猜。写不进去（没有日常笔记插件、路径不存在）就
+    // 安静跳过——同步本身已经完成了，不能因为摘要失败去打扰用户。
+    setSyncReport((result) => {
+      void this.appendSyncReport(result)
+    })
+
     // 自动同步：DSH 版由 ctx.effect 托管，这里由 onunload 托管
     this.stopAutoSync = startAutoSync()
   }
@@ -235,6 +286,81 @@ export default class GetnoteObsidianPlugin extends Plugin {
     }
     setApiOrigin('')
     setApiToken('')
+  }
+
+  /**
+   * 当天日记的库内路径；用户没开「日记」核心插件时返回空串。
+   *
+   * 直接读核心插件的配置而不是自己猜格式：那里的 folder / format 是用户调过的
+   * （很多人是 `日记/YYYY/YYYY-MM-DD`），插件另起一套只会把摘要写到没人看的地方。
+   * 内部 API 拿不到时按最常见的 `YYYY-MM-DD` 放在库根。
+   */
+  dailyNotePath() {
+    const pad = (n) => String(n).padStart(2, '0')
+    const now = new Date()
+    let folder = ''
+    let format = 'YYYY-MM-DD'
+    try {
+      const plugins = this.app.internalPlugins
+      const daily = plugins && typeof plugins.getPluginById === 'function' ? plugins.getPluginById('daily-notes') : null
+      const options = daily && daily.instance && daily.instance.options ? daily.instance.options : null
+      if (daily && daily.enabled === false) return ''
+      if (options) {
+        if (typeof options.folder === 'string') folder = options.folder
+        if (typeof options.format === 'string' && options.format !== '') format = options.format
+      } else if (!daily) {
+        // 没有这个核心插件（或被裁剪过的发行版）：不写摘要，避免凭空建文件
+        return ''
+      }
+    } catch {
+      return ''
+    }
+    // 只支持 format 里的年月日占位，够覆盖绝大多数人的设置；认不出的占位原样留着，
+    // 写不进去会在上层被吞掉，不会影响同步。
+    const name = format
+      .replace(/YYYY/g, String(now.getFullYear()))
+      .replace(/MM/g, pad(now.getMonth() + 1))
+      .replace(/DD/g, pad(now.getDate()))
+    const rel = folder.trim() === '' ? name : `${folder.replace(/\\/g, '/').replace(/\/+$/, '')}/${name}`
+    return `${rel}.md`
+  }
+
+  /**
+   * 把一轮同步的结果追加到当天的日记里。
+   *
+   * 用 Obsidian 的日常笔记配置（设置 → 日记）找文件：那里已经定义好了目录、
+   * 文件名格式和模板，插件再自己猜一套只会和用户已有的习惯打架。找不到配置
+   * 或者文件不存在就直接跳过——多数用户没开日常笔记，这不是错误。
+   */
+  async appendSyncReport(result) {
+    if (result === null || typeof result !== 'object') return
+    const pulled = Number(result.pulled) || 0
+    if (pulled <= 0) return
+    const path = this.dailyNotePath()
+    if (path === '') return
+    const stamp = new Date()
+    const pad = (n) => String(n).padStart(2, '0')
+    const hm = `${pad(stamp.getHours())}:${pad(stamp.getMinutes())}`
+    const line = `\n- ${hm} 得到大脑同步：新增 ${pulled} 篇${
+      Number(result.skipped) > 0 ? `，跳过 ${result.skipped} 篇` : ''
+    }${Number(result.conflicts) > 0 ? `，${result.conflicts} 处冲突待处理` : ''}\n`
+    const adapter = this.app.vault.adapter
+    const basePath = typeof adapter.getBasePath === 'function' ? adapter.getBasePath() : ''
+    // 移动端拿不到库根的绝对路径；vfs 在这种情况下也没法把绝对路径翻译回去。
+    if (basePath === '') return
+    const abs = `${basePath.replace(/\\/g, '/').replace(/\/+$/, '')}/${path}`
+    let before = ''
+    try {
+      before = String(await vfsRead(abs, 'utf8'))
+    } catch {
+      // 今天的日记还没建：这一行就是它的第一段内容，照写不误
+      before = ''
+    }
+    try {
+      await vfsWrite(abs, before === '' ? line.replace(/^\n/, '') : `${before.replace(/\s*$/, '')}${line}`, 'utf8')
+    } catch {
+      // 写不进去就算了，同步本身已经成功
+    }
   }
 
   /**

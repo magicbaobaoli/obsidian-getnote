@@ -7292,6 +7292,17 @@ function subscribeIntent(listener) {
     __intentListeners.delete(listener);
   };
 }
+var __syncReport = null;
+function setSyncReport(fn2) {
+  __syncReport = typeof fn2 === "function" ? fn2 : null;
+}
+function reportSync(result) {
+  if (__syncReport === null) return;
+  try {
+    __syncReport(result);
+  } catch {
+  }
+}
 var __saveFile = null;
 function setSaveFile(fn2) {
   __saveFile = typeof fn2 === "function" ? fn2 : null;
@@ -7441,6 +7452,8 @@ var LEX = {
     "theme.previewMid": "\u4E2D\u680F",
     "theme.previewRight": "\u53F3\u680F",
     "error.prefix": "\u51FA\u9519\u4E86",
+    "capture.title": "\u901F\u8BB0",
+    "capture.saved": "\u5DF2\u5B58\u4E3A\u7B14\u8BB0",
     "note.created": "\u5DF2\u65B0\u5EFA",
     "note.saved": "\u5DF2\u4FDD\u5B58",
     "note.deleted": "\u5DF2\u79FB\u5165\u56DE\u6536\u7AD9",
@@ -7800,6 +7813,8 @@ var LEX = {
     "theme.previewMid": "Middle",
     "theme.previewRight": "Right",
     "error.prefix": "Error",
+    "capture.title": "Clipping",
+    "capture.saved": "Saved as a note",
     "note.created": "Created",
     "note.saved": "Saved",
     "note.deleted": "Moved to trash",
@@ -8159,6 +8174,8 @@ var LEX = {
     "theme.previewMid": "Midden",
     "theme.previewRight": "Rechts",
     "error.prefix": "Fout",
+    "capture.title": "Knipsel",
+    "capture.saved": "Opgeslagen als notitie",
     "note.created": "Aangemaakt",
     "note.saved": "Opgeslagen",
     "note.deleted": "Naar prullenbak",
@@ -10284,11 +10301,30 @@ function GetnotePage() {
     },
     [activeDir, openNote, refresh, showToast, t3, templateContent]
   );
+  const waitForSync = q2(async () => {
+    const deadline = Date.now() + 5 * 60 * 1e3;
+    await new Promise((done) => window.setTimeout(done, 600));
+    for (; ; ) {
+      if (Date.now() > deadline) return null;
+      let json;
+      try {
+        json = await api("/sync/status");
+      } catch {
+        return null;
+      }
+      if (json && json.running !== true) {
+        if (json.lastResult) reportSync(json.lastResult);
+        return json.lastResult || null;
+      }
+      await new Promise((done) => window.setTimeout(done, 2e3));
+    }
+  }, []);
   y2(
     () => subscribeIntent((intent) => {
       const kind = intent && intent.type;
       if (kind === "search") {
         setTab("notes");
+        if (typeof intent.q === "string" && intent.q !== "") setQuery(intent.q);
         window.setTimeout(() => {
           const input = document.querySelector(".dshgn_search");
           if (input) {
@@ -10328,6 +10364,35 @@ function GetnotePage() {
         }).catch((err) => setError(err && err.message ? err.message : String(err))).finally(() => setBusy(false));
         return;
       }
+      if (kind === "capture") {
+        const text = typeof intent.text === "string" ? intent.text.trim() : "";
+        if (text === "") return;
+        setTab("notes");
+        if (status === null || status.vaultMissing) return;
+        const firstLine = text.split("\n").map((line) => line.trim()).filter((line) => line !== "")[0] || t3("capture.title");
+        const title = firstLine.length > 40 ? `${firstLine.slice(0, 40)}\u2026` : firstLine;
+        const quoted = text.split("\n").map((line) => line === "" ? ">" : `> ${line}`).join("\n");
+        const from = typeof intent.source === "string" && intent.source !== "" ? `
+
+\u2014\u2014 \u6458\u81EA ${intent.source}` : "";
+        setBusy(true);
+        void api("/create", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            dir: activeDir,
+            title,
+            content: `${quoted}${from}
+`,
+            requestId: requestId()
+          })
+        }).then(async (created) => {
+          showToast(t3("capture.saved"));
+          await refresh();
+          await openNote(created.path);
+        }).catch((err) => setError(err && err.message ? err.message : String(err))).finally(() => setBusy(false));
+        return;
+      }
       if (kind === "sync") {
         setTab("settings");
         setBusy(true);
@@ -10335,7 +10400,10 @@ function GetnotePage() {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ full: false })
-        }).then(() => showToast(t3("sync.running"))).catch((err) => setError(err && err.message ? err.message : String(err))).finally(() => setBusy(false));
+        }).then(() => {
+          showToast(t3("sync.running"));
+          return waitForSync();
+        }).catch((err) => setError(err && err.message ? err.message : String(err))).finally(() => setBusy(false));
         return;
       }
       if (kind === "card") {
@@ -15253,6 +15321,30 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     intentCommand("open-today", "\u6253\u5F00\u4ECA\u5929\u7684\u7B14\u8BB0", { type: "today" });
     intentCommand("sync-now", "\u7ACB\u5373\u540C\u6B65\u5F97\u5230\u5927\u8111", { type: "sync" });
     intentCommand("scan-card", "\u626B\u63CF\u5F55\u97F3\u5361", { type: "card" });
+    this.addCommand({
+      id: "capture-selection",
+      name: "\u628A\u9009\u4E2D\u7684\u6587\u5B57\u5B58\u8FDB\u5F97\u5230\u5927\u8111",
+      editorCallback: (editor, view) => {
+        const selection = typeof editor.getSelection === "function" ? editor.getSelection() : "";
+        const text = selection.trim() !== "" ? selection : editor.getLine(editor.getCursor().line);
+        if (String(text || "").trim() === "") {
+          new import_obsidian2.Notice("\u5F97\u5230\u5927\u8111\uFF1A\u5148\u9009\u4E2D\u8981\u6458\u7684\u6587\u5B57");
+          return;
+        }
+        const source = view && view.file && typeof view.file.path === "string" ? view.file.path : "";
+        void this.activateView().then(() => requestIntent({ type: "capture", text, source }));
+      }
+    });
+    if (typeof this.registerObsidianProtocolHandler === "function") {
+      this.registerObsidianProtocolHandler("getnote", (params) => {
+        const action = params && typeof params.action === "string" ? params.action : "open";
+        const query = params && typeof params.q === "string" ? params.q : "";
+        const intent = action === "search" ? { type: "search", q: query } : action === "new" ? { type: "new" } : action === "today" ? { type: "today" } : action === "sync" ? { type: "sync" } : null;
+        void this.activateView().then(() => {
+          if (intent !== null) requestIntent(intent);
+        });
+      });
+    }
     if (this.server) {
       this.statusBarEl = this.addStatusBarItem();
       this.statusBarEl.addClass("dshgn_status");
@@ -15268,6 +15360,9 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     this.registerEvent(this.app.vault.on("create", bump));
     this.registerEvent(this.app.vault.on("delete", bump));
     this.registerEvent(this.app.vault.on("rename", bump));
+    setSyncReport((result) => {
+      void this.appendSyncReport(result);
+    });
     this.stopAutoSync = startAutoSync();
   }
   onunload() {
@@ -15281,6 +15376,70 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     }
     setApiOrigin("");
     setApiToken("");
+  }
+  /**
+   * 当天日记的库内路径；用户没开「日记」核心插件时返回空串。
+   *
+   * 直接读核心插件的配置而不是自己猜格式：那里的 folder / format 是用户调过的
+   * （很多人是 `日记/YYYY/YYYY-MM-DD`），插件另起一套只会把摘要写到没人看的地方。
+   * 内部 API 拿不到时按最常见的 `YYYY-MM-DD` 放在库根。
+   */
+  dailyNotePath() {
+    const pad2 = (n2) => String(n2).padStart(2, "0");
+    const now = /* @__PURE__ */ new Date();
+    let folder = "";
+    let format = "YYYY-MM-DD";
+    try {
+      const plugins = this.app.internalPlugins;
+      const daily = plugins && typeof plugins.getPluginById === "function" ? plugins.getPluginById("daily-notes") : null;
+      const options = daily && daily.instance && daily.instance.options ? daily.instance.options : null;
+      if (daily && daily.enabled === false) return "";
+      if (options) {
+        if (typeof options.folder === "string") folder = options.folder;
+        if (typeof options.format === "string" && options.format !== "") format = options.format;
+      } else if (!daily) {
+        return "";
+      }
+    } catch {
+      return "";
+    }
+    const name = format.replace(/YYYY/g, String(now.getFullYear())).replace(/MM/g, pad2(now.getMonth() + 1)).replace(/DD/g, pad2(now.getDate()));
+    const rel = folder.trim() === "" ? name : `${folder.replace(/\\/g, "/").replace(/\/+$/, "")}/${name}`;
+    return `${rel}.md`;
+  }
+  /**
+   * 把一轮同步的结果追加到当天的日记里。
+   *
+   * 用 Obsidian 的日常笔记配置（设置 → 日记）找文件：那里已经定义好了目录、
+   * 文件名格式和模板，插件再自己猜一套只会和用户已有的习惯打架。找不到配置
+   * 或者文件不存在就直接跳过——多数用户没开日常笔记，这不是错误。
+   */
+  async appendSyncReport(result) {
+    if (result === null || typeof result !== "object") return;
+    const pulled = Number(result.pulled) || 0;
+    if (pulled <= 0) return;
+    const path = this.dailyNotePath();
+    if (path === "") return;
+    const stamp = /* @__PURE__ */ new Date();
+    const pad2 = (n2) => String(n2).padStart(2, "0");
+    const hm = `${pad2(stamp.getHours())}:${pad2(stamp.getMinutes())}`;
+    const line = `
+- ${hm} \u5F97\u5230\u5927\u8111\u540C\u6B65\uFF1A\u65B0\u589E ${pulled} \u7BC7${Number(result.skipped) > 0 ? `\uFF0C\u8DF3\u8FC7 ${result.skipped} \u7BC7` : ""}${Number(result.conflicts) > 0 ? `\uFF0C${result.conflicts} \u5904\u51B2\u7A81\u5F85\u5904\u7406` : ""}
+`;
+    const adapter2 = this.app.vault.adapter;
+    const basePath2 = typeof adapter2.getBasePath === "function" ? adapter2.getBasePath() : "";
+    if (basePath2 === "") return;
+    const abs = `${basePath2.replace(/\\/g, "/").replace(/\/+$/, "")}/${path}`;
+    let before = "";
+    try {
+      before = String(await readFile2(abs, "utf8"));
+    } catch {
+      before = "";
+    }
+    try {
+      await writeFile2(abs, before === "" ? line.replace(/^\n/, "") : `${before.replace(/\s*$/, "")}${line}`, "utf8");
+    } catch {
+    }
   }
   /**
    * 插件数据目录的绝对路径。

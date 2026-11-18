@@ -101,6 +101,23 @@ function subscribeIntent(listener) {
   }
 }
 
+// 同步完成后要不要做点什么（比如写一条同步摘要进日记）。
+//
+// 面板只负责「跑完一轮同步了，结果是这样」，具体写去哪由宿主决定：
+// 日记的位置属于 Obsidian 的日常笔记配置，面板不该去猜。
+let __syncReport = null
+export function setSyncReport(fn) {
+  __syncReport = typeof fn === 'function' ? fn : null
+}
+function reportSync(result) {
+  if (__syncReport === null) return
+  try {
+    __syncReport(result)
+  } catch {
+    // 摘要写失败不该影响同步本身
+  }
+}
+
 // 整库导出的落盘方式。渲染进程里点 a[download] 在 Electron 里不可靠：
 // Obsidian 没开下载管理器时它可能静默什么都不做。所以由宿主注入一个「弹出
 // 保存对话框再写文件」的实现，拿不到就退回 a[download]。
@@ -268,6 +285,8 @@ async function saveFile(url, filename) {
         'theme.previewMid': '中栏',
         'theme.previewRight': '右栏',
         'error.prefix': '出错了',
+        'capture.title': '速记',
+        'capture.saved': '已存为笔记',
         'note.created': '已新建',
         'note.saved': '已保存',
         'note.deleted': '已移入回收站',
@@ -631,6 +650,8 @@ async function saveFile(url, filename) {
         'theme.previewMid': 'Middle',
         'theme.previewRight': 'Right',
         'error.prefix': 'Error',
+        'capture.title': 'Clipping',
+        'capture.saved': 'Saved as a note',
         'note.created': 'Created',
         'note.saved': 'Saved',
         'note.deleted': 'Moved to trash',
@@ -993,6 +1014,8 @@ async function saveFile(url, filename) {
         'theme.previewMid': 'Midden',
         'theme.previewRight': 'Rechts',
         'error.prefix': 'Fout',
+        'capture.title': 'Knipsel',
+        'capture.saved': 'Opgeslagen als notitie',
         'note.created': 'Aangemaakt',
         'note.saved': 'Opgeslagen',
         'note.deleted': 'Naar prullenbak',
@@ -3415,6 +3438,33 @@ async function saveFile(url, filename) {
       )
 
       /**
+       * 等这一轮同步跑完，返回它的结果。
+       *
+       * 轮询而不是让服务端回调：面板可能刚被命令面板拉起来，也可能在同步途中
+       * 被关掉；轮询的每一跳都是独立的 HTTP 请求，中间断了不会有悬挂状态。
+       * 上限 5 分钟——真跑飞了也不该让面板一直转。
+       */
+      const waitForSync = React.useCallback(async () => {
+        const deadline = Date.now() + 5 * 60 * 1000
+        // 刚点下去的那一瞬间 running 可能还没置上，先等一拍再开始看
+        await new Promise((done) => window.setTimeout(done, 600))
+        for (;;) {
+          if (Date.now() > deadline) return null
+          let json
+          try {
+            json = await api('/sync/status')
+          } catch {
+            return null
+          }
+          if (json && json.running !== true) {
+            if (json.lastResult) reportSync(json.lastResult)
+            return json.lastResult || null
+          }
+          await new Promise((done) => window.setTimeout(done, 2000))
+        }
+      }, [])
+
+      /**
        * 处理来自命令面板 / 状态栏的意图。
        *
        * 这些动作原来只能点面板里的按钮，用户在命令面板里敲「同步」却什么都
@@ -3426,6 +3476,9 @@ async function saveFile(url, filename) {
             const kind = intent && intent.type
             if (kind === 'search') {
               setTab('notes')
+              // 深链带过来的关键词直接填进去，用户从浏览器点过来就该看到结果，
+              // 而不是先看到空搜索框再自己敲一遍。
+              if (typeof intent.q === 'string' && intent.q !== '') setQuery(intent.q)
               // 等一帧再找输入框：切页签的渲染是异步的，立刻 querySelector 拿不到
               window.setTimeout(() => {
                 const input = document.querySelector('.dshgn_search')
@@ -3471,6 +3524,48 @@ async function saveFile(url, filename) {
                 .finally(() => setBusy(false))
               return
             }
+            if (kind === 'capture') {
+              // 选区速记：把别处的文字（选中一段笔记、命令里带的原文）落成一篇
+              // 新笔记。标题取第一行，正文整段引用——摘录和自己的想法必须能
+              // 一眼分开，所以用引用块而不是直接粘。
+              const text = typeof intent.text === 'string' ? intent.text.trim() : ''
+              if (text === '') return
+              setTab('notes')
+              if (status === null || status.vaultMissing) return
+              const firstLine =
+                text
+                  .split('\n')
+                  .map((line) => line.trim())
+                  .filter((line) => line !== '')[0] || t('capture.title')
+              const title = firstLine.length > 40 ? `${firstLine.slice(0, 40)}…` : firstLine
+              const quoted = text
+                .split('\n')
+                .map((line) => (line === '' ? '>' : `> ${line}`))
+                .join('\n')
+              const from =
+                typeof intent.source === 'string' && intent.source !== ''
+                  ? `\n\n—— 摘自 ${intent.source}`
+                  : ''
+              setBusy(true)
+              void api('/create', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({
+                  dir: activeDir,
+                  title,
+                  content: `${quoted}${from}\n`,
+                  requestId: requestId(),
+                }),
+              })
+                .then(async (created) => {
+                  showToast(t('capture.saved'))
+                  await refresh()
+                  await openNote(created.path)
+                })
+                .catch((err) => setError(err && err.message ? err.message : String(err)))
+                .finally(() => setBusy(false))
+              return
+            }
             if (kind === 'sync') {
               setTab('settings')
               setBusy(true)
@@ -3479,7 +3574,12 @@ async function saveFile(url, filename) {
                 headers: { 'content-type': 'application/json' },
                 body: JSON.stringify({ full: false }),
               })
-                .then(() => showToast(t('sync.running')))
+                .then(() => {
+                  showToast(t('sync.running'))
+                  // 命令面板触发时面板可能根本没打开，跑完的结果没人看见。
+                  // 这里等到这一轮结束，再把结果交给宿主（写进当天日记）。
+                  return waitForSync()
+                })
                 .catch((err) => setError(err && err.message ? err.message : String(err)))
                 .finally(() => setBusy(false))
               return
@@ -9021,4 +9121,5 @@ export const __internals = {
   TrashPane, renderEmbed, assetLabel, ThemeCard,
   themeVars, parseHex, rgbToHsl, hslToHex, ConflictPane, ArchiveCard, CardPane,
   TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale,
+  reportSync,
 }

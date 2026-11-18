@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 // ── 假 obsidian 模块 ────────────────────────────────────────────────────────
-const calls = { views: [], ribbons: [], commands: [], settings: [], intervals: [], statusBar: [] }
+const calls = { views: [], ribbons: [], commands: [], settings: [], intervals: [], statusBar: [], protocols: [] }
 
 class Plugin {
   constructor(app, manifest) {
@@ -37,6 +37,12 @@ class Plugin {
   registerDomEvent(el, type, handler) {
     this.disposers.push({ el, type, handler })
     return { el, type, handler }
+  }
+  // obsidian://getnote?... 深链：真宿主是 app.setUriHandler 的入口，
+  // 这里只把注册的处理器存下来，测试自己拿参数去调。
+  registerObsidianProtocolHandler(action, handler) {
+    calls.protocols.push({ action, handler })
+    return { action, handler }
   }
   // 状态栏：真宿主返回一个带 setText/addClass/title 的 HTMLElement，
   // 这里给个够用的假元素，测试还能顺手断言文字。
@@ -260,6 +266,7 @@ test('onload 能把插件拉起来', async () => {
     'open-today',
     'sync-now',
     'scan-card',
+    'capture-selection',
   ])
   assert.equal(calls.settings.length, 1, '注册了设置页')
   assert.equal(calls.intervals.length >= 0, true)
@@ -487,6 +494,77 @@ test('整库导出能拿到真 zip（面板「导出」按钮打的就是这个�
   // host.test 里那 57 项归档包测试覆盖）。
   assert.equal(buf.subarray(0, 2).toString('latin1'), 'PK', '导出的应该是 zip')
   assert.ok(buf.length > 0, 'zip 不该是空的')
+})
+
+/**
+ * 深链：obsidian://getnote?action=... 要真的接住。
+ *
+ * 这条只验「注册了、认得出四种动作、乱传不炸」——它最终调的是面板的意图总线，
+ * 那根线在 panel.test 里验过。深链本身不该有写操作能力，所以这里也不测写。
+ */
+test('深链 obsidian://getnote 注册上了，动作能认出来，乱传不炸', () => {
+  const entry = calls.protocols.find((item) => item.action === 'getnote')
+  assert.ok(entry, '应该注册了 getnote 协议处理器')
+  // 四种已知动作 + 一个乱传的：都不该抛
+  for (const params of [
+    { action: 'search', q: '关键词' },
+    { action: 'new' },
+    { action: 'today' },
+    { action: 'sync' },
+    { action: '什么鬼' },
+    {},
+  ]) {
+    assert.doesNotThrow(() => entry.handler(params), '深链处理器不该抛：' + JSON.stringify(params))
+  }
+})
+
+/**
+ * 同步摘要要真的落到当天日记里。
+ *
+ * 日记的目录和文件名格式由 Obsidian 的日记核心插件决定，插件自己猜一套只会和
+ * 用户已有的习惯打架——所以这里把核心插件的配置造出来，验的是「读它的配置、
+ * 写对位置、写对内容」，以及几条不该写的情况（没开日记、这轮没拉到新笔记）。
+ */
+test('同步摘要写进当天日记，路径与格式跟着日记核心插件的设置', async () => {
+  const pad = (n) => String(n).padStart(2, '0')
+  const now = new Date()
+  const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+
+  app.internalPlugins = {
+    getPluginById: (id) =>
+      id === 'daily-notes'
+        ? { enabled: true, instance: { options: { folder: '日记', format: 'YYYY-MM-DD' } } }
+        : null,
+  }
+
+  // 这轮没拉到新笔记：不该写
+  await plugin.appendSyncReport({ pulled: 0, skipped: 4, conflicts: 0 })
+  assert.equal(
+    adapter._dump().some((key) => key.startsWith('日记/')),
+    false,
+    '没拉到新笔记就不该往日记里写',
+  )
+
+  await plugin.appendSyncReport({ pulled: 3, skipped: 1, conflicts: 2 })
+  const target = `日记/${stamp}.md`
+  assert.ok(adapter._dump().includes(target), '应该写到 日记/' + stamp + '.md，实际 ' + adapter._dump().join(', '))
+  const text = await adapter.read(target)
+  assert.ok(text.includes('得到大脑同步'), '摘要要能被认出来：' + text)
+  assert.ok(text.includes('新增 3 篇'), '要有新增数')
+  assert.ok(text.includes('跳过 1 篇'), '要有跳过数')
+  assert.ok(text.includes('2 处冲突待处理'), '要有冲突数')
+
+  // 再跑一轮：追加而不是覆盖
+  await plugin.appendSyncReport({ pulled: 1, skipped: 0, conflicts: 0 })
+  const after = await adapter.read(target)
+  assert.equal(after.match(/得到大脑同步/g).length, 2, '第二轮应该追加，不是覆盖')
+  assert.ok(after.includes('新增 1 篇'))
+
+  // 用户把日记插件关了：不该凭空建文件
+  app.internalPlugins = { getPluginById: () => ({ enabled: false, instance: { options: {} } }) }
+  const before = adapter._dump().length
+  await plugin.appendSyncReport({ pulled: 5, skipped: 0, conflicts: 0 })
+  assert.equal(adapter._dump().length, before, '日记插件关掉时不该写任何东西')
 })
 
 test('onunload 会关掉本地服务', async () => {
