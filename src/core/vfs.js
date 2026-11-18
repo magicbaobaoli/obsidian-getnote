@@ -131,7 +131,9 @@ function entryName(entry) {
 export async function readdir(dir, options = {}) {
   if (!adapter) return nodefs.readdir(dir, options)
   const rel = relOf(dir)
-  if (!(await adapterExists(rel))) throw enoent(dir)
+  // 库根本身不查 exists：真 adapter 的 exists('') 行为没有保证，而 list('')
+  // 一定是「列出库根」。库根一定存在，多查一次反而可能误判成 ENOENT。
+  if (rel !== '' && !(await adapterExists(rel))) throw enoent(dir)
   const listed = await adapter.list(rel)
   const folders = (Array.isArray(listed.folders) ? listed.folders : []).map(entryName).filter(Boolean)
   const files = (Array.isArray(listed.files) ? listed.files : []).map(entryName).filter(Boolean)
@@ -223,7 +225,14 @@ export async function rename(from, to) {
   const relFrom = relOf(from)
   const relTo = relOf(to)
   await ensureDir(relTo.includes('/') ? relTo.slice(0, relTo.lastIndexOf('/')) : '')
-  await adapter.rename(relFrom, relTo)
+  if (typeof adapter.rename === 'function') {
+    await adapter.rename(relFrom, relTo)
+    return
+  }
+  // 老版本 adapter 没有 rename（它是后加的）：退化成「读出来 + 写过去 + 删掉」。
+  const buf = await adapter.readBinary(relFrom)
+  await adapter.writeBinary(relTo, buf)
+  await adapter.remove(relFrom)
 }
 
 export async function copyFile(from, to) {

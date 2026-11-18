@@ -96,7 +96,7 @@ function entryName(entry) {
 async function readdir2(dir, options = {}) {
   if (!adapter) return nodefs.readdir(dir, options);
   const rel = relOf(dir);
-  if (!await adapterExists(rel)) throw enoent(dir);
+  if (rel !== "" && !await adapterExists(rel)) throw enoent(dir);
   const listed = await adapter.list(rel);
   const folders = (Array.isArray(listed.folders) ? listed.folders : []).map(entryName).filter(Boolean);
   const files = (Array.isArray(listed.files) ? listed.files : []).map(entryName).filter(Boolean);
@@ -155,7 +155,13 @@ async function rename2(from, to) {
   const relFrom = relOf(from);
   const relTo = relOf(to);
   await ensureDir(relTo.includes("/") ? relTo.slice(0, relTo.lastIndexOf("/")) : "");
-  await adapter.rename(relFrom, relTo);
+  if (typeof adapter.rename === "function") {
+    await adapter.rename(relFrom, relTo);
+    return;
+  }
+  const buf = await adapter.readBinary(relFrom);
+  await adapter.writeBinary(relTo, buf);
+  await adapter.remove(relFrom);
 }
 async function copyFile2(from, to) {
   if (!adapter) return nodefs.copyFile(from, to);
