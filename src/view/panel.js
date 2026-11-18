@@ -241,7 +241,6 @@ function apiOrigin() {
         'cloud.newNoteBody': '正文',
         'cloud.create': '创建',
         'cloud.created': '已创建',
-        'cloud.tags': '标签',
         'cloud.addTagHint': '输入标签，回车或点加号',
         'cloud.tagAdded': '已加标签',
         'cloud.tagRemoved': '已删标签',
@@ -373,7 +372,7 @@ function apiOrigin() {
         'card.wifiHotspot': '已连热点',
         'card.wifiPorts': '开放端口',
         'card.wifiOn': '已连上卡片热点',
-        'card.wifiOff': '已退出卡片热点',
+        'card.wifiLeft': '已退出卡片热点',
         'card.wifiNoHotspot': '卡片没有报出热点名。可能这个固件版本不支持热点快传，或者命令码还没对上。',
         'card.wifiFail': '热点快传没成功',
         'card.wifiNeedSsid': '先填一个热点名',
@@ -600,7 +599,6 @@ function apiOrigin() {
         'cloud.newNoteBody': 'Body',
         'cloud.create': 'Create',
         'cloud.created': 'Created',
-        'cloud.tags': 'Tags',
         'cloud.addTagHint': 'Type a tag, press Enter or plus',
         'cloud.tagAdded': 'Tag added',
         'cloud.tagRemoved': 'Tag removed',
@@ -732,7 +730,7 @@ function apiOrigin() {
         'card.wifiHotspot': 'Connected to',
         'card.wifiPorts': 'Open ports',
         'card.wifiOn': 'Connected to the card hotspot',
-        'card.wifiOff': 'Left the card hotspot',
+        'card.wifiLeft': 'Left the card hotspot',
         'card.wifiNoHotspot': 'The card did not report a hotspot. This firmware may not support it, or the command code is not matched yet.',
         'card.wifiFail': 'Wi-Fi transfer did not start',
         'card.wifiNeedSsid': 'Enter a hotspot name first',
@@ -1084,7 +1082,7 @@ function apiOrigin() {
         'card.wifiHotspot': 'Verbonden met',
         'card.wifiPorts': 'Open poorten',
         'card.wifiOn': 'Verbonden met de kaarthotspot',
-        'card.wifiOff': 'Kaarthotspot verlaten',
+        'card.wifiLeft': 'Kaarthotspot verlaten',
         'card.wifiNoHotspot': 'De kaart meldde geen hotspot. Deze firmware ondersteunt het misschien niet, of de commandocode klopt nog niet.',
         'card.wifiFail': 'Wifi-overdracht startte niet',
         'card.wifiNeedSsid': 'Vul eerst een hotspotnaam in',
@@ -5351,7 +5349,7 @@ function apiOrigin() {
         try {
           const json = await api('/card/wifi-leave', { method: 'POST' })
           setWifiHot(null)
-          if (json && json.ok === true) showToast(t('card.wifiOff'))
+          if (json && json.ok === true) showToast(t('card.wifiLeft'))
         } catch (err) {
           onError(err && err.message ? err.message : String(err))
         } finally {

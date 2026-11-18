@@ -37012,7 +37012,6 @@ var LEX = {
     "cloud.newNoteBody": "\u6B63\u6587",
     "cloud.create": "\u521B\u5EFA",
     "cloud.created": "\u5DF2\u521B\u5EFA",
-    "cloud.tags": "\u6807\u7B7E",
     "cloud.addTagHint": "\u8F93\u5165\u6807\u7B7E\uFF0C\u56DE\u8F66\u6216\u70B9\u52A0\u53F7",
     "cloud.tagAdded": "\u5DF2\u52A0\u6807\u7B7E",
     "cloud.tagRemoved": "\u5DF2\u5220\u6807\u7B7E",
@@ -37141,7 +37140,7 @@ var LEX = {
     "card.wifiHotspot": "\u5DF2\u8FDE\u70ED\u70B9",
     "card.wifiPorts": "\u5F00\u653E\u7AEF\u53E3",
     "card.wifiOn": "\u5DF2\u8FDE\u4E0A\u5361\u7247\u70ED\u70B9",
-    "card.wifiOff": "\u5DF2\u9000\u51FA\u5361\u7247\u70ED\u70B9",
+    "card.wifiLeft": "\u5DF2\u9000\u51FA\u5361\u7247\u70ED\u70B9",
     "card.wifiNoHotspot": "\u5361\u7247\u6CA1\u6709\u62A5\u51FA\u70ED\u70B9\u540D\u3002\u53EF\u80FD\u8FD9\u4E2A\u56FA\u4EF6\u7248\u672C\u4E0D\u652F\u6301\u70ED\u70B9\u5FEB\u4F20\uFF0C\u6216\u8005\u547D\u4EE4\u7801\u8FD8\u6CA1\u5BF9\u4E0A\u3002",
     "card.wifiFail": "\u70ED\u70B9\u5FEB\u4F20\u6CA1\u6210\u529F",
     "card.wifiNeedSsid": "\u5148\u586B\u4E00\u4E2A\u70ED\u70B9\u540D",
@@ -37367,7 +37366,6 @@ var LEX = {
     "cloud.newNoteBody": "Body",
     "cloud.create": "Create",
     "cloud.created": "Created",
-    "cloud.tags": "Tags",
     "cloud.addTagHint": "Type a tag, press Enter or plus",
     "cloud.tagAdded": "Tag added",
     "cloud.tagRemoved": "Tag removed",
@@ -37496,7 +37494,7 @@ var LEX = {
     "card.wifiHotspot": "Connected to",
     "card.wifiPorts": "Open ports",
     "card.wifiOn": "Connected to the card hotspot",
-    "card.wifiOff": "Left the card hotspot",
+    "card.wifiLeft": "Left the card hotspot",
     "card.wifiNoHotspot": "The card did not report a hotspot. This firmware may not support it, or the command code is not matched yet.",
     "card.wifiFail": "Wi-Fi transfer did not start",
     "card.wifiNeedSsid": "Enter a hotspot name first",
@@ -37847,7 +37845,7 @@ var LEX = {
     "card.wifiHotspot": "Verbonden met",
     "card.wifiPorts": "Open poorten",
     "card.wifiOn": "Verbonden met de kaarthotspot",
-    "card.wifiOff": "Kaarthotspot verlaten",
+    "card.wifiLeft": "Kaarthotspot verlaten",
     "card.wifiNoHotspot": "De kaart meldde geen hotspot. Deze firmware ondersteunt het misschien niet, of de commandocode klopt nog niet.",
     "card.wifiFail": "Wifi-overdracht startte niet",
     "card.wifiNeedSsid": "Vul eerst een hotspotnaam in",
@@ -41577,7 +41575,7 @@ function CardPane(props) {
     try {
       const json = await api("/card/wifi-leave", { method: "POST" });
       setWifiHot(null);
-      if (json && json.ok === true) showToast(t("card.wifiOff"));
+      if (json && json.ok === true) showToast(t("card.wifiLeft"));
     } catch (err) {
       onError(err && err.message ? err.message : String(err));
     } finally {
