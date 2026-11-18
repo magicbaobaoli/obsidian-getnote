@@ -13,7 +13,7 @@
  *   ctx.effect 清理                     onunload
  */
 
-import { Notice, Plugin, PluginSettingTab, Setting } from 'obsidian'
+import { Menu, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -24,7 +24,7 @@ import { configureCardScripts } from './core/card.js'
 import { invalidateScan } from './core/vault.js'
 import { startAutoSync, markPanelVisible } from './core/service.js'
 import { startLocalServer } from './host/server.js'
-import { setApiOrigin, setApiToken, setOpenExternal, setSaveFile, requestIntent } from './view/panel.js'
+import { setApiOrigin, setApiToken, setOpenExternal, setSaveFile, setNoteMenu, requestIntent } from './view/panel.js'
 import { GetnoteView, VIEW_TYPE_GETNOTE, PanelIcon } from './view/view.js'
 
 const DEFAULT_SUBFOLDER = '得到大脑'
@@ -81,6 +81,25 @@ export default class GetnoteObsidianPlugin extends Plugin {
         // 拿不到 electron 就只弹提示，路径照样给出去
       }
       new Notice(`得到大脑：归档包已导出到 ${target}`)
+      return true
+    })
+
+    // 笔记卡片的右键菜单走 Obsidian 原生 Menu：位置、键盘导航、样式都由宿主负责，
+    // 面板只需要给一份「标签 + 动作」的清单。拿不到 Menu（离线测试）就返回 false，
+    // 面板会退回自己的简易菜单。
+    setNoteMenu((event, items) => {
+      if (typeof Menu !== 'function') return false
+      const menu = new Menu()
+      for (const item of items) {
+        menu.addItem((entry) => {
+          entry.setTitle(item.label)
+          if (item.danger === true) entry.setIcon('trash')
+          entry.onClick(() => {
+            item.run()
+          })
+        })
+      }
+      menu.showAtMouseEvent(event)
       return true
     })
 

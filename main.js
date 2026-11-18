@@ -7306,6 +7306,18 @@ async function saveFile(url, filename) {
   }
   return false;
 }
+var __noteMenu = null;
+function setNoteMenu(fn2) {
+  __noteMenu = typeof fn2 === "function" ? fn2 : null;
+}
+function showNoteMenu(anchor, items) {
+  if (__noteMenu === null) return false;
+  try {
+    return __noteMenu(anchor, items) !== false;
+  } catch {
+    return false;
+  }
+}
 var h4 = _;
 var NS = "dsh-getnote";
 var STYLE_ID = "dshgn-style";
@@ -7433,6 +7445,7 @@ var LEX = {
     "note.saved": "\u5DF2\u4FDD\u5B58",
     "note.deleted": "\u5DF2\u79FB\u5165\u56DE\u6536\u7AD9",
     "note.unsaved": "\u6709\u672A\u4FDD\u5B58\u7684\u4FEE\u6539",
+    "note.menuOpen": "\u6253\u5F00\u8FD9\u7BC7",
     "note.localAudio": "\u672C\u5730\u5F55\u97F3",
     "note.outline": "\u672C\u6587\u5927\u7EB2",
     "note.backlinks": "\u5F15\u7528\u4E86\u8FD9\u7BC7\u7684\u7B14\u8BB0",
@@ -7790,6 +7803,7 @@ var LEX = {
     "note.saved": "Saved",
     "note.deleted": "Moved to trash",
     "note.unsaved": "Unsaved changes",
+    "note.menuOpen": "Open this note",
     "note.localAudio": "Local recording",
     "note.outline": "Outline",
     "note.backlinks": "Notes linking here",
@@ -8147,6 +8161,7 @@ var LEX = {
     "note.saved": "Opgeslagen",
     "note.deleted": "Naar prullenbak",
     "note.unsaved": "Niet-opgeslagen wijzigingen",
+    "note.menuOpen": "Deze notitie openen",
     "note.localAudio": "Lokale opname",
     "note.outline": "Overzicht",
     "note.backlinks": "Notities die hierheen linken",
@@ -10848,6 +10863,52 @@ function GetnotePage() {
                 onClick: () => {
                   if (dirty && !window.confirm(t3("note.unsaved"))) return;
                   void openNote(entry.path, true);
+                },
+                // 右键：把这一篇能做的事一次列出来。先把它设为当前笔记，
+                // 因为下面的动作（复制引用、单篇同步、删除）都作用在 current 上。
+                onContextMenu: (event) => {
+                  event.preventDefault();
+                  const items = [
+                    {
+                      id: "open",
+                      label: t3("note.menuOpen"),
+                      run: () => {
+                        if (dirty && !window.confirm(t3("note.unsaved"))) return;
+                        void openNote(entry.path, true);
+                      }
+                    },
+                    {
+                      id: "copy-ref",
+                      label: t3("action.copyRef"),
+                      run: () => {
+                        void openNote(entry.path, true).then(() => copyReference());
+                      }
+                    },
+                    {
+                      id: "push-one",
+                      label: t3("sync.pushOne"),
+                      run: () => {
+                        void openNote(entry.path, true).then(() => syncCurrent("push"));
+                      }
+                    },
+                    {
+                      id: "pull-one",
+                      label: t3("sync.pullOne"),
+                      run: () => {
+                        void openNote(entry.path, true).then(() => syncCurrent("pull"));
+                      }
+                    },
+                    {
+                      id: "delete",
+                      label: t3("action.delete"),
+                      danger: true,
+                      // 不二次确认：删除是进回收站，可还原，和面板里的删除按钮一致
+                      run: () => {
+                        void openNote(entry.path, true).then(() => deleteNote());
+                      }
+                    }
+                  ];
+                  showNoteMenu(event, items);
                 },
                 title: entry.path
               },
@@ -15008,6 +15069,21 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       } catch {
       }
       new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A\u5F52\u6863\u5305\u5DF2\u5BFC\u51FA\u5230 ${target}`);
+      return true;
+    });
+    setNoteMenu((event, items) => {
+      if (typeof import_obsidian2.Menu !== "function") return false;
+      const menu = new import_obsidian2.Menu();
+      for (const item of items) {
+        menu.addItem((entry) => {
+          entry.setTitle(item.label);
+          if (item.danger === true) entry.setIcon("trash");
+          entry.onClick(() => {
+            item.run();
+          });
+        });
+      }
+      menu.showAtMouseEvent(event);
       return true;
     });
     const stored = await readSettings();

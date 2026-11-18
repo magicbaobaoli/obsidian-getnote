@@ -32,6 +32,14 @@ const server = await startLocalServer({ preferredPort: 0 })
 panel.setApiOrigin(server.origin)
 panel.setApiToken(server.token)
 
+// 先塞一篇笔记：列表为空的话，下面「右键笔记卡片」那类验收就没有可点的对象。
+// 走服务接口建，和面板里点「新建」是同一条路。
+await fetch(server.origin + '/getnote/create', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+  body: JSON.stringify({ dir: '', title: '右键菜单验收', content: '正文', requestId: 'seed-menu-note' }),
+})
+
 // ── 浏览器环境 ─────────────────────────────────────────────────────────────
 const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
   url: 'app://obsidian.md/',
@@ -213,6 +221,63 @@ test('宿主切到深色主题时面板跟着变深，切回来还原', async ()
     3000,
     '切回浅色后撤掉行内变量',
   )
+})
+
+/**
+ * 右键笔记卡片要把动作清单交给宿主。
+ *
+ * 面板自己不会画菜单——它把「标签 + 动作」交给注入的实现（真宿主是 Obsidian
+ * 原生 Menu）。这里注入一个记录器，确认清单里有打开/复制引用/删除这些动作，
+ * 并且执行其中一个真的会生效。
+ */
+test('右键笔记卡片会把动作清单交给宿主，执行其中一项真的生效', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  // 回到笔记页并等列表里出现那篇预置笔记
+  const notesTab = Array.from(window.document.querySelectorAll('button')).find(
+    (el) => (el.textContent || '').trim() === '笔记',
+  )
+  notesTab.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const card = await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) =>
+        (el.textContent || '').includes('右键菜单验收'),
+      ),
+    5000,
+    '列表里出现预置笔记',
+  )
+
+  const seen = []
+  panel.setNoteMenu((event, items) => {
+    seen.push(items.map((item) => item.id))
+    return true
+  })
+
+  card.dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+  await sleep(120)
+
+  assert.equal(seen.length, 1, '右键应该把菜单交给宿主一次')
+  const ids = seen[0]
+  for (const id of ['open', 'copy-ref', 'push-one', 'pull-one', 'delete']) {
+    assert.ok(ids.includes(id), '动作清单里缺 ' + id + '，实际 ' + ids.join(','))
+  }
+
+  // 执行「打开这篇」：右侧正文区应当出现这篇的标题
+  panel.setNoteMenu((event, items) => {
+    const open = items.find((item) => item.id === 'open')
+    assert.ok(open, '清单里应该有「打开这篇」')
+    open.run()
+    return true
+  })
+  card.dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+  await waitFor(
+    () => (window.document.querySelector('.dshgn_note') || { textContent: '' }).textContent.includes('右键菜单验收'),
+    5000,
+    '右键打开后正文区显示这篇笔记',
+  )
+
+  panel.setNoteMenu(null)
 })
 
 /**

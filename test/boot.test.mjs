@@ -54,6 +54,25 @@ class Plugin {
   }
 }
 
+// 原生右键菜单：真宿主是 Obsidian 的 Menu，这里只要够调起就行
+class Menu {
+  constructor() { this.items = [] }
+  addItem(build) {
+    const entry = {
+      title: '',
+      icon: '',
+      handler: null,
+      setTitle(v) { entry.title = v; return entry },
+      setIcon(v) { entry.icon = v; return entry },
+      onClick(fn) { entry.handler = fn; return entry },
+    }
+    build(entry)
+    this.items.push(entry)
+    return this
+  }
+  showAtMouseEvent() {}
+}
+
 class PluginSettingTab {
   constructor(app, plugin) { this.app = app; this.plugin = plugin; this.containerEl = null }
 }
@@ -78,7 +97,7 @@ class ItemView {
 
 class Notice { constructor(message) { calls.notices = calls.notices || []; calls.notices.push(message) } }
 
-const obsidianStub = { Plugin, PluginSettingTab, Setting, ItemView, Notice, WorkspaceLeaf: class {} }
+const obsidianStub = { Menu, Plugin, PluginSettingTab, Setting, ItemView, Notice, WorkspaceLeaf: class {} }
 
 const originalLoad = Module._load
 Module._load = function (request, parent, isMain) {

@@ -120,6 +120,25 @@ async function saveFile(url, filename) {
   return false
 }
 
+    // 右键菜单交给宿主。
+    //
+    // 面板里原来只有目录/标签有右键菜单，笔记卡片没有——用户想在列表上右键
+    // 重命名、删除、复制引用，只能先点开再找按钮。这里把「一份动作清单」交给
+    // 宿主：Obsidian 桌面版弹原生 Menu，其它环境（离线测试）退回面板自己的
+    // 简易菜单，所以这段逻辑不依赖 obsidian 模块也能跑。
+    let __noteMenu = null
+    export function setNoteMenu(fn) {
+      __noteMenu = typeof fn === 'function' ? fn : null
+    }
+    function showNoteMenu(anchor, items) {
+      if (__noteMenu === null) return false
+      try {
+        return __noteMenu(anchor, items) !== false
+      } catch {
+        return false
+      }
+    }
+
     const h = React.createElement
     const NS = 'dsh-getnote'
     const PANEL_ID = 'dsh-getnote'
@@ -253,6 +272,7 @@ async function saveFile(url, filename) {
         'note.saved': '已保存',
         'note.deleted': '已移入回收站',
         'note.unsaved': '有未保存的修改',
+        'note.menuOpen': '打开这篇',
         'note.localAudio': '本地录音',
         'note.outline': '本文大纲',
         'note.backlinks': '引用了这篇的笔记',
@@ -614,6 +634,7 @@ async function saveFile(url, filename) {
         'note.saved': 'Saved',
         'note.deleted': 'Moved to trash',
         'note.unsaved': 'Unsaved changes',
+        'note.menuOpen': 'Open this note',
         'note.localAudio': 'Local recording',
         'note.outline': 'Outline',
         'note.backlinks': 'Notes linking here',
@@ -974,6 +995,7 @@ async function saveFile(url, filename) {
         'note.saved': 'Opgeslagen',
         'note.deleted': 'Naar prullenbak',
         'note.unsaved': 'Niet-opgeslagen wijzigingen',
+        'note.menuOpen': 'Deze notitie openen',
         'note.localAudio': 'Lokale opname',
         'note.outline': 'Overzicht',
         'note.backlinks': 'Notities die hierheen linken',
@@ -4028,6 +4050,52 @@ async function saveFile(url, filename) {
                         onClick: () => {
                           if (dirty && !window.confirm(t('note.unsaved'))) return
                           void openNote(entry.path, true)
+                        },
+                        // 右键：把这一篇能做的事一次列出来。先把它设为当前笔记，
+                        // 因为下面的动作（复制引用、单篇同步、删除）都作用在 current 上。
+                        onContextMenu: (event) => {
+                          event.preventDefault()
+                          const items = [
+                            {
+                              id: 'open',
+                              label: t('note.menuOpen'),
+                              run: () => {
+                                if (dirty && !window.confirm(t('note.unsaved'))) return
+                                void openNote(entry.path, true)
+                              },
+                            },
+                            {
+                              id: 'copy-ref',
+                              label: t('action.copyRef'),
+                              run: () => {
+                                void openNote(entry.path, true).then(() => copyReference())
+                              },
+                            },
+                            {
+                              id: 'push-one',
+                              label: t('sync.pushOne'),
+                              run: () => {
+                                void openNote(entry.path, true).then(() => syncCurrent('push'))
+                              },
+                            },
+                            {
+                              id: 'pull-one',
+                              label: t('sync.pullOne'),
+                              run: () => {
+                                void openNote(entry.path, true).then(() => syncCurrent('pull'))
+                              },
+                            },
+                            {
+                              id: 'delete',
+                              label: t('action.delete'),
+                              danger: true,
+                              // 不二次确认：删除是进回收站，可还原，和面板里的删除按钮一致
+                              run: () => {
+                                void openNote(entry.path, true).then(() => deleteNote())
+                              },
+                            },
+                          ]
+                          showNoteMenu(event, items)
                         },
                         title: entry.path,
                       },
