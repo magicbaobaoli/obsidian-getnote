@@ -5,7 +5,7 @@
  * 其余 React 组件、Markdown 渲染器、样式与图标原样保留。
  */
 
-import * as React from 'react'
+import * as React from 'preact/compat'
 
 // 面板要访问的本地服务地址，由 main.js 在服务监听成功后写入。
 // Obsidian 里没有宿主的 webServer，/getnote 全部走本机 127.0.0.1 回环端口。

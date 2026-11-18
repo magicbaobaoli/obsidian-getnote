@@ -65,8 +65,8 @@ globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window)
 window.HTMLElement.prototype.scrollTo = function scrollTo() {}
 globalThis.IS_REACT_ACT_ENVIRONMENT = false
 
-const React = await import('react')
-const { createRoot } = await import('react-dom/client')
+const React = await import('preact/compat')
+const { createRoot } = await import('preact/compat/client')
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 

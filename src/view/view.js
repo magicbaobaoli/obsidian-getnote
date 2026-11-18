@@ -6,8 +6,8 @@
  */
 
 import { ItemView, WorkspaceLeaf } from 'obsidian'
-import * as React from 'react'
-import { createRoot } from 'react-dom/client'
+import * as React from 'preact/compat'
+import { createRoot } from 'preact/compat/client'
 import { PanelRoot, PanelIcon, injectCss } from './panel.js'
 
 export const VIEW_TYPE_GETNOTE = 'getnote-obsidian-view'

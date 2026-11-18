@@ -48,9 +48,11 @@
   指纹没变就复用上次结果；另有逐文件记忆层，库里改了一篇时只需重新读那一篇。
   缓存在写操作后失效，并监听 Obsidian 的 `modify` / `create` / `delete` / `rename`
   事件——即使事件漏了，指纹比较也保证不会读到旧内容。
-- **打包体积**：`react` / `react-dom` 靠 `process.env.NODE_ENV` 在运行时选开发版还是
-  生产版，esbuild 静态分析不了，两份都会打进来。构建时把 `NODE_ENV` 钉成字面量后
-  开发版整份消失，`main.js` 从 1814 KB 降到 828 KB。
+- **打包体积**：渲染层从 `react` + `react-dom` 换成 `preact` + `preact/compat`。
+  面板用的是 100 处 `useState`/`useCallback`/`useEffect`/`useMemo`/`useRef`/`Fragment`
+  加一处 `createElement`，没有 context、portal、Suspense 之类的重货，compat 层全覆盖，
+  组件源码一行没改。另外 `process.env.NODE_ENV` 这类运行时判断 esbuild 静态分析不了，
+  构建时钉成字面量让开发版整份消失。两步合起来 `main.js` 从 1814 KB 降到 626 KB。
 - **本地服务令牌**：CORS 是 `*`（渲染进程的源是 `app://obsidian.md`，预知不了），
   所以每个请求必须带一个每次启动随机生成的令牌：普通接口走 `x-getnote-token` 头，
   `<img>`/`<audio>` 这种加不了头的资源请求走 `?t=` 查询参数；OAuth 回调是系统浏览器
