@@ -70,7 +70,7 @@
 ```bash
 npm install
 npm run build      # 产出 main.js，并把 card/ 与 locale/ 复制到插件根
-npm test           # 540 项离线测试（需 Node ≥ 22，jsdom 31 依赖 Node 22 的 zstd API）
+npm test           # 541 项离线测试（需 Node ≥ 22，jsdom 31 依赖 Node 22 的 zstd API）
 ```
 
 开发时用 `npm run dev` 进入 watch 模式。
@@ -156,8 +156,10 @@ npm test
 写入真的走 `app.vault.adapter` 而不是直接落盘、插件状态只落在
 `.obsidian/plugins/<id>` 里、无令牌请求被 401 挡住、同一动作重放只落一份、
 扫描缓存不会给出过期数据——
-**4 项面板渲染验收**：用 jsdom 造浏览器环境，把 8000 行的面板真渲染出来，
-确认它不掉进错误边界、发出的请求全部指向本地服务、六个标签页逐个切换都不炸——
+**5 项面板渲染验收**：用 jsdom 造浏览器环境，把 8000 行的面板真渲染出来，
+确认它不掉进错误边界、发出的请求全部指向本地服务、六个标签页逐个切换都不炸，
+以及宿主切到深色主题时面板跟着变深、切回来能还原（配色按宿主的 `theme-dark` 类名
+现场推导，不是硬编码的浅色板）——
 以及 **4 项视图层验收**：同样在 jsdom 里 new 一个真的 `ItemView` 并调 `onOpen`，
 确认面板确实挂进了 Obsidian 的 `contentEl`、样式只注入一份、心跳注册上了，
 关掉叶子时组件树被卸载干净、不留残余节点。

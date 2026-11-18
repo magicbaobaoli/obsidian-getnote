@@ -168,3 +168,49 @@ test('切换标签页逐个渲染都不炸', async () => {
     await clickTab(label)
   }
 })
+
+/** `#rrggbb` → 0..1 的相对亮度（够用来判断「深」还是「浅」）。 */
+function luminance(hex) {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex || '').trim())
+  if (!m) return null
+  const [r, g, b] = [m[1], m[2], m[3]].map((part) => parseInt(part, 16) / 255)
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+test('宿主切到深色主题时面板跟着变深，切回来还原', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  // 浅色：没选主题色时 themeVars 返回 null，不给行内 style，走 CSS 里那套浅色默认值
+  assert.equal(
+    rootNode().style.getPropertyValue('--dshgn-light').trim(),
+    '',
+    '浅色下不该写行内主题变量（应当回落 CSS 默认的浅色板）',
+  )
+
+  // Obsidian 切主题只改 body 上的类名，不通知视图；面板自己盯这个类名
+  window.document.body.classList.add('theme-dark')
+  await waitFor(
+    () => rootNode().style.getPropertyValue('--dshgn-light').trim() !== '',
+    3000,
+    '深色下算出主题变量',
+  )
+
+  const darkLight = luminance(rootNode().style.getPropertyValue('--dshgn-light'))
+  const darkDeep = luminance(rootNode().style.getPropertyValue('--dshgn-deep'))
+  assert.ok(darkLight !== null && darkLight < 0.2, '深色下右栏底色应该很暗，实际亮度 ' + darkLight)
+  assert.ok(darkDeep !== null && darkDeep < darkLight, '深色下左栏应该比右栏更暗')
+  // 深色下正文色是浅色字，否则深底上会读不出来
+  assert.ok(
+    /rgba\(255,\s*255,\s*255/.test(rootNode().style.getPropertyValue('--dshgn-lightFg')),
+    '深色下正文色应当是浅色，实际 ' + rootNode().style.getPropertyValue('--dshgn-lightFg'),
+  )
+
+  // 切回浅色：行内变量要撤掉，重新回落 CSS 默认的浅色板
+  window.document.body.classList.remove('theme-dark')
+  await waitFor(
+    () => rootNode().style.getPropertyValue('--dshgn-light').trim() === '',
+    3000,
+    '切回浅色后撤掉行内变量',
+  )
+})

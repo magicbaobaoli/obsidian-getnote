@@ -1417,8 +1417,26 @@ async function saveFile(url, filename) {
      * 返回 null 表示「用内置配色」——调用方据此不给 style 属性，
      * 让 CSS 里那套默认值原样生效。
      */
-    function themeVars(input) {
-      const rgb = parseHex(input)
+    /** 没选主题色时用的色相：与设置页第一枚预设一致。 */
+    const DEFAULT_THEME_COLOR = '#0a2a52'
+
+    /**
+     * 宿主现在是深色主题吗？
+     *
+     * Obsidian 在 `<body>` 上挂 `theme-dark` / `theme-light` 两个类，切换主题时
+     * 只换类名、不重新加载插件。所以这个判断必须在**每次渲染时**做（而不是
+     * 启动时算一次存起来），否则用户切换主题后面板会一直停在旧配色上。
+     *
+     * 拿不到 document（测试环境）时按浅色处理：那套配色是默认值。
+     */
+    function isDarkTheme() {
+      if (typeof document === 'undefined' || document.body === null) return false
+      return document.body.classList.contains('theme-dark')
+    }
+    function themeVars(input, dark = false) {
+      // 没选主题色时：浅色返回 null 让 CSS 默认值生效（那是手调过的浅色板）；
+      // 深色必须自己算一套，否则深色界面上会冒出一整片浅蓝。
+      const rgb = parseHex(input) || (dark === true ? parseHex(DEFAULT_THEME_COLOR) : null)
       if (rgb === null) return null
       const base = rgbToHsl(rgb.r, rgb.g, rgb.b)
       const hue = base.h
@@ -1426,6 +1444,36 @@ async function saveFile(url, filename) {
       // 用户选的是灰色（s < 0.12）时按单色主题处理：保留灰，不要硬拗成彩色。
       // 灰阶用户要的就是素雅，给他染上一层红比不让他选灰更糟。
       const tint = (min, max) => (sat < 0.12 ? Math.min(sat, 0.06) : Math.min(max, Math.max(min, sat)))
+      if (dark === true) {
+        // 深色：三栏都落在 4.5%~18.5% 明度之间，靠亮度递增维持「左栏最沉、右栏最亮」。
+        // 深色界面的层次不能像浅色那样拉开——拉太开就会有一栏亮得像故障。
+        return {
+          '--dshgn-deep': hslToHex(hue, tint(0.30, 0.56), 0.075),
+          '--dshgn-deep2': hslToHex(hue, tint(0.32, 0.60), 0.045),
+          '--dshgn-deepFg': '#ffffff',
+          '--dshgn-deepFg2': 'rgba(255,255,255,.86)',
+          '--dshgn-deepFg3': 'rgba(255,255,255,.62)',
+          '--dshgn-mid': hslToHex(hue, tint(0.24, 0.44), 0.125),
+          '--dshgn-mid2': hslToHex(hue, tint(0.26, 0.48), 0.095),
+          '--dshgn-midFg': 'rgba(255,255,255,.92)',
+          '--dshgn-midFg2': 'rgba(255,255,255,.72)',
+          '--dshgn-midFg3': 'rgba(255,255,255,.52)',
+          '--dshgn-light': hslToHex(hue, tint(0.18, 0.36), 0.155),
+          '--dshgn-light2': hslToHex(hue, tint(0.20, 0.40), 0.185),
+          '--dshgn-lightFg': 'rgba(255,255,255,.94)',
+          '--dshgn-lightFg2': 'rgba(255,255,255,.74)',
+          '--dshgn-lightFg3': 'rgba(255,255,255,.54)',
+          '--dshgn-accentOnDark': hslToHex(hue, 0.86, 0.80),
+          '--dshgn-accentOnLight': hslToHex(hue, 0.82, 0.68),
+          '--dshgn-tintRgb': `${Math.round(rgb.r)},${Math.round(rgb.g)},${Math.round(rgb.b)}`,
+          '--dshgn-btnFill': hslToHex(hue, 0.68, 0.50),
+          '--dshgn-btnHover': hslToHex(hue, 0.70, 0.58),
+          '--dshgn-btnFillSoft': hslToHex(hue, 0.44, 0.42),
+          '--dshgn-btnHoverSoft': hslToHex(hue, 0.48, 0.50),
+          '--dshgn-btnFillPale': hslToHex(hue, 0.34, 0.32),
+          '--dshgn-btnHoverPale': hslToHex(hue, 0.38, 0.38),
+        }
+      }
       return {
         // 左栏：深，但要保证白字对比度足够（明度 15% 配 93% 的字够 WCAG AA）
         '--dshgn-deep': hslToHex(hue, tint(0.42, 0.82), 0.15),
@@ -2017,14 +2065,14 @@ async function saveFile(url, filename) {
 .dshgn_pickBoxOn{background:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary);
   color:var(--dsw-alias-label-primary-foreground)}
 .dshgn_batchBar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px 8px;
-  border-bottom:0.5px solid rgba(var(--dshgn-tintRgb),.14);background:rgba(255,255,255,.5)}
+  border-bottom:0.5px solid rgba(var(--dshgn-tintRgb),.14);background:rgba(var(--dshgn-tintRgb),.07)}
 .dshgn_batchCount{font-size:11px;font-weight:600;color:var(--dsw-alias-label-secondary)}
 .dshgn_batchBtn{appearance:none;border:0;background:transparent;cursor:pointer;
   font:inherit;font-size:11px;padding:2px 6px;border-radius:5px;
   color:var(--dsw-alias-label-secondary)}
 .dshgn_batchBtn:hover{background:var(--dsw-alias-interactive-bg-hover)}
 .dshgn_batchMenu{flex-basis:100%;display:flex;flex-direction:column;gap:6px;
-  padding:8px;margin-top:2px;border-radius:8px;background:#fff;
+  padding:8px;margin-top:2px;border-radius:8px;background:var(--dshgn-surface);
   box-shadow:0 2px 10px rgba(var(--dshgn-tintRgb),.14)}
 .dshgn_batchRow{display:flex;gap:6px;align-items:center}
 .dshgn_batchInput{flex:1;min-width:0;height:26px;font-size:12px}
@@ -2079,10 +2127,10 @@ async function saveFile(url, filename) {
 .dshgn_skList{display:flex;flex-direction:column;gap:10px}
 .dshgn_skNote{display:flex;flex-direction:column;gap:11px}
 .dshgn_skCard{display:flex;flex-direction:column;gap:7px;padding:10px 11px;border-radius:8px;
-  background:rgba(255,255,255,.42)}
+  background:rgba(var(--dshgn-tintRgb),.10)}
 .dshgn_skRow{border-radius:5px;background:var(--dsw-alias-interactive-bg-hover);
   animation:dshgn_skPulse 1.4s ease-in-out infinite}
-.dshgn_skTree .dshgn_skRow{background:rgba(255,255,255,.16)}
+.dshgn_skTree .dshgn_skRow{background:rgba(var(--dshgn-tintRgb),.07)}
 @keyframes dshgn_skPulse{
   0%,100%{opacity:.55}
   50%{opacity:1}
@@ -2559,6 +2607,10 @@ async function saveFile(url, filename) {
   --dshgn-btnHoverSoft:#6b99c4;
   --dshgn-btnFillPale:#a8c6e4;
   --dshgn-btnHoverPale:#96badd;
+  /* 卡片/弹层/输入框的实底色。浅色是纯白，深色由 themeVars 换成深灰。 */
+  --dshgn-surface:#ffffff;
+  --dshgn-surfaceStrong:#ffffff;
+  --dshgn-overlayMask:rgba(4,12,24,.42);
 }
 
 /* ── 顶栏：与右栏同色系，压一条浅蓝分隔 ── */
@@ -2573,11 +2625,11 @@ async function saveFile(url, filename) {
   --dsw-alias-border-l2:var(--dshgn-lineOnLight);
   --dsw-alias-interactive-bg-hover:rgba(var(--dshgn-tintRgb),.07);
   --dsw-alias-interactive-bg-hover-accent:rgba(31,111,184,.16);
-  --dsw-alias-bg-overlay:#ffffff;
+  --dsw-alias-bg-overlay:var(--dshgn-surface);
   --dsw-alias-brand-primary:var(--dshgn-accentOnLight);
 }
 .dshgn_tabs{background:rgba(var(--dshgn-tintRgb),.07);border-radius:10px}
-.dshgn_tab[data-on="true"]{background:#ffffff;box-shadow:0 1px 3px rgba(var(--dshgn-tintRgb),.14)}
+.dshgn_tab[data-on="true"]{background:var(--dshgn-surface);box-shadow:0 1px 3px rgba(var(--dshgn-tintRgb),.14)}
 
 /* ── 左栏：深蓝。整栏用上深下更深的渐变，边界靠一条亮线收住 ── */
 .dshgn_tree{
@@ -2674,7 +2726,7 @@ async function saveFile(url, filename) {
 /* 二次确认弹窗：遮住整个面板，避免用户误点背后的东西 */
 .dshgn_modalMask{
   position:fixed;inset:0;z-index:70;display:flex;align-items:center;justify-content:center;
-  padding:24px;background:rgba(4,12,24,.42);
+  padding:24px;background:var(--dshgn-overlayMask);
 }
 .dshgn_modal{
   width:100%;max-width:320px;padding:16px 18px;border-radius:12px;
@@ -2700,21 +2752,21 @@ async function saveFile(url, filename) {
   --dsw-alias-label-primary-foreground:#ffffff;
   --dsw-alias-border-l1:var(--dshgn-lineOnLight);
   --dsw-alias-border-l2:var(--dshgn-lineOnLight);
-  --dsw-alias-interactive-bg-hover:rgba(255,255,255,.42);
-  --dsw-alias-interactive-bg-hover-accent:rgba(255,255,255,.72);
-  --dsw-alias-bg-overlay:#ffffff;
+  --dsw-alias-interactive-bg-hover:rgba(var(--dshgn-tintRgb),.09);
+  --dsw-alias-interactive-bg-hover-accent:rgba(var(--dshgn-tintRgb),.16);
+  --dsw-alias-bg-overlay:var(--dshgn-surface);
   --dsw-alias-brand-primary:var(--dshgn-accentOnLight);
   --dsw-alias-button-primary-fill:var(--dshgn-btnFill);
   --dsw-alias-button-primary-hover:var(--dshgn-btnHover);
 }
 .dshgn_list .dshgn_searchWrap{border-bottom-color:rgba(var(--dshgn-tintRgb),.14)}
 .dshgn_list .dshgn_search{
-  background:rgba(255,255,255,.72);border-color:rgba(var(--dshgn-tintRgb),.16);
+  background:var(--dshgn-surfaceStrong);border-color:rgba(var(--dshgn-tintRgb),.16);
 }
 .dshgn_list .dshgn_search::placeholder{color:var(--dshgn-midFg3)}
 .dshgn_list .dshgn_card{border-radius:9px;margin-bottom:2px}
 .dshgn_list .dshgn_card[data-on="true"]{
-  background:#ffffff;box-shadow:0 1px 4px rgba(var(--dshgn-tintRgb),.14);
+  background:var(--dshgn-surface);box-shadow:0 1px 4px rgba(var(--dshgn-tintRgb),.14);
   border-left-color:var(--dshgn-accentOnLight);
 }
 .dshgn_list .dshgn_cardTitle{font-weight:500}
@@ -2732,8 +2784,8 @@ async function saveFile(url, filename) {
   --dsw-alias-border-l1:var(--dshgn-lineOnLight);
   --dsw-alias-border-l2:var(--dshgn-lineOnLight);
   --dsw-alias-interactive-bg-hover:rgba(var(--dshgn-tintRgb),.055);
-  --dsw-alias-interactive-bg-hover-accent:rgba(31,111,184,.12);
-  --dsw-alias-bg-overlay:#ffffff;
+  --dsw-alias-interactive-bg-hover-accent:rgba(var(--dshgn-tintRgb),.14);
+  --dsw-alias-bg-overlay:var(--dshgn-surface);
   --dsw-alias-brand-primary:var(--dshgn-accentOnLight);
   --dsw-alias-button-primary-fill:var(--dshgn-btnFill);
   --dsw-alias-button-primary-hover:var(--dshgn-btnHover);
@@ -2741,8 +2793,8 @@ async function saveFile(url, filename) {
 }
 .dshgn_note .dshgn_noteHead{background:var(--dshgn-light2)}
 .dshgn_note .dshgn_md{font-size:13.5px;line-height:1.8}
-.dshgn_note .dshgn_md .dshgn_pre{background:#eaf2fb}
-.dshgn_note .dshgn_md .dshgn_table th{background:#e9f2fc}
+.dshgn_note .dshgn_md .dshgn_pre{background:rgba(var(--dshgn-tintRgb),.08)}
+.dshgn_note .dshgn_md .dshgn_table th{background:rgba(var(--dshgn-tintRgb),.10)}
 .dshgn_note .dshgn_md .dshgn_h2{border-bottom-color:rgba(var(--dshgn-tintRgb),.14)}
 
 /* ── 其它页签（云端/同步/设置）：整页用极浅蓝，卡片纯白 ── */
@@ -2760,16 +2812,16 @@ async function saveFile(url, filename) {
   --dsw-alias-border-l1:var(--dshgn-lineOnLight);
   --dsw-alias-border-l2:var(--dshgn-lineOnLight);
   --dsw-alias-interactive-bg-hover:rgba(var(--dshgn-tintRgb),.055);
-  --dsw-alias-interactive-bg-hover-accent:rgba(31,111,184,.12);
-  --dsw-alias-bg-overlay:#ffffff;
+  --dsw-alias-interactive-bg-hover-accent:rgba(var(--dshgn-tintRgb),.14);
+  --dsw-alias-bg-overlay:var(--dshgn-surface);
   --dsw-alias-brand-primary:var(--dshgn-accentOnLight);
   --dsw-alias-button-primary-fill:var(--dshgn-btnFill);
   --dsw-alias-button-primary-hover:var(--dshgn-btnHover);
 }
 .dshgn_pane .dshgn_section{box-shadow:0 1px 2px rgba(var(--dshgn-tintRgb),.06)}
-.dshgn_pane .dshgn_input,.dshgn_pane .dshgn_textarea{background:#ffffff}
-.dshgn_pane .dshgn_log{background:#eef5fd}
-.dshgn_pane .dshgn_stat{background:#eaf2fc}
+.dshgn_pane .dshgn_input,.dshgn_pane .dshgn_textarea{background:var(--dshgn-surface)}
+.dshgn_pane .dshgn_log{background:rgba(var(--dshgn-tintRgb),.06)}
+.dshgn_pane .dshgn_stat{background:rgba(var(--dshgn-tintRgb),.08)}
 .dshgn_root{background:var(--dshgn-light)}
 
 /* 深色栏里的滚动条（WebKit 不认 scrollbar-color） */
@@ -2872,6 +2924,27 @@ async function saveFile(url, filename) {
       // 是挂在面板根节点上的——草稿若只存在卡片内部，用户拖色轮时整面板不动，
       // 只有点「应用」保存后才会变，那就不叫预览了。
       const [themePreview, setThemePreview] = React.useState(null)
+      // 宿主的明暗主题会随用户切换（设置里改、或者按日出日落自动切），而 Obsidian
+      // 只改 `<body>` 上的类名，不通知视图。盯这个类名，切换后立刻重算配色，
+      // 否则面板会一直停在打开那一刻的配色上。
+      const [darkTheme, setDarkTheme] = React.useState(() => isDarkTheme())
+      React.useEffect(() => {
+        if (typeof document === 'undefined') return undefined
+        // 有的环境（测试里的 jsdom）把 MutationObserver 挂在 window 上而不是全局，
+        // 两处都找一遍。
+        const Observer =
+          typeof MutationObserver !== 'undefined'
+            ? MutationObserver
+            : typeof window !== 'undefined'
+              ? window.MutationObserver
+              : undefined
+        if (typeof Observer !== 'function') return undefined
+        const sync = () => setDarkTheme(isDarkTheme())
+        sync()
+        const observer = new Observer(sync)
+        observer.observe(document.body, { attributes: true, attributeFilter: ['class'] })
+        return () => observer.disconnect()
+      }, [])
       // 新建模板菜单的开关。点「+」不再直接建空笔记，而是先让用户选一类——
       // 日记/读书/会议/随手记的日期与结构都是固定的，每次手写是重复劳动。
       const [templatesOpen, setTemplatesOpen] = React.useState(false)
@@ -3887,7 +3960,10 @@ async function saveFile(url, filename) {
       // var(--dshgn-*) 用法自动跟随，不用挨个组件传参。
       // 预览优先级：选色器里的草稿 > 已保存的值。这样用户拖色轮时整面板
       // 实时跟着变，点「应用」才落盘。
-      const themeStyle = themeVars(themePreview !== null ? themePreview : status !== null ? status.themeColor : null)
+      const themeStyle = themeVars(
+        themePreview !== null ? themePreview : status !== null ? status.themeColor : null,
+        darkTheme,
+      )
 
       return h(
         'div',
@@ -8140,7 +8216,7 @@ async function saveFile(url, filename) {
         // 三栏效果预览条：设置页主体是白卡片，用户在这儿看不到目录树/列表/正文，
         // 光靠点色块没法判断「左深中浅右白」到底长什么样，所以直接画一条出来。
         (() => {
-          const preview = themeVars(active)
+          const preview = themeVars(active, isDarkTheme())
           if (preview === null) return null
           return h(
             'div',
