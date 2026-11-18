@@ -123,11 +123,17 @@ async function access2(file) {
   if (!adapter) return nodefs.access(file);
   if (!await adapterExists(relOf(file))) throw enoent(file);
 }
+async function ensureDir(rel) {
+  if (rel === "" || await adapterExists(rel)) return;
+  const parent = rel.includes("/") ? rel.slice(0, rel.lastIndexOf("/")) : "";
+  await ensureDir(parent);
+  await adapter.mkdir(rel);
+}
 async function mkdir2(dir, options = {}) {
   if (!adapter) return nodefs.mkdir(dir, options);
   const rel = relOf(dir);
-  if (rel === "" || await adapterExists(rel)) return void 0;
-  await adapter.mkdir(rel);
+  if (rel === "") return void 0;
+  await ensureDir(rel);
   return void 0;
 }
 async function writeFile2(file, data, options) {
@@ -135,8 +141,7 @@ async function writeFile2(file, data, options) {
   const rel = relOf(file);
   const flags = typeof options === "string" ? "" : String(options && options.flag || "");
   if (flags.includes("x") && await adapterExists(rel)) throw eexist(file);
-  const parent = rel.includes("/") ? rel.slice(0, rel.lastIndexOf("/")) : "";
-  if (parent !== "" && !await adapterExists(parent)) await adapter.mkdir(parent);
+  await ensureDir(rel.includes("/") ? rel.slice(0, rel.lastIndexOf("/")) : "");
   if (typeof data === "string") await adapter.write(rel, data);
   else await adapter.writeBinary(rel, data);
 }
@@ -144,8 +149,7 @@ async function rename2(from, to) {
   if (!adapter) return nodefs.rename(from, to);
   const relFrom = relOf(from);
   const relTo = relOf(to);
-  const parent = relTo.includes("/") ? relTo.slice(0, relTo.lastIndexOf("/")) : "";
-  if (parent !== "" && !await adapterExists(parent)) await adapter.mkdir(parent);
+  await ensureDir(relTo.includes("/") ? relTo.slice(0, relTo.lastIndexOf("/")) : "");
   await adapter.rename(relFrom, relTo);
 }
 async function copyFile2(from, to) {

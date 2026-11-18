@@ -92,6 +92,10 @@ function makeAdapter() {
   const nodes = new Map([['', { dir: true }]])
   const norm = (p) => String(p || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
   const parentOf = (p) => (p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '')
+  const requireParent = (p) => {
+    const parent = parentOf(p)
+    if (parent !== '' && !nodes.has(parent)) throw new Error('ENOENT: parent missing ' + parent)
+  }
   const ensureParents = (p) => {
     const parent = parentOf(p)
     if (parent !== '' && !nodes.has(parent)) {
@@ -128,8 +132,10 @@ function makeAdapter() {
       if (n.bin) return n.bin.buffer.slice(n.bin.byteOffset, n.bin.byteOffset + n.bin.byteLength)
       return new TextEncoder().encode(n.text ?? '').buffer
     },
-    async write(p, data) { const rel = norm(p); ensureParents(rel); nodes.set(rel, { text: String(data) }) },
-    async writeBinary(p, data) { const rel = norm(p); ensureParents(rel); nodes.set(rel, { bin: Buffer.from(data) }) },
+    // 真 Obsidian 的 adapter.write 不会替你建父目录，父目录不在就抛错。
+    // 假 adapter 如果「太宽容」，vfs 里漏掉补目录的 bug 就永远测不出来。
+    async write(p, data) { const rel = norm(p); requireParent(rel); nodes.set(rel, { text: String(data) }) },
+    async writeBinary(p, data) { const rel = norm(p); requireParent(rel); nodes.set(rel, { bin: Buffer.from(data) }) },
     async append(p, data) {
       const rel = norm(p)
       const n = nodes.get(rel)
@@ -141,7 +147,8 @@ function makeAdapter() {
       const prev = n && n.bin ? n.bin : Buffer.alloc(0)
       nodes.set(rel, { bin: Buffer.concat([prev, Buffer.from(data)]) })
     },
-    async mkdir(p) { const rel = norm(p); ensureParents(rel); nodes.set(rel, { dir: true }) },
+    // 同理：adapter.mkdir 也不建父级
+    async mkdir(p) { const rel = norm(p); requireParent(rel); nodes.set(rel, { dir: true }) },
     async rename(from, to) {
       const a = norm(from); const b = norm(to)
       const n = nodes.get(a)

@@ -158,11 +158,27 @@ export async function access(file) {
 
 // ── 写 ───────────────────────────────────────────────────────────────────────
 
+/**
+ * 逐级建目录。
+ *
+ * Obsidian 的 adapter.mkdir 跟 fs.mkdir 一样**不建父级**：直接 mkdir('a/b/c') 在
+ * 'a' 不存在时会抛 ENOENT。而插件里到处是「库根/主题/子目录」这种多级路径
+ * （用户完全可能把笔记目录设成「李欣颀/知识库/得到大脑归档」），所以这里自己补齐。
+ */
+async function ensureDir(rel) {
+  if (rel === '' || (await adapterExists(rel))) return
+  const parent = rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : ''
+  await ensureDir(parent)
+  await adapter.mkdir(rel)
+}
+
 export async function mkdir(dir, options = {}) {
   if (!adapter) return nodefs.mkdir(dir, options)
   const rel = relOf(dir)
-  if (rel === '' || (await adapterExists(rel))) return undefined
-  await adapter.mkdir(rel)
+  if (rel === '') return undefined
+  // recursive 是唯一会传的选项（且默认 true 的调用方不少），一律按逐级建处理：
+  // 已存在就当成功，省得调用方还要自己 try/catch。
+  await ensureDir(rel)
   return undefined
 }
 
@@ -171,8 +187,7 @@ export async function writeFile(file, data, options) {
   const rel = relOf(file)
   const flags = typeof options === 'string' ? '' : String((options && options.flag) || '')
   if (flags.includes('x') && (await adapterExists(rel))) throw eexist(file)
-  const parent = rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : ''
-  if (parent !== '' && !(await adapterExists(parent))) await adapter.mkdir(parent)
+  await ensureDir(rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : '')
   if (typeof data === 'string') await adapter.write(rel, data)
   else await adapter.writeBinary(rel, data)
 }
@@ -188,8 +203,7 @@ export async function rename(from, to) {
   if (!adapter) return nodefs.rename(from, to)
   const relFrom = relOf(from)
   const relTo = relOf(to)
-  const parent = relTo.includes('/') ? relTo.slice(0, relTo.lastIndexOf('/')) : ''
-  if (parent !== '' && !(await adapterExists(parent))) await adapter.mkdir(parent)
+  await ensureDir(relTo.includes('/') ? relTo.slice(0, relTo.lastIndexOf('/')) : '')
   await adapter.rename(relFrom, relTo)
 }
 
