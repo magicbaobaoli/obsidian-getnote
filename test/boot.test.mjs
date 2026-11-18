@@ -10,7 +10,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import Module from 'node:module'
 import { createRequire } from 'node:module'
-import { mkdtemp, copyFile } from 'node:fs/promises'
+import { mkdtemp, copyFile, rm, access, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -80,7 +80,12 @@ const mod = require(bundlePath)
 const GetnotePlugin = mod.default
 
 // ── 内存文件系统（adapter 后端）──────────────────────────────────────────────
-const BASE = 'C:/fake-vault'
+// 库根故意用「临时目录 + 中文 + 空格」：真实用户的库就长这样（D:\xinqi\应用\嘿嘿），
+// 而 vfs 的 relOf() 要做大小写无关的前缀比较、要处理反斜杠与结尾斜杠，这些分支
+// 在 'C:/fake-vault' 这种干净的 ASCII 路径上根本走不到。
+// 用 mkdtemp 而不是写死路径，是因为插件数据目录（设置、凭证）走的是真 node:fs，
+// 写死会让测试往真实磁盘上留垃圾。
+const BASE = (await mkdtemp(join(tmpdir(), 'dshgn 测试 库-'))).replace(/\\/g, '/')
 
 function makeAdapter() {
   /** rel path -> { text } | { bin } | { dir: true } */
@@ -249,6 +254,58 @@ test('面板能打到本地服务，并且走的是 adapter 后端', async () =>
   assert.equal(escape.status, 400, escape.text.slice(0, 200))
 })
 
+test('插件自己的状态落在库内 .obsidian/plugins/<id>，不往库里撒野', async () => {
+  // 设置与凭证走的是真 node:fs（它们不在库里，属于插件自己的数据），
+  // 所以这一条只有真跑起来才能验：路径拼错的话文件会落到别处。
+  const dataDir = join(BASE, '.obsidian', 'plugins', 'getnote-obsidian')
+  await access(join(dataDir, 'dsh-getnote.json'))
+
+  const status = await fetch(plugin.server.origin + '/getnote/status').then((r) => r.json())
+  assert.equal(status.settingsPath.replace(/\\/g, '/'), dataDir.replace(/\\/g, '/') + '/dsh-getnote.json')
+  // 笔记写入必须全部经过 adapter：内存库里库根只有「得到大脑」一个目录，
+  // 一条杂散文件都不该有。（.obsidian 不在里面是正常的——插件自己的数据走真 fs。）
+  const roots = adapter._dump().filter((p) => !p.includes('/'))
+  assert.deepEqual(roots, ['得到大脑'], '内存库里库根应该只有笔记目录：' + roots.join(', '))
+  // 反过来看真实磁盘：除了 .obsidian，库根不该出现任何东西——出现了就说明
+  // 有代码绕过了 vfs 直接 node:fs 往库里写，Obsidian 的索引会看不见它。
+  const realRoots = (await readdir(BASE)).sort()
+  assert.deepEqual(realRoots, ['.obsidian'], '真实磁盘上库根只该有 .obsidian：' + realRoots.join(', '))
+})
+
+test('面板改笔记目录 = 在库里换个子目录，换不到库外面去', async () => {
+  const origin = plugin.server.origin
+  const post = async (path, body) => {
+    const res = await fetch(origin + '/getnote' + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    return { status: res.status, json: await res.json().catch(() => null) }
+  }
+
+  // /settings 要回 subfolder（相对库根那一段），面板的输入框显示的是它而不是
+  // 整条绝对路径——库根由 Obsidian 定，用户能改的只有子目录。
+  const before = await fetch(origin + '/getnote/settings').then((r) => r.json())
+  assert.equal(before.subfolder, '得到大脑')
+
+  const moved = await post('/settings', { vaultPath: '李欣颀/知识库/得到大脑归档' })
+  assert.equal(moved.status, 200, JSON.stringify(moved.json).slice(0, 200))
+  assert.equal(moved.json.subfolder, '李欣颀/知识库/得到大脑归档')
+  assert.equal(moved.json.effectiveRoot.replace(/\\/g, '/'), BASE + '/李欣颀/知识库/得到大脑归档')
+
+  // 新目录里写东西要落进 adapter，而且真的建了嵌套目录
+  const created = await post('/create', { dir: '', title: '换目录之后', content: '# 换目录之后\n' })
+  assert.equal(created.status, 200, JSON.stringify(created.json).slice(0, 200))
+  assert.ok(adapter._dump().some((p) => p.startsWith('李欣颀/知识库/得到大脑归档/')), adapter._dump().join(', '))
+
+  // 库外的绝对路径一律拒绝（Obsidian 的 adapter 只能碰库内文件）
+  const outside = await post('/settings', { vaultPath: 'D:/别的地方' })
+  assert.equal(outside.status, 400, JSON.stringify(outside.json))
+  const escaped = await post('/settings', { vaultPath: '../../../外面' })
+  assert.equal(escaped.status, 200, '带 .. 的会被收敛回默认目录，不是 400')
+  assert.equal(escaped.json.subfolder, '得到大脑')
+})
+
 test('onunload 会关掉本地服务', async () => {
   const origin = plugin.server.origin
   plugin.onunload()
@@ -260,4 +317,6 @@ test('onunload 会关掉本地服务', async () => {
     failed = true
   }
   assert.equal(failed, true, '服务应该已经关了')
+  // 库根是 mkdtemp 出来的，测完删掉，别在临时目录里留垃圾
+  await rm(BASE, { recursive: true, force: true })
 })

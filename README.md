@@ -70,7 +70,7 @@
 ```bash
 npm install
 npm run build      # 产出 main.js，并把 card/ 与 locale/ 复制到插件根
-npm test           # 522 项离线测试
+npm test           # 524 项离线测试
 ```
 
 开发时用 `npm run dev` 进入 watch 模式。
@@ -145,9 +145,11 @@ npm test
 
 覆盖：vault 算法（110 项）、归档包（57 项）、历史快照（46 项）、同步合并（66 项）、
 **236 项 HTTP 路由验收**（真起服务、真打请求、真读文件，含 Range 206/416、路径逃逸拒绝、
-凭证打码、定时同步边界、录音卡环境探测等）、**3 项启动验收**——把打包后的 `main.js`
-真的 `require` 起来，用假的 `obsidian` 模块与内存 adapter 驱动 `onload`，
-确认视图/命令/服务都注册成功，且写入真的走 `app.vault.adapter` 而不是直接落盘——
+凭证打码、定时同步边界、录音卡环境探测等）、**5 项启动验收**——把打包后的 `main.js`
+真的 `require` 起来，用假的 `obsidian` 模块与内存 adapter 驱动 `onload`（库根故意用
+带中文和空格的临时目录，跟真实用户路径一致），确认视图/命令/服务都注册成功、
+写入真的走 `app.vault.adapter` 而不是直接落盘、插件状态只落在
+`.obsidian/plugins/<id>` 里——
 以及 **4 项面板渲染验收**：用 jsdom 造浏览器环境，把 8000 行的 React 面板真渲染出来，
 确认它不掉进错误边界、发出的请求全部指向本地服务、六个标签页逐个切换都不炸。
 

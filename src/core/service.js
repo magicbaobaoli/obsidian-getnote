@@ -30,6 +30,7 @@ import {
 import {
   authPath,
   knownVaultCandidates,
+  getRuntime,
   readAuth,
   readClient,
   clearAuth,
@@ -1265,7 +1266,9 @@ export function createHandler(config) {
   async function handleGetSettings(res) {
     const settings = await readSettings()
     const { root, missing } = await resolveVaultRoot(settings.vaultRoot || config.vaultPath || null)
-    send(res, 200, { ...settings, vaultRoot: settings.vaultRoot, effectiveRoot: root, missing })
+    // subfolder 是「相对库根」的那一段，面板的输入框用它（用户改的是子目录，
+    // 不是整条绝对路径——Obsidian 的库根由 Obsidian 定，插件改不了）。
+    send(res, 200, { ...settings, vaultRoot: settings.vaultRoot, effectiveRoot: root, missing, subfolder: getRuntime().subfolder })
   }
 
   async function handleSetSettings(req, res) {

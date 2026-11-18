@@ -35890,7 +35890,7 @@ function createHandler(config) {
   async function handleGetSettings(res) {
     const settings = await readSettings();
     const { root, missing } = await resolveVaultRoot(settings.vaultRoot || config.vaultPath || null);
-    send(res, 200, { ...settings, vaultRoot: settings.vaultRoot, effectiveRoot: root, missing });
+    send(res, 200, { ...settings, vaultRoot: settings.vaultRoot, effectiveRoot: root, missing, subfolder: getRuntime().subfolder });
   }
   async function handleSetSettings(req, res) {
     const body = await readJsonBody(req);
@@ -36907,8 +36907,8 @@ var LEX = {
     "import.openLink": "\u5982\u679C\u6CA1\u6709\u81EA\u52A8\u6253\u5F00\uFF0C\u70B9\u8FD9\u91CC\u624B\u52A8\u6388\u6743",
     "import.needLogin": "\u5148\u767B\u5F55\u5F97\u5230\u5927\u8111\uFF0C\u624D\u80FD\u8BFB\u53D6\u4E91\u7AEF\u7B14\u8BB0\u3002",
     "import.cloudHint": "\u8FD9\u4E00\u6B65\u4E4B\u540E\u5C31\u4E0D\u518D\u9700\u8981\u4F1A\u5458\u4E86\u3002",
-    "settings.vault": "\u7B14\u8BB0\u5E93\u76EE\u5F55",
-    "settings.vaultHint": "\u7559\u7A7A\u5219\u4F7F\u7528\u9ED8\u8BA4\u4F4D\u7F6E\uFF08DSH \u914D\u7F6E\u76EE\u5F55\u4E0B\u7684 dsh-getnote/vault\uFF09\u3002",
+    "settings.vault": "\u7B14\u8BB0\u76EE\u5F55",
+    "settings.vaultHint": "\u76F8\u5BF9\u5E93\u6839\u7684\u76EE\u5F55\u540D\uFF0C\u6BD4\u5982\u300C\u5F97\u5230\u5927\u8111\u300D\u6216\u300C\u674E\u6B23\u9880/\u77E5\u8BC6\u5E93/\u5F97\u5230\u5927\u8111\u5F52\u6863\u300D\u3002\u53EA\u80FD\u9009\u5E93\u5185\u7684\u76EE\u5F55\uFF0C\u63D2\u4EF6\u4E0D\u4F1A\u5199\u5230\u5E93\u5916\u9762\u53BB\u3002",
     "settings.save": "\u4FDD\u5B58\u76EE\u5F55",
     "settings.saved": "\u5DF2\u4FDD\u5B58",
     "settings.suggest": "\u5728\u8FD9\u4E2A\u4F4D\u7F6E\u53D1\u73B0\u4E86\u5DF2\u6709\u7B14\u8BB0",
@@ -37262,7 +37262,7 @@ var LEX = {
     "import.needLogin": "Sign in first to read cloud notes.",
     "import.cloudHint": "After this you no longer need the subscription.",
     "settings.vault": "Vault folder",
-    "settings.vaultHint": "Leave empty for the default location (dsh-getnote/vault under the DSH config dir).",
+    "settings.vaultHint": 'A folder inside this vault, e.g. "Getnote" or "Notes/Getnote". Only paths inside the vault are allowed.',
     "settings.save": "Save folder",
     "settings.saved": "Saved",
     "settings.suggest": "Found existing notes here",
@@ -37616,7 +37616,7 @@ var LEX = {
     "import.needLogin": "Log eerst in om cloudnotities te lezen.",
     "import.cloudHint": "Hierna heb je het abonnement niet meer nodig.",
     "settings.vault": "Notitiemap",
-    "settings.vaultHint": "Laat leeg voor de standaardlocatie (dsh-getnote/vault in de DSH-configuratiemap).",
+    "settings.vaultHint": 'Een map binnen deze vault, bijvoorbeeld "Getnote" of "Notities/Getnote". Alleen paden binnen de vault zijn toegestaan.',
     "settings.save": "Map opslaan",
     "settings.saved": "Opgeslagen",
     "settings.suggest": "Hier zijn bestaande notities gevonden",
@@ -43718,7 +43718,7 @@ function SettingsPane(props) {
   const [busy, setBusy] = React.useState(false);
   const [touched, setTouched] = React.useState(false);
   React.useEffect(() => {
-    if (!touched && status !== null) setInput(status.settingsPath ? status.vaultRoot || "" : "");
+    if (!touched && status !== null) setInput(status.subfolder || "");
   }, [status, touched]);
   const save = React.useCallback(
     async (path) => {

@@ -139,8 +139,8 @@ function openExternal(url) {
         'import.openLink': '如果没有自动打开，点这里手动授权',
         'import.needLogin': '先登录得到大脑，才能读取云端笔记。',
         'import.cloudHint': '这一步之后就不再需要会员了。',
-        'settings.vault': '笔记库目录',
-        'settings.vaultHint': '留空则使用默认位置（DSH 配置目录下的 dsh-getnote/vault）。',
+        'settings.vault': '笔记目录',
+        'settings.vaultHint': '相对库根的目录名，比如「得到大脑」或「李欣颀/知识库/得到大脑归档」。只能选库内的目录，插件不会写到库外面去。',
         'settings.save': '保存目录',
         'settings.saved': '已保存',
         'settings.suggest': '在这个位置发现了已有笔记',
@@ -498,7 +498,7 @@ function openExternal(url) {
         'import.needLogin': 'Sign in first to read cloud notes.',
         'import.cloudHint': 'After this you no longer need the subscription.',
         'settings.vault': 'Vault folder',
-        'settings.vaultHint': 'Leave empty for the default location (dsh-getnote/vault under the DSH config dir).',
+        'settings.vaultHint': 'A folder inside this vault, e.g. "Getnote" or "Notes/Getnote". Only paths inside the vault are allowed.',
         'settings.save': 'Save folder',
         'settings.saved': 'Saved',
         'settings.suggest': 'Found existing notes here',
@@ -855,7 +855,7 @@ function openExternal(url) {
         'import.needLogin': 'Log eerst in om cloudnotities te lezen.',
         'import.cloudHint': 'Hierna heb je het abonnement niet meer nodig.',
         'settings.vault': 'Notitiemap',
-        'settings.vaultHint': 'Laat leeg voor de standaardlocatie (dsh-getnote/vault in de DSH-configuratiemap).',
+        'settings.vaultHint': 'Een map binnen deze vault, bijvoorbeeld "Getnote" of "Notities/Getnote". Alleen paden binnen de vault zijn toegestaan.',
         'settings.save': 'Map opslaan',
         'settings.saved': 'Opgeslagen',
         'settings.suggest': 'Hier zijn bestaande notities gevonden',
@@ -7797,7 +7797,7 @@ function openExternal(url) {
       const [touched, setTouched] = React.useState(false)
 
       React.useEffect(() => {
-        if (!touched && status !== null) setInput(status.settingsPath ? status.vaultRoot || '' : '')
+        if (!touched && status !== null) setInput(status.subfolder || '')
       }, [status, touched])
 
       const save = React.useCallback(
