@@ -7569,6 +7569,7 @@ var LEX = {
     "cloud.play": "\u64AD\u653E",
     "cloud.pause": "\u6682\u505C",
     "cloud.transcript": "\u9010\u5B57\u7A3F",
+    "cloud.seekTo": "\u8DF3\u5230\u8FD9\u91CC\u64AD\u653E",
     "cloud.moments": "\u65F6\u95F4\u8F74",
     "cloud.todos": "\u5F85\u529E",
     "cloud.tags": "\u6807\u7B7E",
@@ -7927,6 +7928,7 @@ var LEX = {
     "cloud.play": "Play",
     "cloud.pause": "Pause",
     "cloud.transcript": "Transcript",
+    "cloud.seekTo": "Play from here",
     "cloud.moments": "Timeline",
     "cloud.todos": "To-dos",
     "cloud.tags": "Tags",
@@ -8285,6 +8287,7 @@ var LEX = {
     "cloud.play": "Afspelen",
     "cloud.pause": "Pauzeren",
     "cloud.transcript": "Transcript",
+    "cloud.seekTo": "Speel vanaf hier",
     "cloud.moments": "Tijdlijn",
     "cloud.todos": "Taken",
     "cloud.editTitle": "Titel",
@@ -9380,6 +9383,20 @@ var CSS = `
   font-size:11px;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary);
   user-select:none}
 .dshgn_transcript .dshgn_speaker{color:var(--dsw-alias-brand-primary);font-weight:600;margin-right:6px}
+/* \u65F6\u95F4\u6233\u505A\u6210\u6309\u94AE\uFF1A\u70B9\u4E00\u4E0B\u8DF3\u5230\u90A3\u53E5\u8BDD\u3002\u4EE5\u524D\u5B83\u53EA\u662F\u4E2A span\uFF0C\u7528\u6237\u770B\u7740\u65F6\u95F4\u6233
+   \u5374\u53EA\u80FD\u81EA\u5DF1\u62D6\u8FDB\u5EA6\u6761\u53BB\u627E\u4F4D\u7F6E\u3002\u6837\u5F0F\u4E0A\u4ECD\u4FDD\u6301\u300C\u4E00\u5217\u5C0F\u5B57\u300D\u7684\u89C2\u611F\uFF0C\u53EA\u5728\u60AC\u505C
+   \u548C\u805A\u7126\u65F6\u9732\u51FA\u53EF\u70B9\u7684\u7EBF\u7D22\uFF0C\u514D\u5F97\u6574\u6BB5\u9010\u5B57\u7A3F\u53D8\u6210\u4E00\u7247\u84DD\u8272\u6309\u94AE\u3002 */
+.dshgn_transcript .dshgn_tsBtn{background:none;border:0;padding:1px 4px;margin-left:-4px;border-radius:4px;
+  font:inherit;font-family:var(--dsw-font-mono,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);
+  font-size:11px;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary);
+  cursor:pointer;text-align:left;user-select:none}
+.dshgn_transcript .dshgn_tsBtn:hover{background:var(--dsw-alias-interactive-bg-hover);
+  color:var(--dsw-alias-brand-primary)}
+.dshgn_transcript .dshgn_tsBtn:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+/* \u6B63\u5728\u64AD\u653E\u7684\u90A3\u4E00\u53E5\uFF1A\u65F6\u95F4\u6233\u52A0\u91CD\u3001\u6574\u6BB5\u5DE6\u4FA7\u7559\u4E00\u9053\u7AD6\u7EBF\uFF0C\u626B\u8BFB\u65F6\u89C6\u7EBF\u4E0D\u4F1A\u8DD1\u4E22 */
+.dshgn_transcript .dshgn_tsOn{color:var(--dsw-alias-brand-primary);font-weight:600}
+.dshgn_transcript p.dshgn_tpOn{background:rgba(var(--dshgn-tintRgb),.06);box-shadow:inset 2px 0 0 var(--dsw-alias-brand-primary);
+  padding-left:8px;margin-left:-8px}
 .dshgn_quote{margin:10px 0;padding:2px 0 2px 12px;border-left:2px solid var(--dsw-alias-border-l2);
   color:var(--dsw-alias-label-secondary)}
 .dshgn_mdList{margin:8px 0;padding-left:22px}
@@ -11050,7 +11067,7 @@ function GetnotePage() {
   );
 }
 function AudioPlayer(props) {
-  const { t: t3, track, onTimeChange } = props;
+  const { t: t3, track, onTimeChange, seekRequest, trackIndex } = props;
   const audioRef = A2(null);
   const [playing, setPlaying] = h2(false);
   const [current, setCurrent] = h2(0);
@@ -11073,6 +11090,21 @@ function AudioPlayer(props) {
       }
     }
   }, [src]);
+  y2(() => {
+    if (!seekRequest || typeof seekRequest.time !== "number") return;
+    if (typeof seekRequest.index === "number" && seekRequest.index !== (trackIndex || 0)) return;
+    const el = audioRef.current;
+    if (!el) return;
+    const value = Math.max(0, seekRequest.time);
+    try {
+      el.currentTime = value;
+    } catch {
+    }
+    setCurrent(value);
+    setDragValue(value);
+    const p3 = el.play();
+    if (p3 && typeof p3.catch === "function") p3.catch(() => void 0);
+  }, [seekRequest, trackIndex]);
   const toggle = q2(() => {
     const el = audioRef.current;
     if (!el) return;
@@ -11265,6 +11297,8 @@ function CloudPane(props) {
   const [composing, setComposing] = h2(false);
   const [newTitle, setNewTitle] = h2("");
   const [newBody, setNewBody] = h2("");
+  const [playhead, setPlayhead] = h2(0);
+  const [seekRequest, setSeekRequest] = h2(null);
   const loadFirst = q2(async () => {
     if (!configured) return;
     setLoading(true);
@@ -11905,7 +11939,16 @@ ${t3("cloud.pushHint")}`)) return;
             )
           ) : null,
           // 录音优先：用户要的就是「听原声」，所以放在正文之前
-          detail.audio.length > 0 ? detail.audio.map((track, index) => h4(AudioPlayer, { key: `${track.url}-${index}`, t: t3, track })) : null,
+          detail.audio.length > 0 ? detail.audio.map(
+            (track, index) => h4(AudioPlayer, {
+              key: `${track.url}-${index}`,
+              t: t3,
+              track,
+              trackIndex: index,
+              seekRequest,
+              onTimeChange: (seconds) => setPlayhead(seconds)
+            })
+          ) : null,
           detail.audio.length > 0 ? h4("div", { style: { height: 12 } }) : null,
           detail.moments.length > 0 ? h4(
             "div",
@@ -11949,7 +11992,12 @@ ${t3("cloud.pushHint")}`)) return;
             b,
             null,
             h4("h2", { className: "dshgn_h dshgn_h2" }, t3("cloud.transcript")),
-            h4(TranscriptBlock, { text: detail.original })
+            h4(TranscriptBlock, {
+              text: detail.original,
+              activeSeconds: detail.audio.length > 0 ? playhead : null,
+              // 没有音轨就没有可跳的目标，别把时间戳做成按了没反应的按钮
+              onSeek: detail.audio.length > 0 ? (seconds) => setSeekRequest({ time: seconds, index: 0, at: Date.now() }) : null
+            })
           ) : null
         )
       )
@@ -11957,11 +12005,10 @@ ${t3("cloud.pushHint")}`)) return;
   );
   return h4("div", { className: "dshgn_body" }, listPane, readerPane);
 }
-function TranscriptBlock(props) {
-  const text = String(props && props.text || "");
-  if (text.trim() === "") return null;
+function parseTranscript(text) {
+  const source = String(text || "");
   const entries = [];
-  for (const raw of text.split("\n")) {
+  for (const raw of source.split("\n")) {
     const line = raw.replace(/\s+$/, "");
     if (line.trim() === "") continue;
     const match = /^([^\[]*?)\s*\[([0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?)\]\s*(.*)$/.exec(line);
@@ -11976,16 +12023,60 @@ function TranscriptBlock(props) {
       entries.push({ speaker: "", stamp: null, body: line });
     }
   }
+  return entries;
+}
+function stampToSeconds(stamp) {
+  const parts = String(stamp || "").split(":").map((piece) => Number(piece));
+  if (parts.length < 2 || parts.some((value) => !Number.isFinite(value))) return null;
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return parts[0] * 3600 + parts[1] * 60 + parts[2];
+}
+function activeTranscriptIndex(entries, seconds) {
+  if (!Array.isArray(entries) || entries.length === 0) return -1;
+  if (!Number.isFinite(seconds) || seconds <= 0) return -1;
+  let found = -1;
+  for (let index = 0; index < entries.length; index += 1) {
+    const start = stampToSeconds(entries[index].stamp);
+    if (start === null) continue;
+    if (start <= seconds + 0.25) found = index;
+    else break;
+  }
+  return found;
+}
+function TranscriptBlock(props) {
+  const text = String(props && props.text || "");
+  if (text.trim() === "") return null;
+  const entries = parseTranscript(text);
   if (entries.length === 0) return null;
-  const children = entries.map(
-    (entry, index) => h4(
+  const onSeek = props && typeof props.onSeek === "function" ? props.onSeek : null;
+  const activeSeconds = props && Number.isFinite(props.activeSeconds) ? props.activeSeconds : null;
+  const activeIndex = activeSeconds === null ? -1 : activeTranscriptIndex(entries, activeSeconds);
+  const t3 = getT();
+  const children = entries.map((entry, index) => {
+    const seconds = stampToSeconds(entry.stamp);
+    const stampClass = "dshgn_ts" + (index === activeIndex ? " dshgn_tsOn" : "");
+    const clickable = onSeek !== null && seconds !== null;
+    const stamp = entry.stamp === null ? h4("span", { className: stampClass }) : !clickable ? h4("span", { className: stampClass }, entry.stamp) : h4(
+      "button",
+      {
+        type: "button",
+        className: stampClass + " dshgn_tsBtn",
+        title: t3("cloud.seekTo"),
+        "aria-label": `${t3("cloud.seekTo")} ${entry.stamp}`,
+        onClick: () => {
+          if (onSeek !== null && seconds !== null) onSeek(seconds);
+        }
+      },
+      entry.stamp
+    );
+    return h4(
       "p",
-      { key: `t${index}` },
-      h4("span", { className: "dshgn_ts" }, entry.stamp === null ? "" : entry.stamp),
+      { key: `t${index}`, className: index === activeIndex ? "dshgn_tpOn" : void 0 },
+      stamp,
       entry.speaker === "" ? null : h4("span", { className: "dshgn_speaker" }, entry.speaker),
       entry.body
-    )
-  );
+    );
+  });
   return h4("div", { className: "dshgn_transcript" }, children);
 }
 function looksLikeTranscript(text) {

@@ -397,6 +397,7 @@ async function saveFile(url, filename) {
         'cloud.play': '播放',
         'cloud.pause': '暂停',
         'cloud.transcript': '逐字稿',
+        'cloud.seekTo': '跳到这里播放',
         'cloud.moments': '时间轴',
         'cloud.todos': '待办',
         'cloud.tags': '标签',
@@ -759,6 +760,7 @@ async function saveFile(url, filename) {
         'cloud.play': 'Play',
         'cloud.pause': 'Pause',
         'cloud.transcript': 'Transcript',
+        'cloud.seekTo': 'Play from here',
         'cloud.moments': 'Timeline',
         'cloud.todos': 'To-dos',
         'cloud.tags': 'Tags',
@@ -1119,6 +1121,7 @@ async function saveFile(url, filename) {
         'cloud.play': 'Afspelen',
         'cloud.pause': 'Pauzeren',
         'cloud.transcript': 'Transcript',
+        'cloud.seekTo': 'Speel vanaf hier',
         'cloud.moments': 'Tijdlijn',
         'cloud.todos': 'Taken',
         'cloud.editTitle': 'Titel',
@@ -2431,6 +2434,20 @@ async function saveFile(url, filename) {
   font-size:11px;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary);
   user-select:none}
 .dshgn_transcript .dshgn_speaker{color:var(--dsw-alias-brand-primary);font-weight:600;margin-right:6px}
+/* 时间戳做成按钮：点一下跳到那句话。以前它只是个 span，用户看着时间戳
+   却只能自己拖进度条去找位置。样式上仍保持「一列小字」的观感，只在悬停
+   和聚焦时露出可点的线索，免得整段逐字稿变成一片蓝色按钮。 */
+.dshgn_transcript .dshgn_tsBtn{background:none;border:0;padding:1px 4px;margin-left:-4px;border-radius:4px;
+  font:inherit;font-family:var(--dsw-font-mono,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);
+  font-size:11px;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary);
+  cursor:pointer;text-align:left;user-select:none}
+.dshgn_transcript .dshgn_tsBtn:hover{background:var(--dsw-alias-interactive-bg-hover);
+  color:var(--dsw-alias-brand-primary)}
+.dshgn_transcript .dshgn_tsBtn:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+/* 正在播放的那一句：时间戳加重、整段左侧留一道竖线，扫读时视线不会跑丢 */
+.dshgn_transcript .dshgn_tsOn{color:var(--dsw-alias-brand-primary);font-weight:600}
+.dshgn_transcript p.dshgn_tpOn{background:rgba(var(--dshgn-tintRgb),.06);box-shadow:inset 2px 0 0 var(--dsw-alias-brand-primary);
+  padding-left:8px;margin-left:-8px}
 .dshgn_quote{margin:10px 0;padding:2px 0 2px 12px;border-left:2px solid var(--dsw-alias-border-l2);
   color:var(--dsw-alias-label-secondary)}
 .dshgn_mdList{margin:8px 0;padding-left:22px}
@@ -4289,7 +4306,7 @@ async function saveFile(url, filename) {
      * 有键盘可达性，自绘只会更差。
      */
     function AudioPlayer(props) {
-      const { t, track, onTimeChange } = props
+      const { t, track, onTimeChange, seekRequest, trackIndex } = props
       const audioRef = React.useRef(null)
       const [playing, setPlaying] = React.useState(false)
       const [current, setCurrent] = React.useState(0)
@@ -4326,6 +4343,25 @@ async function saveFile(url, filename) {
           }
         }
       }, [src])
+
+      // 逐字稿点时间戳 → 这里跳过去。用「请求对象 + 序号」而不是一个裸秒数：
+      // 连点同一个时间戳两次，秒数没变，单靠数值比较第二次不会触发。
+      React.useEffect(() => {
+        if (!seekRequest || typeof seekRequest.time !== 'number') return
+        if (typeof seekRequest.index === 'number' && seekRequest.index !== (trackIndex || 0)) return
+        const el = audioRef.current
+        if (!el) return
+        const value = Math.max(0, seekRequest.time)
+        try {
+          el.currentTime = value
+        } catch {
+          /* 元数据还没到，忽略；下面仍更新 UI */
+        }
+        setCurrent(value)
+        setDragValue(value)
+        const p = el.play()
+        if (p && typeof p.catch === 'function') p.catch(() => undefined)
+      }, [seekRequest, trackIndex])
 
       const toggle = React.useCallback(() => {
         const el = audioRef.current
@@ -4557,6 +4593,10 @@ async function saveFile(url, filename) {
       const [composing, setComposing] = React.useState(false)
       const [newTitle, setNewTitle] = React.useState('')
       const [newBody, setNewBody] = React.useState('')
+      // 播放进度（秒）与「跳到某秒」的请求。逐字稿点时间戳时改后者，
+      // 播放器 timeupdate 时改前者——两个方向，互不覆盖。
+      const [playhead, setPlayhead] = React.useState(0)
+      const [seekRequest, setSeekRequest] = React.useState(null)
 
       const loadFirst = React.useCallback(async () => {
         if (!configured) return
@@ -5269,7 +5309,16 @@ async function saveFile(url, filename) {
                             : null,
                           // 录音优先：用户要的就是「听原声」，所以放在正文之前
                           detail.audio.length > 0
-                            ? detail.audio.map((track, index) => h(AudioPlayer, { key: `${track.url}-${index}`, t, track }))
+                            ? detail.audio.map((track, index) =>
+                                h(AudioPlayer, {
+                                  key: `${track.url}-${index}`,
+                                  t,
+                                  track,
+                                  trackIndex: index,
+                                  seekRequest,
+                                  onTimeChange: (seconds) => setPlayhead(seconds),
+                                }),
+                              )
                             : null,
                           detail.audio.length > 0 ? h('div', { style: { height: 12 } }) : null,
                           detail.moments.length > 0
@@ -5319,7 +5368,15 @@ async function saveFile(url, filename) {
                                 React.Fragment,
                                 null,
                                 h('h2', { className: 'dshgn_h dshgn_h2' }, t('cloud.transcript')),
-                                h(TranscriptBlock, { text: detail.original }),
+                                h(TranscriptBlock, {
+                                  text: detail.original,
+                                  activeSeconds: detail.audio.length > 0 ? playhead : null,
+                                  // 没有音轨就没有可跳的目标，别把时间戳做成按了没反应的按钮
+                                  onSeek:
+                                    detail.audio.length > 0
+                                      ? (seconds) => setSeekRequest({ time: seconds, index: 0, at: Date.now() })
+                                      : null,
+                                }),
                               )
                             : null,
                         ),
@@ -5344,11 +5401,16 @@ async function saveFile(url, filename) {
      * 所以「只有时间戳没有内容」的行要把后面几行收进同一段，否则时间戳会和
      * 它的正文被拆成两个段落，读起来完全对不上。
      */
-    function TranscriptBlock(props) {
-      const text = String((props && props.text) || '')
-      if (text.trim() === '') return null
+    /**
+     * 逐字稿解析：把「说话人 [mm:ss] 内容」拆成条目。
+     *
+     * 解析单独拎出来是因为「点时间戳跳转」和「跟着播放高亮」两件事都要用同一份
+     * 结果——以前只有渲染逻辑里有这段正则，别人想用还得再抄一遍。
+     */
+    function parseTranscript(text) {
+      const source = String(text || '')
       const entries = []
-      for (const raw of text.split('\n')) {
+      for (const raw of source.split('\n')) {
         const line = raw.replace(/\s+$/, '')
         if (line.trim() === '') continue
         const match = /^([^\[]*?)\s*\[([0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?)\]\s*(.*)$/.exec(line)
@@ -5363,16 +5425,74 @@ async function saveFile(url, filename) {
           entries.push({ speaker: '', stamp: null, body: line })
         }
       }
+      return entries
+    }
+
+    /** 「01:23」或「1:02:03」→ 秒。认不出返回 null（没时间戳的段落不该可点）。 */
+    function stampToSeconds(stamp) {
+      const parts = String(stamp || '').split(':').map((piece) => Number(piece))
+      if (parts.length < 2 || parts.some((value) => !Number.isFinite(value))) return null
+      if (parts.length === 2) return parts[0] * 60 + parts[1]
+      return parts[0] * 3600 + parts[1] * 60 + parts[2]
+    }
+
+    /** 当前播放到第几段：最后一个「时间戳 ≤ 当前秒数」的条目。 */
+    function activeTranscriptIndex(entries, seconds) {
+      if (!Array.isArray(entries) || entries.length === 0) return -1
+      if (!Number.isFinite(seconds) || seconds <= 0) return -1
+      let found = -1
+      for (let index = 0; index < entries.length; index += 1) {
+        const start = stampToSeconds(entries[index].stamp)
+        if (start === null) continue
+        if (start <= seconds + 0.25) found = index
+        else break
+      }
+      return found
+    }
+
+    function TranscriptBlock(props) {
+      const text = String((props && props.text) || '')
+      if (text.trim() === '') return null
+      const entries = parseTranscript(text)
       if (entries.length === 0) return null
-      const children = entries.map((entry, index) =>
-        h(
+      // onSeek：点时间戳交给上层（有播放器就跳过去，没有就什么也不做）
+      const onSeek = props && typeof props.onSeek === 'function' ? props.onSeek : null
+      // activeSeconds：播放进度，用来把「正在播的这一段」标出来
+      const activeSeconds = props && Number.isFinite(props.activeSeconds) ? props.activeSeconds : null
+      const activeIndex = activeSeconds === null ? -1 : activeTranscriptIndex(entries, activeSeconds)
+      const t = getT()
+      const children = entries.map((entry, index) => {
+        const seconds = stampToSeconds(entry.stamp)
+        const stampClass = 'dshgn_ts' + (index === activeIndex ? ' dshgn_tsOn' : '')
+        // 没有可跳的目标（这篇没有音轨、或者这块是 markdown 围栏里的逐字稿）
+        // 就退回普通 span：做成按钮却按了没反应，比不可点更让人困惑。
+        const clickable = onSeek !== null && seconds !== null
+        const stamp =
+          entry.stamp === null
+            ? h('span', { className: stampClass })
+            : !clickable
+              ? h('span', { className: stampClass }, entry.stamp)
+              : h(
+                'button',
+                {
+                  type: 'button',
+                  className: stampClass + ' dshgn_tsBtn',
+                  title: t('cloud.seekTo'),
+                  'aria-label': `${t('cloud.seekTo')} ${entry.stamp}`,
+                  onClick: () => {
+                    if (onSeek !== null && seconds !== null) onSeek(seconds)
+                  },
+                },
+                entry.stamp,
+              )
+        return h(
           'p',
-          { key: `t${index}` },
-          h('span', { className: 'dshgn_ts' }, entry.stamp === null ? '' : entry.stamp),
+          { key: `t${index}`, className: index === activeIndex ? 'dshgn_tpOn' : undefined },
+          stamp,
           entry.speaker === '' ? null : h('span', { className: 'dshgn_speaker' }, entry.speaker),
           entry.body,
-        ),
-      )
+        )
+      })
       return h('div', { className: 'dshgn_transcript' }, children)
     }
 
@@ -8897,7 +9017,8 @@ export {
 export const __internals = {
   renderBlocks, renderInline, stripLeadingHeading, LEX, ICONS, AudioPlayer, CloudPane,
   SyncPane, CloudCredCard, SettingsPane, GetnotePage, NotePane, TranscriptBlock,
-  looksLikeTranscript, formatMoment, TrashPane, renderEmbed, assetLabel, ThemeCard,
+  looksLikeTranscript, formatMoment, parseTranscript, stampToSeconds, activeTranscriptIndex,
+  TrashPane, renderEmbed, assetLabel, ThemeCard,
   themeVars, parseHex, rgbToHsl, hslToHex, ConflictPane, ArchiveCard, CardPane,
   TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale,
 }
