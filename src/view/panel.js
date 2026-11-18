@@ -17,6 +17,31 @@ function apiOrigin() {
   return __apiBase
 }
 
+// 本机服务的访问令牌，由 main.js 在服务监听成功后写入。
+// CORS 头是 `*`（渲染进程的源是 app://obsidian.md，预知不了），所以门禁靠这个
+// 令牌：没有它，本机任何网页都能 fetch 这个端口、把整个笔记库读走。
+let __apiToken = ''
+export function setApiToken(token) {
+  __apiToken = String(token || '')
+}
+export function apiToken() {
+  return __apiToken
+}
+
+/**
+ * 给「浏览器自己发起的请求」补令牌。
+ *
+ * `<img src>` 和 `<audio src>` 是浏览器原生加载，加不了自定义头，只能把令牌
+ * 塞进查询参数。带令牌的 URL 不要缓存、不要写进笔记——它每次启动都会变。
+ */
+export function withToken(url) {
+  if (__apiToken === '') return url
+  const text = String(url || '')
+  if (text === '') return text
+  const sep = text.includes('?') ? '&' : '?'
+  return `${text}${sep}t=${encodeURIComponent(__apiToken)}`
+}
+
 // 授权要在系统浏览器里走：Obsidian 渲染进程里的 window.open 会被
 // Electron 接走（有时开成新窗口、有时直接没反应），所以由宿主注入一个
 // 「用系统浏览器打开」的实现；没注入时退回 window.open。
@@ -1213,21 +1238,85 @@ async function saveFile(url, filename) {
      * 保留 `status`：调用方要能区分「路由不存在」（宿主还没重启 / 插件没装好）
      * 和业务失败，否则两者都会被显示成「空库」，用户会以为笔记丢了。
      */
+    // 同一类请求只留最新的一次：用户快速连点、或输入搜索词时，先发出去的
+    // 请求可能后回来，把新结果盖成旧的（经典竞态）。按「路径去掉查询参数」
+    // 分组，每组新请求发出时 abort 掉上一个。
+    const inflight = new Map()
+
+    /**
+     * 一次用户动作的幂等号。
+     *
+     * 双击、断网后手动重试、两个窗口同时点——都会让「新建一篇笔记」变成两篇。
+     * 每个动作在**开始那一刻**取一个 id，重试时复用同一个，服务端认 id 去重。
+     * 不能用请求发出时现生成：那样每次重试都是新 id，等于没有保护。
+     */
+    function requestId() {
+      const bytes = new Uint8Array(8)
+      const crypto = typeof window !== 'undefined' ? window.crypto : undefined
+      if (crypto && typeof crypto.getRandomValues === 'function') crypto.getRandomValues(bytes)
+      else for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256)
+      return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+    }
+
+    /** 退避重试：只重试「网络层没连上」，业务错误（4xx/5xx）立刻抛。 */
+    const RETRY_DELAYS = [180, 520]
+
+    function sleep(ms) {
+      return new Promise((resolve) => window.setTimeout(resolve, ms))
+    }
+
     async function api(path, init) {
       const options = { ...(init || {}) }
-      const res = await fetch(`${apiOrigin()}/getnote${path}`, options)
-      let json = {}
-      try {
-        json = await res.json()
-      } catch {
-        // 非 JSON 响应：保留状态码，让上层给出「宿主版本不匹配」这类可操作提示
+      const method = String(options.method || 'GET').toUpperCase()
+      // 写操作不重试、不 abort：重放一次 POST 可能建出两篇笔记。
+      const idempotent = method === 'GET'
+      const group = String(path).split('?')[0]
+
+      let signal = options.signal
+      if (idempotent) {
+        const previous = inflight.get(group)
+        if (previous !== undefined && typeof previous.abort === 'function') previous.abort()
+        const controller = new AbortController()
+        inflight.set(group, controller)
+        signal = controller.signal
       }
-      if (!res.ok) {
-        const err = new Error((json && json.error) || `HTTP ${res.status}`)
-        err.status = res.status
-        throw err
+
+      const headers = { ...(options.headers || {}) }
+      if (__apiToken !== '') headers['x-getnote-token'] = __apiToken
+
+      let attempt = 0
+      for (;;) {
+        try {
+          const res = await fetch(`${apiOrigin()}/getnote${path}`, {
+            ...options,
+            headers,
+            signal,
+          })
+          let json = {}
+          try {
+            json = await res.json()
+          } catch {
+            // 非 JSON 响应：保留状态码，让上层给出「宿主版本不匹配」这类可操作提示
+          }
+          if (!res.ok) {
+            const err = new Error((json && json.error) || `HTTP ${res.status}`)
+            err.status = res.status
+            throw err
+          }
+          return json
+        } catch (error) {
+          const aborted =
+            error !== null && typeof error === 'object' && (error.name === 'AbortError' || signal.aborted)
+          // 被更新的同类请求顶掉了：这是正常流程，静默退出
+          if (aborted) throw error
+          // 业务错误带 status，说明服务是活的，重试没有意义
+          const hasStatus = error !== null && typeof error === 'object' && typeof error.status === 'number'
+          const retryable = idempotent && !hasStatus && attempt < RETRY_DELAYS.length
+          if (!retryable) throw error
+          await sleep(RETRY_DELAYS[attempt])
+          attempt += 1
+        }
       }
-      return json
     }
 
     function formatBytes(bytes) {
@@ -1537,7 +1626,7 @@ async function saveFile(url, filename) {
         return h('img', {
           key,
           className: 'dshgn_img',
-          src: `${apiOrigin()}/getnote/asset?path=${encodeURIComponent(path)}`,
+          src: withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(path)}`),
           alt: base,
           loading: 'lazy',
         })
@@ -3010,7 +3099,7 @@ async function saveFile(url, filename) {
           await api('/save', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ path: current.path, content: draft }),
+            body: JSON.stringify({ path: current.path, content: draft, requestId: requestId() }),
           })
           setCurrent({ ...current, content: draft })
           showToast(t('note.saved'))
@@ -3091,6 +3180,7 @@ async function saveFile(url, filename) {
                 dir: activeDir,
                 title: spec.title,
                 content: spec.content,
+                requestId: requestId(),
               }),
             })
             showToast(t('note.created'))
@@ -3112,7 +3202,7 @@ async function saveFile(url, filename) {
           await api('/delete', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ path: current.path }),
+            body: JSON.stringify({ path: current.path, requestId: requestId() }),
           })
           setCurrent(null)
           setDraft(null)
@@ -3849,7 +3939,7 @@ async function saveFile(url, filename) {
       const src = track
         ? track.url.startsWith(`${apiOrigin()}/getnote/`)
           ? track.url
-          : `${apiOrigin()}/getnote/audio?url=${encodeURIComponent(track.url)}`
+          : withToken(`${apiOrigin()}/getnote/audio?url=${encodeURIComponent(track.url)}`)
         : null
 
       // 换音轨时重置播放状态（否则进度条会停在上一首的位置）
@@ -5732,7 +5822,7 @@ async function saveFile(url, filename) {
       const exportZip = React.useCallback(async () => {
         setBusy(true)
         try {
-          const url = `${apiOrigin()}/getnote/archive/export`
+          const url = withToken(`${apiOrigin()}/getnote/archive/export`)
           const name = '得到大脑归档-' + new Date().toISOString().slice(0, 10) + '.zip'
           // 宿主能弹保存框就走它（用户能选位置），否则退回 a[download]。
           const saved = await saveFile(url, name)
@@ -5764,6 +5854,7 @@ async function saveFile(url, filename) {
               headers: {
                 'content-type': 'application/zip',
                 'x-getnote-import-mode': importMode,
+                ...(__apiToken === '' ? {} : { 'x-getnote-token': __apiToken }),
               },
               body: buffer,
             })
@@ -7545,7 +7636,7 @@ async function saveFile(url, filename) {
                     key: `${asset.path}-${index}`,
                     t,
                     track: {
-                      url: `${apiOrigin()}/getnote/asset?path=${encodeURIComponent(asset.path)}`,
+                      url: withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(asset.path)}`),
                       duration: 0,
                       kind: 'local',
                       title: assetLabel(asset.name),
@@ -7564,7 +7655,7 @@ async function saveFile(url, filename) {
                         h('img', {
                           key: `${asset.path}-${index}`,
                           className: 'dshgn_img',
-                          src: `${apiOrigin()}/getnote/asset?path=${encodeURIComponent(asset.path)}`,
+                          src: withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(asset.path)}`),
                           alt: asset.name,
                           title: asset.name,
                           loading: 'lazy',

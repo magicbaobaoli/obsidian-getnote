@@ -23,7 +23,7 @@ import { configure as configureVfs, mkdir as vfsMkdir } from './core/vfs.js'
 import { configureCardScripts } from './core/card.js'
 import { startAutoSync, markPanelVisible } from './core/service.js'
 import { startLocalServer } from './host/server.js'
-import { setApiOrigin, setOpenExternal, setSaveFile } from './view/panel.js'
+import { setApiOrigin, setApiToken, setOpenExternal, setSaveFile } from './view/panel.js'
 import { GetnoteView, VIEW_TYPE_GETNOTE, PanelIcon } from './view/view.js'
 
 const DEFAULT_SUBFOLDER = '得到大脑'
@@ -103,7 +103,12 @@ export default class GetnoteObsidianPlugin extends Plugin {
     try {
       this.server = await startLocalServer({ preferredPort })
       setApiOrigin(this.server.origin)
+      // 令牌由服务自己随机生成（每次启动都换），面板每个请求都要带。
+      setApiToken(this.server.token)
       this.localPort = this.server.port
+      // 用户指定的端口没抢到：OAuth 的 redirect_uri 会跟着变，值得说一句。
+      // 不弹 Notice 打扰，写进设置页的状态行里更合适。
+      this.portFallback = this.server.portFallback === true
       // 记住这次真正用上的端口：下次启动优先复用它，OAuth 的 redirect_uri
       // 才能跨会话稳定（服务端是按 redirect_uri 注册的 client）。
       if (this.localPort !== preferredPort) {
@@ -113,6 +118,7 @@ export default class GetnoteObsidianPlugin extends Plugin {
       // 起不来也不能让整个插件挂掉：面板会显示「服务未就绪」，其余功能（设置页）还能用。
       this.server = null
       this.localPort = 0
+      this.portFallback = false
       new Notice(`得到大脑：本地服务启动失败 —— ${error && error.message ? error.message : error}`)
     }
 
@@ -149,6 +155,7 @@ export default class GetnoteObsidianPlugin extends Plugin {
       this.server = null
     }
     setApiOrigin('')
+    setApiToken('')
   }
 
   /**
@@ -231,7 +238,11 @@ class GetnoteSettingTab extends PluginSettingTab {
       .setName('本地服务')
       .setDesc(
         this.plugin.localPort
-          ? `运行中：http://127.0.0.1:${this.plugin.localPort}`
+          ? `运行中：http://127.0.0.1:${this.plugin.localPort}${
+              this.plugin.portFallback
+                ? '（你指定的端口被占用，这次用了系统分配的；云端授权可能需要重新登录一次）'
+                : ''
+            }`
           : '未运行。重启 Obsidian 或看控制台里的报错。',
       )
 

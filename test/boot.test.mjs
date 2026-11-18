@@ -211,8 +211,12 @@ test('onload 能把插件拉起来', async () => {
 
 test('面板能打到本地服务，并且走的是 adapter 后端', async () => {
   const origin = plugin.server.origin
+  // 本地服务要令牌：CORS 是 *，没有令牌任何本机网页都能读走整个笔记库。
+  const auth = { 'x-getnote-token': plugin.server.token }
   const call = async (path, init) => {
-    const res = await fetch(origin + '/getnote' + path, init)
+    const options = { ...(init || {}) }
+    options.headers = { ...auth, ...(options.headers || {}) }
+    const res = await fetch(origin + '/getnote' + path, options)
     const text = await res.text()
     let json = null
     try { json = JSON.parse(text) } catch {}
@@ -259,6 +263,16 @@ test('面板能打到本地服务，并且走的是 adapter 后端', async () =>
   // 越界路径仍然拒绝（adapter 模式下 relOf 也要挡住）
   const escape = await call('/read?path=' + encodeURIComponent('../外面.md'))
   assert.equal(escape.status, 400, escape.text.slice(0, 200))
+
+  // 没有令牌的请求一律 401：端口在回环上，但 CORS 是 *，别的网页能发过来。
+  const naked = await fetch(origin + '/getnote/status')
+  assert.equal(naked.status, 401, '无令牌应被拒')
+  // 令牌错了也是 401，不能因为「有头」就放行
+  const wrong = await fetch(origin + '/getnote/status', { headers: { 'x-getnote-token': 'nope' } })
+  assert.equal(wrong.status, 401)
+  // img/audio 加不了头，走 ?t= 查询参数，这条通道必须能用
+  const viaQuery = await fetch(origin + '/getnote/status?t=' + encodeURIComponent(plugin.server.token))
+  assert.equal(viaQuery.status, 200, '查询参数里的令牌也该放行')
 })
 
 test('插件自己的状态落在库内 .obsidian/plugins/<id>，不往库里撒野', async () => {
@@ -267,7 +281,9 @@ test('插件自己的状态落在库内 .obsidian/plugins/<id>，不往库里撒
   const dataDir = join(BASE, '.obsidian', 'plugins', 'getnote-obsidian')
   await access(join(dataDir, 'dsh-getnote.json'))
 
-  const status = await fetch(plugin.server.origin + '/getnote/status').then((r) => r.json())
+  const status = await fetch(plugin.server.origin + '/getnote/status', {
+    headers: { 'x-getnote-token': plugin.server.token },
+  }).then((r) => r.json())
   assert.equal(status.settingsPath.replace(/\\/g, '/'), dataDir.replace(/\\/g, '/') + '/dsh-getnote.json')
   // 笔记写入必须全部经过 adapter：内存库里库根只有「得到大脑」一个目录，
   // 一条杂散文件都不该有。（.obsidian 不在里面是正常的——插件自己的数据走真 fs。）
@@ -284,7 +300,7 @@ test('面板改笔记目录 = 在库里换个子目录，换不到库外面去',
   const post = async (path, body) => {
     const res = await fetch(origin + '/getnote' + path, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', 'x-getnote-token': plugin.server.token },
       body: JSON.stringify(body),
     })
     return { status: res.status, json: await res.json().catch(() => null) }
@@ -292,7 +308,9 @@ test('面板改笔记目录 = 在库里换个子目录，换不到库外面去',
 
   // /settings 要回 subfolder（相对库根那一段），面板的输入框显示的是它而不是
   // 整条绝对路径——库根由 Obsidian 定，用户能改的只有子目录。
-  const before = await fetch(origin + '/getnote/settings').then((r) => r.json())
+  const before = await fetch(origin + '/getnote/settings', {
+    headers: { 'x-getnote-token': plugin.server.token },
+  }).then((r) => r.json())
   assert.equal(before.subfolder, '得到大脑')
 
   const moved = await post('/settings', { vaultPath: '李欣颀/知识库/得到大脑归档' })
@@ -324,8 +342,47 @@ test('面板改笔记目录 = 在库里换个子目录，换不到库外面去',
   assert.equal(escaped.json.subfolder, '得到大脑')
 })
 
+test('同一个动作重放两次只落一份（幂等号）', async () => {
+  const origin = plugin.server.origin
+  const post = async (path, body) => {
+    const res = await fetch(origin + '/getnote' + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': plugin.server.token },
+      body: JSON.stringify(body),
+    })
+    return { status: res.status, json: await res.json().catch(() => null) }
+  }
+
+  // 双击「新建」/ 断网重试时，两次请求带同一个 requestId：只该建出一篇。
+  const id = 'boot-idem-' + Date.now()
+  const first = await post('/create', { dir: '随手记', title: '只该有一篇', content: '# 只该有一篇\n', requestId: id })
+  const second = await post('/create', { dir: '随手记', title: '只该有一篇', content: '# 只该有一篇\n', requestId: id })
+  assert.equal(first.status, 200, JSON.stringify(first.json))
+  assert.equal(second.status, 200, JSON.stringify(second.json))
+  assert.equal(second.json.replay, true, '第二次应该是重放')
+  assert.equal(second.json.path, first.json.path, '重放要回第一次的路径')
+  const copies = adapter._dump().filter((p) => p.includes('只该有一篇'))
+  assert.equal(copies.length, 1, '库里只该有一篇：' + copies.join(', '))
+
+  // 保存同样的内容 = 什么都没改：不该往历史里塞一个一模一样的版本。
+  const same = await post('/save', { path: first.json.path, content: '# 只该有一篇\n' })
+  assert.equal(same.status, 200, JSON.stringify(same.json))
+  assert.equal(same.json.unchanged, true, '内容没变应回 unchanged')
+
+  // 内容真的变了就正常保存，并留一版历史
+  const changed = await post('/save', { path: first.json.path, content: '# 只该有一篇\n\n改了。\n' })
+  assert.equal(changed.status, 200, JSON.stringify(changed.json))
+  assert.notEqual(changed.json.unchanged, true)
+  const read = await fetch(origin + '/getnote/read?path=' + encodeURIComponent(first.json.path), {
+    headers: { 'x-getnote-token': plugin.server.token },
+  }).then((r) => r.json())
+  assert.ok(String(read.content).includes('改了'), '正文应已更新')
+})
+
 test('整库导出能拿到真 zip（面板「导出」按钮打的就是这个地址）', async () => {
-  const res = await fetch(plugin.server.origin + '/getnote/archive/export')
+  const res = await fetch(plugin.server.origin + '/getnote/archive/export', {
+    headers: { 'x-getnote-token': plugin.server.token },
+  })
   assert.equal(res.status, 200, '导出应回 200')
   const buf = Buffer.from(await res.arrayBuffer())
   // PK\x03\x04 —— zip 的本地文件头。只断言魔数，不解析内容（内容正确性由
@@ -340,7 +397,7 @@ test('onunload 会关掉本地服务', async () => {
   assert.equal(plugin.server, null)
   let failed = false
   try {
-    await fetch(origin + '/getnote/status')
+    await fetch(origin + '/getnote/status', { headers: { 'x-getnote-token': plugin.server.token } })
   } catch {
     failed = true
   }

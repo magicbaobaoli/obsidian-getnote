@@ -35319,6 +35319,28 @@ async function cloudReadiness() {
   return { configured: false, transport: null, effectiveTransport: null, apiKeyMasked: null, clientIdMasked: null, hasGrantId: false, savedAt: null, keyRejected: false, keyError: null, fallbackAvailable: false };
 }
 function createHandler(config) {
+  const writeJournal = /* @__PURE__ */ new Map();
+  const WRITE_JOURNAL_MAX = 80;
+  function requestIdOf(req, body) {
+    const header = req.headers["x-getnote-request-id"];
+    if (typeof header === "string" && header !== "") return header.slice(0, 120);
+    if (body !== null && typeof body === "object" && typeof body.requestId === "string") {
+      return body.requestId.slice(0, 120);
+    }
+    return "";
+  }
+  async function once2(requestId2, run) {
+    if (requestId2 === "") return await run();
+    const hit = writeJournal.get(requestId2);
+    if (hit !== void 0) return { ...hit, replay: true };
+    const result = await run();
+    writeJournal.set(requestId2, result);
+    if (writeJournal.size > WRITE_JOURNAL_MAX) {
+      const oldest = writeJournal.keys().next();
+      if (!oldest.done) writeJournal.delete(oldest.value);
+    }
+    return result;
+  }
   async function currentRoot() {
     const settings = await readSettings();
     const configured = settings.vaultRoot || config.vaultPath || null;
@@ -35731,6 +35753,13 @@ function createHandler(config) {
     const content = typeof body.content === "string" ? body.content : "";
     if (path === "") throw Object.assign(new Error("path \u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
     try {
+      const before = await readNote(root, path);
+      if (before.content === content) {
+        return send(res, 200, { ok: true, path, unchanged: true });
+      }
+    } catch {
+    }
+    try {
       await snapshotNote(root, path);
     } catch {
     }
@@ -35814,12 +35843,15 @@ function createHandler(config) {
   async function handleCreate(req, res) {
     const body = await readJsonBody(req, MAX_BODY);
     const { root } = await currentRoot();
-    const created = await createNote(root, {
-      dir: typeof body.dir === "string" ? body.dir : "",
-      title: typeof body.title === "string" ? body.title : "",
-      content: typeof body.content === "string" ? body.content : "",
-      date: typeof body.date === "string" ? body.date : void 0
-    });
+    const created = await once2(
+      requestIdOf(req, body),
+      () => createNote(root, {
+        dir: typeof body.dir === "string" ? body.dir : "",
+        title: typeof body.title === "string" ? body.title : "",
+        content: typeof body.content === "string" ? body.content : "",
+        date: typeof body.date === "string" ? body.date : void 0
+      })
+    );
     send(res, 200, { ok: true, ...created });
   }
   async function handleDelete(req, res) {
@@ -36751,14 +36783,28 @@ function markPanelVisible() {
 
 // src/host/server.js
 var import_node_http2 = require("node:http");
+var import_node_crypto7 = require("node:crypto");
 var HOST = "127.0.0.1";
+var TOKEN_EXEMPT = /* @__PURE__ */ new Set(["oauth"]);
 function applyCors(res) {
   res.setHeader("access-control-allow-origin", "*");
   res.setHeader("access-control-allow-methods", "GET, POST, PUT, DELETE, OPTIONS");
-  res.setHeader("access-control-allow-headers", "content-type, range, x-getnote-import-mode");
-  res.setHeader("access-control-expose-headers", "content-type, content-length, content-range, accept-ranges");
+  res.setHeader(
+    "access-control-allow-headers",
+    "content-type, range, x-getnote-import-mode, x-getnote-token"
+  );
+  res.setHeader(
+    "access-control-expose-headers",
+    "content-type, content-length, content-range, accept-ranges"
+  );
   res.setHeader("access-control-max-age", "600");
   res.setHeader("access-control-allow-private-network", "true");
+}
+function tokenOf(req, url) {
+  const header = req.headers["x-getnote-token"];
+  if (typeof header === "string" && header !== "") return header;
+  const fromQuery = url.searchParams.get("t");
+  return typeof fromQuery === "string" ? fromQuery : "";
 }
 function listenOn(server, port) {
   return new Promise((resolve5, reject) => {
@@ -36775,14 +36821,28 @@ function listenOn(server, port) {
     server.listen(port, HOST);
   });
 }
-async function startLocalServer({ vaultPath = "", preferredPort = 0 } = {}) {
+async function startLocalServer({ vaultPath = "", preferredPort = 0, token = "" } = {}) {
   let origin = "";
   const handler = createRouter({ vaultPath, getOrigin: () => origin });
+  const secret = typeof token === "string" && token !== "" ? token : (0, import_node_crypto7.randomBytes)(24).toString("hex");
   const server = (0, import_node_http2.createServer)((req, res) => {
     applyCors(res);
     if (req.method === "OPTIONS") {
       res.writeHead(204);
       res.end();
+      return;
+    }
+    let url;
+    try {
+      url = new URL(req.url || "/", "http://127.0.0.1");
+    } catch {
+      url = new URL("http://127.0.0.1/");
+    }
+    const parts = url.pathname.split("/").filter(Boolean);
+    const action = parts[1] || "status";
+    if (!TOKEN_EXEMPT.has(action) && tokenOf(req, url) !== secret) {
+      res.writeHead(401, { "content-type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ error: "unauthorized", hint: "\u8BF7\u6C42\u7F3A\u5C11\u6216\u5E26\u9519\u4E86\u672C\u673A\u670D\u52A1\u4EE4\u724C" }));
       return;
     }
     Promise.resolve(handler(req, res)).catch((error) => {
@@ -36799,14 +36859,15 @@ async function startLocalServer({ vaultPath = "", preferredPort = 0 } = {}) {
     });
   });
   const candidates = [];
-  if (Number.isInteger(preferredPort) && preferredPort > 0 && preferredPort < 65536) {
-    candidates.push(preferredPort);
-  }
+  const wanted = Number.isInteger(preferredPort) && preferredPort > 0 && preferredPort < 65536;
+  if (wanted) candidates.push(preferredPort);
   candidates.push(0);
   let lastError = null;
+  let usedFallback = false;
   for (const port of candidates) {
     try {
       await listenOn(server, port);
+      usedFallback = wanted && port === 0;
       lastError = null;
       break;
     } catch (error) {
@@ -36821,6 +36882,8 @@ async function startLocalServer({ vaultPath = "", preferredPort = 0 } = {}) {
   return {
     origin,
     port: actualPort,
+    token: secret,
+    portFallback: usedFallback,
     /** 停止监听，插件 unload 时调。 */
     close() {
       return new Promise((resolve5) => server.close(() => resolve5()));
@@ -36836,6 +36899,17 @@ function setApiOrigin(origin) {
 }
 function apiOrigin() {
   return __apiBase;
+}
+var __apiToken = "";
+function setApiToken(token) {
+  __apiToken = String(token || "");
+}
+function withToken(url) {
+  if (__apiToken === "") return url;
+  const text = String(url || "");
+  if (text === "") return text;
+  const sep4 = text.includes("?") ? "&" : "?";
+  return `${text}${sep4}t=${encodeURIComponent(__apiToken)}`;
 }
 var __openExternal = null;
 function setOpenExternal(fn) {
@@ -37972,20 +38046,62 @@ function getT() {
   if (panelT === null) panelT = makeT(void 0);
   return panelT;
 }
+var inflight = /* @__PURE__ */ new Map();
+function requestId() {
+  const bytes = new Uint8Array(8);
+  const crypto = typeof window !== "undefined" ? window.crypto : void 0;
+  if (crypto && typeof crypto.getRandomValues === "function") crypto.getRandomValues(bytes);
+  else for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+var RETRY_DELAYS = [180, 520];
+function sleep2(ms) {
+  return new Promise((resolve5) => window.setTimeout(resolve5, ms));
+}
 async function api(path, init) {
   const options = { ...init || {} };
-  const res = await fetch(`${apiOrigin()}/getnote${path}`, options);
-  let json = {};
-  try {
-    json = await res.json();
-  } catch {
+  const method = String(options.method || "GET").toUpperCase();
+  const idempotent = method === "GET";
+  const group = String(path).split("?")[0];
+  let signal = options.signal;
+  if (idempotent) {
+    const previous = inflight.get(group);
+    if (previous !== void 0 && typeof previous.abort === "function") previous.abort();
+    const controller = new AbortController();
+    inflight.set(group, controller);
+    signal = controller.signal;
   }
-  if (!res.ok) {
-    const err = new Error(json && json.error || `HTTP ${res.status}`);
-    err.status = res.status;
-    throw err;
+  const headers = { ...options.headers || {} };
+  if (__apiToken !== "") headers["x-getnote-token"] = __apiToken;
+  let attempt = 0;
+  for (; ; ) {
+    try {
+      const res = await fetch(`${apiOrigin()}/getnote${path}`, {
+        ...options,
+        headers,
+        signal
+      });
+      let json = {};
+      try {
+        json = await res.json();
+      } catch {
+      }
+      if (!res.ok) {
+        const err = new Error(json && json.error || `HTTP ${res.status}`);
+        err.status = res.status;
+        throw err;
+      }
+      return json;
+    } catch (error) {
+      const aborted = error !== null && typeof error === "object" && (error.name === "AbortError" || signal.aborted);
+      if (aborted) throw error;
+      const hasStatus = error !== null && typeof error === "object" && typeof error.status === "number";
+      const retryable = idempotent && !hasStatus && attempt < RETRY_DELAYS.length;
+      if (!retryable) throw error;
+      await sleep2(RETRY_DELAYS[attempt]);
+      attempt += 1;
+    }
   }
-  return json;
 }
 function formatBytes2(bytes) {
   const n = Number(bytes) || 0;
@@ -38233,7 +38349,7 @@ function renderEmbed(target, key, options) {
     return h("img", {
       key,
       className: "dshgn_img",
-      src: `${apiOrigin()}/getnote/asset?path=${encodeURIComponent(path)}`,
+      src: withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(path)}`),
       alt: base,
       loading: "lazy"
     });
@@ -39566,7 +39682,7 @@ function GetnotePage() {
       await api("/save", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ path: current.path, content: draft })
+        body: JSON.stringify({ path: current.path, content: draft, requestId: requestId() })
       });
       setCurrent({ ...current, content: draft });
       showToast(t("note.saved"));
@@ -39666,7 +39782,8 @@ function GetnotePage() {
           body: JSON.stringify({
             dir: activeDir,
             title: spec.title,
-            content: spec.content
+            content: spec.content,
+            requestId: requestId()
           })
         });
         showToast(t("note.created"));
@@ -39687,7 +39804,7 @@ function GetnotePage() {
       await api("/delete", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ path: current.path })
+        body: JSON.stringify({ path: current.path, requestId: requestId() })
       });
       setCurrent(null);
       setDraft(null);
@@ -40335,7 +40452,7 @@ function AudioPlayer(props) {
   const [failed, setFailed] = React.useState(false);
   const [dragging, setDragging] = React.useState(false);
   const [dragValue, setDragValue] = React.useState(0);
-  const src = track ? track.url.startsWith(`${apiOrigin()}/getnote/`) ? track.url : `${apiOrigin()}/getnote/audio?url=${encodeURIComponent(track.url)}` : null;
+  const src = track ? track.url.startsWith(`${apiOrigin()}/getnote/`) ? track.url : withToken(`${apiOrigin()}/getnote/audio?url=${encodeURIComponent(track.url)}`) : null;
   React.useEffect(() => {
     setPlaying(false);
     setCurrent(0);
@@ -41953,7 +42070,7 @@ function ArchiveCard(props) {
   const exportZip = React.useCallback(async () => {
     setBusy(true);
     try {
-      const url = `${apiOrigin()}/getnote/archive/export`;
+      const url = withToken(`${apiOrigin()}/getnote/archive/export`);
       const name = "\u5F97\u5230\u5927\u8111\u5F52\u6863-" + (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) + ".zip";
       const saved = await saveFile(url, name);
       if (saved) {
@@ -41981,7 +42098,8 @@ function ArchiveCard(props) {
           method: "POST",
           headers: {
             "content-type": "application/zip",
-            "x-getnote-import-mode": importMode
+            "x-getnote-import-mode": importMode,
+            ...__apiToken === "" ? {} : { "x-getnote-token": __apiToken }
           },
           body: buffer
         });
@@ -43539,7 +43657,7 @@ function NotePane(props) {
           key: `${asset.path}-${index}`,
           t,
           track: {
-            url: `${apiOrigin()}/getnote/asset?path=${encodeURIComponent(asset.path)}`,
+            url: withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(asset.path)}`),
             duration: 0,
             kind: "local",
             title: assetLabel(asset.name)
@@ -43555,7 +43673,7 @@ function NotePane(props) {
           (asset, index) => h("img", {
             key: `${asset.path}-${index}`,
             className: "dshgn_img",
-            src: `${apiOrigin()}/getnote/asset?path=${encodeURIComponent(asset.path)}`,
+            src: withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(asset.path)}`),
             alt: asset.name,
             title: asset.name,
             loading: "lazy"
@@ -44265,13 +44383,16 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     try {
       this.server = await startLocalServer({ preferredPort });
       setApiOrigin(this.server.origin);
+      setApiToken(this.server.token);
       this.localPort = this.server.port;
+      this.portFallback = this.server.portFallback === true;
       if (this.localPort !== preferredPort) {
         await this.saveLocalPort(this.localPort);
       }
     } catch (error) {
       this.server = null;
       this.localPort = 0;
+      this.portFallback = false;
       new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A\u672C\u5730\u670D\u52A1\u542F\u52A8\u5931\u8D25 \u2014\u2014 ${error && error.message ? error.message : error}`);
     }
     this.registerView(VIEW_TYPE_GETNOTE, (leaf) => new GetnoteView(leaf, this));
@@ -44306,6 +44427,7 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       this.server = null;
     }
     setApiOrigin("");
+    setApiToken("");
   }
   /**
    * 插件数据目录的绝对路径。
@@ -44368,7 +44490,7 @@ var GetnoteSettingTab = class extends import_obsidian2.PluginSettingTab {
       });
     });
     new import_obsidian2.Setting(containerEl).setName("\u672C\u5730\u670D\u52A1").setDesc(
-      this.plugin.localPort ? `\u8FD0\u884C\u4E2D\uFF1Ahttp://127.0.0.1:${this.plugin.localPort}` : "\u672A\u8FD0\u884C\u3002\u91CD\u542F Obsidian \u6216\u770B\u63A7\u5236\u53F0\u91CC\u7684\u62A5\u9519\u3002"
+      this.plugin.localPort ? `\u8FD0\u884C\u4E2D\uFF1Ahttp://127.0.0.1:${this.plugin.localPort}${this.plugin.portFallback ? "\uFF08\u4F60\u6307\u5B9A\u7684\u7AEF\u53E3\u88AB\u5360\u7528\uFF0C\u8FD9\u6B21\u7528\u4E86\u7CFB\u7EDF\u5206\u914D\u7684\uFF1B\u4E91\u7AEF\u6388\u6743\u53EF\u80FD\u9700\u8981\u91CD\u65B0\u767B\u5F55\u4E00\u6B21\uFF09" : ""}` : "\u672A\u8FD0\u884C\u3002\u91CD\u542F Obsidian \u6216\u770B\u63A7\u5236\u53F0\u91CC\u7684\u62A5\u9519\u3002"
     );
     new import_obsidian2.Setting(containerEl).setName("\u6253\u5F00\u9762\u677F").setDesc("\u4E5F\u53EF\u4EE5\u7528\u5DE6\u4FA7\u680F\u7684\u5927\u8111\u56FE\u6807\uFF0C\u6216\u547D\u4EE4\u9762\u677F\u91CC\u7684\u300C\u6253\u5F00\u5F97\u5230\u5927\u8111\u9762\u677F\u300D\u3002").addButton((button) => {
       button.setButtonText("\u6253\u5F00").setCta().onClick(() => {

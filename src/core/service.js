@@ -445,6 +445,42 @@ async function cloudReadiness() {
 }
 
 export function createHandler(config) {
+  /**
+   * 写操作的重放台账。
+   *
+   * 面板双击、网络抖动后手动重试、或者同一个动作被两个窗口同时点——这些都会
+   * 让「新建一篇笔记」变成两篇。前端可以拦，但拦不住跨窗口和重试，所以这里
+   * 留一层：调用方带一个 requestId（头或 body），同一个 id 第二次到达时直接
+   * 回第一次的结果，并标记 replay:true。
+   *
+   * 只记最近 WRITE_JOURNAL_MAX 条，且只在内存里：重启插件后台账清空，这没
+   * 关系——重放保护的时间窗本来就只有几秒。
+   */
+  const writeJournal = new Map()
+  const WRITE_JOURNAL_MAX = 80
+
+  function requestIdOf(req, body) {
+    const header = req.headers['x-getnote-request-id']
+    if (typeof header === 'string' && header !== '') return header.slice(0, 120)
+    if (body !== null && typeof body === 'object' && typeof body.requestId === 'string') {
+      return body.requestId.slice(0, 120)
+    }
+    return ''
+  }
+
+  async function once(requestId, run) {
+    if (requestId === '') return await run()
+    const hit = writeJournal.get(requestId)
+    if (hit !== undefined) return { ...hit, replay: true }
+    const result = await run()
+    writeJournal.set(requestId, result)
+    if (writeJournal.size > WRITE_JOURNAL_MAX) {
+      const oldest = writeJournal.keys().next()
+      if (!oldest.done) writeJournal.delete(oldest.value)
+    }
+    return result
+  }
+
   /** 当前生效的库根（每次请求都重新解析：用户可能刚换过目录）。 */
   async function currentRoot() {
     const settings = await readSettings()
@@ -996,6 +1032,16 @@ export function createHandler(config) {
     const path = typeof body.path === 'string' ? body.path : ''
     const content = typeof body.content === 'string' ? body.content : ''
     if (path === '') throw Object.assign(new Error('path 不能为空'), { status: 400 })
+    // 内容没变就什么都不做：双击保存、或者存完又点一次，不该在历史里留下
+    // 一串一模一样的版本，把真正想回退的那一版挤出窗口。
+    try {
+      const before = await readNote(root, path)
+      if (before.content === content) {
+        return send(res, 200, { ok: true, path, unchanged: true })
+      }
+    } catch {
+      // 读不到（新文件 / 刚好被删）就走正常保存流程
+    }
     // 覆盖前先留一版历史：用户在面板里改完保存、过两天想找「之前那段话」，
     // 历史是唯一退路。存不下不该阻塞保存本身，所以整段吞掉错误。
     try {
@@ -1106,12 +1152,14 @@ export function createHandler(config) {
   async function handleCreate(req, res) {
     const body = await readJsonBody(req, MAX_BODY)
     const { root } = await currentRoot()
-    const created = await createNote(root, {
-      dir: typeof body.dir === 'string' ? body.dir : '',
-      title: typeof body.title === 'string' ? body.title : '',
-      content: typeof body.content === 'string' ? body.content : '',
-      date: typeof body.date === 'string' ? body.date : undefined,
-    })
+    const created = await once(requestIdOf(req, body), () =>
+      createNote(root, {
+        dir: typeof body.dir === 'string' ? body.dir : '',
+        title: typeof body.title === 'string' ? body.title : '',
+        content: typeof body.content === 'string' ? body.content : '',
+        date: typeof body.date === 'string' ? body.date : undefined,
+      }),
+    )
     send(res, 200, { ok: true, ...created })
   }
 

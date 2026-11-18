@@ -30,6 +30,7 @@ const panel = await import('../src/view/panel.js')
 
 const server = await startLocalServer({ preferredPort: 0 })
 panel.setApiOrigin(server.origin)
+panel.setApiToken(server.token)
 
 // ── 浏览器环境 ─────────────────────────────────────────────────────────────
 const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
