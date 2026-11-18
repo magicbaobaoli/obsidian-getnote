@@ -14,13 +14,16 @@
  */
 
 import { Notice, Plugin, PluginSettingTab, Setting } from 'obsidian'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import * as settingsStore from './core/settings.js'
 import { configure as configureVfs, mkdir as vfsMkdir } from './core/vfs.js'
 import { configureCardScripts } from './core/card.js'
 import { startAutoSync, markPanelVisible } from './core/service.js'
 import { startLocalServer } from './host/server.js'
-import { setApiOrigin, setOpenExternal } from './view/panel.js'
+import { setApiOrigin, setOpenExternal, setSaveFile } from './view/panel.js'
 import { GetnoteView, VIEW_TYPE_GETNOTE, PanelIcon } from './view/view.js'
 
 const DEFAULT_SUBFOLDER = '得到大脑'
@@ -51,6 +54,33 @@ export default class GetnoteObsidianPlugin extends Plugin {
         // 拿不到 electron（比如测试环境）就返回 false，让面板退回 window.open
       }
       return false
+    })
+
+    // 整库导出：面板点「导出」时走这里。
+    //
+    // 为什么不用 a[download]：Electron 的下载管理器在 Obsidian 里没被接管，
+    // 点了可能静默什么都不发生。渲染进程也拿不到 electron 的 dialog（那是主进程
+    // 模块）。所以这里自己把 zip 拉下来写到临时目录，再在系统文件管理器里定位到
+    // 它——用户拿到的是真文件，而不是一个可能没反应的下载动作。
+    setSaveFile(async (url, filename) => {
+      const res = await fetch(url)
+      if (!res.ok) throw new Error(`导出失败：HTTP ${res.status}`)
+      const bytes = Buffer.from(await res.arrayBuffer())
+      const dir = join(tmpdir(), 'getnote-export')
+      await mkdir(dir, { recursive: true })
+      const target = join(dir, filename)
+      await writeFile(target, bytes)
+      try {
+        // eslint-disable-next-line global-require
+        const electron = typeof require === 'function' ? require('electron') : null
+        if (electron && electron.shell && typeof electron.shell.showItemInFolder === 'function') {
+          electron.shell.showItemInFolder(target)
+        }
+      } catch {
+        // 拿不到 electron 就只弹提示，路径照样给出去
+      }
+      new Notice(`得到大脑：归档包已导出到 ${target}`)
+      return true
     })
 
     const stored = await settingsStore.readSettings()

@@ -32477,6 +32477,9 @@ __export(main_exports, {
 });
 module.exports = __toCommonJS(main_exports);
 var import_obsidian2 = require("obsidian");
+var import_promises2 = require("node:fs/promises");
+var import_node_os2 = require("node:os");
+var import_node_path7 = require("node:path");
 
 // src/core/settings.js
 var import_promises = require("node:fs/promises");
@@ -33081,11 +33084,11 @@ async function deleteCardFiles(names) {
 async function wifiScan() {
   return runBridge(["scan"], { script: WIFI(), timeoutMs: 60 * 1e3 });
 }
-async function wifiActivate({ cmd = null, body = null, join: join7 = true, keep = false, wait = 3 } = {}) {
+async function wifiActivate({ cmd = null, body = null, join: join8 = true, keep = false, wait = 3 } = {}) {
   const args = ["activate"];
   if (cmd) args.push("--cmd", String(cmd));
   if (body) args.push("--body", String(body));
-  if (join7) args.push("--join");
+  if (join8) args.push("--join");
   if (keep) args.push("--keep");
   if (wait) args.push("--wait", String(wait));
   return runBridge(args, { script: WIFI(), timeoutMs: 4 * 60 * 1e3 });
@@ -36412,10 +36415,10 @@ function createHandler(config) {
     const body = await readJsonBody(req);
     const cmd = typeof body.cmd === "string" && body.cmd.trim() !== "" ? body.cmd.trim() : null;
     const bodyHex = typeof body.body === "string" && body.body.trim() !== "" ? body.body.trim() : null;
-    const join7 = body.join !== false;
+    const join8 = body.join !== false;
     const keep = body.keep === true;
     const wait = Number.isFinite(Number(body.wait)) ? Number(body.wait) : 3;
-    const result = await wifiActivate({ cmd, body: bodyHex, join: join7, keep, wait });
+    const result = await wifiActivate({ cmd, body: bodyHex, join: join8, keep, wait });
     return send(res, 200, result);
   }
   async function handleCardWifiJoin(req, res) {
@@ -36813,6 +36816,20 @@ function openExternal(url) {
   }
   window.open(url, "_blank", "noopener,width=520,height=760");
 }
+var __saveFile = null;
+function setSaveFile(fn) {
+  __saveFile = typeof fn === "function" ? fn : null;
+}
+async function saveFile(url, filename) {
+  if (__saveFile !== null) {
+    try {
+      const saved = await __saveFile(url, filename);
+      if (saved) return true;
+    } catch {
+    }
+  }
+  return false;
+}
 var h = React.createElement;
 var NS = "dsh-getnote";
 var STYLE_ID = "dshgn-style";
@@ -36986,6 +37003,7 @@ var LEX = {
     "archive.export": "\u5BFC\u51FA zip",
     "archive.import": "\u5BFC\u5165 zip",
     "archive.exporting": "\u6B63\u5728\u5BFC\u51FA\u2026",
+    "archive.exported": "\u5DF2\u5BFC\u51FA\u5F52\u6863\u5305",
     "archive.imported": "\u5BFC\u5165\u5B8C\u6210\uFF1A\u65B0\u589E/\u8DF3\u8FC7",
     "archive.importMode": "\u540C\u540D\u65F6",
     "archive.mode.rename": "\u53E6\u5B58\u4E00\u4EFD",
@@ -37340,6 +37358,7 @@ var LEX = {
     "archive.export": "Export zip",
     "archive.import": "Import zip",
     "archive.exporting": "Exporting\u2026",
+    "archive.exported": "Archive exported",
     "archive.imported": "Import done \u2014 added/skipped",
     "archive.importMode": "On name clash",
     "archive.mode.rename": "Keep both",
@@ -37694,6 +37713,7 @@ var LEX = {
     "archive.export": "Zip exporteren",
     "archive.import": "Zip importeren",
     "archive.exporting": "Exporteren\u2026",
+    "archive.exported": "Archief ge\xEBxporteerd",
     "archive.imported": "Import klaar \u2014 toegevoegd/overgeslagen",
     "archive.importMode": "Bij naamconflict",
     "archive.mode.rename": "Beide houden",
@@ -41896,12 +41916,19 @@ function ArchiveCard(props) {
       alive = false;
     };
   }, []);
-  const exportZip = React.useCallback(() => {
+  const exportZip = React.useCallback(async () => {
     setBusy(true);
     try {
+      const url = `${apiOrigin()}/getnote/archive/export`;
+      const name = "\u5F97\u5230\u5927\u8111\u5F52\u6863-" + (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) + ".zip";
+      const saved = await saveFile(url, name);
+      if (saved) {
+        showToast(t("archive.exported"));
+        return;
+      }
       const anchor = document.createElement("a");
-      anchor.href = `${apiOrigin()}/getnote/archive/export`;
-      anchor.download = "";
+      anchor.href = url;
+      anchor.download = name;
       document.body.appendChild(anchor);
       anchor.click();
       document.body.removeChild(anchor);
@@ -44171,6 +44198,24 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       } catch {
       }
       return false;
+    });
+    setSaveFile(async (url, filename) => {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`\u5BFC\u51FA\u5931\u8D25\uFF1AHTTP ${res.status}`);
+      const bytes = Buffer.from(await res.arrayBuffer());
+      const dir = (0, import_node_path7.join)((0, import_node_os2.tmpdir)(), "getnote-export");
+      await (0, import_promises2.mkdir)(dir, { recursive: true });
+      const target = (0, import_node_path7.join)(dir, filename);
+      await (0, import_promises2.writeFile)(target, bytes);
+      try {
+        const electron = typeof require === "function" ? require("electron") : null;
+        if (electron && electron.shell && typeof electron.shell.showItemInFolder === "function") {
+          electron.shell.showItemInFolder(target);
+        }
+      } catch {
+      }
+      new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A\u5F52\u6863\u5305\u5DF2\u5BFC\u51FA\u5230 ${target}`);
+      return true;
     });
     const stored = await readSettings();
     if (stored.subfolder && stored.subfolder !== DEFAULT_SUBFOLDER) {

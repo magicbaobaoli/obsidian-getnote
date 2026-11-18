@@ -35,6 +35,25 @@ function openExternal(url) {
   window.open(url, '_blank', 'noopener,width=520,height=760')
 }
 
+// 整库导出的落盘方式。渲染进程里点 a[download] 在 Electron 里不可靠：
+// Obsidian 没开下载管理器时它可能静默什么都不做。所以由宿主注入一个「弹出
+// 保存对话框再写文件」的实现，拿不到就退回 a[download]。
+let __saveFile = null
+export function setSaveFile(fn) {
+  __saveFile = typeof fn === 'function' ? fn : null
+}
+async function saveFile(url, filename) {
+  if (__saveFile !== null) {
+    try {
+      const saved = await __saveFile(url, filename)
+      if (saved) return true
+    } catch {
+      // 注入的实现失败（用户取消、磁盘满…）就退回 a[download]
+    }
+  }
+  return false
+}
+
     const h = React.createElement
     const NS = 'dsh-getnote'
     const PANEL_ID = 'dsh-getnote'
@@ -214,6 +233,7 @@ function openExternal(url) {
         'archive.export': '导出 zip',
         'archive.import': '导入 zip',
         'archive.exporting': '正在导出…',
+      'archive.exported': '已导出归档包',
         'archive.imported': '导入完成：新增/跳过',
         'archive.importMode': '同名时',
         'archive.mode.rename': '另存一份',
@@ -572,6 +592,7 @@ function openExternal(url) {
         'archive.export': 'Export zip',
         'archive.import': 'Import zip',
         'archive.exporting': 'Exporting…',
+      'archive.exported': 'Archive exported',
         'archive.imported': 'Import done — added/skipped',
         'archive.importMode': 'On name clash',
         'archive.mode.rename': 'Keep both',
@@ -929,6 +950,7 @@ function openExternal(url) {
         'archive.export': 'Zip exporteren',
         'archive.import': 'Zip importeren',
         'archive.exporting': 'Exporteren…',
+      'archive.exported': 'Archief geëxporteerd',
         'archive.imported': 'Import klaar — toegevoegd/overgeslagen',
         'archive.importMode': 'Bij naamconflict',
         'archive.mode.rename': 'Beide houden',
@@ -5707,12 +5729,20 @@ function openExternal(url) {
 
       // 用 a[download] 触发下载而不是 window.open：桌面版里 window.open
       // 常被拦，而带 download 属性的锚点点击在 Electron 里是可靠的。
-      const exportZip = React.useCallback(() => {
+      const exportZip = React.useCallback(async () => {
         setBusy(true)
         try {
+          const url = `${apiOrigin()}/getnote/archive/export`
+          const name = '得到大脑归档-' + new Date().toISOString().slice(0, 10) + '.zip'
+          // 宿主能弹保存框就走它（用户能选位置），否则退回 a[download]。
+          const saved = await saveFile(url, name)
+          if (saved) {
+            showToast(t('archive.exported'))
+            return
+          }
           const anchor = document.createElement('a')
-          anchor.href = `${apiOrigin()}/getnote/archive/export`
-          anchor.download = ''
+          anchor.href = url
+          anchor.download = name
           document.body.appendChild(anchor)
           anchor.click()
           document.body.removeChild(anchor)

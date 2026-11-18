@@ -27,10 +27,16 @@
 - 授权页改用系统浏览器打开（注入 `electron.shell.openExternal`），不再依赖渲染进程里的 `window.open`。
 - 本地服务补 `Access-Control-Allow-Private-Network` 预检头：渲染进程的源是 `app://obsidian.md`，访问 `127.0.0.1` 属 Chromium 的 Private Network Access，缺这个头会让面板里所有接口在浏览器层被拦掉。
 - 录音卡桥脚本路径改为可注入（`configureCardScripts`），不再依赖 `import.meta.url`。
+- `vfs.mkdir` / `writeFile` / `rename` 自己逐级补父目录：Obsidian 的 `adapter.mkdir` 和
+  `fs.mkdir` 一样不建父级，而笔记目录允许写成「李欣颀/知识库/得到大脑归档」这种多级路径。
+- 整库导出不再依赖 `a[download]`：Electron 的下载管理器在 Obsidian 里没被接管，
+  点了可能静默无反应。改为由宿主把 zip 拉到临时目录、再在系统文件管理器里定位到它。
+- 面板设置页的「笔记目录」输入框改为显示**库内相对路径**（`/settings` 多回一个
+  `subfolder` 字段），提示文案也改成 Obsidian 语境，不再提 DSH 配置目录。
 
 ### 测试
 
-- 524 项离线测试：vault 算法 110 项、归档包 57 项、历史 46 项、同步 66 项、
-  236 项 HTTP 路由验收、5 项启动验收（真加载打包产物 + 假 obsidian 模块 + 内存 adapter，
+- 525 项离线测试：vault 算法 110 项、归档包 57 项、历史 46 项、同步 66 项、
+  236 项 HTTP 路由验收、6 项启动验收（真加载打包产物 + 假 obsidian 模块 + 内存 adapter，
   库根用带中文与空格的临时目录，同时验「库内写入只走 adapter」与「插件状态只落插件目录」），
   以及 4 项面板渲染验收（jsdom 真渲染 React 面板）。

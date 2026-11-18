@@ -313,6 +313,16 @@ test('面板改笔记目录 = 在库里换个子目录，换不到库外面去',
   assert.equal(escaped.json.subfolder, '得到大脑')
 })
 
+test('整库导出能拿到真 zip（面板「导出」按钮打的就是这个地址）', async () => {
+  const res = await fetch(plugin.server.origin + '/getnote/archive/export')
+  assert.equal(res.status, 200, '导出应回 200')
+  const buf = Buffer.from(await res.arrayBuffer())
+  // PK\x03\x04 —— zip 的本地文件头。只断言魔数，不解析内容（内容正确性由
+  // host.test 里那 57 项归档包测试覆盖）。
+  assert.equal(buf.subarray(0, 2).toString('latin1'), 'PK', '导出的应该是 zip')
+  assert.ok(buf.length > 0, 'zip 不该是空的')
+})
+
 test('onunload 会关掉本地服务', async () => {
   const origin = plugin.server.origin
   plugin.onunload()
