@@ -224,6 +224,51 @@ test('宿主切到深色主题时面板跟着变深，切回来还原', async ()
 })
 
 /**
+ * 面板语言要跟着宿主走。
+ *
+ * 这是「i18n 跟随宿主」那条：Obsidian 用户把界面改成英文，插件却全中文，
+ * 是最容易被骂的一类不体面。
+ */
+test('注入宿主语言后面板换成对应字典，清掉再退回中文', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const labels = () =>
+    Array.from(window.document.querySelectorAll('button')).map((el) => (el.textContent || '').trim())
+  const clickNotesTab = (candidates) => {
+    const tab = Array.from(window.document.querySelectorAll('button')).find((el) =>
+      candidates.includes((el.textContent || '').trim()),
+    )
+    assert.ok(tab, '找不到笔记页签，现有 ' + labels().slice(0, 12).join('/'))
+    tab.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  }
+
+  // 注入英文宿主语言。
+  // 注意要切到**别的**页签：文案闭包读的是模块级语言状态，只有重渲染才会
+  // 重新取值，而点当前所在的页签 setTab 同一个值不会触发渲染。
+  panel.setHostLocale('en-US')
+  clickNotesTab(['云端', 'Cloud'])
+  await sleep(250)
+  assert.ok(
+    labels().includes('Notes'),
+    '注入英文后应该有 Notes 页签，实际 ' + labels().slice(0, 12).join('/'),
+  )
+
+  // 清掉注入：切回中文
+  panel.setHostLocale(null)
+  clickNotesTab(['Conflicts', '冲突'])
+  await sleep(250)
+  assert.ok(
+    labels().includes('笔记'),
+    '清掉宿主语言后应该回到中文页签，实际 ' + labels().slice(0, 12).join('/'),
+  )
+  assert.ok(
+    labels().includes('笔记'),
+    '清掉宿主语言后应该回到中文页签，实际 ' + labels().slice(0, 12).join('/'),
+  )
+})
+
+/**
  * 右键笔记卡片要把动作清单交给宿主。
  *
  * 面板自己不会画菜单——它把「标签 + 动作」交给注入的实现（真宿主是 Obsidian

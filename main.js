@@ -8398,11 +8398,21 @@ var LEX = {
   }
 };
 var uiLocale = null;
+var hostLocale = null;
+function setHostLocale(value) {
+  const raw = typeof value === "string" ? value.toLowerCase().split(/[-_]/)[0] : "";
+  hostLocale = raw === "zh" || raw === "en" || raw === "nl" ? raw : null;
+}
 function setUiLocale(value) {
   uiLocale = value === "zh" || value === "en" || value === "nl" ? value : null;
 }
 function activeUiLocale() {
   return uiLocale;
+}
+function resolveLocale() {
+  if (uiLocale !== null) return uiLocale;
+  if (hostLocale !== null) return hostLocale;
+  return null;
 }
 var boundCtx = null;
 function makeT(ctx) {
@@ -8416,8 +8426,9 @@ function makeT(ctx) {
     }
   };
   return (key) => {
-    if (uiLocale !== null) {
-      const dict = LEX[uiLocale];
+    const picked = resolveLocale();
+    if (picked !== null) {
+      const dict = LEX[picked];
       if (dict && typeof dict[key] === "string") return dict[key];
     }
     const translate = bound();
@@ -15039,6 +15050,12 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     const adapter2 = this.app.vault.adapter;
     const basePath2 = typeof adapter2.getBasePath === "function" ? adapter2.getBasePath() : "";
     const dataDir = this.resolveDataDir(basePath2);
+    try {
+      const moment = typeof require === "function" ? require("moment") : null;
+      setHostLocale(moment && typeof moment.locale === "function" ? moment.locale() : null);
+    } catch {
+      setHostLocale(null);
+    }
     configure2({ dataDir, vaultBase: basePath2, subfolder: DEFAULT_SUBFOLDER });
     configure({ adapter: adapter2, basePath: basePath2 });
     configureCardScripts({ baseDir: dataDir });

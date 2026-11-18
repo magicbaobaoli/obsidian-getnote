@@ -24,7 +24,15 @@ import { configureCardScripts } from './core/card.js'
 import { invalidateScan } from './core/vault.js'
 import { startAutoSync, markPanelVisible } from './core/service.js'
 import { startLocalServer } from './host/server.js'
-import { setApiOrigin, setApiToken, setOpenExternal, setSaveFile, setNoteMenu, requestIntent } from './view/panel.js'
+import {
+  setApiOrigin,
+  setApiToken,
+  setOpenExternal,
+  setSaveFile,
+  setNoteMenu,
+  setHostLocale,
+  requestIntent,
+} from './view/panel.js'
 import { GetnoteView, VIEW_TYPE_GETNOTE, PanelIcon } from './view/view.js'
 
 const DEFAULT_SUBFOLDER = '得到大脑'
@@ -35,6 +43,16 @@ export default class GetnoteObsidianPlugin extends Plugin {
     const adapter = this.app.vault.adapter
     const basePath = typeof adapter.getBasePath === 'function' ? adapter.getBasePath() : ''
     const dataDir = this.resolveDataDir(basePath)
+
+    // 面板默认跟随宿主界面语言。用户在面板里显式选过语言就以他的为准，
+    // 这里只是把「宿主现在说的是什么语言」告诉面板。
+    try {
+      // eslint-disable-next-line global-require
+      const moment = typeof require === 'function' ? require('moment') : null
+      setHostLocale(moment && typeof moment.locale === 'function' ? moment.locale() : null)
+    } catch {
+      setHostLocale(null)
+    }
 
     settingsStore.configure({ dataDir, vaultBase: basePath, subfolder: DEFAULT_SUBFOLDER })
     configureVfs({ adapter, basePath })

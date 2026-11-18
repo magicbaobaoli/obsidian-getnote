@@ -1241,6 +1241,20 @@ async function saveFile(url, filename) {
      */
     let uiLocale = null
 
+    /**
+     * 宿主界面语言，由 main.js 注入（Obsidian 的 moment.locale()）。
+     *
+     * 不能在这里直接读 moment：面板的离线测试跑在纯 Node 里，没有 obsidian
+     * 模块。注入一个值、拿不到就当 null（最后兜中文），两处都能跑。
+     */
+    let hostLocale = null
+
+    /** 注入宿主语言；认不出的语言当 null。 */
+    export function setHostLocale(value) {
+      const raw = typeof value === 'string' ? value.toLowerCase().split(/[-_]/)[0] : ''
+      hostLocale = raw === 'zh' || raw === 'en' || raw === 'nl' ? raw : null
+    }
+
     /** 设置面板语言；传 null 恢复「跟随宿主」。非法值一律当 null。 */
     function setUiLocale(value) {
       uiLocale = value === 'zh' || value === 'en' || value === 'nl' ? value : null
@@ -1249,6 +1263,18 @@ async function saveFile(url, filename) {
     /** 当前实际生效的语言（供语言选择器显示「哪一项是选中的」） */
     function activeUiLocale() {
       return uiLocale
+    }
+
+    /**
+     * 面板此刻该用哪本字典。
+     *
+     * 顺序：用户显式选的 → 宿主界面语言 → 中文。宿主的 locale 服务（DSH 版
+     * 才有的 ctx.locale）比注入值更准，所以放在注入值前面。
+     */
+    function resolveLocale() {
+      if (uiLocale !== null) return uiLocale
+      if (hostLocale !== null) return hostLocale
+      return null
     }
 
     /**
@@ -1276,8 +1302,9 @@ async function saveFile(url, filename) {
       return (key) => {
         // 用户在设置里显式选了语言，就以它为准——不能先问宿主：
         // 宿主 locale 是中文时会把「改成英文」这个选择直接顶回去。
-        if (uiLocale !== null) {
-          const dict = LEX[uiLocale]
+        const picked = resolveLocale()
+        if (picked !== null) {
+          const dict = LEX[picked]
           if (dict && typeof dict[key] === 'string') return dict[key]
         }
         const translate = bound()
