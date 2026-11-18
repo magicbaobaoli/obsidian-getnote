@@ -552,6 +552,9 @@ export function createHandler(config) {
       // 界面语言（null = 自动跟随宿主）。同样放 status：面板首屏就要定稿文案，
       // 晚一拍拿到的语言会让界面先中文后英文闪一下。
       uiLocale: settings.uiLocale,
+      // 库内相对路径。面板首屏就要拿它拼 wiki 链接的跳转目标（库里是
+      // 「得到大脑/随手记/a.md」，而 status.vaultRoot 是绝对路径）。
+      subfolder: getRuntime().subfolder,
       // 自定义笔记模板。跟 status 一起发：点「+」时菜单要立刻列出模板，
       // 再多一次请求会让菜单先空着再长出几项。
       templates: settings.templates,

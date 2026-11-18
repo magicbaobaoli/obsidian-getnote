@@ -5,10 +5,11 @@
  * 这里只做三件事：给 React 一个容器、在视图可见时上报心跳、卸载时清干净。
  */
 
-import { ItemView, WorkspaceLeaf } from 'obsidian'
+import { ItemView, MarkdownRenderer, WorkspaceLeaf } from 'obsidian'
 import * as React from 'preact/compat'
 import { createRoot } from 'preact/compat/client'
 import { PanelRoot, PanelIcon, injectCss } from './panel.js'
+import { setMarkdownHost, clearMarkdownHost } from './markdown.js'
 
 export const VIEW_TYPE_GETNOTE = 'getnote-obsidian-view'
 
@@ -36,6 +37,11 @@ export class GetnoteView extends ItemView {
   async onOpen() {
     injectCss()
 
+    // 正文交给 Obsidian 自己的渲染器：callout、公式、Mermaid、脚注、嵌入块、
+    // 双链、以及 Dataview/Bases 的查询块才能出得来。渲染器要在 'obsidian'
+    // 模块上，而面板的离线测试跑在纯 Node 里没有它，所以从这里注入。
+    setMarkdownHost({ app: this.app, component: this.plugin, MarkdownRenderer })
+
     // 视图容器的默认样式（padding、overflow）会把面板的三栏布局挤变形，
     // 这里自己接管滚动与内边距，让面板贴满整个叶子。
     const container = this.contentEl
@@ -60,6 +66,7 @@ export class GetnoteView extends ItemView {
   }
 
   async onClose() {
+    clearMarkdownHost()
     if (this.heartbeat !== null) {
       window.clearInterval(this.heartbeat)
       this.heartbeat = null

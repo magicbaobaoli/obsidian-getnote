@@ -7,6 +7,8 @@
 
 import * as React from 'preact/compat'
 
+import { MarkdownView, hasMarkdownHost, openLinkInVault } from './markdown.js'
+
 // 面板要访问的本地服务地址，由 main.js 在服务监听成功后写入。
 // Obsidian 里没有宿主的 webServer，/getnote 全部走本机 127.0.0.1 回环端口。
 let __apiBase = ''
@@ -1718,6 +1720,27 @@ async function saveFile(url, filename) {
       if (name === '') return text
       const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
       return text.replace(new RegExp(`^\\s*#\\s+${escaped}\\s*\\n+`), '')
+    }
+
+    /**
+     * 正文渲染的统一入口。
+     *
+     * 有宿主渲染器（Obsidian 的 MarkdownRenderer）就交给它——callout、公式、
+     * Mermaid、脚注、嵌入块、双链、Dataview/Bases 查询块都能出得来；没有
+     * （面板的离线测试跑在纯 Node 里）就退回下面这套手写渲染器，保证测试
+     * 覆盖的仍然是同一份界面。
+     */
+    function renderMarkdown(markdown, options) {
+      const opts = options || {}
+      if (hasMarkdownHost()) {
+        return h(MarkdownView, {
+          markdown,
+          sourcePath: opts.sourcePath || '',
+          onOpenLink: opts.onOpenLink,
+          onToggleTodo: opts.onToggleTodo,
+        })
+      }
+      return renderBlocks(markdown, opts)
     }
 
     function renderBlocks(markdown, options) {
@@ -5021,7 +5044,7 @@ async function saveFile(url, filename) {
                           h('div', { style: { height: 12 } }),
                           // 云端正文常常自己就以 `# 同一个标题` 开头，上面已经渲染过 h1 了，
                           // 留着就是「# 时间线」两行一样的大标题。
-                          detail.content ? renderBlocks(stripLeadingHeading(detail.content, detail.title)) : null,
+                          detail.content ? renderMarkdown(stripLeadingHeading(detail.content, detail.title)) : null,
                           detail.hasTranscript && detail.original !== detail.content
                             ? h(
                                 React.Fragment,
@@ -7341,6 +7364,14 @@ async function saveFile(url, filename) {
 
     function NotePane(props) {
       const { t, status, current, draft, setDraft, dirty, busy, onSave, onDelete, onCopyReference, onOpenWikiLink, onSyncOne, onRestored, onError, onToggleTodo } = props
+      // 渲染器要的是「库内相对路径」：status.vaultRoot 是绝对路径，笔记在库里
+      // 真正的位置是「<子目录>/<笔记相对路径>」。相对链接、图片、嵌入块都靠它解析。
+      const subfolder = status !== null && typeof status.subfolder === 'string' ? status.subfolder.replace(/^\/+|\/+$/g, '') : ''
+      const vaultPathOf = (note) => {
+        const rel = note !== null && typeof note.path === 'string' ? note.path : ''
+        if (rel === '') return subfolder
+        return subfolder === '' ? rel : `${subfolder}/${rel}`
+      }
       const [editing, setEditing] = React.useState(false)
       const [showOutline, setShowOutline] = React.useState(true)
       const [backlinks, setBacklinks] = React.useState(null)
@@ -7745,11 +7776,22 @@ async function saveFile(url, filename) {
               h(
                 'div',
                 { className: 'dshgn_md' + (textScale === 's' ? ' dshgn_mdS' : textScale === 'l' ? ' dshgn_mdL' : '') },
-                renderBlocks(
+                renderMarkdown(
                   current.body !== undefined && current.body !== null ? current.body : current.content,
                   // 编辑态不给 onToggleTodo：那时显示的是可编辑 textarea，正文里的
                   // 方框根本不该响应点击（改内容要走保存）。只有阅读态才可点。
-                  { assets: current.assets || [], onOpenWikiLink, onToggleTodo: editing ? undefined : onToggleTodo },
+                  {
+                    assets: current.assets || [],
+                    sourcePath: vaultPathOf(current),
+                    // 点 [[双链]]：先交给 Obsidian 在编辑器里打开（这是 Obsidian
+                    // 用户的直觉），没注入宿主时退回面板自己的「在面板里打开」。
+                    onOpenLink: (target) => {
+                      if (openLinkInVault(target, vaultPathOf(current))) return
+                      onOpenWikiLink(target)
+                    },
+                    onOpenWikiLink,
+                    onToggleTodo: editing ? undefined : onToggleTodo,
+                  },
                 ),
               ),
               // 关联笔记（反向链接）：用户写了很多 [[双链]]，但双链只有「点进去」

@@ -70,7 +70,7 @@
 ```bash
 npm install
 npm run build      # 产出 main.js，并把 card/ 与 locale/ 复制到插件根
-npm test           # 541 项离线测试（需 Node ≥ 22，jsdom 31 依赖 Node 22 的 zstd API）
+npm test           # 548 项离线测试（需 Node ≥ 22，jsdom 31 依赖 Node 22 的 zstd API）
 ```
 
 开发时用 `npm run dev` 进入 watch 模式。
@@ -160,9 +160,13 @@ npm test
 确认它不掉进错误边界、发出的请求全部指向本地服务、六个标签页逐个切换都不炸，
 以及宿主切到深色主题时面板跟着变深、切回来能还原（配色按宿主的 `theme-dark` 类名
 现场推导，不是硬编码的浅色板）——
-以及 **4 项视图层验收**：同样在 jsdom 里 new 一个真的 `ItemView` 并调 `onOpen`，
+**4 项视图层验收**：同样在 jsdom 里 new 一个真的 `ItemView` 并调 `onOpen`，
 确认面板确实挂进了 Obsidian 的 `contentEl`、样式只注入一份、心跳注册上了，
-关掉叶子时组件树被卸载干净、不留残余节点。
+关掉叶子时组件树被卸载干净、不留残余节点；
+以及 **7 项正文渲染验收**：注入宿主渲染器后确实走它（`app` / `sourcePath` / `component`
+一个不少地传过去）、渲染器抛错时退回原样文本而不是整块空白、快速换笔记时上一版的
+异步渲染不会盖掉新内容、点内链与 Ctrl+点击内链分别交给面板和编辑器、点待办方框
+按序号回调且引用块里的不计数。
 
 全部离线，不碰网络也不碰你的真实库。
 

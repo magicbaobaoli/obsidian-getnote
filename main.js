@@ -918,7 +918,7 @@ async function searchNotes(root, query, { limit = 60, perFile = 3, sort = "relev
   await walk(root, "", 0);
   if (sort !== "path") {
     hits.sort((a3, b3) => {
-      const score = (h4) => h4.matchCount + (h4.titleHit ? 3 : 0);
+      const score = (h5) => h5.matchCount + (h5.titleHit ? 3 : 0);
       const diff = score(b3) - score(a3);
       if (diff !== 0) return diff;
       return a3.path.localeCompare(b3.path, "zh");
@@ -1776,13 +1776,13 @@ var init_biji = __esm({
         this.serverInfo = null;
       }
       headers() {
-        const h4 = {
+        const h5 = {
           authorization: `Bearer ${this.accessToken}`,
           "content-type": "application/json",
           accept: "application/json, text/event-stream"
         };
-        if (this.sessionId) h4["mcp-session-id"] = this.sessionId;
-        return h4;
+        if (this.sessionId) h5["mcp-session-id"] = this.sessionId;
+        return h5;
       }
       async post(payload) {
         const { res, text } = await httpJson(this.url, {
@@ -2590,8 +2590,8 @@ function stampLabel(now) {
 function parseStamp(name) {
   const m3 = STAMP_RE.exec(name);
   if (!m3) return null;
-  const [, y3, mo, d3, h4, mi, s3, ms] = m3;
-  const iso = `${y3}-${mo}-${d3}T${h4}:${mi}:${s3}.${ms}Z`;
+  const [, y3, mo, d3, h5, mi, s3, ms] = m3;
+  const iso = `${y3}-${mo}-${d3}T${h5}:${mi}:${s3}.${ms}Z`;
   const t3 = Date.parse(iso);
   if (!Number.isFinite(t3)) return null;
   return { ms: t3, iso };
@@ -3864,14 +3864,14 @@ function normalizeNote(raw, { topicName } = {}) {
   };
 }
 function fingerprintOf(parts) {
-  const h4 = (0, import_node_crypto5.createHash)("sha1");
-  h4.update(JSON.stringify({
+  const h5 = (0, import_node_crypto5.createHash)("sha1");
+  h5.update(JSON.stringify({
     title: parts?.title ?? "",
     content: parts?.content ?? "",
     updatedAt: parts?.updatedAt ?? "",
     tags: Array.isArray(parts?.tags) ? parts.tags : []
   }));
-  return h4.digest("hex").slice(0, 16);
+  return h5.digest("hex").slice(0, 16);
 }
 
 // src/core/service.js
@@ -4078,13 +4078,13 @@ var EARLY_STOP_PAGES = 2;
 var MAX_NOTES_PER_RUN2 = 2e3;
 var MAX_PAGES = 200;
 function contentFingerprint({ title, content, tags }) {
-  const h4 = (0, import_node_crypto6.createHash)("sha1");
-  h4.update(String(title ?? ""));
-  h4.update("\0");
-  h4.update(String(content ?? ""));
-  h4.update("\0");
-  h4.update(Array.isArray(tags) ? tags.join("") : "");
-  return h4.digest("hex").slice(0, 16);
+  const h5 = (0, import_node_crypto6.createHash)("sha1");
+  h5.update(String(title ?? ""));
+  h5.update("\0");
+  h5.update(String(content ?? ""));
+  h5.update("\0");
+  h5.update(Array.isArray(tags) ? tags.join("") : "");
+  return h5.digest("hex").slice(0, 16);
 }
 async function localFingerprintOf(path) {
   try {
@@ -4186,11 +4186,11 @@ function escapeCell(v3) {
 }
 function fmtMs(ms) {
   const total = Math.max(0, Math.round(Number(ms) / 1e3));
-  const h4 = Math.floor(total / 3600);
+  const h5 = Math.floor(total / 3600);
   const m3 = Math.floor(total % 3600 / 60);
   const s3 = total % 60;
   const pad2 = (n2) => String(n2).padStart(2, "0");
-  return h4 > 0 ? `${pad2(h4)}:${pad2(m3)}:${pad2(s3)}` : `${pad2(m3)}:${pad2(s3)}`;
+  return h5 > 0 ? `${pad2(h5)}:${pad2(m3)}:${pad2(s3)}` : `${pad2(m3)}:${pad2(s3)}`;
 }
 function fmtSeconds(sec) {
   return fmtMs(sec * 1e3);
@@ -4786,6 +4786,9 @@ function createHandler(config) {
       // 界面语言（null = 自动跟随宿主）。同样放 status：面板首屏就要定稿文案，
       // 晚一拍拿到的语言会让界面先中文后英文闪一下。
       uiLocale: settings.uiLocale,
+      // 库内相对路径。面板首屏就要拿它拼 wiki 链接的跳转目标（库里是
+      // 「得到大脑/随手记/a.md」，而 status.vaultRoot 是绝对路径）。
+      subfolder: getRuntime().subfolder,
       // 自定义笔记模板。跟 status 一起发：点「+」时菜单要立刻列出模板，
       // 再多一次请求会让菜单先空着再长出几项。
       templates: settings.templates,
@@ -6466,30 +6469,30 @@ function F(n2) {
   };
 }
 function O(n2, u3, t3, i3, o3, r3, f3, e3, c3, s3) {
-  var a3, h4, v3, p3, w4, _3, g4, m3, x4, C4, S2, M3, $3, I3, H3, L3, T4 = u3.type;
+  var a3, h5, v3, p3, w4, _3, g4, m3, x4, C4, S2, M3, $3, I3, H3, L3, T4 = u3.type;
   if (void 0 !== u3.constructor) return null;
   128 & t3.__u && (c3 = !!(32 & t3.__u), r3 = [e3 = u3.__e = t3.__e]), (a3 = l.__b) && a3(u3);
   n: if ("function" == typeof T4) try {
-    if (m3 = u3.props, x4 = "prototype" in T4 && T4.prototype.render, C4 = (a3 = T4.contextType) && i3[a3.__c], S2 = a3 ? C4 ? C4.props.value : a3.__ : i3, t3.__c ? g4 = (h4 = u3.__c = t3.__c).__ = h4.__E : (x4 ? u3.__c = h4 = new T4(m3, S2) : (u3.__c = h4 = new k(m3, S2), h4.constructor = T4, h4.render = V), C4 && C4.sub(h4), h4.props = m3, h4.state || (h4.state = {}), h4.context = S2, h4.__n = i3, v3 = h4.__d = true, h4.__h = [], h4._sb = []), x4 && null == h4.__s && (h4.__s = h4.state), x4 && null != T4.getDerivedStateFromProps && (h4.__s == h4.state && (h4.__s = d({}, h4.__s)), d(h4.__s, T4.getDerivedStateFromProps(m3, h4.__s))), p3 = h4.props, w4 = h4.state, h4.__v = u3, v3) x4 && null == T4.getDerivedStateFromProps && null != h4.componentWillMount && h4.componentWillMount(), x4 && null != h4.componentDidMount && h4.__h.push(h4.componentDidMount);
+    if (m3 = u3.props, x4 = "prototype" in T4 && T4.prototype.render, C4 = (a3 = T4.contextType) && i3[a3.__c], S2 = a3 ? C4 ? C4.props.value : a3.__ : i3, t3.__c ? g4 = (h5 = u3.__c = t3.__c).__ = h5.__E : (x4 ? u3.__c = h5 = new T4(m3, S2) : (u3.__c = h5 = new k(m3, S2), h5.constructor = T4, h5.render = V), C4 && C4.sub(h5), h5.props = m3, h5.state || (h5.state = {}), h5.context = S2, h5.__n = i3, v3 = h5.__d = true, h5.__h = [], h5._sb = []), x4 && null == h5.__s && (h5.__s = h5.state), x4 && null != T4.getDerivedStateFromProps && (h5.__s == h5.state && (h5.__s = d({}, h5.__s)), d(h5.__s, T4.getDerivedStateFromProps(m3, h5.__s))), p3 = h5.props, w4 = h5.state, h5.__v = u3, v3) x4 && null == T4.getDerivedStateFromProps && null != h5.componentWillMount && h5.componentWillMount(), x4 && null != h5.componentDidMount && h5.__h.push(h5.componentDidMount);
     else {
-      if (x4 && null == T4.getDerivedStateFromProps && m3 !== p3 && null != h4.componentWillReceiveProps && h4.componentWillReceiveProps(m3, S2), !h4.__e && (null != h4.shouldComponentUpdate && false === h4.shouldComponentUpdate(m3, h4.__s, S2) || u3.__v === t3.__v)) {
-        for (u3.__v !== t3.__v && (h4.props = m3, h4.state = h4.__s, h4.__d = false), u3.__e = t3.__e, u3.__k = t3.__k, u3.__k.some(function(n3) {
+      if (x4 && null == T4.getDerivedStateFromProps && m3 !== p3 && null != h5.componentWillReceiveProps && h5.componentWillReceiveProps(m3, S2), !h5.__e && (null != h5.shouldComponentUpdate && false === h5.shouldComponentUpdate(m3, h5.__s, S2) || u3.__v === t3.__v)) {
+        for (u3.__v !== t3.__v && (h5.props = m3, h5.state = h5.__s, h5.__d = false), u3.__e = t3.__e, u3.__k = t3.__k, u3.__k.some(function(n3) {
           n3 && (n3.__ = u3);
-        }), M3 = 0; M3 < h4._sb.length; M3++) h4.__h.push(h4._sb[M3]);
-        h4._sb = [], h4.__h.length && f3.push(h4);
+        }), M3 = 0; M3 < h5._sb.length; M3++) h5.__h.push(h5._sb[M3]);
+        h5._sb = [], h5.__h.length && f3.push(h5);
         break n;
       }
-      null != h4.componentWillUpdate && h4.componentWillUpdate(m3, h4.__s, S2), x4 && null != h4.componentDidUpdate && h4.__h.push(function() {
-        h4.componentDidUpdate(p3, w4, _3);
+      null != h5.componentWillUpdate && h5.componentWillUpdate(m3, h5.__s, S2), x4 && null != h5.componentDidUpdate && h5.__h.push(function() {
+        h5.componentDidUpdate(p3, w4, _3);
       });
     }
-    if (h4.context = S2, h4.props = m3, h4.__P = n2, h4.__e = false, $3 = l.__r, I3 = 0, x4) {
-      for (h4.state = h4.__s, h4.__d = false, $3 && $3(u3), a3 = h4.render(h4.props, h4.state, h4.context), H3 = 0; H3 < h4._sb.length; H3++) h4.__h.push(h4._sb[H3]);
-      h4._sb = [];
+    if (h5.context = S2, h5.props = m3, h5.__P = n2, h5.__e = false, $3 = l.__r, I3 = 0, x4) {
+      for (h5.state = h5.__s, h5.__d = false, $3 && $3(u3), a3 = h5.render(h5.props, h5.state, h5.context), H3 = 0; H3 < h5._sb.length; H3++) h5.__h.push(h5._sb[H3]);
+      h5._sb = [];
     } else do {
-      h4.__d = false, $3 && $3(u3), a3 = h4.render(h4.props, h4.state, h4.context), h4.state = h4.__s;
-    } while (h4.__d && ++I3 < 25);
-    h4.state = h4.__s, null != h4.getChildContext && (i3 = d(d({}, i3), h4.getChildContext())), x4 && !v3 && null != h4.getSnapshotBeforeUpdate && (_3 = h4.getSnapshotBeforeUpdate(p3, w4)), P(n2, y(L3 = null != a3 && a3.type === b && null == a3.key ? a3.props.children : a3) ? L3 : [L3], u3, t3, i3, o3, r3, f3, e3, c3, s3), h4.base = u3.__e, u3.__u &= -161, h4.__h.length && f3.push(h4), g4 && (h4.__E = h4.__ = null);
+      h5.__d = false, $3 && $3(u3), a3 = h5.render(h5.props, h5.state, h5.context), h5.state = h5.__s;
+    } while (h5.__d && ++I3 < 25);
+    h5.state = h5.__s, null != h5.getChildContext && (i3 = d(d({}, i3), h5.getChildContext())), x4 && !v3 && null != h5.getSnapshotBeforeUpdate && (_3 = h5.getSnapshotBeforeUpdate(p3, w4)), P(n2, y(L3 = null != a3 && a3.type === b && null == a3.key ? a3.props.children : a3) ? L3 : [L3], u3, t3, i3, o3, r3, f3, e3, c3, s3), h5.base = u3.__e, u3.__u &= -161, h5.__h.length && f3.push(h5), g4 && (h5.__E = h5.__ = null);
   } catch (n3) {
     if (u3.__v = null, c3 || null != r3) {
       for (u3.__u |= c3 ? 160 : 128; e3 && 8 === e3.nodeType && e3.nextSibling; ) e3 = e3.nextSibling;
@@ -7107,6 +7110,127 @@ var En = b;
 var Cn = dn;
 var xn = { useState: h2, useId: g2, useReducer: p2, useEffect: y2, useLayoutEffect: _2, useInsertionEffect: k3, useTransition: w3, useDeferredValue: R, useSyncExternalStore: E2, startTransition: x3, useRef: A2, useImperativeHandle: F2, useMemo: T2, useCallback: q2, useContext: x2, useDebugValue: P2, version: "18.3.1", Children: L2, render: X, hydrate: nn, unmountComponentAtNode: _n, createPortal: Y, createElement: _, createContext: G, createFactory: vn, cloneElement: yn, createRef: m, Fragment: b, isValidElement: dn, isElement: Cn, isFragment: pn, isMemo: mn, findDOMNode: bn, Component: k, PureComponent: I2, memo: N2, forwardRef: A3, flushSync: gn, unstable_batchedUpdates: Sn, StrictMode: En, Suspense: W, SuspenseList: z3, lazy: j3, __SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED: sn };
 
+// src/view/markdown.js
+var h3 = _;
+var hostApp = null;
+var hostComponent = null;
+var hostRenderer = null;
+function setMarkdownHost(host) {
+  const value = host && typeof host === "object" ? host : null;
+  hostApp = value && value.app ? value.app : null;
+  hostComponent = value && value.component ? value.component : null;
+  hostRenderer = value && value.MarkdownRenderer ? value.MarkdownRenderer : null;
+}
+function clearMarkdownHost() {
+  hostApp = null;
+  hostComponent = null;
+  hostRenderer = null;
+}
+function hasMarkdownHost() {
+  return hostApp !== null && hostRenderer !== null;
+}
+function openLinkInVault(href, sourcePath) {
+  if (hostApp === null || !hostApp.workspace || typeof hostApp.workspace.openLinkText !== "function") {
+    return false;
+  }
+  try {
+    hostApp.workspace.openLinkText(String(href || ""), String(sourcePath || ""), false);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function closestOf(node, selector) {
+  let current = node;
+  while (current) {
+    if (typeof current.closest === "function") {
+      const hit = current.closest(selector);
+      if (hit) return hit;
+    }
+    current = current.parentNode;
+  }
+  return null;
+}
+function openExternalUrl(url) {
+  try {
+    window.open(url, "_blank", "noopener");
+  } catch {
+  }
+}
+function MarkdownView(props) {
+  const { markdown, sourcePath, className, onOpenLink, onToggleTodo } = props;
+  const ref = A2(null);
+  y2(() => {
+    const el = ref.current;
+    if (!el) return void 0;
+    let disposed = false;
+    const target = el.ownerDocument.createElement("div");
+    target.className = "dshgn_mdBody";
+    el.textContent = "";
+    el.appendChild(target);
+    if (!hasMarkdownHost()) {
+      target.textContent = String(markdown || "");
+      return () => {
+        disposed = true;
+        if (target.parentNode) target.parentNode.removeChild(target);
+      };
+    }
+    Promise.resolve(hostRenderer.render(hostApp, String(markdown || ""), target, sourcePath || "", hostComponent)).catch(() => {
+      if (!disposed) target.textContent = String(markdown || "");
+    });
+    return () => {
+      disposed = true;
+      if (target.parentNode) target.parentNode.removeChild(target);
+    };
+  }, [markdown, sourcePath]);
+  const onClick = q2(
+    (event) => {
+      const anchor = closestOf(event.target, "a");
+      if (!anchor) return;
+      const href = anchor.getAttribute("data-href") || anchor.getAttribute("href") || "";
+      if (href === "") return;
+      const internal = anchor.classList.contains("internal-link");
+      if (internal) {
+        event.preventDefault();
+        event.stopPropagation();
+        const inEditor = event.ctrlKey || event.metaKey;
+        if (typeof onOpenLink === "function" && !inEditor) {
+          onOpenLink(href);
+          return;
+        }
+        if (hostApp && hostApp.workspace && typeof hostApp.workspace.openLinkText === "function") {
+          hostApp.workspace.openLinkText(href, sourcePath || "", inEditor);
+        }
+        return;
+      }
+      if (/^https?:/i.test(href)) {
+        event.preventDefault();
+        event.stopPropagation();
+        openExternalUrl(href);
+      }
+    },
+    [onOpenLink, sourcePath]
+  );
+  const onCheckbox = q2(
+    (event) => {
+      if (typeof onToggleTodo !== "function") return;
+      const box = closestOf(event.target, "input.task-list-item-checkbox");
+      if (!box) return;
+      if (closestOf(box, "blockquote")) return;
+      const container = ref.current;
+      if (!container) return;
+      const all = Array.from(container.querySelectorAll("input.task-list-item-checkbox"));
+      const usable = all.filter((item) => !closestOf(item, "blockquote"));
+      const index = usable.indexOf(box);
+      if (index < 0) return;
+      event.preventDefault();
+      onToggleTodo(index);
+    },
+    [onToggleTodo]
+  );
+  return h3("div", { ref, className, onClick, onMouseDown: onCheckbox });
+}
+
 // src/view/panel.js
 var __apiBase = "";
 function setApiOrigin(origin) {
@@ -7153,7 +7277,7 @@ async function saveFile(url, filename) {
   }
   return false;
 }
-var h3 = _;
+var h4 = _;
 var NS = "dsh-getnote";
 var STYLE_ID = "dshgn-style";
 var LEX = {
@@ -8355,14 +8479,14 @@ function rgbToHsl(r3, g4, b3) {
   if (max === min) return { h: 0, s: 0, l: l3 };
   const d3 = max - min;
   const s3 = l3 > 0.5 ? d3 / (2 - max - min) : d3 / (max + min);
-  let h4;
-  if (max === rn2) h4 = ((gn2 - bn2) / d3 + (gn2 < bn2 ? 6 : 0)) / 6;
-  else if (max === gn2) h4 = ((bn2 - rn2) / d3 + 2) / 6;
-  else h4 = ((rn2 - gn2) / d3 + 4) / 6;
-  return { h: h4, s: s3, l: l3 };
+  let h5;
+  if (max === rn2) h5 = ((gn2 - bn2) / d3 + (gn2 < bn2 ? 6 : 0)) / 6;
+  else if (max === gn2) h5 = ((bn2 - rn2) / d3 + 2) / 6;
+  else h5 = ((rn2 - gn2) / d3 + 4) / 6;
+  return { h: h5, s: s3, l: l3 };
 }
-function hslToHex(h4, s3, l3) {
-  const hue = (h4 % 1 + 1) % 1;
+function hslToHex(h5, s3, l3) {
+  const hue = (h5 % 1 + 1) % 1;
   const sat = Math.min(1, Math.max(0, s3));
   const lig = Math.min(1, Math.max(0, l3));
   if (sat === 0) {
@@ -8501,7 +8625,7 @@ function Icon(props) {
   const size = props && typeof props.size === "number" ? props.size : 16;
   const name = props && props.name ? props.name : "brain";
   const path = ICONS[name] || ICONS.brain;
-  return h3(
+  return h4(
     "svg",
     {
       viewBox: "0 0 24 24",
@@ -8516,7 +8640,7 @@ function Icon(props) {
       className: props && props.className ? props.className : void 0
     },
     path.split(" M").map(
-      (segment, index) => h3("path", { key: index, d: index === 0 ? segment : `M${segment}` })
+      (segment, index) => h4("path", { key: index, d: index === 0 ? segment : `M${segment}` })
     )
   );
 }
@@ -8532,11 +8656,11 @@ function renderInline(text, keyPrefix, options) {
     const token = match[0];
     const key = `${keyPrefix}-${seq++}`;
     if (token.startsWith("`")) {
-      nodes.push(h3("code", { key, className: "dshgn_code" }, token.slice(1, -1)));
+      nodes.push(h4("code", { key, className: "dshgn_code" }, token.slice(1, -1)));
     } else if (token.startsWith("**")) {
-      nodes.push(h3("strong", { key }, token.slice(2, -2)));
+      nodes.push(h4("strong", { key }, token.slice(2, -2)));
     } else if (token.startsWith("*")) {
-      nodes.push(h3("em", { key }, token.slice(1, -1)));
+      nodes.push(h4("em", { key }, token.slice(1, -1)));
     } else if (token.startsWith("[[") || token.startsWith("![[")) {
       const embed = token.startsWith("!");
       const inner = token.slice(embed ? 3 : 2, -2);
@@ -8544,10 +8668,10 @@ function renderInline(text, keyPrefix, options) {
       const target = (pipe === -1 ? inner : inner.slice(0, pipe)).trim();
       const label = (pipe === -1 ? inner : inner.slice(pipe + 1)).trim();
       if (embed) {
-        nodes.push(h3("span", { key, className: "dshgn_embed" }, renderEmbed(target, key, opts)));
+        nodes.push(h4("span", { key, className: "dshgn_embed" }, renderEmbed(target, key, opts)));
       } else {
         nodes.push(
-          h3(
+          h4(
             "button",
             {
               key,
@@ -8568,7 +8692,7 @@ function renderInline(text, keyPrefix, options) {
       const label = token.slice(1, split);
       const href = token.slice(split + 2, -1);
       nodes.push(
-        h3(
+        h4(
           "a",
           { key, href, target: "_blank", rel: "noreferrer noopener", className: "dshgn_link" },
           label
@@ -8576,7 +8700,7 @@ function renderInline(text, keyPrefix, options) {
       );
     } else {
       nodes.push(
-        h3("a", { key, href: token, target: "_blank", rel: "noreferrer noopener", className: "dshgn_link" }, token)
+        h4("a", { key, href: token, target: "_blank", rel: "noreferrer noopener", className: "dshgn_link" }, token)
       );
     }
     last = match.index + token.length;
@@ -8594,7 +8718,7 @@ function renderEmbed(target, key, options) {
   const hit = assets.find((a3) => a3.name === clean || a3.name === base);
   const path = hit && hit.path || clean;
   if (IMAGE_EXT_RE.test(path)) {
-    return h3("img", {
+    return h4("img", {
       key,
       className: "dshgn_img",
       src: withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(path)}`),
@@ -8602,7 +8726,7 @@ function renderEmbed(target, key, options) {
       loading: "lazy"
     });
   }
-  return h3("span", { key, className: "dshgn_embedFile" }, base);
+  return h4("span", { key, className: "dshgn_embedFile" }, base);
 }
 function parseTable(lines, start) {
   const headerCells = splitRow(lines[start]);
@@ -8632,6 +8756,18 @@ function stripLeadingHeading(markdown, title) {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return text.replace(new RegExp(`^\\s*#\\s+${escaped}\\s*\\n+`), "");
 }
+function renderMarkdown(markdown, options) {
+  const opts = options || {};
+  if (hasMarkdownHost()) {
+    return h4(MarkdownView, {
+      markdown,
+      sourcePath: opts.sourcePath || "",
+      onOpenLink: opts.onOpenLink,
+      onToggleTodo: opts.onToggleTodo
+    });
+  }
+  return renderBlocks(markdown, opts);
+}
 function renderBlocks(markdown, options) {
   const opts = options || {};
   const lines = String(markdown || "").split(/\r?\n/);
@@ -8659,11 +8795,11 @@ function renderBlocks(markdown, options) {
       index += 1;
       const fenceText = body.join("\n");
       blocks.push(
-        looksLikeTranscript(fenceText) ? h3(TranscriptBlock, { key: `b${key++}`, text: fenceText }) : h3(
+        looksLikeTranscript(fenceText) ? h4(TranscriptBlock, { key: `b${key++}`, text: fenceText }) : h4(
           "pre",
           { key: `b${key++}`, className: "dshgn_pre" },
-          lang ? h3("span", { className: "dshgn_preLang" }, lang) : null,
-          h3("code", null, fenceText)
+          lang ? h4("span", { className: "dshgn_preLang" }, lang) : null,
+          h4("code", null, fenceText)
         )
       );
       continue;
@@ -8672,7 +8808,7 @@ function renderBlocks(markdown, options) {
     if (heading) {
       const level = heading[1].length;
       blocks.push(
-        h3(
+        h4(
           `h${Math.min(level + 0, 6)}`,
           { key: `b${key++}`, className: `dshgn_h dshgn_h${level}` },
           renderInline(heading[2], `b${key}`, opts)
@@ -8682,7 +8818,7 @@ function renderBlocks(markdown, options) {
       continue;
     }
     if (/^(\*{3,}|-{3,}|_{3,})$/.test(trimmed)) {
-      blocks.push(h3("hr", { key: `b${key++}`, className: "dshgn_hr" }));
+      blocks.push(h4("hr", { key: `b${key++}`, className: "dshgn_hr" }));
       index += 1;
       continue;
     }
@@ -8690,30 +8826,30 @@ function renderBlocks(markdown, options) {
       const table = parseTable(lines, index);
       if (table) {
         blocks.push(
-          h3(
+          h4(
             "div",
             { key: `b${key++}`, className: "dshgn_tableWrap" },
-            h3(
+            h4(
               "table",
               { className: "dshgn_table" },
-              h3(
+              h4(
                 "thead",
                 null,
-                h3(
+                h4(
                   "tr",
                   null,
-                  table.header.map((cell, i3) => h3("th", { key: i3 }, renderInline(cell, `th${i3}`, opts)))
+                  table.header.map((cell, i3) => h4("th", { key: i3 }, renderInline(cell, `th${i3}`, opts)))
                 )
               ),
-              h3(
+              h4(
                 "tbody",
                 null,
                 table.rows.map(
-                  (row, rowIndex) => h3(
+                  (row, rowIndex) => h4(
                     "tr",
                     { key: rowIndex },
                     row.map(
-                      (cell, cellIndex) => h3("td", { key: cellIndex }, renderInline(cell, `td${rowIndex}-${cellIndex}`, opts))
+                      (cell, cellIndex) => h4("td", { key: cellIndex }, renderInline(cell, `td${rowIndex}-${cellIndex}`, opts))
                     )
                   )
                 )
@@ -8732,7 +8868,7 @@ function renderBlocks(markdown, options) {
         index += 1;
       }
       blocks.push(
-        h3(
+        h4(
           "blockquote",
           { key: `b${key++}`, className: "dshgn_quote" },
           renderBlocks(body.join("\n"))
@@ -8758,7 +8894,7 @@ function renderBlocks(markdown, options) {
         index += 1;
       }
       blocks.push(
-        h3(
+        h4(
           ordered ? "ol" : "ul",
           { key: `b${key++}`, className: "dshgn_mdList" },
           items.map((item, itemIndex) => {
@@ -8770,10 +8906,10 @@ function renderBlocks(markdown, options) {
               todoCounter.n += 1;
             }
             const done = task !== null && task[1].toLowerCase() === "x";
-            return h3(
+            return h4(
               "li",
               { key: itemIndex, className: task ? "dshgn_li dshgn_task" : "dshgn_li" },
-              task ? h3("span", {
+              task ? h4("span", {
                 className: "dshgn_check" + (done ? " dshgn_checkOn" : "") + (todoIndex >= 0 ? " dshgn_checkHit" : ""),
                 "aria-hidden": "true",
                 role: todoIndex >= 0 ? "checkbox" : void 0,
@@ -8786,7 +8922,7 @@ function renderBlocks(markdown, options) {
                 } : void 0
               }) : null,
               renderInline(content, `li${itemIndex}`, opts),
-              item.continuation.length > 0 ? h3("div", { className: "dshgn_liCont" }, renderInline(item.continuation.join(" "), `lc${itemIndex}`, opts)) : null
+              item.continuation.length > 0 ? h4("div", { className: "dshgn_liCont" }, renderInline(item.continuation.join(" "), `lc${itemIndex}`, opts)) : null
             );
           })
         )
@@ -8799,7 +8935,7 @@ function renderBlocks(markdown, options) {
       index += 1;
     }
     blocks.push(
-      h3("p", { key: `b${key++}`, className: "dshgn_p" }, renderInline(paragraph.join("\n"), `p${key}`, opts))
+      h4("p", { key: `b${key++}`, className: "dshgn_p" }, renderInline(paragraph.join("\n"), `p${key}`, opts))
     );
   }
   return blocks;
@@ -9722,7 +9858,7 @@ function injectCss() {
 function PanelIcon(props) {
   const size = props && typeof props.size === "number" ? props.size : 18;
   const active = props && props.active === true;
-  return h3(Icon, { name: "brain", size, className: active ? "dshgn_sideIcon dshgn_sideIconOn" : "dshgn_sideIcon" });
+  return h4(Icon, { name: "brain", size, className: active ? "dshgn_sideIcon dshgn_sideIconOn" : "dshgn_sideIcon" });
 }
 function GetnotePage() {
   const [locale, setLocale] = h2(() => activeUiLocale());
@@ -10198,20 +10334,20 @@ function GetnotePage() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [current, newNote, openNote, shown, tab, vaultReady]);
-  const tabButton = (id, label, badge) => h3(
+  const tabButton = (id, label, badge) => h4(
     "button",
     { type: "button", className: "dshgn_tab", "data-on": tab === id ? "true" : "false", onClick: () => setTab(id) },
-    h3("span", { className: "dshgn_tabLabel" }, label),
-    badge === void 0 || badge === null ? null : h3("span", { className: "dshgn_tabBadge" }, String(badge))
+    h4("span", { className: "dshgn_tabLabel" }, label),
+    badge === void 0 || badge === null ? null : h4("span", { className: "dshgn_tabBadge" }, String(badge))
   );
-  const head = h3(
+  const head = h4(
     "div",
     { className: "dshgn_head" },
-    h3(
+    h4(
       "div",
       { className: "dshgn_headMain" },
-      h3("div", { className: "dshgn_title" }, t3("panel.title")),
-      h3(
+      h4("div", { className: "dshgn_title" }, t3("panel.title")),
+      h4(
         "div",
         { className: "dshgn_sub", title: status ? status.vaultRoot : "" },
         status === null ? "" : status.vaultMissing ? t3("empty.noVault") : status.vaultRoot
@@ -10219,16 +10355,16 @@ function GetnotePage() {
     ),
     // 动作按钮放在页签**左边**：页签是「去哪」（导航），按钮是「对当前页做什么」（动作）。
     // 动作紧贴内容更有因果关系，也避免鼠标为了点刷新横穿整条顶栏。
-    h3(
+    h4(
       "div",
       { className: "dshgn_actions" },
-      tab === "notes" || tab === "cloud" ? h3(
+      tab === "notes" || tab === "cloud" ? h4(
         b,
         null,
-        h3(
+        h4(
           "div",
           { className: "dshgn_newWrap" },
-          h3(
+          h4(
             "button",
             {
               type: "button",
@@ -10238,21 +10374,21 @@ function GetnotePage() {
               disabled: busy || !vaultReady,
               "data-on": templatesOpen ? "true" : "false"
             },
-            h3(Icon, { name: "plus" })
+            h4(Icon, { name: "plus" })
           ),
           // 模板菜单：直接点「+」会建一篇空笔记，用户还得自己写标题和标签。
           // 常写的几类（日记/读书/会议/随手记）日期和结构都是固定的，
           // 让用户选一次比每次重复劳动好。
-          templatesOpen ? h3(
+          templatesOpen ? h4(
             b,
             null,
-            h3("div", { className: "dshgn_menuMask", onClick: () => setTemplatesOpen(false) }),
-            h3(
+            h4("div", { className: "dshgn_menuMask", onClick: () => setTemplatesOpen(false) }),
+            h4(
               "div",
               { className: "dshgn_menu", role: "menu" },
-              h3("div", { className: "dshgn_menuTitle" }, t3("new.template")),
+              h4("div", { className: "dshgn_menuTitle" }, t3("new.template")),
               newTemplates.map(
-                (item) => h3(
+                (item) => h4(
                   "button",
                   {
                     key: item.id,
@@ -10261,11 +10397,11 @@ function GetnotePage() {
                     role: "menuitem",
                     onClick: () => void newNote(item.id)
                   },
-                  h3(Icon, { name: item.icon, size: 13 }),
+                  h4(Icon, { name: item.icon, size: 13 }),
                   // 自定义模板直接显示模板名（用户自己起的，没有译文可查），
                   // 提示行说明它带的是自己写的骨架，而不是空白。
-                  h3("span", null, item.custom ? item.id.slice("custom:".length) : t3(`new.${item.id}`)),
-                  h3(
+                  h4("span", null, item.custom ? item.id.slice("custom:".length) : t3(`new.${item.id}`)),
+                  h4(
                     "span",
                     { className: "dshgn_menuHint" },
                     item.custom ? t3("new.customHint") : t3(`new.${item.id}Hint`)
@@ -10275,7 +10411,7 @@ function GetnotePage() {
             )
           ) : null
         ),
-        h3(
+        h4(
           "button",
           {
             type: "button",
@@ -10284,11 +10420,11 @@ function GetnotePage() {
             onClick: refresh,
             disabled: busy
           },
-          h3("span", { className: "dshgn_refreshSpin" + (refreshState === "spinning" ? " dshgn_refreshSpinOn" : "") }, h3(Icon, { name: "refresh" }))
+          h4("span", { className: "dshgn_refreshSpin" + (refreshState === "spinning" ? " dshgn_refreshSpinOn" : "") }, h4(Icon, { name: "refresh" }))
         )
       ) : null
     ),
-    h3(
+    h4(
       "div",
       { className: "dshgn_tabs" },
       tabButton("notes", t3("tab.notes")),
@@ -10311,7 +10447,7 @@ function GetnotePage() {
   );
   let body;
   if (tab === "cloud") {
-    body = h3(CloudPane, {
+    body = h4(CloudPane, {
       t: t3,
       status,
       showToast,
@@ -10321,7 +10457,7 @@ function GetnotePage() {
       }
     });
   } else if (tab === "settings") {
-    body = h3(SettingsPane, {
+    body = h4(SettingsPane, {
       t: t3,
       status,
       onSaved: async (message) => {
@@ -10340,7 +10476,7 @@ function GetnotePage() {
       }
     });
   } else if (tab === "card") {
-    body = h3(CardPane, {
+    body = h4(CardPane, {
       t: t3,
       status,
       showToast,
@@ -10350,7 +10486,7 @@ function GetnotePage() {
       }
     });
   } else if (tab === "conflict") {
-    body = h3(ConflictPane, {
+    body = h4(ConflictPane, {
       t: t3,
       status,
       onChanged: async () => {
@@ -10360,7 +10496,7 @@ function GetnotePage() {
       showToast
     });
   } else if (tab === "trash") {
-    body = h3(TrashPane, {
+    body = h4(TrashPane, {
       t: t3,
       status,
       onChanged: async () => {
@@ -10370,12 +10506,12 @@ function GetnotePage() {
       showToast
     });
   } else if (status === null) {
-    body = h3(SkeletonPane, { t: t3 });
+    body = h4(SkeletonPane, { t: t3 });
   } else {
-    body = h3(
+    body = h4(
       "div",
       { className: "dshgn_body" },
-      h3(TreePane, {
+      h4(TreePane, {
         t: t3,
         tree,
         dirs,
@@ -10478,50 +10614,50 @@ function GetnotePage() {
         currentNoteId: current !== null && current.noteId ? current.noteId : null,
         heatmap: status !== null && status.heatmap ? status.heatmap : null
       }),
-      h3(
+      h4(
         "div",
         { className: "dshgn_list" },
-        h3(
+        h4(
           "div",
           { className: "dshgn_searchWrap" },
-          h3(Icon, { name: "search", size: 14, className: "dshgn_searchIcon" }),
-          h3("input", {
+          h4(Icon, { name: "search", size: 14, className: "dshgn_searchIcon" }),
+          h4("input", {
             className: "dshgn_search",
             type: "search",
             value: query,
             placeholder: t3("search.placeholder"),
             onChange: (event) => setQuery(event.target.value)
           }),
-          searching ? h3("span", { className: "dshgn_searching" }, t3("search.searching")) : null
+          searching ? h4("span", { className: "dshgn_searching" }, t3("search.searching")) : null
         ),
         // 限定语法提示：`tag:` / `dir:` 是隐藏功能，不提示没人会知道。
         // 只在输入框有内容时出现，平时不占位置。
-        query.trim() !== "" ? h3("div", { className: "dshgn_searchHint" }, t3("search.hint")) : null,
+        query.trim() !== "" ? h4("div", { className: "dshgn_searchHint" }, t3("search.hint")) : null,
         // D2 批量工具栏：只在有选中时出现，不占常态空间。
-        pickedCount > 0 ? h3(
+        pickedCount > 0 ? h4(
           "div",
           { className: "dshgn_batchBar" },
-          h3("span", { className: "dshgn_batchCount" }, `${pickedCount} ${t3("batch.picked")}`),
-          h3(
+          h4("span", { className: "dshgn_batchCount" }, `${pickedCount} ${t3("batch.picked")}`),
+          h4(
             "button",
             { type: "button", className: "dshgn_batchBtn", onClick: () => setBatchOpen(!batchOpen) },
             t3("batch.actions")
           ),
-          h3("button", { type: "button", className: "dshgn_batchBtn", onClick: clearPicked }, t3("batch.clear")),
-          batchOpen ? h3(
+          h4("button", { type: "button", className: "dshgn_batchBtn", onClick: clearPicked }, t3("batch.clear")),
+          batchOpen ? h4(
             "div",
             { className: "dshgn_batchMenu" },
-            h3(
+            h4(
               "div",
               { className: "dshgn_batchRow" },
-              h3("input", {
+              h4("input", {
                 className: "dshgn_input dshgn_batchInput",
                 type: "text",
                 value: batchTag,
                 placeholder: t3("batch.tagPlaceholder"),
                 onChange: (event) => setBatchTag(event.target.value)
               }),
-              h3(
+              h4(
                 "button",
                 {
                   type: "button",
@@ -10532,17 +10668,17 @@ function GetnotePage() {
                 t3("batch.addTag")
               )
             ),
-            h3(
+            h4(
               "div",
               { className: "dshgn_batchRow" },
-              h3("input", {
+              h4("input", {
                 className: "dshgn_input dshgn_batchInput",
                 type: "text",
                 value: batchDir,
                 placeholder: t3("batch.dirPlaceholder"),
                 onChange: (event) => setBatchDir(event.target.value)
               }),
-              h3(
+              h4(
                 "button",
                 {
                   type: "button",
@@ -10553,7 +10689,7 @@ function GetnotePage() {
                 t3("batch.move")
               )
             ),
-            h3(
+            h4(
               "button",
               {
                 type: "button",
@@ -10568,22 +10704,22 @@ function GetnotePage() {
             )
           ) : null
         ) : null,
-        h3(
+        h4(
           "div",
           { className: "dshgn_listBody" },
-          visible.length === 0 && !searchMode ? h3(
+          visible.length === 0 && !searchMode ? h4(
             "div",
             { className: "dshgn_empty", style: { padding: "24px 12px" } },
-            h3("div", { className: "dshgn_emptyTitle" }, query.trim() !== "" ? t3("empty.search") : t3("empty.noNotes")),
+            h4("div", { className: "dshgn_emptyTitle" }, query.trim() !== "" ? t3("empty.search") : t3("empty.noNotes")),
             // 空列表最需要的不是一句「没有笔记」，而是一个能马上动手的按钮
-            query.trim() === "" && vaultReady ? h3(
+            query.trim() === "" && vaultReady ? h4(
               "button",
               { type: "button", className: "dshgn_btn dshgn_btnPrimary", style: { marginTop: 10 }, onClick: () => void newNote() },
-              h3(Icon, { name: "plus", size: 13 }),
+              h4(Icon, { name: "plus", size: 13 }),
               t3("action.new")
             ) : null
           ) : shown.map(
-            (entry) => h3(
+            (entry) => h4(
               "div",
               {
                 key: entry.path,
@@ -10598,12 +10734,12 @@ function GetnotePage() {
                 },
                 title: entry.path
               },
-              h3(
+              h4(
                 "div",
                 { className: "dshgn_cardTitleRow" },
                 // 勾选框只在「已有选中」或「鼠标悬停」时可见：常态下列表
                 // 干净，一旦开始多选就全部显形，不用先去某个按钮开多选模式。
-                h3(
+                h4(
                   "span",
                   {
                     className: "dshgn_pickBox" + (picked.has(entry.path) ? " dshgn_pickBoxOn" : ""),
@@ -10623,37 +10759,37 @@ function GetnotePage() {
                     },
                     tabIndex: 0
                   },
-                  picked.has(entry.path) ? h3(Icon, { name: "check", size: 11 }) : null
+                  picked.has(entry.path) ? h4(Icon, { name: "check", size: 11 }) : null
                 ),
-                h3("div", { className: "dshgn_cardTitle" }, entry.title),
+                h4("div", { className: "dshgn_cardTitle" }, entry.title),
                 // 正文命中次数：用户能一眼看出哪篇是「真在讲这个」，
                 // 哪篇只是顺口提了一句。
-                searchMode && entry.matchCount > 0 ? h3("span", { className: "dshgn_hitCount" }, `${entry.matchCount}`) : null
+                searchMode && entry.matchCount > 0 ? h4("span", { className: "dshgn_hitCount" }, `${entry.matchCount}`) : null
               ),
-              h3(
+              h4(
                 "div",
                 { className: "dshgn_cardMeta" },
-                entry.date ? h3("span", null, entry.date) : null,
-                entry.dir ? h3("span", null, entry.dir) : null
+                entry.date ? h4("span", null, entry.date) : null,
+                entry.dir ? h4("span", null, entry.dir) : null
               ),
               // 搜索态优先显示正文命中行（带行号），比摘要更能说明为什么它被搜出来
-              searchMode && Array.isArray(entry.matches) && entry.matches.length > 0 ? h3(
+              searchMode && Array.isArray(entry.matches) && entry.matches.length > 0 ? h4(
                 "div",
                 { className: "dshgn_cardMatches" },
                 entry.matches.slice(0, 2).map(
-                  (match, index) => h3(
+                  (match, index) => h4(
                     "div",
                     { key: `${index}-${match.line}`, className: "dshgn_matchLine" },
-                    h3("span", { className: "dshgn_matchNo" }, String(match.line)),
-                    h3("span", { className: "dshgn_matchText" }, match.text)
+                    h4("span", { className: "dshgn_matchNo" }, String(match.line)),
+                    h4("span", { className: "dshgn_matchText" }, match.text)
                   )
                 )
-              ) : entry.excerpt ? h3("div", { className: "dshgn_cardExcerpt" }, entry.excerpt) : null
+              ) : entry.excerpt ? h4("div", { className: "dshgn_cardExcerpt" }, entry.excerpt) : null
             )
           )
         )
       ),
-      h3(NotePane, {
+      h4(NotePane, {
         t: t3,
         status,
         current,
@@ -10693,20 +10829,20 @@ function GetnotePage() {
     themePreview !== null ? themePreview : status !== null ? status.themeColor : null,
     darkTheme
   );
-  return h3(
+  return h4(
     "div",
     { className: "dshgn_rel" },
-    h3(
+    h4(
       "div",
       { className: "dshgn_root", style: themeStyle === null ? void 0 : themeStyle },
       head,
-      error !== null ? h3("div", { className: "dshgn_error", role: "alert" }, `${t3("error.prefix")}: ${error}`) : null,
+      error !== null ? h4("div", { className: "dshgn_error", role: "alert" }, `${t3("error.prefix")}: ${error}`) : null,
       // key 用 tab：切换页签时 React 会换掉整个节点，动画才会从头播一遍。
       // 不加 key 的话 React 复用同一个 DOM，transition 没有「变化」可播，
       // 表现就是切页签时内容硬跳一下。
-      h3("div", { key: tab, className: "dshgn_body" }, body)
+      h4("div", { key: tab, className: "dshgn_body" }, body)
     ),
-    toast !== null ? h3("div", { className: "dshgn_toast" }, h3(Icon, { name: "check", size: 13 }), toast) : null
+    toast !== null ? h4("div", { className: "dshgn_toast" }, h4(Icon, { name: "check", size: 13 }), toast) : null
   );
 }
 function AudioPlayer(props) {
@@ -10826,20 +10962,20 @@ function AudioPlayer(props) {
   const maxValue = Math.max(1, Math.round(duration));
   const shown = Math.min(Math.round(dragging ? dragValue : current), maxValue);
   const percent = maxValue > 0 ? Math.max(0, Math.min(100, shown / maxValue * 100)) : 0;
-  return h3(
+  return h4(
     "div",
     { className: "dshgn_audioCard" },
-    h3(
+    h4(
       "div",
       { className: "dshgn_audioLabel" },
-      h3(Icon, { name: "audio", size: 13 }),
-      h3("span", null, track.kind === "local" ? t3("note.localAudio") : t3("cloud.audio")),
-      track.title ? h3("span", { className: "dshgn_treeCount" }, track.title) : null
+      h4(Icon, { name: "audio", size: 13 }),
+      h4("span", null, track.kind === "local" ? t3("note.localAudio") : t3("cloud.audio")),
+      track.title ? h4("span", { className: "dshgn_treeCount" }, track.title) : null
     ),
-    h3(
+    h4(
       "div",
       { className: "dshgn_audioBar" },
-      h3(
+      h4(
         "button",
         {
           type: "button",
@@ -10848,9 +10984,9 @@ function AudioPlayer(props) {
           title: playing ? t3("cloud.pause") : t3("cloud.play"),
           "aria-label": playing ? t3("cloud.pause") : t3("cloud.play")
         },
-        h3(Icon, { name: playing ? "pause" : "play", size: 14 })
+        h4(Icon, { name: playing ? "pause" : "play", size: 14 })
       ),
-      h3(
+      h4(
         "div",
         {
           ref: barRef,
@@ -10867,17 +11003,17 @@ function AudioPlayer(props) {
           onPointerCancel: onSeekUp,
           onKeyDown: onSeekKey
         },
-        h3(
+        h4(
           "div",
           { className: "dshgn_audioTrack" },
-          h3("div", { className: "dshgn_audioFill", style: { width: `${percent}%` } }),
-          h3("div", { className: "dshgn_audioThumb", style: { left: `${percent}%` } })
+          h4("div", { className: "dshgn_audioFill", style: { width: `${percent}%` } }),
+          h4("div", { className: "dshgn_audioThumb", style: { left: `${percent}%` } })
         )
       ),
-      h3("span", { className: "dshgn_audioTime" }, `${mmss(dragging ? dragValue : current)} / ${mmss(duration)}`)
+      h4("span", { className: "dshgn_audioTime" }, `${mmss(dragging ? dragValue : current)} / ${mmss(duration)}`)
     ),
-    failed ? h3("div", { className: "dshgn_fieldHint", style: { color: "var(--dsw-alias-state-warn-primary)" } }, track.url) : null,
-    h3("audio", {
+    failed ? h4("div", { className: "dshgn_fieldHint", style: { color: "var(--dsw-alias-state-warn-primary)" } }, track.url) : null,
+    h4("audio", {
       ref: audioRef,
       src,
       preload: "metadata",
@@ -11227,27 +11363,27 @@ ${t3("cloud.pushHint")}`)) return;
     }
   }, [detail, onError, openCloudNote, showToast, t3]);
   if (!configured) {
-    return h3(
+    return h4(
       "div",
       { className: "dshgn_pane" },
-      h3(
+      h4(
         "div",
         { className: "dshgn_banner" },
-        h3(Icon, { name: "cloud", size: 26 }),
-        h3("div", { className: "dshgn_emptyTitle" }, t3("cloud.notConfigured")),
-        h3("div", { className: "dshgn_emptyDesc" }, t3("cloud.notConfiguredDesc"))
+        h4(Icon, { name: "cloud", size: 26 }),
+        h4("div", { className: "dshgn_emptyTitle" }, t3("cloud.notConfigured")),
+        h4("div", { className: "dshgn_emptyDesc" }, t3("cloud.notConfiguredDesc"))
       )
     );
   }
   const shown = recallHits !== null ? recallHits : list;
-  const listPane = h3(
+  const listPane = h4(
     "div",
     { className: "dshgn_list" },
-    h3(
+    h4(
       "div",
       { className: "dshgn_searchWrap" },
-      h3(Icon, { name: "search", size: 14, className: "dshgn_searchIcon" }),
-      h3("input", {
+      h4(Icon, { name: "search", size: 14, className: "dshgn_searchIcon" }),
+      h4("input", {
         className: "dshgn_search",
         type: "search",
         value: query,
@@ -11262,10 +11398,10 @@ ${t3("cloud.pushHint")}`)) return;
       })
     ),
     // 知识库筛选：云端笔记是按知识库归档的，不提供筛选就只能一路翻页找
-    topics !== null && topics.length > 0 ? h3(
+    topics !== null && topics.length > 0 ? h4(
       "div",
       { className: "dshgn_topicRow" },
-      h3(
+      h4(
         "button",
         {
           type: "button",
@@ -11275,7 +11411,7 @@ ${t3("cloud.pushHint")}`)) return;
         t3("cloud.allTopics")
       ),
       topics.map(
-        (topic) => h3(
+        (topic) => h4(
           "button",
           {
             key: topic.topicId || topic.id,
@@ -11288,22 +11424,22 @@ ${t3("cloud.pushHint")}`)) return;
         )
       )
     ) : null,
-    h3(
+    h4(
       "div",
       { className: "dshgn_rowLine", style: { padding: "4px 10px 8px" } },
-      h3(
+      h4(
         "button",
         { type: "button", className: "dshgn_btn", onClick: doRecall, disabled: recalling || query.trim() === "" },
-        recalling ? h3("span", { className: "dshgn_spin" }) : h3(Icon, { name: "search", size: 12 }),
+        recalling ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "search", size: 12 }),
         recallHits !== null ? `\u8BED\u4E49\u641C\u7D22 (${recallHits.length})` : "\u8BED\u4E49\u641C\u7D22"
       ),
-      h3(
+      h4(
         "button",
         { type: "button", className: "dshgn_btn", onClick: () => setComposing(true), disabled: busy },
-        h3(Icon, { name: "plus", size: 12 }),
+        h4(Icon, { name: "plus", size: 12 }),
         t3("cloud.newNote")
       ),
-      recallHits !== null ? h3(
+      recallHits !== null ? h4(
         "button",
         {
           type: "button",
@@ -11316,11 +11452,11 @@ ${t3("cloud.pushHint")}`)) return;
         t3("action.cancel")
       ) : null
     ),
-    h3(
+    h4(
       "div",
       { className: "dshgn_listBody" },
-      loading && shown.length === 0 ? h3("div", { className: "dshgn_empty" }, h3("span", { className: "dshgn_spin" }), h3("span", null, t3("cloud.loading"))) : shown.length === 0 ? h3("div", { className: "dshgn_empty" }, h3("div", { className: "dshgn_emptyTitle" }, t3("cloud.empty"))) : shown.map(
-        (note) => h3(
+      loading && shown.length === 0 ? h4("div", { className: "dshgn_empty" }, h4("span", { className: "dshgn_spin" }), h4("span", null, t3("cloud.loading"))) : shown.length === 0 ? h4("div", { className: "dshgn_empty" }, h4("div", { className: "dshgn_emptyTitle" }, t3("cloud.empty"))) : shown.map(
+        (note) => h4(
           "div",
           {
             key: note.noteId,
@@ -11329,69 +11465,69 @@ ${t3("cloud.pushHint")}`)) return;
             onClick: () => void openCloudNote(note, true),
             title: note.noteId
           },
-          h3(
+          h4(
             "div",
             { className: "dshgn_cardTitle" },
-            note.hasAudio ? h3(Icon, { name: "audio", size: 11 }) : null,
+            note.hasAudio ? h4(Icon, { name: "audio", size: 11 }) : null,
             note.title || "(\u65E0\u6807\u9898)"
           ),
-          h3(
+          h4(
             "div",
             { className: "dshgn_cardMeta" },
-            note.updatedAt || note.createdAt ? h3("span", null, String(note.updatedAt || note.createdAt).slice(0, 10)) : null,
-            note.topics && note.topics[0] ? h3("span", null, note.topics[0].name) : null,
-            typeof note.score === "number" ? h3("span", null, note.score.toFixed(2)) : null
+            note.updatedAt || note.createdAt ? h4("span", null, String(note.updatedAt || note.createdAt).slice(0, 10)) : null,
+            note.topics && note.topics[0] ? h4("span", null, note.topics[0].name) : null,
+            typeof note.score === "number" ? h4("span", null, note.score.toFixed(2)) : null
           ),
-          note.tags.length > 0 ? h3("div", { className: "dshgn_cardExcerpt" }, note.tags.map((x4) => x4.name).join(" \xB7 ")) : null
+          note.tags.length > 0 ? h4("div", { className: "dshgn_cardExcerpt" }, note.tags.map((x4) => x4.name).join(" \xB7 ")) : null
         )
       )
     ),
-    hasMore && recallHits === null ? h3(
+    hasMore && recallHits === null ? h4(
       "div",
       { style: { padding: "6px 10px 10px" } },
-      h3("button", { type: "button", className: "dshgn_btn", onClick: loadMore, disabled: loading }, loading ? h3("span", { className: "dshgn_spin" }) : null, t3("cloud.loadMore"))
+      h4("button", { type: "button", className: "dshgn_btn", onClick: loadMore, disabled: loading }, loading ? h4("span", { className: "dshgn_spin" }) : null, t3("cloud.loadMore"))
     ) : null
   );
-  const readerPane = h3(
+  const readerPane = h4(
     "div",
     { className: "dshgn_note" },
-    composing ? h3(
+    composing ? h4(
       "div",
       { className: "dshgn_pane" },
-      h3(
+      h4(
         "div",
         { className: "dshgn_cardBox" },
-        h3(
+        h4(
           "div",
           { className: "dshgn_sectionHead" },
-          h3("span", { className: "dshgn_sectionTitle" }, t3("cloud.newNote")),
-          activeTopic !== null ? h3("span", { className: "dshgn_badge" }, activeTopic.name) : null
+          h4("span", { className: "dshgn_sectionTitle" }, t3("cloud.newNote")),
+          activeTopic !== null ? h4("span", { className: "dshgn_badge" }, activeTopic.name) : null
         ),
-        h3(
+        h4(
           "div",
           { className: "dshgn_field" },
-          h3("span", { className: "dshgn_fieldLabel" }, t3("cloud.newNoteTitle")),
-          h3("input", {
+          h4("span", { className: "dshgn_fieldLabel" }, t3("cloud.newNoteTitle")),
+          h4("input", {
             className: "dshgn_input",
             value: newTitle,
             autoFocus: true,
             onChange: (event) => setNewTitle(event.target.value)
           })
         ),
-        h3(
+        h4(
           "div",
           { className: "dshgn_field" },
-          h3("span", { className: "dshgn_fieldLabel" }, t3("cloud.newNoteBody")),
-          h3("textarea", {
+          h4("span", { className: "dshgn_fieldLabel" }, t3("cloud.newNoteBody")),
+          h4("textarea", {
             className: "dshgn_textarea",
             value: newBody,
             onChange: (event) => setNewBody(event.target.value)
           })
         ),
-        h3(
+        h4(
           "div",
           { className: "dshgn_rowLine" },
-          h3(
+          h4(
             "button",
             {
               type: "button",
@@ -11399,10 +11535,10 @@ ${t3("cloud.pushHint")}`)) return;
               onClick: createCloudNote,
               disabled: busy || newTitle.trim() === ""
             },
-            busy ? h3("span", { className: "dshgn_spin" }) : h3(Icon, { name: "check", size: 12 }),
+            busy ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "check", size: 12 }),
             t3("cloud.create")
           ),
-          h3(
+          h4(
             "button",
             {
               type: "button",
@@ -11418,67 +11554,67 @@ ${t3("cloud.pushHint")}`)) return;
           )
         )
       )
-    ) : selected === null ? h3("div", { className: "dshgn_empty" }, h3(Icon, { name: "cloud", size: 26 }), h3("div", { className: "dshgn_emptyTitle" }, t3("cloud.title")), h3("div", { className: "dshgn_emptyDesc" }, t3("cloud.desc"))) : h3(
+    ) : selected === null ? h4("div", { className: "dshgn_empty" }, h4(Icon, { name: "cloud", size: 26 }), h4("div", { className: "dshgn_emptyTitle" }, t3("cloud.title")), h4("div", { className: "dshgn_emptyDesc" }, t3("cloud.desc"))) : h4(
       b,
       null,
-      h3(
+      h4(
         "div",
         { className: "dshgn_noteHead" },
-        h3("div", { className: "dshgn_notePath" }, selected.title || selected.noteId),
-        detail !== null && !editing ? h3(
+        h4("div", { className: "dshgn_notePath" }, selected.title || selected.noteId),
+        detail !== null && !editing ? h4(
           b,
           null,
-          h3("button", { type: "button", className: "dshgn_iconBtn", title: t3("action.edit"), onClick: () => setEditing(true), disabled: busy }, h3(Icon, { name: "edit" })),
-          h3("button", { type: "button", className: "dshgn_iconBtn", title: t3("cloud.pullOne"), onClick: pullOne, disabled: busy }, h3(Icon, { name: "up" })),
+          h4("button", { type: "button", className: "dshgn_iconBtn", title: t3("action.edit"), onClick: () => setEditing(true), disabled: busy }, h4(Icon, { name: "edit" })),
+          h4("button", { type: "button", className: "dshgn_iconBtn", title: t3("cloud.pullOne"), onClick: pullOne, disabled: busy }, h4(Icon, { name: "up" })),
           // 把本地改动推到云端：以前只能单向「云端 → 本地」，用户在本地
           // 改完笔记就没有任何办法把它送回云端，只能去得到大脑里重写一遍。
-          h3("button", { type: "button", className: "dshgn_iconBtn", title: t3("cloud.pushLocal"), onClick: pushLocalOne, disabled: busy }, h3(Icon, { name: "cloud" })),
-          h3("button", { type: "button", className: "dshgn_iconBtn", title: t3("cloud.deleteCloud"), onClick: deleteCloud, disabled: busy }, h3(Icon, { name: "trash" }))
+          h4("button", { type: "button", className: "dshgn_iconBtn", title: t3("cloud.pushLocal"), onClick: pushLocalOne, disabled: busy }, h4(Icon, { name: "cloud" })),
+          h4("button", { type: "button", className: "dshgn_iconBtn", title: t3("cloud.deleteCloud"), onClick: deleteCloud, disabled: busy }, h4(Icon, { name: "trash" }))
         ) : null
       ),
-      detailLoading ? h3("div", { className: "dshgn_emptyState" }, h3("span", { className: "dshgn_spin" }), h3("span", { style: { marginLeft: 8 } }, t3("cloud.polling"))) : detail === null ? h3("div", { className: "dshgn_emptyState" }, t3("cloud.polling")) : editing ? h3(
+      detailLoading ? h4("div", { className: "dshgn_emptyState" }, h4("span", { className: "dshgn_spin" }), h4("span", { style: { marginLeft: 8 } }, t3("cloud.polling"))) : detail === null ? h4("div", { className: "dshgn_emptyState" }, t3("cloud.polling")) : editing ? h4(
         "div",
         { className: "dshgn_pane" },
-        h3(
+        h4(
           "div",
           { className: "dshgn_cardBox" },
-          h3(
+          h4(
             "div",
             { className: "dshgn_field" },
-            h3("span", { className: "dshgn_fieldLabel" }, t3("cloud.editTitle")),
-            h3("input", { className: "dshgn_input", value: draftTitle, onChange: (e3) => setDraftTitle(e3.target.value) })
+            h4("span", { className: "dshgn_fieldLabel" }, t3("cloud.editTitle")),
+            h4("input", { className: "dshgn_input", value: draftTitle, onChange: (e3) => setDraftTitle(e3.target.value) })
           ),
-          h3(
+          h4(
             "div",
             { className: "dshgn_field" },
-            h3("span", { className: "dshgn_fieldLabel" }, t3("cloud.editBody")),
-            h3("textarea", { className: "dshgn_textarea", value: draftBody, onChange: (e3) => setDraftBody(e3.target.value) })
+            h4("span", { className: "dshgn_fieldLabel" }, t3("cloud.editBody")),
+            h4("textarea", { className: "dshgn_textarea", value: draftBody, onChange: (e3) => setDraftBody(e3.target.value) })
           ),
-          h3(
+          h4(
             "div",
             { className: "dshgn_rowLine" },
-            h3("button", { type: "button", className: "dshgn_btn dshgn_btnPri", onClick: saveCloud, disabled: busy }, busy ? h3("span", { className: "dshgn_spin" }) : h3(Icon, { name: "check", size: 12 }), t3("cloud.saveCloud")),
-            h3("button", { type: "button", className: "dshgn_btn", onClick: () => setEditing(false), disabled: busy }, t3("action.cancel"))
+            h4("button", { type: "button", className: "dshgn_btn dshgn_btnPri", onClick: saveCloud, disabled: busy }, busy ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "check", size: 12 }), t3("cloud.saveCloud")),
+            h4("button", { type: "button", className: "dshgn_btn", onClick: () => setEditing(false), disabled: busy }, t3("action.cancel"))
           )
         )
-      ) : h3(
+      ) : h4(
         "div",
         { className: "dshgn_scroll" },
-        h3(
+        h4(
           "div",
           { className: "dshgn_md" },
-          h3("h1", { className: "dshgn_h dshgn_h1" }, detail.title || "(\u65E0\u6807\u9898)"),
-          detail.tags.length > 0 ? h3(
+          h4("h1", { className: "dshgn_h dshgn_h1" }, detail.title || "(\u65E0\u6807\u9898)"),
+          detail.tags.length > 0 ? h4(
             "div",
             { className: "dshgn_rowLine", style: { gap: 6, marginBottom: 12 } },
             detail.tags.map(
-              (tag) => h3(
+              (tag) => h4(
                 "span",
                 { key: tag.name || tag.id, className: "dshgn_tagPill" },
                 tag.name,
                 // 云端标签可删：用一个极小的 × 而不是整块可点，
                 // 否则用户想选文字复制时会被误删掉标签。
-                h3(
+                h4(
                   "button",
                   {
                     type: "button",
@@ -11494,10 +11630,10 @@ ${t3("cloud.pushHint")}`)) return;
           ) : null,
           // 加标签：输入框 + 回车。标签是云端的一等数据，能加不能删很别扭，
           // 所以两个动作都要有。
-          h3(
+          h4(
             "div",
             { className: "dshgn_rowLine", style: { gap: 6, marginBottom: 12 } },
-            h3("input", {
+            h4("input", {
               className: "dshgn_input",
               style: { maxWidth: 180, height: 26 },
               value: tagDraft,
@@ -11512,7 +11648,7 @@ ${t3("cloud.pushHint")}`)) return;
                 }
               }
             }),
-            h3(
+            h4(
               "button",
               {
                 type: "button",
@@ -11524,10 +11660,10 @@ ${t3("cloud.pushHint")}`)) return;
                   void addCloudTag(value);
                 }
               },
-              h3(Icon, { name: "plus", size: 12 }),
+              h4(Icon, { name: "plus", size: 12 }),
               t3("cloud.tags")
             ),
-            h3(
+            h4(
               "button",
               {
                 type: "button",
@@ -11535,20 +11671,20 @@ ${t3("cloud.pushHint")}`)) return;
                 disabled: busy,
                 onClick: () => void shareCloud(false)
               },
-              h3(Icon, { name: "link", size: 12 }),
+              h4(Icon, { name: "link", size: 12 }),
               t3("cloud.shareLink")
             )
           ),
           // 分享出来的链接直接显示出来，用户能选中复制（剪贴板可能被拒）
-          shareUrl !== null ? h3(
+          shareUrl !== null ? h4(
             "div",
             { className: "dshgn_section", style: { marginBottom: 12 } },
-            h3("div", { className: "dshgn_sectionTitle" }, t3("cloud.shareCreated")),
-            h3(
+            h4("div", { className: "dshgn_sectionTitle" }, t3("cloud.shareCreated")),
+            h4(
               "div",
               { className: "dshgn_rowLine", style: { gap: 6 } },
-              h3("code", { className: "dshgn_code", style: { wordBreak: "break-all" } }, shareUrl),
-              h3(
+              h4("code", { className: "dshgn_code", style: { wordBreak: "break-all" } }, shareUrl),
+              h4(
                 "button",
                 {
                   type: "button",
@@ -11565,57 +11701,57 @@ ${t3("cloud.pushHint")}`)) return;
             )
           ) : null,
           // 录音优先：用户要的就是「听原声」，所以放在正文之前
-          detail.audio.length > 0 ? detail.audio.map((track, index) => h3(AudioPlayer, { key: `${track.url}-${index}`, t: t3, track })) : null,
-          detail.audio.length > 0 ? h3("div", { style: { height: 12 } }) : null,
-          detail.moments.length > 0 ? h3(
+          detail.audio.length > 0 ? detail.audio.map((track, index) => h4(AudioPlayer, { key: `${track.url}-${index}`, t: t3, track })) : null,
+          detail.audio.length > 0 ? h4("div", { style: { height: 12 } }) : null,
+          detail.moments.length > 0 ? h4(
             "div",
             { className: "dshgn_section", style: { marginTop: 12 } },
-            h3("div", { className: "dshgn_sectionTitle" }, t3("cloud.moments")),
-            h3(
+            h4("div", { className: "dshgn_sectionTitle" }, t3("cloud.moments")),
+            h4(
               "div",
               null,
               detail.moments.map(
-                (moment, index) => h3(
+                (moment, index) => h4(
                   "div",
                   { key: `m-${index}`, className: "dshgn_moment" },
-                  h3("span", { className: "dshgn_momentAt" }, formatMoment(moment.startMs)),
-                  h3("span", null, moment.text)
+                  h4("span", { className: "dshgn_momentAt" }, formatMoment(moment.startMs)),
+                  h4("span", null, moment.text)
                 )
               )
             )
           ) : null,
-          detail.todos.length > 0 ? h3(
+          detail.todos.length > 0 ? h4(
             "div",
             { className: "dshgn_section", style: { marginTop: 12 } },
-            h3("div", { className: "dshgn_sectionTitle" }, t3("cloud.todos")),
-            h3(
+            h4("div", { className: "dshgn_sectionTitle" }, t3("cloud.todos")),
+            h4(
               "ul",
               { className: "dshgn_mdList" },
               detail.todos.map(
-                (todo, index) => h3(
+                (todo, index) => h4(
                   "li",
                   { key: `t-${index}`, className: "dshgn_li" },
-                  h3("span", { className: "dshgn_check" + (todo.completed ? " dshgn_checkOn" : ""), style: { marginRight: 6 } }),
+                  h4("span", { className: "dshgn_check" + (todo.completed ? " dshgn_checkOn" : ""), style: { marginRight: 6 } }),
                   todo.text
                 )
               )
             )
           ) : null,
-          h3("div", { style: { height: 12 } }),
+          h4("div", { style: { height: 12 } }),
           // 云端正文常常自己就以 `# 同一个标题` 开头，上面已经渲染过 h1 了，
           // 留着就是「# 时间线」两行一样的大标题。
-          detail.content ? renderBlocks(stripLeadingHeading(detail.content, detail.title)) : null,
-          detail.hasTranscript && detail.original !== detail.content ? h3(
+          detail.content ? renderMarkdown(stripLeadingHeading(detail.content, detail.title)) : null,
+          detail.hasTranscript && detail.original !== detail.content ? h4(
             b,
             null,
-            h3("h2", { className: "dshgn_h dshgn_h2" }, t3("cloud.transcript")),
-            h3(TranscriptBlock, { text: detail.original })
+            h4("h2", { className: "dshgn_h dshgn_h2" }, t3("cloud.transcript")),
+            h4(TranscriptBlock, { text: detail.original })
           ) : null
         )
       )
     )
   );
-  return h3("div", { className: "dshgn_body" }, listPane, readerPane);
+  return h4("div", { className: "dshgn_body" }, listPane, readerPane);
 }
 function TranscriptBlock(props) {
   const text = String(props && props.text || "");
@@ -11638,15 +11774,15 @@ function TranscriptBlock(props) {
   }
   if (entries.length === 0) return null;
   const children = entries.map(
-    (entry, index) => h3(
+    (entry, index) => h4(
       "p",
       { key: `t${index}` },
-      h3("span", { className: "dshgn_ts" }, entry.stamp === null ? "" : entry.stamp),
-      entry.speaker === "" ? null : h3("span", { className: "dshgn_speaker" }, entry.speaker),
+      h4("span", { className: "dshgn_ts" }, entry.stamp === null ? "" : entry.stamp),
+      entry.speaker === "" ? null : h4("span", { className: "dshgn_speaker" }, entry.speaker),
       entry.body
     )
   );
-  return h3("div", { className: "dshgn_transcript" }, children);
+  return h4("div", { className: "dshgn_transcript" }, children);
 }
 function looksLikeTranscript(text) {
   const hits = String(text || "").match(/^\s*[^\[]*\[[0-9]{1,2}:[0-9]{2}(?::[0-9]{2})?\]/gm);
@@ -11687,16 +11823,16 @@ function LanguageCard(props) {
     },
     [busy, onError, onLocaleChange, onSaved, t3]
   );
-  return h3(
+  return h4(
     "div",
     { className: "dshgn_section" },
-    h3("div", { className: "dshgn_sectionHead" }, h3("span", null, t3("lang.title"))),
-    h3("div", { className: "dshgn_sectionDesc" }, t3("lang.desc")),
-    h3(
+    h4("div", { className: "dshgn_sectionHead" }, h4("span", null, t3("lang.title"))),
+    h4("div", { className: "dshgn_sectionDesc" }, t3("lang.desc")),
+    h4(
       "div",
       { className: "dshgn_langRow" },
       options.map(
-        (option) => h3(
+        (option) => h4(
           "button",
           {
             key: option.id === null ? "auto" : option.id,
@@ -11756,30 +11892,30 @@ function TemplateCard(props) {
       setBusy(false);
     }
   }, [busy, draft, onError, onSaved, t3]);
-  return h3(
+  return h4(
     "div",
     { className: "dshgn_section" },
-    h3(
+    h4(
       "div",
       { className: "dshgn_sectionHead" },
-      h3("span", null, t3("settings.templateTitle")),
-      h3("span", { className: "dshgn_sectionHint" }, `${list.length} / 12`)
+      h4("span", null, t3("settings.templateTitle")),
+      h4("span", { className: "dshgn_sectionHint" }, `${list.length} / 12`)
     ),
-    h3("div", { className: "dshgn_sectionDesc" }, t3("settings.templateDesc")),
-    list.length === 0 ? h3("div", { className: "dshgn_emptyRow" }, t3("settings.templateEmpty")) : h3(
+    h4("div", { className: "dshgn_sectionDesc" }, t3("settings.templateDesc")),
+    list.length === 0 ? h4("div", { className: "dshgn_emptyRow" }, t3("settings.templateEmpty")) : h4(
       "div",
       { className: "dshgn_tplList" },
       list.map(
-        (item) => h3(
+        (item) => h4(
           "div",
           { key: item.name, className: "dshgn_tplRow" },
-          h3(
+          h4(
             "div",
             { className: "dshgn_tplMain" },
-            h3("div", { className: "dshgn_tplName" }, item.name),
-            h3("div", { className: "dshgn_tplBody" }, item.body || "\u2014")
+            h4("div", { className: "dshgn_tplName" }, item.name),
+            h4("div", { className: "dshgn_tplBody" }, item.body || "\u2014")
           ),
-          h3(
+          h4(
             "button",
             {
               type: "button",
@@ -11791,10 +11927,10 @@ function TemplateCard(props) {
         )
       )
     ),
-    adding ? h3(
+    adding ? h4(
       "div",
       { className: "dshgn_tplForm" },
-      h3("input", {
+      h4("input", {
         className: "dshgn_input",
         value: name,
         placeholder: t3("settings.templateName"),
@@ -11809,8 +11945,8 @@ function TemplateCard(props) {
           }
         }
       }),
-      h3("div", { className: "dshgn_fieldHint" }, t3("settings.templateNameHint")),
-      h3("textarea", {
+      h4("div", { className: "dshgn_fieldHint" }, t3("settings.templateNameHint")),
+      h4("textarea", {
         className: "dshgn_textarea",
         value: body,
         placeholder: t3("settings.templateBody"),
@@ -11818,30 +11954,30 @@ function TemplateCard(props) {
         maxLength: 4e3,
         onChange: (event) => setBody(event.target.value)
       }),
-      h3("div", { className: "dshgn_fieldHint" }, t3("settings.templateBodyHint")),
-      h3(
+      h4("div", { className: "dshgn_fieldHint" }, t3("settings.templateBodyHint")),
+      h4(
         "div",
         { className: "dshgn_btnRow" },
-        h3(
+        h4(
           "button",
           { type: "button", className: "dshgn_btn dshgn_btnPri", onClick: add, disabled: name.trim() === "" },
           t3("settings.templateAdd")
         ),
-        h3(
+        h4(
           "button",
           { type: "button", className: "dshgn_btn", onClick: () => setAdding(false) },
           t3("action.cancel")
         )
       )
-    ) : h3(
+    ) : h4(
       "div",
       { className: "dshgn_btnRow" },
-      h3(
+      h4(
         "button",
         { type: "button", className: "dshgn_btn", onClick: () => setAdding(true), disabled: list.length >= 12 },
         t3("settings.templateAdd")
       ),
-      h3(
+      h4(
         "button",
         { type: "button", className: "dshgn_btn dshgn_btnPri", onClick: () => void save(), disabled: busy || !dirty },
         t3("settings.templateSave")
@@ -12045,23 +12181,23 @@ function CardPane(props) {
   const running = run !== null && run.running === true;
   const result = run !== null ? run.result : null;
   const lines = run !== null && Array.isArray(run.lines) ? run.lines : [];
-  return h3(
+  return h4(
     "div",
     { className: "dshgn_pane" },
-    h3(
+    h4(
       "div",
       { className: "dshgn_paneInner" },
-      h3("h2", { className: "dshgn_h dshgn_h2" }, t3("card.title")),
-      h3("div", { className: "dshgn_paneDesc" }, t3("card.desc")),
+      h4("h2", { className: "dshgn_h dshgn_h2" }, t3("card.title")),
+      h4("div", { className: "dshgn_paneDesc" }, t3("card.desc")),
       // ── 环境自检 ──
-      h3(
+      h4(
         "div",
         { className: "dshgn_section" },
-        h3(
+        h4(
           "div",
           { className: "dshgn_sectionHead" },
-          h3("span", null, t3("card.envBridge")),
-          h3(
+          h4("span", null, t3("card.envBridge")),
+          h4(
             "span",
             {
               className: "dshgn_badge " + (ready ? "dshgn_badgeOk" : "dshgn_badgeWarn")
@@ -12069,16 +12205,16 @@ function CardPane(props) {
             ready ? t3("card.envOk") : t3("card.envMissing")
           )
         ),
-        env === null ? h3("div", { className: "dshgn_sectionDesc" }, "\u2026") : h3(
+        env === null ? h4("div", { className: "dshgn_sectionDesc" }, "\u2026") : h4(
           "div",
           { className: "dshgn_sectionDesc" },
           ready ? `Python ${env.python || "?"} \xB7 bleak ${env.bleak || "?"}` : t3("card.envHint")
         ),
-        !ready && env !== null && env.error ? h3("pre", { className: "dshgn_log" }, String(env.error)) : null,
-        h3(
+        !ready && env !== null && env.error ? h4("pre", { className: "dshgn_log" }, String(env.error)) : null,
+        h4(
           "div",
           { className: "dshgn_row" },
-          h3(
+          h4(
             "button",
             {
               type: "button",
@@ -12088,7 +12224,7 @@ function CardPane(props) {
             },
             t3("card.envBridge")
           ),
-          h3(
+          h4(
             "button",
             {
               type: "button",
@@ -12098,7 +12234,7 @@ function CardPane(props) {
             },
             scanning ? t3("card.scanning") : t3("card.scan")
           ),
-          h3(
+          h4(
             "button",
             {
               type: "button",
@@ -12109,7 +12245,7 @@ function CardPane(props) {
             t3("card.refresh")
           )
         ),
-        found !== null && Array.isArray(found.cards) ? h3(
+        found !== null && Array.isArray(found.cards) ? h4(
           "div",
           { className: "dshgn_sectionDesc" },
           found.cards.length === 0 ? t3("card.scanNone") : found.cards.map((card) => `${card.name || "?"} (${card.address || ""})`).join("  \xB7  ")
@@ -12119,26 +12255,26 @@ function CardPane(props) {
       //
       // 放在「卡片上的录音」前面：传一小时录音，BLE 要四十多分钟，走热点
       // 通常一两分钟。先让人看到这条快路，再去纠结导哪几个文件。
-      h3(
+      h4(
         "div",
         { className: "dshgn_section" },
-        h3(
+        h4(
           "div",
           { className: "dshgn_sectionHead" },
-          h3("span", null, t3("card.wifiTitle")),
-          wifiNet !== null && wifiNet.current ? h3("span", { className: "dshgn_badge" }, wifiNet.current) : null
+          h4("span", null, t3("card.wifiTitle")),
+          wifiNet !== null && wifiNet.current ? h4("span", { className: "dshgn_badge" }, wifiNet.current) : null
         ),
-        h3("div", { className: "dshgn_sectionDesc" }, t3("card.wifiDesc")),
+        h4("div", { className: "dshgn_sectionDesc" }, t3("card.wifiDesc")),
         // 连上之后必须一眼看到「现在挂在卡片热点上」——不然用户会以为断网。
-        wifiNet !== null && wifiNet.cardLike && wifiNet.cardLike.length > 0 ? h3(
+        wifiNet !== null && wifiNet.cardLike && wifiNet.cardLike.length > 0 ? h4(
           "div",
           { className: "dshgn_sectionDesc" },
           `${t3("card.wifiAvailable")}\uFF1A${wifiNet.cardLike.join("  \xB7  ")}`
         ) : null,
-        h3(
+        h4(
           "div",
           { className: "dshgn_row" },
-          h3(
+          h4(
             "button",
             {
               type: "button",
@@ -12148,7 +12284,7 @@ function CardPane(props) {
             },
             wifiBusy ? t3("card.wifiBusy") : t3("card.wifiGo")
           ),
-          h3(
+          h4(
             "button",
             {
               type: "button",
@@ -12158,7 +12294,7 @@ function CardPane(props) {
             },
             t3("card.wifiRescan")
           ),
-          h3(
+          h4(
             "button",
             {
               type: "button",
@@ -12170,22 +12306,22 @@ function CardPane(props) {
           )
         ),
         // 连上了但没找到服务，或者卡片热点名/密码拿不到时，手输是最后一条路。
-        h3(
+        h4(
           "div",
           { className: "dshgn_row" },
-          h3("input", {
+          h4("input", {
             className: "dshgn_input",
             value: wifiManual.ssid,
             placeholder: t3("card.wifiSsid"),
             onChange: (event) => setWifiManual({ ssid: event.target.value, password: wifiManual.password })
           }),
-          h3("input", {
+          h4("input", {
             className: "dshgn_input",
             value: wifiManual.password,
             placeholder: t3("card.wifiPassword"),
             onChange: (event) => setWifiManual({ ssid: wifiManual.ssid, password: event.target.value })
           }),
-          h3(
+          h4(
             "button",
             {
               type: "button",
@@ -12196,7 +12332,7 @@ function CardPane(props) {
             t3("card.wifiJoin")
           )
         ),
-        wifiHot !== null && wifiHot.ok === true ? h3(
+        wifiHot !== null && wifiHot.ok === true ? h4(
           "div",
           { className: "dshgn_sectionDesc" },
           [
@@ -12207,15 +12343,15 @@ function CardPane(props) {
         ) : null,
         // 探测到的传输服务：面板不给下载按钮（协议还没对上），但把路径摊开，
         // 让人能自己去 curl 一下看是什么。
-        wifiHot !== null && Array.isArray(wifiHot.hits) && wifiHot.hits.length > 0 ? h3(
+        wifiHot !== null && Array.isArray(wifiHot.hits) && wifiHot.hits.length > 0 ? h4(
           "div",
           { className: "dshgn_fileList" },
           wifiHot.hits.map(
-            (hit, index) => h3(
+            (hit, index) => h4(
               "div",
               { key: `${hit.path || index}`, className: "dshgn_fileRow" },
-              h3("span", { className: "dshgn_fileName" }, hit.path || "?"),
-              h3(
+              h4("span", { className: "dshgn_fileName" }, hit.path || "?"),
+              h4(
                 "span",
                 { className: "dshgn_fileMeta" },
                 `${hit.status || "?"} \xB7 ${formatBytes2(hit.bytes || 0)}`
@@ -12225,61 +12361,61 @@ function CardPane(props) {
         ) : null
       ),
       // ── 卡片上的录音 ──
-      h3(
+      h4(
         "div",
         { className: "dshgn_section" },
-        h3(
+        h4(
           "div",
           { className: "dshgn_sectionHead" },
-          h3("span", null, t3("card.pending")),
-          files === null ? null : h3("span", { className: "dshgn_badge" }, String(files.length))
+          h4("span", null, t3("card.pending")),
+          files === null ? null : h4("span", { className: "dshgn_badge" }, String(files.length))
         ),
-        files === null ? h3("div", { className: "dshgn_sectionDesc" }, "\u2014") : files.length === 0 ? h3("div", { className: "dshgn_sectionDesc" }, t3("card.none")) : h3(
+        files === null ? h4("div", { className: "dshgn_sectionDesc" }, "\u2014") : files.length === 0 ? h4("div", { className: "dshgn_sectionDesc" }, t3("card.none")) : h4(
           "div",
           { className: "dshgn_fileList" },
           files.map(
-            (file, index) => h3(
+            (file, index) => h4(
               "div",
               { key: `${file.name || index}`, className: "dshgn_fileRow" },
-              h3("span", { className: "dshgn_fileName" }, file.name || "?"),
-              h3("span", { className: "dshgn_fileMeta" }, formatBytes2(file.size || 0))
+              h4("span", { className: "dshgn_fileName" }, file.name || "?"),
+              h4("span", { className: "dshgn_fileMeta" }, formatBytes2(file.size || 0))
             )
           )
         )
       ),
       // ── 导入 ──
-      h3(
+      h4(
         "div",
         { className: "dshgn_section" },
-        h3("div", { className: "dshgn_sectionHead" }, h3("span", null, t3("card.import"))),
-        h3(
+        h4("div", { className: "dshgn_sectionHead" }, h4("span", null, t3("card.import"))),
+        h4(
           "div",
           { className: "dshgn_field" },
-          h3("div", { className: "dshgn_fieldLabel" }, t3("card.dir")),
-          h3("input", {
+          h4("div", { className: "dshgn_fieldLabel" }, t3("card.dir")),
+          h4("input", {
             className: "dshgn_input",
             value: dir,
             placeholder: "\u5F55\u97F3\u5361",
             onChange: (event) => setDir(event.target.value)
           }),
-          h3("div", { className: "dshgn_fieldHint" }, t3("card.dirHint"))
+          h4("div", { className: "dshgn_fieldHint" }, t3("card.dirHint"))
         ),
         // 删原件是唯一不可逆的操作，所以单独一行、默认关、开关旁写清后果。
-        h3(
+        h4(
           "label",
           { className: "dshgn_checkRow" },
-          h3("input", {
+          h4("input", {
             type: "checkbox",
             checked: deleteAfter,
             onChange: (event) => setDeleteAfter(event.target.checked)
           }),
-          h3("span", null, t3("card.deleteAfter"))
+          h4("span", null, t3("card.deleteAfter"))
         ),
-        h3("div", { className: "dshgn_fieldHint" }, t3("card.deleteAfterHint")),
-        h3(
+        h4("div", { className: "dshgn_fieldHint" }, t3("card.deleteAfterHint")),
+        h4(
           "div",
           { className: "dshgn_row" },
-          h3(
+          h4(
             "button",
             {
               type: "button",
@@ -12290,27 +12426,27 @@ function CardPane(props) {
             running ? t3("card.importing") : t3("card.import")
           )
         ),
-        lines.length > 0 ? h3("pre", { className: "dshgn_log" }, lines.join("\n")) : null,
-        result !== null ? h3(
+        lines.length > 0 ? h4("pre", { className: "dshgn_log" }, lines.join("\n")) : null,
+        result !== null ? h4(
           "div",
           { className: "dshgn_statGrid" },
-          h3(
+          h4(
             "div",
             { className: "dshgn_stat" },
-            h3("div", { className: "dshgn_statNum" }, String(result.downloaded || 0)),
-            h3("div", { className: "dshgn_statLabel" }, t3("card.downloaded"))
+            h4("div", { className: "dshgn_statNum" }, String(result.downloaded || 0)),
+            h4("div", { className: "dshgn_statLabel" }, t3("card.downloaded"))
           ),
-          h3(
+          h4(
             "div",
             { className: "dshgn_stat" },
-            h3("div", { className: "dshgn_statNum" }, String(result.skipped || 0)),
-            h3("div", { className: "dshgn_statLabel" }, t3("card.skipped"))
+            h4("div", { className: "dshgn_statNum" }, String(result.skipped || 0)),
+            h4("div", { className: "dshgn_statLabel" }, t3("card.skipped"))
           ),
-          h3(
+          h4(
             "div",
             { className: "dshgn_stat" },
-            h3("div", { className: "dshgn_statNum" }, String(result.failed || 0)),
-            h3("div", { className: "dshgn_statLabel" }, t3("card.failed"))
+            h4("div", { className: "dshgn_statNum" }, String(result.failed || 0)),
+            h4("div", { className: "dshgn_statLabel" }, t3("card.failed"))
           )
         ) : null
       )
@@ -12382,29 +12518,29 @@ function ArchiveCard(props) {
     },
     [importMode, onChanged, onError, showToast, t3]
   );
-  return h3(
+  return h4(
     "div",
     { className: "dshgn_section" },
-    h3(
+    h4(
       "div",
       { className: "dshgn_sectionHead" },
-      h3("div", { className: "dshgn_sectionTitle" }, t3("archive.title")),
-      h3(
+      h4("div", { className: "dshgn_sectionTitle" }, t3("archive.title")),
+      h4(
         "div",
         { className: "dshgn_rowLine", style: { gap: 6 } },
-        h3(
+        h4(
           "button",
           { type: "button", className: "dshgn_btn dshgn_btnPri", onClick: exportZip, disabled: busy },
-          h3(Icon, { name: "up", size: 12 }),
+          h4(Icon, { name: "up", size: 12 }),
           t3("archive.export")
         ),
-        h3(
+        h4(
           "button",
           { type: "button", className: "dshgn_btn", onClick: () => fileRef.current && fileRef.current.click(), disabled: busy },
-          h3(Icon, { name: "folder", size: 12 }),
+          h4(Icon, { name: "folder", size: 12 }),
           t3("archive.import")
         ),
-        h3("input", {
+        h4("input", {
           ref: fileRef,
           type: "file",
           accept: ".zip,application/zip",
@@ -12413,18 +12549,18 @@ function ArchiveCard(props) {
         })
       )
     ),
-    h3("div", { className: "dshgn_sectionDesc" }, t3("archive.desc")),
-    info !== null ? h3(
+    h4("div", { className: "dshgn_sectionDesc" }, t3("archive.desc")),
+    info !== null ? h4(
       "div",
       { className: "dshgn_fieldHint" },
       `${info.notes} \u7BC7 \xB7 ${formatBytes2(info.bytes)}${info.assetCount > 0 ? ` \xB7 \u9644\u4EF6 ${info.assetCount} \u4E2A ${formatBytes2(info.assetBytes)}` : ""}`
     ) : null,
-    h3(
+    h4(
       "label",
       { className: "dshgn_rowLine", style: { fontSize: 11.5, color: "var(--dsw-alias-label-secondary)" } },
       t3("archive.importMode"),
       ["rename", "skip"].map(
-        (mode) => h3(
+        (mode) => h4(
           "button",
           {
             key: mode,
@@ -12526,7 +12662,7 @@ function ConflictPane(props) {
   const list = items === null ? [] : items;
   const pendingItems = list.filter((item) => item.resolved !== true);
   const resolvedItems = list.filter((item) => item.resolved === true);
-  const renderRow = (item) => h3(
+  const renderRow = (item) => h4(
     "div",
     {
       key: item.path,
@@ -12537,21 +12673,21 @@ function ConflictPane(props) {
         borderBottom: "0.5px solid var(--dsw-alias-border-l1)"
       }
     },
-    h3(
+    h4(
       "div",
       { style: { minWidth: 0 } },
-      h3(
+      h4(
         "div",
         { className: "dshgn_cardTitle", style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } },
         item.originalName
       ),
-      h3(
+      h4(
         "div",
         { className: "dshgn_cardMeta" },
         `${formatTime(item.savedAt)} \xB7 ${formatBytes2(item.bytes)}` + (item.resolved === true ? ` \xB7 ${item.keptLocal === true ? t3("conflict.pickedLocal") : t3("conflict.pickedCloud")}` : "")
       )
     ),
-    h3(
+    h4(
       "button",
       { type: "button", className: "dshgn_btn dshgn_btnPri", onClick: () => void openDetail(item), disabled: busy },
       item.resolved === true ? t3("conflict.review") : t3("conflict.compare")
@@ -12563,25 +12699,25 @@ function ConflictPane(props) {
     const archiveIsCloud = detail.archiveIsCloud === true;
     const localBody = archiveIsCloud ? liveText : archiveText;
     const cloudBody = archiveIsCloud ? archiveText : liveText;
-    const sideBlock = (body, emptyText) => body === null ? h3("div", { className: "dshgn_diffEmpty" }, emptyText) : diffMode === "raw" ? h3("pre", { className: "dshgn_diffBody" }, body) : h3("div", { className: "dshgn_diffBody dshgn_diffMd" }, renderBlocks(body, { assets: [] }));
-    return h3(
+    const sideBlock = (body, emptyText) => body === null ? h4("div", { className: "dshgn_diffEmpty" }, emptyText) : diffMode === "raw" ? h4("pre", { className: "dshgn_diffBody" }, body) : h4("div", { className: "dshgn_diffBody dshgn_diffMd" }, renderBlocks(body, { assets: [] }));
+    return h4(
       "div",
       { className: "dshgn_pane" },
-      h3(
+      h4(
         "div",
         { className: "dshgn_section" },
-        h3(
+        h4(
           "div",
           { className: "dshgn_sectionHead" },
-          h3("div", { className: "dshgn_sectionTitle" }, t3("conflict.compare")),
-          h3(
+          h4("div", { className: "dshgn_sectionTitle" }, t3("conflict.compare")),
+          h4(
             "div",
             { className: "dshgn_rowLine", style: { gap: 6 } },
             // 三个按钮统一用浅色系：比对页的主角是左右两栏正文，按钮太饱和
             // 会抢注意力。未处理时两个采纳按钮都是红描边（提醒要决定），
             // 已经选过哪边就填成浅色——这个填充是「当初选了谁」的持久记号，
             // 重新打开这条冲突时依然在。
-            h3(
+            h4(
               "button",
               {
                 type: "button",
@@ -12591,7 +12727,7 @@ function ConflictPane(props) {
               },
               t3("conflict.keepLocal")
             ),
-            h3(
+            h4(
               "button",
               {
                 type: "button",
@@ -12601,27 +12737,27 @@ function ConflictPane(props) {
               },
               t3("conflict.takeCloud")
             ),
-            h3("button", { type: "button", className: "dshgn_btn", onClick: () => setDetail(null), disabled: busy }, t3("conflict.back")),
+            h4("button", { type: "button", className: "dshgn_btn", onClick: () => setDetail(null), disabled: busy }, t3("conflict.back")),
             // 已处理的条目给一个「退回未处理」：改主意是这个功能最正常的
             // 用法，没有它就只能去文件系统删 .resolved.json。
-            detail.resolved === true && h3(
+            detail.resolved === true && h4(
               "button",
               { type: "button", className: "dshgn_btn", onClick: () => void undo(), disabled: busy },
               t3("conflict.undo")
             )
           )
         ),
-        h3(
+        h4(
           "div",
           { className: "dshgn_sectionDesc", style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } },
-          h3("span", null, detail.originalName),
-          h3("span", { className: "dshgn_dot" }, "\xB7"),
-          h3("span", null, t3("conflict.savedAt")),
-          h3("span", null, formatTime(detail.savedAt)),
-          h3(
+          h4("span", null, detail.originalName),
+          h4("span", { className: "dshgn_dot" }, "\xB7"),
+          h4("span", null, t3("conflict.savedAt")),
+          h4("span", null, formatTime(detail.savedAt)),
+          h4(
             "div",
             { className: "dshgn_rowLine", style: { gap: 4, marginLeft: "auto" } },
-            h3(
+            h4(
               "button",
               {
                 type: "button",
@@ -12630,7 +12766,7 @@ function ConflictPane(props) {
               },
               t3("conflict.modeRendered")
             ),
-            h3(
+            h4(
               "button",
               {
                 type: "button",
@@ -12642,79 +12778,79 @@ function ConflictPane(props) {
           )
         )
       ),
-      h3(
+      h4(
         "div",
         { className: "dshgn_diffRow" },
-        h3(
+        h4(
           "div",
           { className: "dshgn_diffCol" },
-          h3("div", { className: "dshgn_diffHead" }, t3("conflict.sideLocal")),
+          h4("div", { className: "dshgn_diffHead" }, t3("conflict.sideLocal")),
           sideBlock(localBody, t3("conflict.noLocal"))
         ),
-        h3(
+        h4(
           "div",
           { className: "dshgn_diffCol" },
-          h3("div", { className: "dshgn_diffHead" }, t3("conflict.sideCloud")),
+          h4("div", { className: "dshgn_diffHead" }, t3("conflict.sideCloud")),
           sideBlock(cloudBody, t3("conflict.noCloud"))
         )
       )
     );
   }
-  return h3(
+  return h4(
     "div",
     { className: "dshgn_pane" },
-    h3(
+    h4(
       "div",
       { className: "dshgn_section" },
-      h3(
+      h4(
         "div",
         { className: "dshgn_sectionHead" },
-        h3("div", { className: "dshgn_sectionTitle" }, t3("tab.conflict")),
-        h3(
+        h4("div", { className: "dshgn_sectionTitle" }, t3("tab.conflict")),
+        h4(
           "button",
           { type: "button", className: "dshgn_btn", onClick: () => void load(), disabled: loading || busy },
-          loading ? h3("span", { className: "dshgn_spin" }) : h3(Icon, { name: "refresh", size: 12 }),
+          loading ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "refresh", size: 12 }),
           t3("action.refresh")
         )
       ),
-      h3("div", { className: "dshgn_sectionDesc" }, t3("conflict.desc"))
+      h4("div", { className: "dshgn_sectionDesc" }, t3("conflict.desc"))
     ),
-    loading && list.length === 0 ? h3("div", { className: "dshgn_emptyState" }, h3("span", { className: "dshgn_spin" })) : list.length === 0 ? h3(
+    loading && list.length === 0 ? h4("div", { className: "dshgn_emptyState" }, h4("span", { className: "dshgn_spin" })) : list.length === 0 ? h4(
       "div",
       { className: "dshgn_empty" },
-      h3(Icon, { name: "check", size: 24 }),
-      h3("div", { className: "dshgn_emptyTitle" }, t3("conflict.empty")),
-      h3("div", { className: "dshgn_emptyDesc" }, t3("conflict.emptyHint"))
-    ) : h3(
+      h4(Icon, { name: "check", size: 24 }),
+      h4("div", { className: "dshgn_emptyTitle" }, t3("conflict.empty")),
+      h4("div", { className: "dshgn_emptyDesc" }, t3("conflict.emptyHint"))
+    ) : h4(
       "div",
       { className: "dshgn_cardBox" },
       // 未处理区：直接铺开，这就是用户进来要看的东西。
-      pendingItems.length === 0 ? h3(
+      pendingItems.length === 0 ? h4(
         "div",
         { className: "dshgn_empty" },
-        h3(Icon, { name: "check", size: 24 }),
-        h3("div", { className: "dshgn_emptyTitle" }, t3("conflict.empty")),
-        h3("div", { className: "dshgn_emptyDesc" }, t3("conflict.emptyHint"))
+        h4(Icon, { name: "check", size: 24 }),
+        h4("div", { className: "dshgn_emptyTitle" }, t3("conflict.empty")),
+        h4("div", { className: "dshgn_emptyDesc" }, t3("conflict.emptyHint"))
       ) : pendingItems.map(renderRow),
       // 已处理区：默认折叠。这些是「已经决定过」的归档，留着是为了
       // 能反悔和复查，不该占据一进页面就能看到的视觉重心。
-      resolvedItems.length > 0 && h3(
+      resolvedItems.length > 0 && h4(
         "div",
         null,
-        h3(
+        h4(
           "button",
           {
             type: "button",
             className: "dshgn_foldHead",
             onClick: () => setResolvedOpen((prev) => !prev)
           },
-          h3(
+          h4(
             "span",
             { className: "dshgn_foldArrow", "data-open": resolvedOpen ? "true" : "false" },
-            h3(Icon, { name: "chevron", size: 12 })
+            h4(Icon, { name: "chevron", size: 12 })
           ),
-          h3("span", null, t3("conflict.resolvedSection")),
-          h3("span", { className: "dshgn_foldCount" }, String(resolvedItems.length))
+          h4("span", null, t3("conflict.resolvedSection")),
+          h4("span", { className: "dshgn_foldCount" }, String(resolvedItems.length))
         ),
         resolvedOpen && resolvedItems.map(renderRow)
       )
@@ -12800,68 +12936,68 @@ function TrashPane(props) {
     }
   }, [load, onChanged, onError, showToast, t3]);
   const list = items === null ? [] : items;
-  return h3(
+  return h4(
     "div",
     { className: "dshgn_pane" },
-    h3(
+    h4(
       "div",
       { className: "dshgn_section" },
-      h3(
+      h4(
         "div",
         { className: "dshgn_sectionHead" },
-        h3("div", { className: "dshgn_sectionTitle" }, t3("tab.trash")),
-        h3(
+        h4("div", { className: "dshgn_sectionTitle" }, t3("tab.trash")),
+        h4(
           "div",
           { className: "dshgn_rowLine", style: { gap: 6 } },
-          h3(
+          h4(
             "button",
             { type: "button", className: "dshgn_btn", onClick: () => void load(), disabled: loading || busy },
-            loading ? h3("span", { className: "dshgn_spin" }) : h3(Icon, { name: "refresh", size: 12 }),
+            loading ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "refresh", size: 12 }),
             t3("action.refresh")
           ),
-          h3(
+          h4(
             "button",
             { type: "button", className: "dshgn_btn dshgn_btnDanger", onClick: purgeAll, disabled: busy || list.length === 0 },
-            h3(Icon, { name: "trash", size: 12 }),
+            h4(Icon, { name: "trash", size: 12 }),
             t3("trash.purgeAll")
           )
         )
       ),
-      h3("div", { className: "dshgn_sectionDesc" }, t3("trash.desc"))
+      h4("div", { className: "dshgn_sectionDesc" }, t3("trash.desc"))
     ),
-    loading && list.length === 0 ? h3("div", { className: "dshgn_emptyState" }, h3("span", { className: "dshgn_spin" })) : list.length === 0 ? h3(
+    loading && list.length === 0 ? h4("div", { className: "dshgn_emptyState" }, h4("span", { className: "dshgn_spin" })) : list.length === 0 ? h4(
       "div",
       { className: "dshgn_empty" },
-      h3(Icon, { name: "trash", size: 24 }),
-      h3("div", { className: "dshgn_emptyTitle" }, t3("trash.empty")),
-      h3("div", { className: "dshgn_emptyDesc" }, t3("trash.emptyHint"))
-    ) : h3(
+      h4(Icon, { name: "trash", size: 24 }),
+      h4("div", { className: "dshgn_emptyTitle" }, t3("trash.empty")),
+      h4("div", { className: "dshgn_emptyDesc" }, t3("trash.emptyHint"))
+    ) : h4(
       "div",
       { className: "dshgn_cardBox" },
       list.map(
-        (item) => h3(
+        (item) => h4(
           "div",
           { key: item.path, className: "dshgn_rowLine", style: { justifyContent: "space-between", padding: "7px 0", borderBottom: "0.5px solid var(--dsw-alias-border-l1)" } },
-          h3(
+          h4(
             "div",
             { style: { minWidth: 0 } },
-            h3("div", { className: "dshgn_cardTitle", style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, item.title || item.originalName),
-            h3(
+            h4("div", { className: "dshgn_cardTitle", style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, item.title || item.originalName),
+            h4(
               "div",
               { className: "dshgn_cardMeta" },
               `${t3("trash.deletedAt")} ${formatTime(item.trashedAt)} \xB7 ${formatBytes2(item.bytes)}`
             )
           ),
-          h3(
+          h4(
             "div",
             { className: "dshgn_rowLine", style: { gap: 6, flex: "none" } },
-            h3(
+            h4(
               "button",
               { type: "button", className: "dshgn_btn dshgn_btnPri", onClick: () => void restore(item), disabled: busy },
-              h3(Icon, { name: "up", size: 12 }),
+              h4(Icon, { name: "up", size: 12 }),
               t3("trash.restore")
             ),
-            h3(
+            h4(
               "button",
               { type: "button", className: "dshgn_btn dshgn_btnDanger", onClick: () => void purgeOne(item), disabled: busy },
               t3("trash.purgeOne")
@@ -12956,28 +13092,28 @@ function SyncPane(props) {
     { label: t3("sync.deleted"), num: lastResult.deleted ?? 0 },
     { label: t3("sync.errors"), num: lastResult.errors ?? 0 }
   ] : [];
-  return h3(
+  return h4(
     b,
     null,
-    h3(
+    h4(
       "div",
       { className: "dshgn_section" },
-      h3("div", { className: "dshgn_sectionTitle" }, t3("sync.title")),
-      h3("div", { className: "dshgn_sectionDesc" }, t3("sync.desc")),
-      h3(
+      h4("div", { className: "dshgn_sectionTitle" }, t3("sync.title")),
+      h4("div", { className: "dshgn_sectionDesc" }, t3("sync.desc")),
+      h4(
         "div",
         { className: "dshgn_toggleRow" },
-        h3(
+        h4(
           "div",
           { className: "dshgn_toggleLabel" },
-          h3("span", { className: "dshgn_toggleTitle" }, t3("sync.enabled")),
-          h3(
+          h4("span", { className: "dshgn_toggleTitle" }, t3("sync.enabled")),
+          h4(
             "span",
             { className: "dshgn_toggleDesc" },
             status !== null && status.api && status.api.lastRunAt ? `${t3("sync.lastRun")}: ${formatTime(status.api.lastRunAt)}` : `${t3("sync.lastRun")}: ${t3("sync.never")}`
           )
         ),
-        h3("button", {
+        h4("button", {
           type: "button",
           className: "dshgn_toggle",
           "data-on": enabled ? "true" : "false",
@@ -12986,11 +13122,11 @@ function SyncPane(props) {
           "aria-label": t3("sync.enabled")
         })
       ),
-      h3(
+      h4(
         "div",
         { className: "dshgn_rowLine" },
-        h3("span", { className: "dshgn_fieldLabel" }, t3("sync.interval")),
-        h3("input", {
+        h4("span", { className: "dshgn_fieldLabel" }, t3("sync.interval")),
+        h4("input", {
           className: "dshgn_input",
           style: { flex: "none", width: 76 },
           type: "number",
@@ -13001,9 +13137,9 @@ function SyncPane(props) {
           onChange: (e3) => changeMinutes(e3.target.value),
           disabled: !configured
         }),
-        h3("span", { className: "dshgn_fieldHint" }, t3("sync.minutes")),
+        h4("span", { className: "dshgn_fieldHint" }, t3("sync.minutes")),
         [5, 15, 60].map(
-          (preset) => h3(
+          (preset) => h4(
             "button",
             {
               key: preset,
@@ -13016,10 +13152,10 @@ function SyncPane(props) {
           )
         )
       ),
-      h3(
+      h4(
         "label",
         { className: "dshgn_rowLine", style: { fontSize: 11.5, color: "var(--dsw-alias-label-secondary)" } },
-        h3("input", {
+        h4("input", {
           type: "checkbox",
           checked: incremental,
           onChange: (e3) => {
@@ -13030,10 +13166,10 @@ function SyncPane(props) {
         }),
         t3("sync.incremental")
       ),
-      h3(
+      h4(
         "label",
         { className: "dshgn_rowLine", style: { fontSize: 11.5, color: "var(--dsw-alias-label-secondary)" } },
-        h3("input", {
+        h4("input", {
           type: "checkbox",
           checked: foregroundOnly,
           onChange: (e3) => {
@@ -13044,41 +13180,41 @@ function SyncPane(props) {
         }),
         t3("sync.foregroundOnly")
       ),
-      h3("div", { className: "dshgn_fieldHint" }, t3("sync.foregroundHint")),
-      h3("div", { className: "dshgn_fieldHint" }, t3("sync.quotaHint"))
+      h4("div", { className: "dshgn_fieldHint" }, t3("sync.foregroundHint")),
+      h4("div", { className: "dshgn_fieldHint" }, t3("sync.quotaHint"))
     ),
-    h3(
+    h4(
       "div",
       { className: "dshgn_section" },
-      h3(
+      h4(
         "div",
         { className: "dshgn_rowLine" },
-        h3("button", { type: "button", className: "dshgn_btn dshgn_btnPri", onClick: runNow, disabled: busy || running || !configured }, running ? h3("span", { className: "dshgn_spin" }) : h3(Icon, { name: "sync", size: 12 }), running ? t3("sync.running") : t3("sync.now")),
-        h3(
+        h4("button", { type: "button", className: "dshgn_btn dshgn_btnPri", onClick: runNow, disabled: busy || running || !configured }, running ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "sync", size: 12 }), running ? t3("sync.running") : t3("sync.now")),
+        h4(
           "label",
           { className: "dshgn_rowLine", style: { fontSize: 11.5, color: "var(--dsw-alias-label-secondary)" } },
-          h3("input", { type: "checkbox", checked: fullScan, onChange: (e3) => setFullScan(e3.target.checked), disabled: !configured }),
+          h4("input", { type: "checkbox", checked: fullScan, onChange: (e3) => setFullScan(e3.target.checked), disabled: !configured }),
           t3("sync.fullScan")
         )
       ),
-      !configured ? h3("div", { className: "dshgn_fieldHint" }, t3("cloud.notConfiguredDesc")) : null,
-      lastError !== null ? h3("div", { className: "dshgn_error" }, lastError) : null,
-      resultStats.length > 0 ? h3("div", { className: "dshgn_statGrid" }, resultStats.map((s3) => h3("div", { key: s3.label, className: "dshgn_stat" }, h3("span", { className: "dshgn_statNum" }, String(s3.num)), h3("span", { className: "dshgn_statLabel" }, s3.label)))) : null,
-      lastResult !== null && lastResult.at ? h3("div", { className: "dshgn_fieldHint" }, `${t3("sync.result")}: ${formatTime(lastResult.at)}`) : null
+      !configured ? h4("div", { className: "dshgn_fieldHint" }, t3("cloud.notConfiguredDesc")) : null,
+      lastError !== null ? h4("div", { className: "dshgn_error" }, lastError) : null,
+      resultStats.length > 0 ? h4("div", { className: "dshgn_statGrid" }, resultStats.map((s3) => h4("div", { key: s3.label, className: "dshgn_stat" }, h4("span", { className: "dshgn_statNum" }, String(s3.num)), h4("span", { className: "dshgn_statLabel" }, s3.label)))) : null,
+      lastResult !== null && lastResult.at ? h4("div", { className: "dshgn_fieldHint" }, `${t3("sync.result")}: ${formatTime(lastResult.at)}`) : null
     ),
-    h3(LegacyImport)
+    h4(LegacyImport)
   );
   function LegacyImport() {
     const [open, setOpen] = h2(false);
     if (configured || !open) {
-      return h3(
+      return h4(
         "div",
         { className: "dshgn_rowLine", style: { justifyContent: "center" } },
-        h3("button", { type: "button", className: "dshgn_btn", onClick: () => setOpen(true) }, t3("sync.legacy")),
-        h3("span", { className: "dshgn_fieldHint" }, t3("sync.legacyHint"))
+        h4("button", { type: "button", className: "dshgn_btn", onClick: () => setOpen(true) }, t3("sync.legacy")),
+        h4("span", { className: "dshgn_fieldHint" }, t3("sync.legacyHint"))
       );
     }
-    return h3(ImportPane, {
+    return h4(ImportPane, {
       t: t3,
       status,
       onRefresh: async () => {
@@ -13092,11 +13228,11 @@ function SyncPane(props) {
 }
 function SkeletonPane(props) {
   const { t: t3 } = props;
-  const row = (width, height) => h3("div", { className: "dshgn_skRow", style: { width, height } });
-  return h3(
+  const row = (width, height) => h4("div", { className: "dshgn_skRow", style: { width, height } });
+  return h4(
     "div",
     { className: "dshgn_body", "aria-busy": "true", "aria-label": t3("panel.loading") },
-    h3(
+    h4(
       "div",
       { className: "dshgn_tree dshgn_skTree" },
       row("60%", "10px"),
@@ -13105,24 +13241,24 @@ function SkeletonPane(props) {
       row("76%", "10px"),
       row("54%", "10px")
     ),
-    h3(
+    h4(
       "div",
       { className: "dshgn_list dshgn_skList" },
-      h3(
+      h4(
         "div",
         { className: "dshgn_skCard" },
         row("72%", "12px"),
         row("40%", "9px"),
         row("92%", "9px")
       ),
-      h3(
+      h4(
         "div",
         { className: "dshgn_skCard" },
         row("58%", "12px"),
         row("34%", "9px"),
         row("86%", "9px")
       ),
-      h3(
+      h4(
         "div",
         { className: "dshgn_skCard" },
         row("66%", "12px"),
@@ -13130,7 +13266,7 @@ function SkeletonPane(props) {
         row("80%", "9px")
       )
     ),
-    h3(
+    h4(
       "section",
       { className: "dshgn_note dshgn_skNote" },
       row("46%", "18px"),
@@ -13156,24 +13292,24 @@ function HeatmapStrip(props) {
     if (count <= 4) return 3;
     return 4;
   };
-  return h3(
+  return h4(
     "div",
     { className: "dshgn_heat" },
-    h3(
+    h4(
       "div",
       { className: "dshgn_heatHead" },
-      h3("span", { className: "dshgn_heatTitle" }, t3("heat.title")),
-      h3(
+      h4("span", { className: "dshgn_heatTitle" }, t3("heat.title")),
+      h4(
         "span",
         { className: "dshgn_heatStat", title: `${heatmap.total} ${t3("heat.totalHint")}` },
         `${heatmap.streak} ${t3("heat.streak")}`
       )
     ),
-    h3(
+    h4(
       "div",
       { className: "dshgn_heatGrid", style: { gridTemplateRows: "repeat(7, 1fr)", gridAutoFlow: "column" } },
       days.map(
-        (day) => h3("span", {
+        (day) => h4("span", {
           key: day.date,
           className: "dshgn_heatCell",
           "data-lv": String(level(day.count)),
@@ -13328,12 +13464,12 @@ function TreePane(props) {
   const rowMenu = () => {
     const target = menu;
     if (target === null) return null;
-    return h3(
+    return h4(
       "span",
       { className: "dshgn_rowMenu", onClick: (event) => event.stopPropagation() },
       // 标签多一个「改名」。目录不需要：目录名就是磁盘上的文件夹名，
       // 改名等于移动文件，风险比改个标签大得多，那是另一个功能。
-      target.kind === "tag" && typeof onRenameTag === "function" ? h3(
+      target.kind === "tag" && typeof onRenameTag === "function" ? h4(
         "button",
         {
           type: "button",
@@ -13344,10 +13480,10 @@ function TreePane(props) {
             setMenu(null);
           }
         },
-        h3(Icon, { name: "edit", size: 11 }),
-        h3("span", null, t3("tree.menuRename"))
+        h4(Icon, { name: "edit", size: 11 }),
+        h4("span", null, t3("tree.menuRename"))
       ) : null,
-      h3(
+      h4(
         "button",
         {
           type: "button",
@@ -13358,10 +13494,10 @@ function TreePane(props) {
             setMenu(null);
           }
         },
-        h3(Icon, { name: "trash", size: 11 }),
-        h3("span", null, t3("tree.menuDelete"))
+        h4(Icon, { name: "trash", size: 11 }),
+        h4("span", null, t3("tree.menuDelete"))
       ),
-      h3(
+      h4(
         "button",
         {
           type: "button",
@@ -13369,8 +13505,8 @@ function TreePane(props) {
           title: t3("tree.menuCancel"),
           onClick: () => setMenu(null)
         },
-        h3(Icon, { name: "close", size: 11 }),
-        h3("span", null, t3("tree.menuCancel"))
+        h4(Icon, { name: "close", size: 11 }),
+        h4("span", null, t3("tree.menuCancel"))
       )
     );
   };
@@ -13378,10 +13514,10 @@ function TreePane(props) {
     const mode = kind === "dir" ? dirSort : tagSort;
     const setMode = kind === "dir" ? onDirSortChange : onTagSortChange;
     const nextMode = mode === "time" ? "name" : mode === "name" ? "count" : "time";
-    return h3(
+    return h4(
       "div",
       { className: "dshgn_treeHeadRight" },
-      h3(
+      h4(
         "button",
         {
           type: "button",
@@ -13391,7 +13527,7 @@ function TreePane(props) {
         },
         mode === "time" ? "\u23F1" : mode === "name" ? "A\u2192Z" : "#"
       ),
-      canCreate ? h3(
+      canCreate ? h4(
         "button",
         {
           type: "button",
@@ -13403,38 +13539,38 @@ function TreePane(props) {
             setDraft("");
           }
         },
-        h3(Icon, { name: "plus", size: 12 })
+        h4(Icon, { name: "plus", size: 12 })
       ) : null
     );
   };
-  return h3(
+  return h4(
     "aside",
     { className: "dshgn_tree" },
-    h3(
+    h4(
       "div",
       {
         className: "dshgn_treeRow",
         "data-on": activeDir === "" && activeTag === "" ? "true" : "false",
         onClick: () => onPickDir("")
       },
-      h3(Icon, { name: "brain", size: 14 }),
-      h3("span", { className: "dshgn_treeName" }, t3("tree.all")),
-      h3("span", { className: "dshgn_treeCount" }, String(total))
+      h4(Icon, { name: "brain", size: 14 }),
+      h4("span", { className: "dshgn_treeName" }, t3("tree.all")),
+      h4("span", { className: "dshgn_treeCount" }, String(total))
     ),
     // 热力图放在「全部笔记」正下方：它是「这个库整体在长」的视角，
     // 跟下面按目录/标签切分是两种维度，夹在中间会让人以为它属于某个目录。
-    h3(HeatmapStrip, { t: t3, heatmap }),
+    h4(HeatmapStrip, { t: t3, heatmap }),
     // 目录区
-    h3(
+    h4(
       "div",
       { className: "dshgn_treeHead" },
-      h3("span", { className: "dshgn_treeHeadTitle" }, t3("tree.dirs")),
+      h4("span", { className: "dshgn_treeHeadTitle" }, t3("tree.dirs")),
       headActions("dir", t3("tree.newDir"), true)
     ),
-    creating === "dir" ? h3(
+    creating === "dir" ? h4(
       "div",
       { className: "dshgn_treeNew" },
-      h3("input", {
+      h4("input", {
         className: "dshgn_treeNewInput",
         type: "text",
         autoFocus: true,
@@ -13446,19 +13582,19 @@ function TreePane(props) {
           if (event.key === "Escape") setCreating(null);
         }
       }),
-      h3(
+      h4(
         "button",
         { type: "button", className: "dshgn_treeNewOk", onClick: () => void runCreate(), disabled: busy },
-        h3(Icon, { name: "check", size: 12 })
+        h4(Icon, { name: "check", size: 12 })
       ),
-      h3(
+      h4(
         "button",
         { type: "button", className: "dshgn_treeNewCancel", onClick: () => setCreating(null), disabled: busy },
-        h3(Icon, { name: "close", size: 12 })
+        h4(Icon, { name: "close", size: 12 })
       )
     ) : null,
     flat.map(
-      (node) => h3(
+      (node) => h4(
         "div",
         {
           key: node.path,
@@ -13470,22 +13606,22 @@ function TreePane(props) {
           title: `${node.path}
 ${t3("tree.menuDelete")}\uFF1A\u53F3\u952E`
         },
-        h3(Icon, { name: "folder", size: 13 }),
-        h3("span", { className: "dshgn_treeName" }, node.name),
-        menu !== null && menu.kind === "dir" && menu.name === node.path ? rowMenu() : h3("span", { className: "dshgn_treeCount" }, String(node.count))
+        h4(Icon, { name: "folder", size: 13 }),
+        h4("span", { className: "dshgn_treeName" }, node.name),
+        menu !== null && menu.kind === "dir" && menu.name === node.path ? rowMenu() : h4("span", { className: "dshgn_treeCount" }, String(node.count))
       )
     ),
     // 标签区
-    h3(
+    h4(
       "div",
       { className: "dshgn_treeHead" },
-      h3("span", { className: "dshgn_treeHeadTitle" }, t3("tree.tags")),
+      h4("span", { className: "dshgn_treeHeadTitle" }, t3("tree.tags")),
       headActions("tag", t3("tree.newTag"), true)
     ),
-    creating === "tag" ? h3(
+    creating === "tag" ? h4(
       "div",
       { className: "dshgn_treeNew" },
-      h3("input", {
+      h4("input", {
         className: "dshgn_treeNewInput",
         type: "text",
         autoFocus: true,
@@ -13497,27 +13633,27 @@ ${t3("tree.menuDelete")}\uFF1A\u53F3\u952E`
           if (event.key === "Escape") setCreating(null);
         }
       }),
-      h3(
+      h4(
         "button",
         { type: "button", className: "dshgn_treeNewOk", onClick: () => void runCreate(), disabled: busy },
-        h3(Icon, { name: "check", size: 12 })
+        h4(Icon, { name: "check", size: 12 })
       ),
-      h3(
+      h4(
         "button",
         { type: "button", className: "dshgn_treeNewCancel", onClick: () => setCreating(null), disabled: busy },
-        h3(Icon, { name: "close", size: 12 })
+        h4(Icon, { name: "close", size: 12 })
       )
     ) : null,
-    sortedTags.length > 0 ? h3(
+    sortedTags.length > 0 ? h4(
       "div",
       { className: "dshgn_treeTags" },
       // 标签项外面包一层 span：行内菜单里也是按钮，button 不能套 button
       // （HTML 非法，React 会警告，点击也会被外层吞掉）。
       sortedTags.map(
-        ([tag, count]) => renaming !== null && renaming.from === tag ? h3(
+        ([tag, count]) => renaming !== null && renaming.from === tag ? h4(
           "span",
           { key: tag, className: "dshgn_treeNew" },
-          h3("input", {
+          h4("input", {
             className: "dshgn_treeNewInput",
             type: "text",
             autoFocus: true,
@@ -13529,20 +13665,20 @@ ${t3("tree.menuDelete")}\uFF1A\u53F3\u952E`
               if (event.key === "Escape") setRenaming(null);
             }
           }),
-          h3(
+          h4(
             "button",
             { type: "button", className: "dshgn_treeNewOk", onClick: () => void runRename(), disabled: busy },
-            h3(Icon, { name: "check", size: 12 })
+            h4(Icon, { name: "check", size: 12 })
           ),
-          h3(
+          h4(
             "button",
             { type: "button", className: "dshgn_treeNewCancel", onClick: () => setRenaming(null), disabled: busy },
-            h3(Icon, { name: "close", size: 12 })
+            h4(Icon, { name: "close", size: 12 })
           )
-        ) : h3(
+        ) : h4(
           "span",
           { key: tag, className: "dshgn_tagWrap" },
-          h3(
+          h4(
             "button",
             {
               type: "button",
@@ -13558,18 +13694,18 @@ ${t3("tree.menuDelete")}\uFF1A\u53F3\u952E`
       )
     ) : null,
     // 二次确认
-    confirm !== null ? h3(
+    confirm !== null ? h4(
       "div",
       { className: "dshgn_modalMask", onClick: () => setConfirm(null) },
-      h3(
+      h4(
         "div",
         { className: "dshgn_modal", onClick: (event) => event.stopPropagation() },
-        h3(
+        h4(
           "div",
           { className: "dshgn_modalTitle" },
           confirm.kind === "dir" ? t3("tree.deleteDir") : t3("tree.deleteTag")
         ),
-        h3(
+        h4(
           "div",
           { className: "dshgn_modalBody" },
           (confirm.kind === "dir" ? t3("tree.deleteDirConfirm") : t3("tree.deleteTagConfirm")).replace(
@@ -13577,15 +13713,15 @@ ${t3("tree.menuDelete")}\uFF1A\u53F3\u952E`
             confirm.name
           )
         ),
-        h3(
+        h4(
           "div",
           { className: "dshgn_modalActions" },
-          h3(
+          h4(
             "button",
             { type: "button", className: "dshgn_btn", onClick: () => setConfirm(null), disabled: busy },
             t3("action.cancel")
           ),
-          h3(
+          h4(
             "button",
             {
               type: "button",
@@ -13602,6 +13738,12 @@ ${t3("tree.menuDelete")}\uFF1A\u53F3\u952E`
 }
 function NotePane(props) {
   const { t: t3, status, current, draft, setDraft, dirty, busy, onSave, onDelete, onCopyReference, onOpenWikiLink, onSyncOne, onRestored, onError, onToggleTodo } = props;
+  const subfolder = status !== null && typeof status.subfolder === "string" ? status.subfolder.replace(/^\/+|\/+$/g, "") : "";
+  const vaultPathOf = (note) => {
+    const rel = note !== null && typeof note.path === "string" ? note.path : "";
+    if (rel === "") return subfolder;
+    return subfolder === "" ? rel : `${subfolder}/${rel}`;
+  };
   const [editing, setEditing] = h2(false);
   const [showOutline, setShowOutline] = h2(true);
   const [backlinks, setBacklinks] = h2(null);
@@ -13707,33 +13849,33 @@ function NotePane(props) {
     host.scrollTo({ top: Math.max(0, offset), behavior: "smooth" });
   }, []);
   if (current === null) {
-    return h3(
+    return h4(
       "section",
       { className: "dshgn_note" },
-      h3(
+      h4(
         "div",
         { className: "dshgn_empty" },
-        h3(Icon, { name: "brain", size: 26 }),
-        h3("div", { className: "dshgn_emptyTitle" }, t3("empty.select")),
-        h3("div", { className: "dshgn_emptyDesc" }, t3("empty.selectDesc"))
+        h4(Icon, { name: "brain", size: 26 }),
+        h4("div", { className: "dshgn_emptyTitle" }, t3("empty.select")),
+        h4("div", { className: "dshgn_emptyDesc" }, t3("empty.selectDesc"))
       )
     );
   }
   const absolute = status !== null ? `${status.vaultRoot}/${current.path}` : current.path;
-  return h3(
+  return h4(
     "section",
     { className: "dshgn_note" },
-    h3(
+    h4(
       "div",
       { className: "dshgn_noteHead" },
-      h3("div", { className: "dshgn_notePath", title: absolute }, current.path),
+      h4("div", { className: "dshgn_notePath", title: absolute }, current.path),
       // 字号三档。放在笔记头而不是设置页：用户是在「读这篇字太小」的那一刻
       // 想调它，跑到设置页去调完再回来，会打断阅读。
-      h3(
+      h4(
         "div",
         { className: "dshgn_scaleGroup", role: "group", title: t3("note.fontSize") },
         ["s", "m", "l"].map(
-          (size) => h3(
+          (size) => h4(
             "button",
             {
               key: size,
@@ -13743,21 +13885,21 @@ function NotePane(props) {
               title: t3(`note.fontSize.${size}`)
             },
             // 三个 A 用不同字号画，比写「小/中/大」省位置，也比图标直观
-            h3("span", { style: { fontSize: size === "s" ? 10 : size === "m" ? 12 : 14, lineHeight: 1 } }, "A")
+            h4("span", { style: { fontSize: size === "s" ? 10 : size === "m" ? 12 : 14, lineHeight: 1 } }, "A")
           )
         )
       ),
-      dirty ? h3("span", { className: "dshgn_badge" }, t3("note.unsaved")) : null,
-      editing ? h3(
+      dirty ? h4("span", { className: "dshgn_badge" }, t3("note.unsaved")) : null,
+      editing ? h4(
         b,
         null,
-        h3(
+        h4(
           "button",
           { type: "button", className: "dshgn_btn dshgn_btnPrimary", onClick: onSave, disabled: busy || !dirty },
-          h3(Icon, { name: "check", size: 13 }),
+          h4(Icon, { name: "check", size: 13 }),
           t3("action.save")
         ),
-        h3(
+        h4(
           "button",
           { type: "button", className: "dshgn_btn", onClick: () => {
             setDraft(current.content);
@@ -13765,33 +13907,33 @@ function NotePane(props) {
           }, disabled: busy },
           t3("action.cancel")
         )
-      ) : h3(
+      ) : h4(
         b,
         null,
-        h3(
+        h4(
           "button",
           { type: "button", className: "dshgn_iconBtn", title: t3("action.edit"), onClick: () => setEditing(true) },
-          h3(Icon, { name: "edit", size: 15 })
+          h4(Icon, { name: "edit", size: 15 })
         ),
-        h3(
+        h4(
           "button",
           { type: "button", className: "dshgn_iconBtn", title: t3("action.copyRef"), onClick: onCopyReference },
-          h3(Icon, { name: "link", size: 15 })
+          h4(Icon, { name: "link", size: 15 })
         ),
         // B1：单篇推云端 / 单篇拉云端。只有这篇确实在云端有 note_id 时
         // 才有意义，所以没 note_id 就不显示——点了会报「这篇还没同步过」，
         // 那还不如不给这个按钮。
-        current.noteId ? h3(
+        current.noteId ? h4(
           "button",
           { type: "button", className: "dshgn_iconBtn", title: t3("sync.pushOne"), onClick: () => onSyncOne("push"), disabled: busy },
-          h3(Icon, { name: "cloud", size: 15 })
+          h4(Icon, { name: "cloud", size: 15 })
         ) : null,
-        current.noteId ? h3(
+        current.noteId ? h4(
           "button",
           { type: "button", className: "dshgn_iconBtn", title: t3("sync.pullOne"), onClick: () => onSyncOne("pull"), disabled: busy },
-          h3(Icon, { name: "sync", size: 15 })
+          h4(Icon, { name: "sync", size: 15 })
         ) : null,
-        h3(
+        h4(
           "button",
           {
             type: "button",
@@ -13804,30 +13946,30 @@ function NotePane(props) {
               if (next) void loadHistory(current.path);
             }
           },
-          h3(Icon, { name: "clock", size: 15 })
+          h4(Icon, { name: "clock", size: 15 })
         ),
-        h3(
+        h4(
           "button",
           { type: "button", className: "dshgn_iconBtn", title: t3("action.delete"), onClick: onDelete, disabled: busy },
-          h3(Icon, { name: "trash", size: 15 })
+          h4(Icon, { name: "trash", size: 15 })
         )
       )
     ),
-    editing ? h3("textarea", {
+    editing ? h4("textarea", {
       className: "dshgn_editor",
       value: draft === null ? "" : draft,
       spellCheck: false,
       onChange: (event) => setDraft(event.target.value)
-    }) : historyOpen ? h3(
+    }) : historyOpen ? h4(
       "div",
       { className: "dshgn_historyPane" },
-      h3(
+      h4(
         "div",
         { className: "dshgn_historyHead" },
-        h3(Icon, { name: "clock", size: 13 }),
-        h3("span", null, t3("history.title")),
-        h3("span", { className: "dshgn_outlineCount" }, historyItems === null ? "\u2026" : String(historyItems.length)),
-        h3(
+        h4(Icon, { name: "clock", size: 13 }),
+        h4("span", null, t3("history.title")),
+        h4("span", { className: "dshgn_outlineCount" }, historyItems === null ? "\u2026" : String(historyItems.length)),
+        h4(
           "button",
           { type: "button", className: "dshgn_btn", style: { marginLeft: "auto" }, onClick: () => {
             setHistoryOpen(false);
@@ -13836,32 +13978,32 @@ function NotePane(props) {
           t3("action.close")
         )
       ),
-      historyPreview !== null ? h3(
+      historyPreview !== null ? h4(
         b,
         null,
-        h3(
+        h4(
           "div",
           { className: "dshgn_rowLine", style: { padding: "6px 12px", gap: 8 } },
-          h3("span", { className: "dshgn_fieldHint" }, formatTime(historyPreview.savedAt)),
-          h3(
+          h4("span", { className: "dshgn_fieldHint" }, formatTime(historyPreview.savedAt)),
+          h4(
             "button",
             { type: "button", className: "dshgn_btn dshgn_btnPri", style: { marginLeft: "auto" }, onClick: () => void restoreHistory(historyPreview.name), disabled: historyBusy },
             t3("history.restore")
           ),
-          h3("button", { type: "button", className: "dshgn_btn", onClick: () => setHistoryPreview(null), disabled: historyBusy }, t3("action.back"))
+          h4("button", { type: "button", className: "dshgn_btn", onClick: () => setHistoryPreview(null), disabled: historyBusy }, t3("action.back"))
         ),
-        h3("pre", { className: "dshgn_diffBody", style: { flex: 1, minHeight: 0 } }, historyPreview.content)
-      ) : historyItems === null ? h3("div", { className: "dshgn_emptyState" }, h3("span", { className: "dshgn_spin" })) : historyItems.length === 0 ? h3(
+        h4("pre", { className: "dshgn_diffBody", style: { flex: 1, minHeight: 0 } }, historyPreview.content)
+      ) : historyItems === null ? h4("div", { className: "dshgn_emptyState" }, h4("span", { className: "dshgn_spin" })) : historyItems.length === 0 ? h4(
         "div",
         { className: "dshgn_empty" },
-        h3(Icon, { name: "clock", size: 22 }),
-        h3("div", { className: "dshgn_emptyTitle" }, t3("history.empty")),
-        h3("div", { className: "dshgn_emptyDesc" }, t3("history.emptyHint"))
-      ) : h3(
+        h4(Icon, { name: "clock", size: 22 }),
+        h4("div", { className: "dshgn_emptyTitle" }, t3("history.empty")),
+        h4("div", { className: "dshgn_emptyDesc" }, t3("history.emptyHint"))
+      ) : h4(
         "div",
         { className: "dshgn_historyList" },
         historyItems.map(
-          (item) => h3(
+          (item) => h4(
             "button",
             {
               key: item.name,
@@ -13870,21 +14012,21 @@ function NotePane(props) {
               onClick: () => void previewHistory(item.name),
               disabled: historyBusy
             },
-            h3("span", { className: "dshgn_historyTime" }, formatTime(item.savedAt)),
-            h3("span", { className: "dshgn_historyMeta" }, formatBytes2(item.bytes))
+            h4("span", { className: "dshgn_historyTime" }, formatTime(item.savedAt)),
+            h4("span", { className: "dshgn_historyMeta" }, formatBytes2(item.bytes))
           )
         )
       )
-    ) : h3(
+    ) : h4(
       "div",
       { className: "dshgn_scroll", ref: scrollRef },
       // 大纲：长笔记（尤其逐字稿那种几千字）靠滚动找「金句在哪一节」非常费劲，
       // 给一排可点的标题省掉这个过程。默认展开，但可以收起——有些用户
       // 只想一口气读完，多一行都是干扰。
-      Array.isArray(current.outline) && current.outline.length > 1 ? h3(
+      Array.isArray(current.outline) && current.outline.length > 1 ? h4(
         "div",
         { className: "dshgn_outline" },
-        h3(
+        h4(
           "button",
           {
             type: "button",
@@ -13892,15 +14034,15 @@ function NotePane(props) {
             onClick: () => setShowOutline((prev) => !prev),
             title: t3("note.outline")
           },
-          h3(Icon, { name: showOutline ? "up" : "file", size: 12 }),
+          h4(Icon, { name: showOutline ? "up" : "file", size: 12 }),
           t3("note.outline"),
-          h3("span", { className: "dshgn_outlineCount" }, String(current.outline.length))
+          h4("span", { className: "dshgn_outlineCount" }, String(current.outline.length))
         ),
-        showOutline ? h3(
+        showOutline ? h4(
           "div",
           { className: "dshgn_outlineList" },
           current.outline.map(
-            (item, index) => h3(
+            (item, index) => h4(
               "button",
               {
                 key: `${index}-${item.text}`,
@@ -13919,7 +14061,7 @@ function NotePane(props) {
       // 附件里的录音直接放播放器：合并两套体系时把这些 mp3 搬进来了，
       // 如果只留 markdown 里那条外链，用户还得跳浏览器才能听。
       (current.assets || []).filter((asset) => asset.kind === "audio").map(
-        (asset, index) => h3(AudioPlayer, {
+        (asset, index) => h4(AudioPlayer, {
           key: `${asset.path}-${index}`,
           t: t3,
           track: {
@@ -13932,11 +14074,11 @@ function NotePane(props) {
       ),
       // 附件里的图片也画出来。以前只筛 audio，`kind:'image'` 的附件在面板里
       // 完全看不见——用户明明存了图，却以为没同步下来。
-      (current.assets || []).some((asset) => asset.kind === "image") ? h3(
+      (current.assets || []).some((asset) => asset.kind === "image") ? h4(
         "div",
         { className: "dshgn_imgRow" },
         (current.assets || []).filter((asset) => asset.kind === "image").map(
-          (asset, index) => h3("img", {
+          (asset, index) => h4("img", {
             key: `${asset.path}-${index}`,
             className: "dshgn_img",
             src: withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(asset.path)}`),
@@ -13949,24 +14091,35 @@ function NotePane(props) {
       // 阅读时只渲染正文：`content` 带 YAML frontmatter，直接 renderBlocks 会把
       // `title: xxx` / `note_id: "..."` 当成正文段落一条条铺出来。编辑时仍用
       // `content`，这样保存不会把 frontmatter 丢掉。
-      h3(
+      h4(
         "div",
         { className: "dshgn_md" + (textScale === "s" ? " dshgn_mdS" : textScale === "l" ? " dshgn_mdL" : "") },
-        renderBlocks(
+        renderMarkdown(
           current.body !== void 0 && current.body !== null ? current.body : current.content,
           // 编辑态不给 onToggleTodo：那时显示的是可编辑 textarea，正文里的
           // 方框根本不该响应点击（改内容要走保存）。只有阅读态才可点。
-          { assets: current.assets || [], onOpenWikiLink, onToggleTodo: editing ? void 0 : onToggleTodo }
+          {
+            assets: current.assets || [],
+            sourcePath: vaultPathOf(current),
+            // 点 [[双链]]：先交给 Obsidian 在编辑器里打开（这是 Obsidian
+            // 用户的直觉），没注入宿主时退回面板自己的「在面板里打开」。
+            onOpenLink: (target) => {
+              if (openLinkInVault(target, vaultPathOf(current))) return;
+              onOpenWikiLink(target);
+            },
+            onOpenWikiLink,
+            onToggleTodo: editing ? void 0 : onToggleTodo
+          }
         )
       ),
       // 关联笔记（反向链接）：用户写了很多 [[双链]]，但双链只有「点进去」
       // 一个方向；想看「谁提到了我这篇」只能靠这个面板。
-      backlinks !== null && Array.isArray(backlinks.hits) && backlinks.hits.length > 0 ? h3(
+      backlinks !== null && Array.isArray(backlinks.hits) && backlinks.hits.length > 0 ? h4(
         "div",
         { className: "dshgn_backlinks" },
-        h3("div", { className: "dshgn_backlinksHead" }, h3(Icon, { name: "link", size: 12 }), t3("note.backlinks"), h3("span", { className: "dshgn_outlineCount" }, String(backlinks.hits.length))),
+        h4("div", { className: "dshgn_backlinksHead" }, h4(Icon, { name: "link", size: 12 }), t3("note.backlinks"), h4("span", { className: "dshgn_outlineCount" }, String(backlinks.hits.length))),
         backlinks.hits.map(
-          (hit) => h3(
+          (hit) => h4(
             "button",
             {
               key: hit.path,
@@ -13975,8 +14128,8 @@ function NotePane(props) {
               title: hit.path,
               onClick: () => onOpenWikiLink(hit.path)
             },
-            h3("span", { className: "dshgn_backlinkTitle" }, hit.title || hit.path),
-            h3("span", { className: "dshgn_backlinkPath" }, hit.path)
+            h4("span", { className: "dshgn_backlinkTitle" }, hit.title || hit.path),
+            h4("span", { className: "dshgn_backlinkPath" }, hit.path)
           )
         )
       ) : null
@@ -14076,62 +14229,62 @@ function ImportPane(props) {
   }, [onRefresh]);
   const lines = state !== null && Array.isArray(state.lines) ? state.lines : [];
   const result = state !== null ? state.result : null;
-  return h3(
+  return h4(
     "div",
     { className: "dshgn_pane" },
-    h3(
+    h4(
       "div",
       { className: "dshgn_cardBox" },
-      h3(
+      h4(
         "div",
         { className: "dshgn_section" },
-        h3("div", { className: "dshgn_sectionTitle" }, t3("import.title")),
-        h3("div", { className: "dshgn_sectionDesc" }, t3("import.desc")),
-        h3(
+        h4("div", { className: "dshgn_sectionTitle" }, t3("import.title")),
+        h4("div", { className: "dshgn_sectionDesc" }, t3("import.desc")),
+        h4(
           "div",
           { className: "dshgn_rowLine" },
-          h3(
+          h4(
             "span",
             { className: loggedIn ? "dshgn_badge dshgn_badgeOk" : "dshgn_badge" },
-            h3(Icon, { name: "cloud", size: 11 }),
+            h4(Icon, { name: "cloud", size: 11 }),
             loggedIn ? t3("import.loggedIn") : t3("import.notLoggedIn")
           ),
-          status !== null && status.lastSyncAt ? h3("span", { className: "dshgn_badge" }, `${t3("import.lastSync")}: ${formatTime(status.lastSyncAt)}`) : h3("span", { className: "dshgn_badge" }, `${t3("import.lastSync")}: ${t3("import.never")}`),
-          status !== null && status.notes > 0 ? h3("span", { className: "dshgn_badge" }, `${status.notes} ${t3("meta.notes")}`) : null
+          status !== null && status.lastSyncAt ? h4("span", { className: "dshgn_badge" }, `${t3("import.lastSync")}: ${formatTime(status.lastSyncAt)}`) : h4("span", { className: "dshgn_badge" }, `${t3("import.lastSync")}: ${t3("import.never")}`),
+          status !== null && status.notes > 0 ? h4("span", { className: "dshgn_badge" }, `${status.notes} ${t3("meta.notes")}`) : null
         ),
-        h3(
+        h4(
           "div",
           { className: "dshgn_rowLine" },
-          loggedIn ? h3(
+          loggedIn ? h4(
             b,
             null,
-            h3(
+            h4(
               "button",
               { type: "button", className: "dshgn_btn dshgn_btnPrimary", onClick: startImport, disabled: busy || running },
-              running ? h3("span", { className: "dshgn_spin" }) : h3(Icon, { name: "cloud", size: 13 }),
+              running ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "cloud", size: 13 }),
               running ? t3("import.running") : t3("import.start")
             ),
-            h3("button", { type: "button", className: "dshgn_btn", onClick: logout, disabled: busy || running }, t3("import.logout"))
-          ) : h3(
+            h4("button", { type: "button", className: "dshgn_btn", onClick: logout, disabled: busy || running }, t3("import.logout"))
+          ) : h4(
             b,
             null,
-            h3(
+            h4(
               "button",
               { type: "button", className: "dshgn_btn dshgn_btnPrimary", onClick: startLogin, disabled: busy },
-              h3(Icon, { name: "cloud", size: 13 }),
+              h4(Icon, { name: "cloud", size: 13 }),
               t3("import.login")
             ),
-            h3("span", { className: "dshgn_sectionDesc" }, t3("import.loginHint"))
+            h4("span", { className: "dshgn_sectionDesc" }, t3("import.loginHint"))
           )
         ),
-        !loggedIn ? h3("div", { className: "dshgn_sectionDesc" }, t3("import.cloudHint")) : null,
-        authUrl !== null ? h3(
+        !loggedIn ? h4("div", { className: "dshgn_sectionDesc" }, t3("import.cloudHint")) : null,
+        authUrl !== null ? h4(
           "div",
           { className: "dshgn_sectionDesc" },
           waiting ? `${t3("import.authorizeWait")} ` : "",
           // 用按钮而不是 a[target=_blank]：Obsidian 的自定义视图里点外链
           // 有时会把整个应用导航走，比打开浏览器难收拾得多。
-          h3(
+          h4(
             "button",
             {
               type: "button",
@@ -14142,22 +14295,22 @@ function ImportPane(props) {
           )
         ) : null
       ),
-      error !== null ? h3("div", { className: "dshgn_error", role: "alert" }, error) : null,
-      result !== null ? h3(
+      error !== null ? h4("div", { className: "dshgn_error", role: "alert" }, error) : null,
+      result !== null ? h4(
         "div",
         { className: "dshgn_section" },
-        h3("div", { className: "dshgn_sectionTitle" }, t3("import.result")),
-        h3(
+        h4("div", { className: "dshgn_sectionTitle" }, t3("import.result")),
+        h4(
           "div",
           { className: "dshgn_rowLine" },
-          h3("span", { className: "dshgn_badge dshgn_badgeOk" }, `${t3("import.newNotes")} ${result.created}`),
-          h3("span", { className: "dshgn_badge" }, `${t3("import.skipped")} ${result.skipped}`),
-          h3("span", { className: "dshgn_badge" }, `${t3("import.failed")} ${result.failed}`),
-          h3("span", { className: "dshgn_badge" }, `${Math.round((result.durationMs || 0) / 1e3)}s`)
+          h4("span", { className: "dshgn_badge dshgn_badgeOk" }, `${t3("import.newNotes")} ${result.created}`),
+          h4("span", { className: "dshgn_badge" }, `${t3("import.skipped")} ${result.skipped}`),
+          h4("span", { className: "dshgn_badge" }, `${t3("import.failed")} ${result.failed}`),
+          h4("span", { className: "dshgn_badge" }, `${Math.round((result.durationMs || 0) / 1e3)}s`)
         ),
-        h3("div", { className: "dshgn_sectionDesc" }, result.root)
+        h4("div", { className: "dshgn_sectionDesc" }, result.root)
       ) : null,
-      lines.length > 0 ? h3("div", { className: "dshgn_log" }, lines.map((line, index) => h3("div", { key: index }, `${formatTime(line.at)}  ${line.text}`))) : null
+      lines.length > 0 ? h4("div", { className: "dshgn_log" }, lines.map((line, index) => h4("div", { key: index }, `${formatTime(line.at)}  ${line.text}`))) : null
     )
   );
 }
@@ -14191,21 +14344,21 @@ function SettingsPane(props) {
   const suggestions = status !== null && Array.isArray(status.suggestions) ? status.suggestions : [];
   const cloudApi = status !== null && status.api ? status.api : null;
   const loginState = status === null || status.cloud === null || status.cloud.loggedIn !== true ? "none" : status.cloud.expired === true ? "expired" : "ok";
-  return h3(
+  return h4(
     "div",
     { className: "dshgn_pane" },
-    h3(
+    h4(
       "div",
       { className: "dshgn_cardBox" },
-      h3(
+      h4(
         "div",
         { className: "dshgn_section" },
-        h3("div", { className: "dshgn_sectionTitle" }, t3("settings.vault")),
-        h3("div", { className: "dshgn_sectionDesc" }, t3("settings.vaultHint")),
-        h3(
+        h4("div", { className: "dshgn_sectionTitle" }, t3("settings.vault")),
+        h4("div", { className: "dshgn_sectionDesc" }, t3("settings.vaultHint")),
+        h4(
           "div",
           { className: "dshgn_rowLine" },
-          h3("input", {
+          h4("input", {
             className: "dshgn_input",
             value: input,
             spellCheck: false,
@@ -14215,43 +14368,43 @@ function SettingsPane(props) {
               setInput(event.target.value);
             }
           }),
-          h3("button", { type: "button", className: "dshgn_btn dshgn_btnPrimary", onClick: () => save(input), disabled: busy }, t3("settings.save"))
+          h4("button", { type: "button", className: "dshgn_btn dshgn_btnPrimary", onClick: () => save(input), disabled: busy }, t3("settings.save"))
         ),
-        status !== null && status.vaultMissing ? h3("div", { className: "dshgn_error" }, `\u2715 ${status.vaultMissing}`) : null,
-        status !== null ? h3("div", { className: "dshgn_sectionDesc" }, `${status.notes} ${t3("meta.notes")} \xB7 ${status.dirs} ${t3("meta.dirs")} \xB7 ${formatBytes2(status.bytes)}`) : null
+        status !== null && status.vaultMissing ? h4("div", { className: "dshgn_error" }, `\u2715 ${status.vaultMissing}`) : null,
+        status !== null ? h4("div", { className: "dshgn_sectionDesc" }, `${status.notes} ${t3("meta.notes")} \xB7 ${status.dirs} ${t3("meta.dirs")} \xB7 ${formatBytes2(status.bytes)}`) : null
       ),
-      suggestions.length > 0 ? h3(
+      suggestions.length > 0 ? h4(
         "div",
         { className: "dshgn_section" },
-        h3("div", { className: "dshgn_sectionTitle" }, t3("settings.suggest")),
+        h4("div", { className: "dshgn_sectionTitle" }, t3("settings.suggest")),
         suggestions.map(
-          (item) => h3(
+          (item) => h4(
             "div",
             { key: item.path, className: "dshgn_rowLine" },
-            h3("div", { className: "dshgn_sectionDesc", style: { flex: 1, minWidth: 0, wordBreak: "break-all" } }, `${item.path} \u2014 ${item.notes} ${t3("meta.notes")}`),
-            h3("button", { type: "button", className: "dshgn_btn", onClick: () => save(item.path), disabled: busy }, t3("settings.use"))
+            h4("div", { className: "dshgn_sectionDesc", style: { flex: 1, minWidth: 0, wordBreak: "break-all" } }, `${item.path} \u2014 ${item.notes} ${t3("meta.notes")}`),
+            h4("button", { type: "button", className: "dshgn_btn", onClick: () => save(item.path), disabled: busy }, t3("settings.use"))
           )
         )
       ) : null,
-      h3(CloudCredCard, { t: t3, api: cloudApi, onSaved, onError }),
+      h4(CloudCredCard, { t: t3, api: cloudApi, onSaved, onError }),
       // 自动同步紧跟在云端接入卡后面：它俩是同一件事的两半——上面说「用哪条
       // 通道连云端」，这里说「多久自动拉一次」。中间隔着主题色/语言会让这层
       // 关系看不出来。
-      h3(SyncPane, { t: t3, status, onChanged: onSyncChanged, onError, showToast }),
-      h3(ThemeCard, { t: t3, themeColor: status !== null ? status.themeColor : null, onSaved, onError, onPreview: onThemePreview }),
-      h3(LanguageCard, { t: t3, locale, onSaved, onError, onLocaleChange }),
+      h4(SyncPane, { t: t3, status, onChanged: onSyncChanged, onError, showToast }),
+      h4(ThemeCard, { t: t3, themeColor: status !== null ? status.themeColor : null, onSaved, onError, onPreview: onThemePreview }),
+      h4(LanguageCard, { t: t3, locale, onSaved, onError, onLocaleChange }),
       // 模板卡放在语言之后、备份之前：它属于「写作习惯」这一类，跟主题色/语言
       // 挨着；备份是整库操作，应该留在最后。
-      h3(TemplateCard, { t: t3, status, onSaved, onError }),
-      h3(ArchiveCard, { t: t3, status, onChanged: onSaved, onError, showToast }),
-      h3(
+      h4(TemplateCard, { t: t3, status, onSaved, onError }),
+      h4(ArchiveCard, { t: t3, status, onChanged: onSaved, onError, showToast }),
+      h4(
         "div",
         { className: "dshgn_section" },
-        h3(
+        h4(
           "div",
           { className: "dshgn_sectionHead" },
-          h3("div", { className: "dshgn_sectionTitle" }, t3("settings.authFile")),
-          h3(
+          h4("div", { className: "dshgn_sectionTitle" }, t3("settings.authFile")),
+          h4(
             "span",
             {
               // auth.json 存在只说明「登录过」，令牌过期后它还在文件里。
@@ -14262,8 +14415,8 @@ function SettingsPane(props) {
             loginState === "ok" ? t3("settings.loggedIn") : loginState === "expired" ? t3("settings.loginExpired") : t3("settings.loggedOut")
           )
         ),
-        h3("div", { className: "dshgn_sectionDesc" }, status !== null ? status.authPath : ""),
-        h3("div", { className: "dshgn_sectionDesc" }, t3("settings.storeHint"))
+        h4("div", { className: "dshgn_sectionDesc" }, status !== null ? status.authPath : ""),
+        h4("div", { className: "dshgn_sectionDesc" }, t3("settings.storeHint"))
       )
     )
   );
@@ -14300,16 +14453,16 @@ function ThemeCard(props) {
     [onError, onSaved, t3]
   );
   const presets = ["#0a2a52", "#14342b", "#4a2036", "#3b2d5c", "#5c3a1e", "#22434f", "#40202c", "#333333"];
-  return h3(
+  return h4(
     "div",
     { className: "dshgn_section" },
-    h3("div", { className: "dshgn_sectionTitle" }, t3("theme.title")),
-    h3("div", { className: "dshgn_sectionDesc" }, t3("theme.desc")),
-    h3(
+    h4("div", { className: "dshgn_sectionTitle" }, t3("theme.title")),
+    h4("div", { className: "dshgn_sectionDesc" }, t3("theme.desc")),
+    h4(
       "div",
       { className: "dshgn_themeRow" },
       presets.map(
-        (hex) => h3("button", {
+        (hex) => h4("button", {
           key: hex,
           type: "button",
           className: "dshgn_swatch" + (active === hex ? " dshgn_swatchOn" : ""),
@@ -14319,22 +14472,22 @@ function ThemeCard(props) {
           onClick: () => setDraft(hex)
         })
       ),
-      h3(
+      h4(
         "button",
         { type: "button", className: "dshgn_btn", onClick: () => setCustom(!custom) },
         custom ? t3("theme.preset") : t3("theme.custom")
       )
     ),
-    custom ? h3(
+    custom ? h4(
       "div",
       { className: "dshgn_rowLine", style: { marginTop: 8 } },
-      h3("input", {
+      h4("input", {
         type: "color",
         className: "dshgn_colorInput",
         value: active === null ? "#0a2a52" : active,
         onChange: (event) => setDraft(event.target.value)
       }),
-      h3("input", {
+      h4("input", {
         className: "dshgn_input",
         value: active === null ? "" : active,
         spellCheck: false,
@@ -14347,19 +14500,19 @@ function ThemeCard(props) {
     (() => {
       const preview = themeVars(active, isDarkTheme());
       if (preview === null) return null;
-      return h3(
+      return h4(
         "div",
         { className: "dshgn_previewBar", "aria-hidden": "true" },
-        h3("div", { className: "dshgn_previewCell", style: { background: preview["--dshgn-deep"], color: preview["--dshgn-deepFg"] } }, t3("theme.previewLeft")),
-        h3("div", { className: "dshgn_previewCell", style: { background: preview["--dshgn-mid"], color: preview["--dshgn-midFg"] } }, t3("theme.previewMid")),
-        h3("div", { className: "dshgn_previewCell", style: { background: preview["--dshgn-light"], color: preview["--dshgn-lightFg"] } }, t3("theme.previewRight"))
+        h4("div", { className: "dshgn_previewCell", style: { background: preview["--dshgn-deep"], color: preview["--dshgn-deepFg"] } }, t3("theme.previewLeft")),
+        h4("div", { className: "dshgn_previewCell", style: { background: preview["--dshgn-mid"], color: preview["--dshgn-midFg"] } }, t3("theme.previewMid")),
+        h4("div", { className: "dshgn_previewCell", style: { background: preview["--dshgn-light"], color: preview["--dshgn-lightFg"] } }, t3("theme.previewRight"))
       );
     })(),
-    h3(
+    h4(
       "div",
       { className: "dshgn_rowLine", style: { marginTop: 10 } },
-      h3("button", { type: "button", className: "dshgn_btn dshgn_btnPrimary", onClick: () => save(active), disabled: busy || draft === null }, t3("theme.apply")),
-      h3("button", { type: "button", className: "dshgn_btn", onClick: () => save(null), disabled: busy }, t3("theme.reset"))
+      h4("button", { type: "button", className: "dshgn_btn dshgn_btnPrimary", onClick: () => save(active), disabled: busy || draft === null }, t3("theme.apply")),
+      h4("button", { type: "button", className: "dshgn_btn", onClick: () => save(null), disabled: busy }, t3("theme.reset"))
     )
   );
 }
@@ -14421,33 +14574,33 @@ function CloudCredCard(props) {
       setBusy(false);
     }
   }, [onSaved, onError, t3]);
-  return h3(
+  return h4(
     "div",
     { className: "dshgn_section" },
-    h3(
+    h4(
       "div",
       { className: "dshgn_rowLine" },
-      h3("div", { className: "dshgn_sectionTitle" }, t3("api.title")),
-      h3("span", { className: "dshgn_badge" + (configured ? " dshgn_badgeOk" : "") }, configured ? t3("api.ready") : t3("api.notReady")),
-      configured && apiInfo.apiKeyMasked ? h3("span", { className: "dshgn_treeCount" }, `${apiInfo.apiKeyMasked} \xB7 ${apiInfo.clientIdMasked || ""}`) : null
+      h4("div", { className: "dshgn_sectionTitle" }, t3("api.title")),
+      h4("span", { className: "dshgn_badge" + (configured ? " dshgn_badgeOk" : "") }, configured ? t3("api.ready") : t3("api.notReady")),
+      configured && apiInfo.apiKeyMasked ? h4("span", { className: "dshgn_treeCount" }, `${apiInfo.apiKeyMasked} \xB7 ${apiInfo.clientIdMasked || ""}`) : null
     ),
-    h3("div", { className: "dshgn_sectionDesc" }, t3("api.desc")),
+    h4("div", { className: "dshgn_sectionDesc" }, t3("api.desc")),
     // Key 被服务端拒过：这条必须显眼。用户填完 Key 看到「已接入」，然后云端每个
     // 操作都失败，却不知道为什么——那是这个插件最糟的体验。
-    apiInfo !== null && apiInfo.keyRejected === true ? h3(
+    apiInfo !== null && apiInfo.keyRejected === true ? h4(
       "div",
       { className: "dshgn_banner dshgn_bannerWarn" },
-      h3("div", { className: "dshgn_bannerTitle" }, t3("api.keyRejected")),
-      h3("div", { className: "dshgn_bannerDesc" }, apiInfo.keyError || ""),
-      apiInfo.fallbackAvailable === true ? h3("div", { className: "dshgn_bannerDesc" }, t3("api.usingFallback")) : null
+      h4("div", { className: "dshgn_bannerTitle" }, t3("api.keyRejected")),
+      h4("div", { className: "dshgn_bannerDesc" }, apiInfo.keyError || ""),
+      apiInfo.fallbackAvailable === true ? h4("div", { className: "dshgn_bannerDesc" }, t3("api.usingFallback")) : null
     ) : null,
     // 走的是登录通道（不是 Key）：说明清楚，省得用户以为 Key 没存住
-    apiInfo !== null && apiInfo.effectiveTransport === "mcp" && apiInfo.keyRejected !== true ? h3("div", { className: "dshgn_fieldHint" }, t3("api.viaLogin")) : null,
-    h3(
+    apiInfo !== null && apiInfo.effectiveTransport === "mcp" && apiInfo.keyRejected !== true ? h4("div", { className: "dshgn_fieldHint" }, t3("api.viaLogin")) : null,
+    h4(
       "div",
       { className: "dshgn_field" },
-      h3("span", { className: "dshgn_fieldLabel" }, t3("api.apiKey")),
-      h3("input", {
+      h4("span", { className: "dshgn_fieldLabel" }, t3("api.apiKey")),
+      h4("input", {
         className: "dshgn_input",
         type: "password",
         autoComplete: "off",
@@ -14457,11 +14610,11 @@ function CloudCredCard(props) {
         onChange: (event) => setApiKey(event.target.value)
       })
     ),
-    h3(
+    h4(
       "div",
       { className: "dshgn_field" },
-      h3("span", { className: "dshgn_fieldLabel" }, t3("api.clientId")),
-      h3("input", {
+      h4("span", { className: "dshgn_fieldLabel" }, t3("api.clientId")),
+      h4("input", {
         className: "dshgn_input",
         spellCheck: false,
         value: clientId,
@@ -14469,11 +14622,11 @@ function CloudCredCard(props) {
         onChange: (event) => setClientId(event.target.value)
       })
     ),
-    h3(
+    h4(
       "div",
       { className: "dshgn_field" },
-      h3("span", { className: "dshgn_fieldLabel" }, t3("api.grantId")),
-      h3("input", {
+      h4("span", { className: "dshgn_fieldLabel" }, t3("api.grantId")),
+      h4("input", {
         className: "dshgn_input",
         spellCheck: false,
         value: grantId,
@@ -14481,17 +14634,17 @@ function CloudCredCard(props) {
         onChange: (event) => setGrantId(event.target.value)
       })
     ),
-    h3(
+    h4(
       "div",
       { className: "dshgn_rowLine" },
-      h3("button", { type: "button", className: "dshgn_btn dshgn_btnPrimary", onClick: save, disabled: busy }, busy ? h3("span", { className: "dshgn_spin" }) : h3(Icon, { name: "check", size: 12 }), t3("api.save")),
-      configured ? h3("button", { type: "button", className: "dshgn_btn", onClick: test, disabled: testing }, testing ? h3("span", { className: "dshgn_spin" }) : null, testing ? t3("api.testing") : t3("api.test")) : null,
-      configured ? h3("button", { type: "button", className: "dshgn_btn dshgn_btnDanger", onClick: clear, disabled: busy }, t3("api.clear")) : null
+      h4("button", { type: "button", className: "dshgn_btn dshgn_btnPrimary", onClick: save, disabled: busy }, busy ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "check", size: 12 }), t3("api.save")),
+      configured ? h4("button", { type: "button", className: "dshgn_btn", onClick: test, disabled: testing }, testing ? h4("span", { className: "dshgn_spin" }) : null, testing ? t3("api.testing") : t3("api.test")) : null,
+      configured ? h4("button", { type: "button", className: "dshgn_btn dshgn_btnDanger", onClick: clear, disabled: busy }, t3("api.clear")) : null
     ),
-    probe !== null ? h3("div", { className: probe.ok ? "dshgn_fieldHint" : "dshgn_error", style: probe.ok ? { color: "var(--dsw-alias-state-success-primary)" } : void 0 }, `${probe.ok ? "\u2713" : "\u2715"} ${probe.text}`) : null,
-    h3("div", { className: "dshgn_fieldHint" }, t3("api.consoleHint")),
-    h3("div", { className: "dshgn_fieldHint" }, t3("api.neverEcho")),
-    apiInfo !== null && apiInfo.credentialsPath ? h3("div", { className: "dshgn_fieldHint" }, `${t3("api.file")}: ${apiInfo.credentialsPath}`) : null
+    probe !== null ? h4("div", { className: probe.ok ? "dshgn_fieldHint" : "dshgn_error", style: probe.ok ? { color: "var(--dsw-alias-state-success-primary)" } : void 0 }, `${probe.ok ? "\u2713" : "\u2715"} ${probe.text}`) : null,
+    h4("div", { className: "dshgn_fieldHint" }, t3("api.consoleHint")),
+    h4("div", { className: "dshgn_fieldHint" }, t3("api.neverEcho")),
+    apiInfo !== null && apiInfo.credentialsPath ? h4("div", { className: "dshgn_fieldHint" }, `${t3("api.file")}: ${apiInfo.credentialsPath}`) : null
   );
 }
 var ErrorBoundaryBase = typeof compat_exports !== "undefined" && compat_exports && k ? k : class {
@@ -14519,13 +14672,13 @@ var PanelBoundary = class extends ErrorBoundaryBase {
     if (this.state.error) {
       const message = String(this.state.error && this.state.error.message || this.state.error);
       const stack = String(this.state.error && this.state.error.stack || "").split("\n").slice(0, 6).join("\n");
-      return h3(
+      return h4(
         "div",
         { className: "dshgn_root dshgn_boundary", role: "alert" },
-        h3("div", { className: "dshgn_boundaryTitle" }, "\u5F97\u5230\u5927\u8111\u9762\u677F\u6E32\u67D3\u51FA\u9519"),
-        h3("div", { className: "dshgn_boundaryMsg" }, message),
-        h3("pre", { className: "dshgn_boundaryStack" }, stack),
-        h3(
+        h4("div", { className: "dshgn_boundaryTitle" }, "\u5F97\u5230\u5927\u8111\u9762\u677F\u6E32\u67D3\u51FA\u9519"),
+        h4("div", { className: "dshgn_boundaryMsg" }, message),
+        h4("pre", { className: "dshgn_boundaryStack" }, stack),
+        h4(
           "button",
           { type: "button", className: "dshgn_btn dshgn_btnPrimary", onClick: this.retry },
           "\u91CD\u8BD5"
@@ -14536,7 +14689,7 @@ var PanelBoundary = class extends ErrorBoundaryBase {
   }
 };
 function PanelRoot(props) {
-  return h3(PanelBoundary, null, h3(GetnotePage, props));
+  return h4(PanelBoundary, null, h4(GetnotePage, props));
 }
 
 // src/view/view.js
@@ -14577,6 +14730,7 @@ var GetnoteView = class extends import_obsidian.ItemView {
   }
   async onOpen() {
     injectCss();
+    setMarkdownHost({ app: this.app, component: this.plugin, MarkdownRenderer: import_obsidian.MarkdownRenderer });
     const container = this.contentEl;
     container.empty();
     container.addClass("dshgn_view");
@@ -14593,6 +14747,7 @@ var GetnoteView = class extends import_obsidian.ItemView {
     this.registerInterval(this.heartbeat);
   }
   async onClose() {
+    clearMarkdownHost();
     if (this.heartbeat !== null) {
       window.clearInterval(this.heartbeat);
       this.heartbeat = null;
