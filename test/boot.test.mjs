@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 // ── 假 obsidian 模块 ────────────────────────────────────────────────────────
-const calls = { views: [], ribbons: [], commands: [], settings: [], intervals: [] }
+const calls = { views: [], ribbons: [], commands: [], settings: [], intervals: [], statusBar: [] }
 
 class Plugin {
   constructor(app, manifest) {
@@ -34,6 +34,24 @@ class Plugin {
   registerInterval(id) { calls.intervals.push(id); return id }
   register(fn) { this.disposers.push(fn); return fn }
   registerEvent(ref) { this.disposers.push(ref); return ref }
+  registerDomEvent(el, type, handler) {
+    this.disposers.push({ el, type, handler })
+    return { el, type, handler }
+  }
+  // 状态栏：真宿主返回一个带 setText/addClass/title 的 HTMLElement，
+  // 这里给个够用的假元素，测试还能顺手断言文字。
+  addStatusBarItem() {
+    const el = {
+      text: '',
+      title: '',
+      classes: [],
+      addClass(name) { el.classes.push(name) },
+      setText(text) { el.text = text },
+      addEventListener() {},
+    }
+    calls.statusBar.push(el)
+    return el
+  }
 }
 
 class PluginSettingTab {
@@ -215,9 +233,21 @@ test('onload 能把插件拉起来', async () => {
   assert.equal(calls.views[0].type, 'getnote-obsidian-view')
   assert.equal(calls.ribbons.length, 1, '注册了一个 ribbon')
   assert.equal(calls.ribbons[0].icon, 'brain')
-  assert.deepEqual(calls.commands.map((c) => c.id), ['open-panel', 'open-in-new-window'])
+  assert.deepEqual(calls.commands.map((c) => c.id), [
+    'open-panel',
+    'open-in-new-window',
+    'search-notes',
+    'new-note',
+    'open-today',
+    'sync-now',
+    'scan-card',
+  ])
   assert.equal(calls.settings.length, 1, '注册了设置页')
   assert.equal(calls.intervals.length >= 0, true)
+  // 状态栏是「插件在跑、服务在哪个端口」的唯一常驻线索
+  assert.equal(calls.statusBar.length, 1, '应该加了一个状态栏项')
+  assert.equal(calls.statusBar[0].text, '得到大脑')
+  assert.match(calls.statusBar[0].title, /127\.0\.0\.1:\d+/, '状态栏要显示服务端口')
 })
 
 test('面板能打到本地服务，并且走的是 adapter 后端', async () => {

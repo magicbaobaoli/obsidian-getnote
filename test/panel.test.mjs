@@ -214,3 +214,82 @@ test('宿主切到深色主题时面板跟着变深，切回来还原', async ()
     '切回浅色后撤掉行内变量',
   )
 })
+
+/**
+ * 命令面板投递的意图要真的落到面板上。
+ *
+ * 命令面板触发时面板可能刚被创建、还没渲染完，所以意图是「投递」而不是直接
+ * 调用——这条测的就是那根线通不通。
+ */
+test('命令面板的意图能被面板接住并执行', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  // 先切走，确认 search 意图会把页签切回「笔记」
+  await clickTab('设置')
+  panel.requestIntent({ type: 'search' })
+  await sleep(150)
+
+  const searchBox = window.document.querySelector('.dshgn_search')
+  assert.ok(searchBox !== null, 'search 意图之后应该回到笔记页，搜索框要在')
+  assert.equal(
+    window.document.activeElement,
+    searchBox,
+    'search 意图要把焦点送进搜索框',
+  )
+})
+
+/**
+ * 三栏宽度可拖。
+ *
+ * 不测像素级外观，只测两件会真坏的事：拖完宽度真的落到根节点的 CSS 变量上
+ * （三栏的 width 全读这个变量），以及手柄能被键盘调——纯鼠标实现的话
+ * 键盘用户永远改不了栏宽。
+ */
+test('三栏之间的手柄能拖动，宽度落在根节点的 CSS 变量上', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const splitters = Array.from(window.document.querySelectorAll('.dshgn_splitter'))
+  assert.equal(splitters.length, 2, '左栏/中栏右侧各应有一个拖拽手柄')
+
+  const before = rootNode().style.getPropertyValue('--dshgn-treeW').trim()
+  assert.match(before, /^\d+px$/, '根节点上应该有左栏宽度变量，实际 ' + before)
+
+  // 拖动：按下 → 移动 → 松手。jsdom 没有 PointerEvent，用 MouseEvent 代替，
+  // 处理器只用到 clientX 与 pointerId，形状是够的。
+  const handle = splitters[0]
+  const startX = parseInt(before, 10)
+  handle.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, clientX: startX, button: 0 }))
+  handle.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: startX + 40 }))
+  handle.dispatchEvent(new window.MouseEvent('pointerup', { bubbles: true, clientX: startX + 40 }))
+  // 状态更新是异步的（Preact 会把同一帧内的 setState 合批），要等一拍再读
+  await sleep(60)
+
+  const after = rootNode().style.getPropertyValue('--dshgn-treeW').trim()
+  assert.equal(parseInt(after, 10), startX + 40, '拖 40px 后左栏应该宽 40px，实际 ' + after)
+
+  // 键盘：方向键微调，Shift 加大步长
+  handle.dispatchEvent(new window.KeyboardEvent('keydown', { bubbles: true, key: 'ArrowLeft' }))
+  await sleep(60)
+  assert.equal(
+    parseInt(rootNode().style.getPropertyValue('--dshgn-treeW'), 10),
+    startX + 40 - 8,
+    '按一次左方向键应该收窄 8px',
+  )
+  handle.dispatchEvent(new window.KeyboardEvent('keydown', { bubbles: true, key: 'ArrowLeft', shiftKey: true }))
+  await sleep(60)
+  assert.equal(
+    parseInt(rootNode().style.getPropertyValue('--dshgn-treeW'), 10),
+    startX + 40 - 8 - 32,
+    'Shift + 左方向键应该一次收窄 32px',
+  )
+
+  // 越界要夹住：拖到极左不能把左栏拖成负数或 0
+  handle.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, clientX: 200, button: 0 }))
+  handle.dispatchEvent(new window.MouseEvent('pointermove', { bubbles: true, clientX: -5000 }))
+  handle.dispatchEvent(new window.MouseEvent('pointerup', { bubbles: true, clientX: -5000 }))
+  await sleep(60)
+  const clamped = parseInt(rootNode().style.getPropertyValue('--dshgn-treeW'), 10)
+  assert.ok(clamped >= 150, '左栏宽度有下限，实际 ' + clamped)
+})

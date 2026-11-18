@@ -33,7 +33,7 @@ window.HTMLElement.prototype.isShown = function isShown() { return true }
 Object.defineProperty(window.navigator, 'clipboard', { value: { writeText: async () => undefined }, configurable: true })
 
 // ── 假 obsidian 模块：ItemView 要给 contentEl 一套 Obsidian 的 DOM 扩展 ──────
-const calls = { views: [], ribbons: [], commands: [], settings: [], intervals: [], timeouts: [] }
+const calls = { views: [], ribbons: [], commands: [], settings: [], intervals: [], timeouts: [], statusBar: [] }
 
 function extendEl(el) {
   el.empty = () => {
@@ -60,6 +60,12 @@ class Plugin {
   registerInterval(id) { calls.intervals.push(id); return id }
   register(fn) { return fn }
   registerEvent(ref) { return ref }
+  registerDomEvent(el, type, handler) { return { el, type, handler } }
+  addStatusBarItem() {
+    const el = { text: '', title: '', addClass() {}, setText(t) { el.text = t }, addEventListener() {} }
+    calls.statusBar.push(el)
+    return el
+  }
 }
 class PluginSettingTab { constructor(app, plugin) { this.app = app; this.plugin = plugin; this.containerEl = null } }
 class Setting {

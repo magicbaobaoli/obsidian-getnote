@@ -24,7 +24,7 @@ import { configureCardScripts } from './core/card.js'
 import { invalidateScan } from './core/vault.js'
 import { startAutoSync, markPanelVisible } from './core/service.js'
 import { startLocalServer } from './host/server.js'
-import { setApiOrigin, setApiToken, setOpenExternal, setSaveFile } from './view/panel.js'
+import { setApiOrigin, setApiToken, setOpenExternal, setSaveFile, requestIntent } from './view/panel.js'
 import { GetnoteView, VIEW_TYPE_GETNOTE, PanelIcon } from './view/view.js'
 
 const DEFAULT_SUBFOLDER = '得到大脑'
@@ -138,6 +138,34 @@ export default class GetnoteObsidianPlugin extends Plugin {
       name: '在新窗口打开得到大脑',
       callback: () => { void this.activateView(true) },
     })
+
+    // 命令面板入口。面板里能干的事，不该只有「打开面板」一条路——
+    // 用户想搜索时第一反应是 Ctrl+P 敲「搜索」，而不是先打开面板再点搜索框。
+    // 这里的每个命令都只投递意图，真正的动作由面板自己完成（它才拿得到状态）。
+    const intentCommand = (id, name, intent) => {
+      this.addCommand({
+        id,
+        name,
+        callback: () => {
+          void this.activateView().then(() => requestIntent(intent))
+        },
+      })
+    }
+    intentCommand('search-notes', '搜索得到大脑笔记', { type: 'search' })
+    intentCommand('new-note', '新建得到大脑笔记', { type: 'new' })
+    intentCommand('open-today', '打开今天的笔记', { type: 'today' })
+    intentCommand('sync-now', '立即同步得到大脑', { type: 'sync' })
+    intentCommand('scan-card', '扫描录音卡', { type: 'card' })
+
+    // 状态栏：一个能看见「插件在跑、服务在哪个端口」的小字，点一下打开面板。
+    // 没有它，用户遇到问题（比如端口被占）时完全没有线索。
+    if (this.server) {
+      this.statusBarEl = this.addStatusBarItem()
+      this.statusBarEl.addClass('dshgn_status')
+      this.statusBarEl.setText('得到大脑')
+      this.statusBarEl.title = `本地服务 http://127.0.0.1:${this.localPort}`
+      this.registerDomEvent(this.statusBarEl, 'click', () => { void this.activateView() })
+    }
 
     this.addSettingTab(new GetnoteSettingTab(this.app, this))
 

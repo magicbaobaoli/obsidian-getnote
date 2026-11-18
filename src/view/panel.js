@@ -62,6 +62,45 @@ function openExternal(url) {
   window.open(url, '_blank', 'noopener,width=520,height=760')
 }
 
+// 外部（命令面板、状态栏）让面板做某件事的通道。
+//
+// 命令面板触发时，视图可能刚被创建、面板还没渲染完，所以不能直接调用面板内部
+// 函数；改成「投递一个意图，谁在听谁处理」。没人在听就先存着，面板挂载时
+// 一次性取走——否则从命令面板打开面板会丢动作。
+let __pendingIntent = null
+const __intentListeners = new Set()
+
+export function requestIntent(intent) {
+  if (intent === null || typeof intent !== 'object') return
+  if (__intentListeners.size === 0) {
+    __pendingIntent = intent
+    return
+  }
+  for (const listener of Array.from(__intentListeners)) {
+    try {
+      listener(intent)
+    } catch {
+      // 一个监听者炸了不该影响别人
+    }
+  }
+}
+
+function subscribeIntent(listener) {
+  __intentListeners.add(listener)
+  if (__pendingIntent !== null) {
+    const pending = __pendingIntent
+    __pendingIntent = null
+    try {
+      listener(pending)
+    } catch {
+      // 同上
+    }
+  }
+  return () => {
+    __intentListeners.delete(listener)
+  }
+}
+
 // 整库导出的落盘方式。渲染进程里点 a[download] 在 Electron 里不可靠：
 // Obsidian 没开下载管理器时它可能静默什么都不做。所以由宿主注入一个「弹出
 // 保存对话框再写文件」的实现，拿不到就退回 a[download]。
@@ -128,6 +167,9 @@ async function saveFile(url, filename) {
         'tree.sortTime': '按修改时间',
         'tree.sortName': '按名称',
         'tree.sortCount': '按条数',
+        // 三栏拖拽手柄的无障碍名字（视觉上是一条发丝线，读屏要能说出它是什么）
+        'col.treeWidth': '调整左栏宽度',
+        'col.listWidth': '调整中栏宽度',
         // 目录 / 标签的增删
         'tree.newDir': '新建目录',
         'tree.newDirHint': '输入目录名，多层用 / 分隔',
@@ -488,6 +530,8 @@ async function saveFile(url, filename) {
         'tree.sortTime': 'By modified',
         'tree.sortName': 'By name',
         'tree.sortCount': 'By count',
+        'col.treeWidth': 'Resize left column',
+        'col.listWidth': 'Resize middle column',
         'tree.newDir': 'New folder',
         'tree.newDirHint': 'Folder name; use / for nesting',
         'tree.newTag': 'New tag',
@@ -847,6 +891,8 @@ async function saveFile(url, filename) {
         'tree.sortTime': 'Op gewijzigd',
         'tree.sortName': 'Op naam',
         'tree.sortCount': 'Op aantal',
+        'col.treeWidth': 'Linkerkolom breder of smaller maken',
+        'col.listWidth': 'Middenkolom breder of smaller maken',
         'tree.newDir': 'Nieuwe map',
         'tree.newDirHint': 'Mapnaam; gebruik / voor submappen',
         'tree.newTag': 'Nieuwe tag',
@@ -2220,7 +2266,7 @@ async function saveFile(url, filename) {
    少了它，正文里一块超宽的代码表格会把整个 .dshgn_body 撑出横向滚动条，
    点大纲跳转时浏览器把外层的横向滚动一起带走，看起来就是「整个插件往左移、变形」。 */
 .dshgn_body{flex:1;display:flex;min-height:0;min-width:0;overflow:hidden}
-.dshgn_tree{flex:none;width:190px;display:flex;flex-direction:column;min-height:0;
+.dshgn_tree{flex:none;width:var(--dshgn-treeW,204px);display:flex;flex-direction:column;min-height:0;
   border-right:0.5px solid var(--dsw-alias-border-l2);overflow-y:auto;overflow-x:hidden;padding:8px 6px}
 .dshgn_treeHead{display:flex;align-items:center;justify-content:space-between;gap:6px;
   padding:4px 6px;font-size:11px;color:var(--dsw-alias-label-tertiary);user-select:none}
@@ -2261,8 +2307,16 @@ async function saveFile(url, filename) {
 /* 未来日期画成虚线空框：实心空框会被误读成「那天写 0 篇」 */
 .dshgn_heatCell[data-future="true"]{background:transparent;
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
-.dshgn_list{flex:none;width:260px;display:flex;flex-direction:column;min-height:0;
+.dshgn_list{flex:none;width:var(--dshgn-listW,260px);display:flex;flex-direction:column;min-height:0;
   border-right:0.5px solid var(--dsw-alias-border-l2)}
+/* 三栏之间的拖拽手柄：常态是一条 1px 的发丝线，悬停/拖动时才亮起来。
+   宽度 5px 而不是 1px——1px 的目标在触控板上几乎抓不住。 */
+.dshgn_splitter{flex:none;width:5px;margin:0 -2px;cursor:col-resize;position:relative;z-index:2;
+  background:transparent;border:0;padding:0}
+.dshgn_splitter::after{content:"";position:absolute;top:0;bottom:0;left:2px;width:1px;
+  background:var(--dsw-alias-border-l2);transition:background .12s}
+.dshgn_splitter:hover::after,.dshgn_splitterOn::after{background:var(--dsw-alias-brand-primary)}
+.dshgn_splitter:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}
 .dshgn_searchWrap{flex:none;display:flex;align-items:center;gap:6px;padding:8px 10px;
   border-bottom:0.5px solid var(--dsw-alias-border-l2)}
 .dshgn_search{flex:1;min-width:0;height:26px;padding:0 8px;border:0.5px solid var(--dsw-alias-border-l2);
@@ -2656,7 +2710,7 @@ async function saveFile(url, filename) {
 
 /* ── 左栏：深蓝。整栏用上深下更深的渐变，边界靠一条亮线收住 ── */
 .dshgn_tree{
-  width:204px;
+  width:var(--dshgn-treeW,204px);
   background:linear-gradient(180deg,var(--dshgn-deep) 0%,var(--dshgn-deep2) 100%);
   color:var(--dshgn-deepFg);
   border-right:1px solid rgba(0,0,0,.28);
@@ -2930,6 +2984,9 @@ async function saveFile(url, filename) {
       }
       const [dirSort, setDirSort] = React.useState(() => makeSortPref('dshgn.sortDir').read())
       const [tagSort, setTagSort] = React.useState(() => makeSortPref('dshgn.sortTag').read())
+      // 三栏宽度。拖动过程中只改内存状态（每帧都写 localStorage 会卡），
+      // 松手后由下面那个 effect 落盘。
+      const [colWidths, setColWidths] = React.useState(() => readColWidths())
       const [current, setCurrent] = React.useState(null)
       const [draft, setDraft] = React.useState(null)
       const [busy, setBusy] = React.useState(false)
@@ -3289,6 +3346,93 @@ async function saveFile(url, filename) {
           }
         },
         [activeDir, openNote, refresh, showToast, t, templateContent],
+      )
+
+      /**
+       * 处理来自命令面板 / 状态栏的意图。
+       *
+       * 这些动作原来只能点面板里的按钮，用户在命令面板里敲「同步」却什么都
+       * 搜不到。现在命令直接投递意图过来，这里负责把它落到面板的状态上。
+       */
+      React.useEffect(
+        () =>
+          subscribeIntent((intent) => {
+            const kind = intent && intent.type
+            if (kind === 'search') {
+              setTab('notes')
+              // 等一帧再找输入框：切页签的渲染是异步的，立刻 querySelector 拿不到
+              window.setTimeout(() => {
+                const input = document.querySelector('.dshgn_search')
+                if (input) {
+                  input.focus()
+                  input.select()
+                }
+              }, 30)
+              return
+            }
+            if (kind === 'new') {
+              setTab('notes')
+              if (status !== null && !status.vaultMissing) void newNote()
+              return
+            }
+            if (kind === 'today') {
+              // 「今天」的笔记：先按日期找，找不到就按日期新建。
+              // 用日期做标题而不是「今日」两个字，归档后仍然能一眼看出是哪天。
+              const now = new Date()
+              const pad = (n) => String(n).padStart(2, '0')
+              const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+              setTab('notes')
+              const hit = (entries || []).find(
+                (entry) => entry.date === stamp || String(entry.title || '').trim() === stamp,
+              )
+              if (hit !== undefined) {
+                void openNote(hit.path)
+                return
+              }
+              if (status === null || status.vaultMissing) return
+              setBusy(true)
+              void api('/create', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ dir: activeDir, title: stamp, content: '', requestId: requestId() }),
+              })
+                .then(async (created) => {
+                  showToast(t('note.created'))
+                  await refresh()
+                  await openNote(created.path)
+                })
+                .catch((err) => setError(err && err.message ? err.message : String(err)))
+                .finally(() => setBusy(false))
+              return
+            }
+            if (kind === 'sync') {
+              setTab('settings')
+              setBusy(true)
+              void api('/sync/start', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ full: false }),
+              })
+                .then(() => showToast(t('sync.running')))
+                .catch((err) => setError(err && err.message ? err.message : String(err)))
+                .finally(() => setBusy(false))
+              return
+            }
+            if (kind === 'card') {
+              setTab('card')
+              setBusy(true)
+              // 8 秒是卡片页扫描按钮用的同一档：BLE 扫描慢一点也够，
+              // 再长用户会以为卡住了。
+              void api('/card/scan?timeout=8')
+                .then((json) => {
+                  const count = Array.isArray(json && json.cards) ? json.cards.length : 0
+                  showToast(count > 0 ? `${t('card.scanFound')}：${count}` : t('card.scanNone'))
+                })
+                .catch((err) => setError(err && err.message ? err.message : String(err)))
+                .finally(() => setBusy(false))
+            }
+          }),
+        [activeDir, entries, newNote, openNote, refresh, showToast, status, t],
       )
 
       const deleteNote = React.useCallback(async () => {
@@ -3749,6 +3893,13 @@ async function saveFile(url, filename) {
             currentNoteId: current !== null && current.noteId ? current.noteId : null,
             heatmap: status !== null && status.heatmap ? status.heatmap : null,
           }),
+          h(ColSplitter, {
+            label: t('col.treeWidth'),
+            value: colWidths.tree,
+            min: TREE_MIN_W,
+            max: TREE_MAX_W,
+            onChange: (next) => setColWidths((prev) => ({ ...prev, tree: next })),
+          }),
           h(
             'div',
             { className: 'dshgn_list' },
@@ -3940,6 +4091,13 @@ async function saveFile(url, filename) {
                   ),
             ),
           ),
+          h(ColSplitter, {
+            label: t('col.listWidth'),
+            value: colWidths.list,
+            min: LIST_MIN_W,
+            max: LIST_MAX_W,
+            onChange: (next) => setColWidths((prev) => ({ ...prev, list: next })),
+          }),
           h(NotePane, {
             t,
             status,
@@ -3979,6 +4137,12 @@ async function saveFile(url, filename) {
         )
       }
 
+      // 拖完松手才落盘：拖动过程中每帧写一次 localStorage 会明显掉帧。
+      // 依赖只有 colWidths，值没变时不会重复写。
+      React.useEffect(() => {
+        writeColWidths(colWidths)
+      }, [colWidths])
+
       // 主题色变量挂在根节点上：自定义属性沿 DOM 继承，三栏里所有
       // var(--dshgn-*) 用法自动跟随，不用挨个组件传参。
       // 预览优先级：选色器里的草稿 > 已保存的值。这样用户拖色轮时整面板
@@ -3988,12 +4152,22 @@ async function saveFile(url, filename) {
         darkTheme,
       )
 
+      // 栏宽也走 CSS 变量：三栏的 width 全在样式表里写死会没法拖，
+      // 挂在根节点上则整棵子树都能继承，拖的时候只改这两个值。
+      // 主题色为空时（浅色 + 没选主题色）CSS 里的默认值要生效，所以不能
+      // 把 style 整个置空——必须把栏宽这一份并进去。
+      const rootStyle = {
+        ...(themeStyle === null ? {} : themeStyle),
+        '--dshgn-treeW': `${colWidths.tree}px`,
+        '--dshgn-listW': `${colWidths.list}px`,
+      }
+
       return h(
         'div',
         { className: 'dshgn_rel' },
         h(
           'div',
-          { className: 'dshgn_root', style: themeStyle === null ? undefined : themeStyle },
+          { className: 'dshgn_root', style: rootStyle },
           head,
           error !== null ? h('div', { className: 'dshgn_error', role: 'alert' }, `${t('error.prefix')}: ${error}`) : null,
           // key 用 tab：切换页签时 React 会换掉整个节点，动画才会从头播一遍。
@@ -6883,6 +7057,107 @@ async function saveFile(url, filename) {
           ),
         ),
       )
+    }
+
+    // 三栏宽度的上下限。左栏放「目录 / 标签」两段，再窄就挤得只剩省略号；
+    // 中栏要放标题 + 日期 + 摘要三行，200 是能读的下限。
+    const TREE_MIN_W = 150
+    const TREE_MAX_W = 360
+    const LIST_MIN_W = 200
+    const LIST_MAX_W = 520
+    const COL_WIDTH_KEY = 'dshgn.colWidths'
+
+    /**
+     * 读回上次拖出来的栏宽。
+     *
+     * 存 localStorage 而不是 host 设置：纯展示偏好，不涉及数据，也没必要为它
+     * 多一个接口。隐私模式下读不到就回落默认值，不影响使用。
+     */
+    function readColWidths() {
+      const fallback = { tree: 204, list: 260 }
+      try {
+        const raw = window.localStorage.getItem(COL_WIDTH_KEY)
+        if (raw === null) return fallback
+        const parsed = JSON.parse(raw)
+        const num = (value, min, max, def) => {
+          const n = Number(value)
+          return Number.isFinite(n) && n >= min && n <= max ? Math.round(n) : def
+        }
+        return {
+          tree: num(parsed && parsed.tree, TREE_MIN_W, TREE_MAX_W, fallback.tree),
+          list: num(parsed && parsed.list, LIST_MIN_W, LIST_MAX_W, fallback.list),
+        }
+      } catch {
+        return fallback
+      }
+    }
+
+    function writeColWidths(widths) {
+      try {
+        window.localStorage.setItem(COL_WIDTH_KEY, JSON.stringify(widths))
+      } catch {
+        // 存不了就这次先用着，下次打开回落默认值
+      }
+    }
+
+    /**
+     * 三栏之间的拖拽手柄。
+     *
+     * 用 pointer 事件而不是 mouse：触控板、触屏、鼠标走同一条路径，而且
+     * setPointerCapture 之后指针移出手柄（拖快了很常见）仍能继续收到事件，
+     * 不用在 window 上挂监听再自己拆。
+     *
+     * 用 <button> 而不是 <div>：键盘用户能 Tab 到它，再用左右方向键调宽。
+     */
+    function ColSplitter(props) {
+      const { label, value, min, max, onChange } = props
+
+      const clamp = (n) => Math.max(min, Math.min(max, Math.round(n)))
+
+      const onPointerDown = (event) => {
+        if (typeof event.button === 'number' && event.button !== 0) return
+        const startX = event.clientX
+        const base = value
+        const el = event.currentTarget
+        try {
+          el.setPointerCapture(event.pointerId)
+        } catch {
+          // 没有指针捕获也能拖，只是移出手柄就断
+        }
+        el.classList.add('dshgn_splitterOn')
+        const move = (moveEvent) => onChange(clamp(base + (moveEvent.clientX - startX)))
+        const stop = () => {
+          el.classList.remove('dshgn_splitterOn')
+          el.removeEventListener('pointermove', move)
+          el.removeEventListener('pointerup', stop)
+          el.removeEventListener('pointercancel', stop)
+        }
+        el.addEventListener('pointermove', move)
+        el.addEventListener('pointerup', stop)
+        el.addEventListener('pointercancel', stop)
+        event.preventDefault()
+      }
+
+      const onKeyDown = (event) => {
+        const step = event.shiftKey ? 32 : 8
+        if (event.key === 'ArrowLeft') {
+          event.preventDefault()
+          onChange(clamp(value - step))
+        } else if (event.key === 'ArrowRight') {
+          event.preventDefault()
+          onChange(clamp(value + step))
+        }
+      }
+
+      return h('button', {
+        type: 'button',
+        className: 'dshgn_splitter',
+        'aria-label': label,
+        'aria-orientation': 'vertical',
+        title: label,
+        onPointerDown,
+        onKeyDown,
+      })
     }
 
     function TreePane(props) {

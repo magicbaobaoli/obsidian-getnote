@@ -7263,6 +7263,35 @@ function openExternal(url) {
   }
   window.open(url, "_blank", "noopener,width=520,height=760");
 }
+var __pendingIntent = null;
+var __intentListeners = /* @__PURE__ */ new Set();
+function requestIntent(intent) {
+  if (intent === null || typeof intent !== "object") return;
+  if (__intentListeners.size === 0) {
+    __pendingIntent = intent;
+    return;
+  }
+  for (const listener of Array.from(__intentListeners)) {
+    try {
+      listener(intent);
+    } catch {
+    }
+  }
+}
+function subscribeIntent(listener) {
+  __intentListeners.add(listener);
+  if (__pendingIntent !== null) {
+    const pending = __pendingIntent;
+    __pendingIntent = null;
+    try {
+      listener(pending);
+    } catch {
+    }
+  }
+  return () => {
+    __intentListeners.delete(listener);
+  };
+}
 var __saveFile = null;
 function setSaveFile(fn2) {
   __saveFile = typeof fn2 === "function" ? fn2 : null;
@@ -7319,6 +7348,9 @@ var LEX = {
     "tree.sortTime": "\u6309\u4FEE\u6539\u65F6\u95F4",
     "tree.sortName": "\u6309\u540D\u79F0",
     "tree.sortCount": "\u6309\u6761\u6570",
+    // 三栏拖拽手柄的无障碍名字（视觉上是一条发丝线，读屏要能说出它是什么）
+    "col.treeWidth": "\u8C03\u6574\u5DE6\u680F\u5BBD\u5EA6",
+    "col.listWidth": "\u8C03\u6574\u4E2D\u680F\u5BBD\u5EA6",
     // 目录 / 标签的增删
     "tree.newDir": "\u65B0\u5EFA\u76EE\u5F55",
     "tree.newDirHint": "\u8F93\u5165\u76EE\u5F55\u540D\uFF0C\u591A\u5C42\u7528 / \u5206\u9694",
@@ -7675,6 +7707,8 @@ var LEX = {
     "tree.sortTime": "By modified",
     "tree.sortName": "By name",
     "tree.sortCount": "By count",
+    "col.treeWidth": "Resize left column",
+    "col.listWidth": "Resize middle column",
     "tree.newDir": "New folder",
     "tree.newDirHint": "Folder name; use / for nesting",
     "tree.newTag": "New tag",
@@ -8030,6 +8064,8 @@ var LEX = {
     "tree.sortTime": "Op gewijzigd",
     "tree.sortName": "Op naam",
     "tree.sortCount": "Op aantal",
+    "col.treeWidth": "Linkerkolom breder of smaller maken",
+    "col.listWidth": "Middenkolom breder of smaller maken",
     "tree.newDir": "Nieuwe map",
     "tree.newDirHint": "Mapnaam; gebruik / voor submappen",
     "tree.newTag": "Nieuwe tag",
@@ -9202,7 +9238,7 @@ var CSS = `
    \u5C11\u4E86\u5B83\uFF0C\u6B63\u6587\u91CC\u4E00\u5757\u8D85\u5BBD\u7684\u4EE3\u7801\u8868\u683C\u4F1A\u628A\u6574\u4E2A .dshgn_body \u6491\u51FA\u6A2A\u5411\u6EDA\u52A8\u6761\uFF0C
    \u70B9\u5927\u7EB2\u8DF3\u8F6C\u65F6\u6D4F\u89C8\u5668\u628A\u5916\u5C42\u7684\u6A2A\u5411\u6EDA\u52A8\u4E00\u8D77\u5E26\u8D70\uFF0C\u770B\u8D77\u6765\u5C31\u662F\u300C\u6574\u4E2A\u63D2\u4EF6\u5F80\u5DE6\u79FB\u3001\u53D8\u5F62\u300D\u3002 */
 .dshgn_body{flex:1;display:flex;min-height:0;min-width:0;overflow:hidden}
-.dshgn_tree{flex:none;width:190px;display:flex;flex-direction:column;min-height:0;
+.dshgn_tree{flex:none;width:var(--dshgn-treeW,204px);display:flex;flex-direction:column;min-height:0;
   border-right:0.5px solid var(--dsw-alias-border-l2);overflow-y:auto;overflow-x:hidden;padding:8px 6px}
 .dshgn_treeHead{display:flex;align-items:center;justify-content:space-between;gap:6px;
   padding:4px 6px;font-size:11px;color:var(--dsw-alias-label-tertiary);user-select:none}
@@ -9243,8 +9279,16 @@ var CSS = `
 /* \u672A\u6765\u65E5\u671F\u753B\u6210\u865A\u7EBF\u7A7A\u6846\uFF1A\u5B9E\u5FC3\u7A7A\u6846\u4F1A\u88AB\u8BEF\u8BFB\u6210\u300C\u90A3\u5929\u5199 0 \u7BC7\u300D */
 .dshgn_heatCell[data-future="true"]{background:transparent;
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
-.dshgn_list{flex:none;width:260px;display:flex;flex-direction:column;min-height:0;
+.dshgn_list{flex:none;width:var(--dshgn-listW,260px);display:flex;flex-direction:column;min-height:0;
   border-right:0.5px solid var(--dsw-alias-border-l2)}
+/* \u4E09\u680F\u4E4B\u95F4\u7684\u62D6\u62FD\u624B\u67C4\uFF1A\u5E38\u6001\u662F\u4E00\u6761 1px \u7684\u53D1\u4E1D\u7EBF\uFF0C\u60AC\u505C/\u62D6\u52A8\u65F6\u624D\u4EAE\u8D77\u6765\u3002
+   \u5BBD\u5EA6 5px \u800C\u4E0D\u662F 1px\u2014\u20141px \u7684\u76EE\u6807\u5728\u89E6\u63A7\u677F\u4E0A\u51E0\u4E4E\u6293\u4E0D\u4F4F\u3002 */
+.dshgn_splitter{flex:none;width:5px;margin:0 -2px;cursor:col-resize;position:relative;z-index:2;
+  background:transparent;border:0;padding:0}
+.dshgn_splitter::after{content:"";position:absolute;top:0;bottom:0;left:2px;width:1px;
+  background:var(--dsw-alias-border-l2);transition:background .12s}
+.dshgn_splitter:hover::after,.dshgn_splitterOn::after{background:var(--dsw-alias-brand-primary)}
+.dshgn_splitter:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}
 .dshgn_searchWrap{flex:none;display:flex;align-items:center;gap:6px;padding:8px 10px;
   border-bottom:0.5px solid var(--dsw-alias-border-l2)}
 .dshgn_search{flex:1;min-width:0;height:26px;padding:0 8px;border:0.5px solid var(--dsw-alias-border-l2);
@@ -9638,7 +9682,7 @@ var CSS = `
 
 /* \u2500\u2500 \u5DE6\u680F\uFF1A\u6DF1\u84DD\u3002\u6574\u680F\u7528\u4E0A\u6DF1\u4E0B\u66F4\u6DF1\u7684\u6E10\u53D8\uFF0C\u8FB9\u754C\u9760\u4E00\u6761\u4EAE\u7EBF\u6536\u4F4F \u2500\u2500 */
 .dshgn_tree{
-  width:204px;
+  width:var(--dshgn-treeW,204px);
   background:linear-gradient(180deg,var(--dshgn-deep) 0%,var(--dshgn-deep2) 100%);
   color:var(--dshgn-deepFg);
   border-right:1px solid rgba(0,0,0,.28);
@@ -9891,6 +9935,7 @@ function GetnotePage() {
   };
   const [dirSort, setDirSort] = h2(() => makeSortPref("dshgn.sortDir").read());
   const [tagSort, setTagSort] = h2(() => makeSortPref("dshgn.sortTag").read());
+  const [colWidths, setColWidths] = h2(() => readColWidths());
   const [current, setCurrent] = h2(null);
   const [draft, setDraft] = h2(null);
   const [busy, setBusy] = h2(false);
@@ -10195,6 +10240,71 @@ function GetnotePage() {
       }
     },
     [activeDir, openNote, refresh, showToast, t3, templateContent]
+  );
+  y2(
+    () => subscribeIntent((intent) => {
+      const kind = intent && intent.type;
+      if (kind === "search") {
+        setTab("notes");
+        window.setTimeout(() => {
+          const input = document.querySelector(".dshgn_search");
+          if (input) {
+            input.focus();
+            input.select();
+          }
+        }, 30);
+        return;
+      }
+      if (kind === "new") {
+        setTab("notes");
+        if (status !== null && !status.vaultMissing) void newNote();
+        return;
+      }
+      if (kind === "today") {
+        const now = /* @__PURE__ */ new Date();
+        const pad2 = (n2) => String(n2).padStart(2, "0");
+        const stamp = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+        setTab("notes");
+        const hit = (entries || []).find(
+          (entry) => entry.date === stamp || String(entry.title || "").trim() === stamp
+        );
+        if (hit !== void 0) {
+          void openNote(hit.path);
+          return;
+        }
+        if (status === null || status.vaultMissing) return;
+        setBusy(true);
+        void api("/create", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ dir: activeDir, title: stamp, content: "", requestId: requestId() })
+        }).then(async (created) => {
+          showToast(t3("note.created"));
+          await refresh();
+          await openNote(created.path);
+        }).catch((err) => setError(err && err.message ? err.message : String(err))).finally(() => setBusy(false));
+        return;
+      }
+      if (kind === "sync") {
+        setTab("settings");
+        setBusy(true);
+        void api("/sync/start", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ full: false })
+        }).then(() => showToast(t3("sync.running"))).catch((err) => setError(err && err.message ? err.message : String(err))).finally(() => setBusy(false));
+        return;
+      }
+      if (kind === "card") {
+        setTab("card");
+        setBusy(true);
+        void api("/card/scan?timeout=8").then((json) => {
+          const count = Array.isArray(json && json.cards) ? json.cards.length : 0;
+          showToast(count > 0 ? `${t3("card.scanFound")}\uFF1A${count}` : t3("card.scanNone"));
+        }).catch((err) => setError(err && err.message ? err.message : String(err))).finally(() => setBusy(false));
+      }
+    }),
+    [activeDir, entries, newNote, openNote, refresh, showToast, status, t3]
   );
   const deleteNote = q2(async () => {
     if (current === null) return;
@@ -10614,6 +10724,13 @@ function GetnotePage() {
         currentNoteId: current !== null && current.noteId ? current.noteId : null,
         heatmap: status !== null && status.heatmap ? status.heatmap : null
       }),
+      h4(ColSplitter, {
+        label: t3("col.treeWidth"),
+        value: colWidths.tree,
+        min: TREE_MIN_W,
+        max: TREE_MAX_W,
+        onChange: (next) => setColWidths((prev) => ({ ...prev, tree: next }))
+      }),
       h4(
         "div",
         { className: "dshgn_list" },
@@ -10789,6 +10906,13 @@ function GetnotePage() {
           )
         )
       ),
+      h4(ColSplitter, {
+        label: t3("col.listWidth"),
+        value: colWidths.list,
+        min: LIST_MIN_W,
+        max: LIST_MAX_W,
+        onChange: (next) => setColWidths((prev) => ({ ...prev, list: next }))
+      }),
       h4(NotePane, {
         t: t3,
         status,
@@ -10825,16 +10949,24 @@ function GetnotePage() {
       })
     );
   }
+  y2(() => {
+    writeColWidths(colWidths);
+  }, [colWidths]);
   const themeStyle = themeVars(
     themePreview !== null ? themePreview : status !== null ? status.themeColor : null,
     darkTheme
   );
+  const rootStyle = {
+    ...themeStyle === null ? {} : themeStyle,
+    "--dshgn-treeW": `${colWidths.tree}px`,
+    "--dshgn-listW": `${colWidths.list}px`
+  };
   return h4(
     "div",
     { className: "dshgn_rel" },
     h4(
       "div",
-      { className: "dshgn_root", style: themeStyle === null ? void 0 : themeStyle },
+      { className: "dshgn_root", style: rootStyle },
       head,
       error !== null ? h4("div", { className: "dshgn_error", role: "alert" }, `${t3("error.prefix")}: ${error}`) : null,
       // key 用 tab：切换页签时 React 会换掉整个节点，动画才会从头播一遍。
@@ -13320,6 +13452,80 @@ function HeatmapStrip(props) {
     )
   );
 }
+var TREE_MIN_W = 150;
+var TREE_MAX_W = 360;
+var LIST_MIN_W = 200;
+var LIST_MAX_W = 520;
+var COL_WIDTH_KEY = "dshgn.colWidths";
+function readColWidths() {
+  const fallback = { tree: 204, list: 260 };
+  try {
+    const raw = window.localStorage.getItem(COL_WIDTH_KEY);
+    if (raw === null) return fallback;
+    const parsed = JSON.parse(raw);
+    const num = (value, min, max, def) => {
+      const n2 = Number(value);
+      return Number.isFinite(n2) && n2 >= min && n2 <= max ? Math.round(n2) : def;
+    };
+    return {
+      tree: num(parsed && parsed.tree, TREE_MIN_W, TREE_MAX_W, fallback.tree),
+      list: num(parsed && parsed.list, LIST_MIN_W, LIST_MAX_W, fallback.list)
+    };
+  } catch {
+    return fallback;
+  }
+}
+function writeColWidths(widths) {
+  try {
+    window.localStorage.setItem(COL_WIDTH_KEY, JSON.stringify(widths));
+  } catch {
+  }
+}
+function ColSplitter(props) {
+  const { label, value, min, max, onChange } = props;
+  const clamp = (n2) => Math.max(min, Math.min(max, Math.round(n2)));
+  const onPointerDown = (event) => {
+    if (typeof event.button === "number" && event.button !== 0) return;
+    const startX = event.clientX;
+    const base = value;
+    const el = event.currentTarget;
+    try {
+      el.setPointerCapture(event.pointerId);
+    } catch {
+    }
+    el.classList.add("dshgn_splitterOn");
+    const move = (moveEvent) => onChange(clamp(base + (moveEvent.clientX - startX)));
+    const stop = () => {
+      el.classList.remove("dshgn_splitterOn");
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", stop);
+      el.removeEventListener("pointercancel", stop);
+    };
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", stop);
+    el.addEventListener("pointercancel", stop);
+    event.preventDefault();
+  };
+  const onKeyDown = (event) => {
+    const step = event.shiftKey ? 32 : 8;
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      onChange(clamp(value - step));
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      onChange(clamp(value + step));
+    }
+  };
+  return h4("button", {
+    type: "button",
+    className: "dshgn_splitter",
+    "aria-label": label,
+    "aria-orientation": "vertical",
+    title: label,
+    onPointerDown,
+    onKeyDown
+  });
+}
 function TreePane(props) {
   const {
     t: t3,
@@ -14849,6 +15055,29 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
         void this.activateView(true);
       }
     });
+    const intentCommand = (id, name, intent) => {
+      this.addCommand({
+        id,
+        name,
+        callback: () => {
+          void this.activateView().then(() => requestIntent(intent));
+        }
+      });
+    };
+    intentCommand("search-notes", "\u641C\u7D22\u5F97\u5230\u5927\u8111\u7B14\u8BB0", { type: "search" });
+    intentCommand("new-note", "\u65B0\u5EFA\u5F97\u5230\u5927\u8111\u7B14\u8BB0", { type: "new" });
+    intentCommand("open-today", "\u6253\u5F00\u4ECA\u5929\u7684\u7B14\u8BB0", { type: "today" });
+    intentCommand("sync-now", "\u7ACB\u5373\u540C\u6B65\u5F97\u5230\u5927\u8111", { type: "sync" });
+    intentCommand("scan-card", "\u626B\u63CF\u5F55\u97F3\u5361", { type: "card" });
+    if (this.server) {
+      this.statusBarEl = this.addStatusBarItem();
+      this.statusBarEl.addClass("dshgn_status");
+      this.statusBarEl.setText("\u5F97\u5230\u5927\u8111");
+      this.statusBarEl.title = `\u672C\u5730\u670D\u52A1 http://127.0.0.1:${this.localPort}`;
+      this.registerDomEvent(this.statusBarEl, "click", () => {
+        void this.activateView();
+      });
+    }
     this.addSettingTab(new GetnoteSettingTab(this.app, this));
     const bump = () => invalidateScan();
     this.registerEvent(this.app.vault.on("modify", bump));
