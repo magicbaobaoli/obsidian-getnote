@@ -12,7 +12,11 @@
  * 通道**的状态。删掉 auth.json 之后插件仍然完整可用——笔记的真身是库里的
  * Markdown 文件。
  */
-import { readFile, writeFile, rename, mkdir, chmod, realpath, stat } from 'node:fs/promises'
+import { readFile, writeFile, rename, mkdir, chmod, realpath } from 'node:fs/promises'
+// 注意这里的分工：插件自己的数据目录（设置、凭证）用 node:fs 直接读写，
+// 因为它不在库里；而**库内**的目录（笔记子目录）必须走 vfs，
+// 否则 adapter 后端下 stat 会去查真实磁盘，明明建好了还说目录不存在。
+import { stat as vfsStat, mkdir as vfsMkdir } from './vfs.js'
 import { randomBytes } from 'node:crypto'
 import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
@@ -245,7 +249,7 @@ export async function setVaultRoot(input) {
   runtime.subfolder = sub
   await updateSettings({ subfolder: sub })
   const target = defaultVaultRoot()
-  await mkdir(target, { recursive: true })
+  await vfsMkdir(target, { recursive: true })
   return target
 }
 
@@ -260,7 +264,7 @@ export async function resolveVaultRoot(configured) {
   if (sub !== runtime.subfolder) runtime.subfolder = sub
   const root = defaultVaultRoot()
   try {
-    const st = await stat(root)
+    const st = await vfsStat(root)
     if (st.isDirectory()) return { root, missing: null }
   } catch {
     return { root, missing: root }

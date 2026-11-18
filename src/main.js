@@ -16,7 +16,7 @@
 import { Notice, Plugin, PluginSettingTab, Setting } from 'obsidian'
 
 import * as settingsStore from './core/settings.js'
-import { configure as configureVfs } from './core/vfs.js'
+import { configure as configureVfs, mkdir as vfsMkdir } from './core/vfs.js'
 import { configureCardScripts } from './core/card.js'
 import { startAutoSync, markPanelVisible } from './core/service.js'
 import { startLocalServer } from './host/server.js'
@@ -40,6 +40,16 @@ export default class GetnoteObsidianPlugin extends Plugin {
     const stored = await settingsStore.readSettings()
     if (stored.subfolder && stored.subfolder !== DEFAULT_SUBFOLDER) {
       settingsStore.configure({ subfolder: stored.subfolder })
+    }
+
+    // 笔记目录不存在时建出来。不建的话面板一进来就是「本地库目录不存在」，
+    // 用户还得自己先去资源管理器建个文件夹——第一次用的体验会莫名其妙。
+    // 用 vfs 而不是 node:fs，这样 Obsidian 的文件索引能立刻看到新目录。
+    const vaultRoot = settingsStore.resolveVaultRoot().root
+    try {
+      await vfsMkdir(vaultRoot, { recursive: true })
+    } catch (error) {
+      new Notice(`得到大脑：笔记目录建不出来 —— ${error && error.message ? error.message : error}`)
     }
 
     // 端口优先固定，OAuth 的 redirect_uri 才能跨会话稳定；被占用时退回随机端口。

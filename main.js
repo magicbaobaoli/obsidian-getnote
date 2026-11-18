@@ -33,7 +33,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // src/core/vfs.js
-function configure2(options = {}) {
+function configure(options = {}) {
   adapter = options.adapter || null;
   basePath = String(options.basePath || "").replace(/\\/g, "/").replace(/\/+$/, "");
 }
@@ -100,7 +100,7 @@ async function readdir2(dir, options = {}) {
   }
   return [...folders, ...files];
 }
-async function readFile3(file, encoding) {
+async function readFile2(file, encoding) {
   if (!adapter) return encoding ? nodefs.readFile(file, encoding) : nodefs.readFile(file);
   const rel = relOf(file);
   if (!await adapterExists(rel)) throw enoent(file);
@@ -108,7 +108,7 @@ async function readFile3(file, encoding) {
   const buf = await adapter.readBinary(rel);
   return Buffer.from(buf);
 }
-async function stat3(file) {
+async function stat2(file) {
   if (!adapter) return nodefs.stat(file);
   const rel = relOf(file);
   const st = await adapter.stat(rel);
@@ -117,20 +117,20 @@ async function stat3(file) {
 }
 async function lstat2(file) {
   if (!adapter) return nodefs.lstat(file);
-  return stat3(file);
+  return stat2(file);
 }
 async function access2(file) {
   if (!adapter) return nodefs.access(file);
   if (!await adapterExists(relOf(file))) throw enoent(file);
 }
-async function mkdir3(dir, options = {}) {
+async function mkdir2(dir, options = {}) {
   if (!adapter) return nodefs.mkdir(dir, options);
   const rel = relOf(dir);
   if (rel === "" || await adapterExists(rel)) return void 0;
   await adapter.mkdir(rel);
   return void 0;
 }
-async function writeFile3(file, data, options) {
+async function writeFile2(file, data, options) {
   if (!adapter) return nodefs.writeFile(file, data, options);
   const rel = relOf(file);
   const flags = typeof options === "string" ? "" : String(options && options.flag || "");
@@ -140,7 +140,7 @@ async function writeFile3(file, data, options) {
   if (typeof data === "string") await adapter.write(rel, data);
   else await adapter.writeBinary(rel, data);
 }
-async function rename3(from, to) {
+async function rename2(from, to) {
   if (!adapter) return nodefs.rename(from, to);
   const relFrom = relOf(from);
   const relTo = relOf(to);
@@ -356,12 +356,12 @@ async function scanVault(root) {
       const rel = relDir === "" ? name : `${relDir}/${name}`;
       const abs = (0, import_node_path3.join)(dir, name);
       try {
-        const st = await stat3(abs);
+        const st = await stat2(abs);
         if (st.size > MAX_READ) {
           errors.push({ path: rel, message: `\u6587\u4EF6\u8D85\u8FC7 ${Math.round(MAX_READ / 1024 / 1024)}MB\uFF0C\u5DF2\u8DF3\u8FC7` });
           continue;
         }
-        const text = await readFile3(abs, "utf8");
+        const text = await readFile2(abs, "utf8");
         const { data, body } = parseFrontmatter(text);
         entries.push({
           path: rel,
@@ -434,10 +434,10 @@ async function readNote(root, rel) {
   if (!normalized.toLowerCase().endsWith(NOTE_EXT)) {
     throw Object.assign(new Error("\u53EA\u80FD\u8BFB\u53D6 .md \u6587\u4EF6"), { status: 400 });
   }
-  const st = await stat3(abs);
+  const st = await stat2(abs);
   if (!st.isFile()) throw Object.assign(new Error("\u4E0D\u662F\u6587\u4EF6"), { status: 400 });
   if (st.size > MAX_READ) throw Object.assign(new Error("\u6587\u4EF6\u8FC7\u5927"), { status: 413 });
-  const content = await readFile3(abs, "utf8");
+  const content = await readFile2(abs, "utf8");
   const { data, body } = parseFrontmatter(content);
   return {
     path: normalized,
@@ -480,7 +480,7 @@ async function listAssets(root, rel, noteId = "") {
     if (!owned) continue;
     const relPath = `${assetRel}/${name}`;
     try {
-      const st = await stat3(resolveInside(root, relPath).abs);
+      const st = await stat2(resolveInside(root, relPath).abs);
       if (!st.isFile()) continue;
       out.push({
         name,
@@ -505,7 +505,7 @@ async function writeNote(root, rel, content, options = {}) {
   if (Buffer.byteLength(content, "utf8") > MAX_WRITE) {
     throw Object.assign(new Error("\u5185\u5BB9\u8D85\u8FC7 2MB \u4E0A\u9650"), { status: 413 });
   }
-  await mkdir3((0, import_node_path3.dirname)(abs), { recursive: true });
+  await mkdir2((0, import_node_path3.dirname)(abs), { recursive: true });
   if (backup) {
     try {
       await copyFile2(abs, `${abs}.bak`);
@@ -513,9 +513,9 @@ async function writeNote(root, rel, content, options = {}) {
     }
   }
   const tmp = `${abs}.${process.pid}.${(0, import_node_crypto2.randomBytes)(4).toString("hex")}.tmp`;
-  await writeFile3(tmp, content, "utf8");
-  await rename3(tmp, abs);
-  const st = await stat3(abs);
+  await writeFile2(tmp, content, "utf8");
+  await rename2(tmp, abs);
+  const st = await stat2(abs);
   return { path: normalized, bytes: st.size, mtimeMs: st.mtimeMs };
 }
 function safeFilename(title, fallback = "\u672A\u547D\u540D") {
@@ -535,7 +535,7 @@ async function createNote(root, { dir = "", title = "", content = "", date, with
   for (; ; ) {
     const { abs } = resolveInside(root, candidate);
     try {
-      await stat3(abs);
+      await stat2(abs);
       const stem = candidate.slice(0, -NOTE_EXT.length);
       candidate = `${stem}-${counter}${NOTE_EXT}`;
       counter += 1;
@@ -557,8 +557,8 @@ async function trashNote(root, rel) {
   const trashDir = (0, import_node_path3.join)(root, ".trash");
   const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
   const target = (0, import_node_path3.join)(trashDir, `${stamp}__${(0, import_node_path3.basename)(abs)}`);
-  await mkdir3(trashDir, { recursive: true });
-  await rename3(abs, target);
+  await mkdir2(trashDir, { recursive: true });
+  await rename2(abs, target);
   return { path: normalized, trashedTo: toPosix((0, import_node_path3.relative)(root, target)) };
 }
 function parseTrashName(name) {
@@ -586,7 +586,7 @@ async function listTrash(root) {
     const abs = (0, import_node_path3.join)(trashDir, dirent2.name);
     let st;
     try {
-      st = await stat3(abs);
+      st = await stat2(abs);
     } catch {
       continue;
     }
@@ -615,7 +615,7 @@ async function restoreNote(root, trashPath, targetRel) {
   }
   let st;
   try {
-    st = await stat3(absTrash);
+    st = await stat2(absTrash);
   } catch {
     throw Object.assign(new Error("\u56DE\u6536\u7AD9\u91CC\u6CA1\u6709\u8FD9\u4E2A\u6587\u4EF6"), { status: 404 });
   }
@@ -631,7 +631,7 @@ async function restoreNote(root, trashPath, targetRel) {
   let counter = 1;
   for (; ; ) {
     try {
-      await stat3(resolveInside(root, candidate).abs);
+      await stat2(resolveInside(root, candidate).abs);
       counter += 1;
       if (counter > 99) throw Object.assign(new Error("\u540C\u540D\u7B14\u8BB0\u8FC7\u591A"), { status: 409 });
       const dir = import_node_path3.posix.dirname(rel);
@@ -645,8 +645,8 @@ async function restoreNote(root, trashPath, targetRel) {
     }
   }
   const { abs: absFinal } = resolveInside(root, candidate, { create: true });
-  await mkdir3((0, import_node_path3.dirname)(absFinal), { recursive: true });
-  await rename3(absTrash, absFinal);
+  await mkdir2((0, import_node_path3.dirname)(absFinal), { recursive: true });
+  await rename2(absTrash, absFinal);
   return { path: candidate, restoredFrom: trashRel, title: meta.originalName };
 }
 async function purgeTrash(root, trashPath) {
@@ -744,7 +744,7 @@ async function searchNotes(root, query, { limit = 60, perFile = 3, sort = "relev
       scanned += 1;
       let text;
       try {
-        text = await readFile3((0, import_node_path3.join)(dir, name), "utf8");
+        text = await readFile2((0, import_node_path3.join)(dir, name), "utf8");
       } catch {
         continue;
       }
@@ -849,7 +849,7 @@ async function findBacklinks(root, target, entries) {
     if (entry.path === raw) continue;
     let text;
     try {
-      text = await readFile3(resolveInside(root, entry.path).abs, "utf8");
+      text = await readFile2(resolveInside(root, entry.path).abs, "utf8");
     } catch {
       continue;
     }
@@ -892,7 +892,7 @@ function outlineOf(body) {
 }
 async function readConflictState(root) {
   try {
-    const text = await readFile3((0, import_node_path3.join)(root, CONFLICT_DIR, CONFLICT_STATE_FILE), "utf8");
+    const text = await readFile2((0, import_node_path3.join)(root, CONFLICT_DIR, CONFLICT_STATE_FILE), "utf8");
     const data = JSON.parse(text);
     if (data === null || typeof data !== "object" || Array.isArray(data)) return {};
     return data;
@@ -902,11 +902,11 @@ async function readConflictState(root) {
 }
 async function writeConflictState(root, state) {
   const dir = (0, import_node_path3.join)(root, CONFLICT_DIR);
-  await mkdir3(dir, { recursive: true });
+  await mkdir2(dir, { recursive: true });
   const target = (0, import_node_path3.join)(dir, CONFLICT_STATE_FILE);
   const tmp = `${target}.${(0, import_node_crypto2.randomBytes)(4).toString("hex")}.tmp`;
-  await writeFile3(tmp, JSON.stringify(state, null, 2), "utf8");
-  await rename3(tmp, target);
+  await writeFile2(tmp, JSON.stringify(state, null, 2), "utf8");
+  await rename2(tmp, target);
 }
 function parseConflictName(name) {
   const m = CONFLICT_NAME_RE.exec(name);
@@ -930,7 +930,7 @@ async function listConflicts(root) {
     if (name.endsWith(".bak")) continue;
     let st;
     try {
-      st = await stat3((0, import_node_path3.join)(dir, name));
+      st = await stat2((0, import_node_path3.join)(dir, name));
     } catch {
       continue;
     }
@@ -963,7 +963,7 @@ async function readConflict(root, conflictPath) {
     throw Object.assign(new Error("\u4E0D\u662F\u51B2\u7A81\u7559\u6863\u8DEF\u5F84"), { status: 400 });
   }
   const { abs } = resolveInside(root, rel);
-  const text = await readFile3(abs, "utf8");
+  const text = await readFile2(abs, "utf8");
   const base = rel.slice(CONFLICT_DIR.length + 1);
   const parsed = parseConflictName(base);
   const { data, body } = parseFrontmatter(text);
@@ -1054,7 +1054,7 @@ async function createDir(root, dirInput) {
   }
   const { abs } = resolveInside(root, rel, { create: true });
   try {
-    await mkdir3(abs, { recursive: true });
+    await mkdir2(abs, { recursive: true });
   } catch (error) {
     throw Object.assign(new Error(`\u5EFA\u76EE\u5F55\u5931\u8D25\uFF1A${error && error.message ? error.message : error}`), { status: 500 });
   }
@@ -32476,6 +32476,7 @@ var import_obsidian2 = require("obsidian");
 
 // src/core/settings.js
 var import_promises = require("node:fs/promises");
+init_vfs();
 var import_node_crypto = require("node:crypto");
 var import_node_os = require("node:os");
 var import_node_path = require("node:path");
@@ -32488,7 +32489,7 @@ var runtime = {
   vaultBase: "",
   subfolder: "\u5F97\u5230\u5927\u8111"
 };
-function configure(options = {}) {
+function configure2(options = {}) {
   if (typeof options.dataDir === "string" && options.dataDir !== "") runtime.dataDir = options.dataDir;
   if (typeof options.vaultBase === "string" && options.vaultBase !== "") runtime.vaultBase = options.vaultBase;
   if (typeof options.subfolder === "string" && options.subfolder.trim() !== "") runtime.subfolder = options.subfolder.trim();
@@ -32635,7 +32636,7 @@ async function setVaultRoot(input) {
   runtime.subfolder = sub;
   await updateSettings({ subfolder: sub });
   const target = defaultVaultRoot();
-  await (0, import_promises.mkdir)(target, { recursive: true });
+  await mkdir2(target, { recursive: true });
   return target;
 }
 async function resolveVaultRoot(configured) {
@@ -32643,7 +32644,7 @@ async function resolveVaultRoot(configured) {
   if (sub !== runtime.subfolder) runtime.subfolder = sub;
   const root = defaultVaultRoot();
   try {
-    const st = await (0, import_promises.stat)(root);
+    const st = await stat2(root);
     if (st.isDirectory()) return { root, missing: null };
   } catch {
     return { root, missing: root };
@@ -32995,7 +32996,7 @@ async function importCardRecordings(root, options = {}) {
     summary.items.push({ name: item.name, status: "skipped", reason: item.reason });
   }
   const targetDir = dir === "" ? "" : dir;
-  await mkdir3(targetDir === "" ? root : (0, import_node_path2.join)(root, targetDir), { recursive: true }).catch(() => {
+  await mkdir2(targetDir === "" ? root : (0, import_node_path2.join)(root, targetDir), { recursive: true }).catch(() => {
   });
   for (const item of downloaded) {
     const sourceName = String(item.name || "");
@@ -33009,7 +33010,7 @@ async function importCardRecordings(root, options = {}) {
       const assetName = `${sourceName}_${stamp}.ogg`;
       const assetRel = posix(targetDir === "" ? `asset/${assetName}` : `${targetDir}/asset/${assetName}`);
       const assetAbs = (0, import_node_path2.join)(root, assetRel);
-      await mkdir3((0, import_node_path2.dirname)(assetAbs), { recursive: true });
+      await mkdir2((0, import_node_path2.dirname)(assetAbs), { recursive: true });
       const { rename: rename4 } = await import("node:fs/promises");
       await rename4(item.path, assetAbs);
       const title = titleOfCardFile(sourceName);
@@ -33187,7 +33188,7 @@ async function readSnapshots(dirAbs) {
     if (!name.toLowerCase().endsWith(".md")) continue;
     let st;
     try {
-      st = await stat3((0, import_node_path4.join)(dirAbs, name));
+      st = await stat2((0, import_node_path4.join)(dirAbs, name));
     } catch {
       continue;
     }
@@ -33223,24 +33224,24 @@ async function snapshotNote(root, relPath, { now = Date.now(), limit = HISTORY_L
   const abs = (0, import_node_path4.resolve)(root, ...parts);
   let st;
   try {
-    st = await stat3(abs);
+    st = await stat2(abs);
   } catch (error) {
     if (isMissing(error)) return { saved: false, reason: "missing" };
     throw error;
   }
   if (!st.isFile()) return { saved: false, reason: "missing" };
   if (st.size > MAX_SNAPSHOT_BYTES) return { saved: false, reason: "too-large" };
-  const buf = await readFile3(abs);
+  const buf = await readFile2(abs);
   if (buf.length > MAX_SNAPSHOT_BYTES) return { saved: false, reason: "too-large" };
   const key = historyKeyFor(parts.join("/"));
   const dirAbs = (0, import_node_path4.join)(root, HISTORY_DIR, key);
-  await mkdir3(dirAbs, { recursive: true });
+  await mkdir2(dirAbs, { recursive: true });
   const base = stampLabel(now);
   let name = "";
   for (let i = 1; i <= 999; i += 1) {
     const candidate = i === 1 ? `${base}.md` : `${base}-${i}.md`;
     try {
-      await writeFile3((0, import_node_path4.join)(dirAbs, candidate), buf, { flag: "wx" });
+      await writeFile2((0, import_node_path4.join)(dirAbs, candidate), buf, { flag: "wx" });
       name = candidate;
       break;
     } catch (error) {
@@ -33278,7 +33279,7 @@ async function readHistoryEntry(root, relPath, name) {
   const abs = (0, import_node_path4.join)(root, HISTORY_DIR, key, name);
   let st;
   try {
-    st = await stat3(abs);
+    st = await stat2(abs);
   } catch (error) {
     if (isMissing(error)) throw notFound();
     throw error;
@@ -33286,7 +33287,7 @@ async function readHistoryEntry(root, relPath, name) {
   if (!st.isFile()) throw notFound();
   let buf;
   try {
-    buf = await readFile3(abs);
+    buf = await readFile2(abs);
   } catch (error) {
     if (isMissing(error)) throw notFound();
     throw error;
@@ -33302,14 +33303,14 @@ async function readHistoryEntry(root, relPath, name) {
 }
 async function atomicWrite(abs, content) {
   const tmp = `${abs}.${process.pid}.${Date.now().toString(36)}.${(0, import_node_crypto3.randomBytes)(3).toString("hex")}.tmp`;
-  await writeFile3(tmp, content, "utf8");
+  await writeFile2(tmp, content, "utf8");
   try {
-    await rename3(tmp, abs);
+    await rename2(tmp, abs);
     return;
   } catch (first) {
     try {
       await rm2(abs, { force: true });
-      await rename3(tmp, abs);
+      await rename2(tmp, abs);
       return;
     } catch {
       await rm2(tmp, { force: true }).catch(() => {
@@ -33327,7 +33328,7 @@ async function restoreHistoryEntry(root, relPath, name, { keepCurrent = true } =
     const snap = await snapshotNote(root, parts.join("/"));
     hadSnapshot = snap.saved === true;
   }
-  await mkdir3((0, import_node_path4.dirname)(abs), { recursive: true });
+  await mkdir2((0, import_node_path4.dirname)(abs), { recursive: true });
   await atomicWrite(abs, entry.content);
   return { restored: true, path: parts.join("/"), from: name, hadSnapshot };
 }
@@ -33638,7 +33639,7 @@ async function existsAt(abs) {
 }
 async function writeNoClobber(abs, data) {
   try {
-    await writeFile3(abs, data, { flag: "wx" });
+    await writeFile2(abs, data, { flag: "wx" });
     return true;
   } catch (err) {
     if (err?.code === "EEXIST") return false;
@@ -33678,7 +33679,7 @@ async function indexNoteIds(absRoot) {
       try {
         const st = await lstat2(abs);
         if (!st.isFile() || st.size > INDEX_NOTE_MAX) continue;
-        const text = await readFile3(abs, "utf8");
+        const text = await readFile2(abs, "utf8");
         const id = String(parseFrontmatter(text).data?.note_id ?? "").trim();
         if (id !== "") ids.add(id);
       } catch {
@@ -33732,7 +33733,7 @@ async function exportVaultToZip(root, options = {}) {
   for (const f of found) {
     let data;
     try {
-      data = await readFile3(f.abs);
+      data = await readFile2(f.abs);
     } catch {
       continue;
     }
@@ -33753,7 +33754,7 @@ async function importZipToVault(root, buffer, options = {}) {
   if (zip === null) throw fail(400, "\u5F52\u6863\u5185\u5BB9\u5FC5\u987B\u662F\u4E8C\u8FDB\u5236 Buffer");
   const absRoot = (0, import_node_path5.resolve)(root);
   const index = readZipIndex(zip);
-  await mkdir3(absRoot, { recursive: true });
+  await mkdir2(absRoot, { recursive: true });
   const knownIds = await indexNoteIds(absRoot);
   const used = /* @__PURE__ */ new Set();
   const entries = [];
@@ -33809,7 +33810,7 @@ async function importZipToVault(root, buffer, options = {}) {
       const abs = absInside(absRoot, cand);
       if (abs === null) continue;
       try {
-        await mkdir3((0, import_node_path5.dirname)(abs), { recursive: true });
+        await mkdir2((0, import_node_path5.dirname)(abs), { recursive: true });
       } catch {
         continue;
       }
@@ -34662,7 +34663,7 @@ function contentFingerprint({ title, content, tags }) {
 }
 async function localFingerprintOf(path) {
   try {
-    const text = await readFile3(path, "utf8");
+    const text = await readFile2(path, "utf8");
     const { data, body } = parseFrontmatter(text);
     const tags = Array.isArray(data.tags) ? data.tags : data.tags ? [data.tags] : [];
     const title = String(data.title ?? "") || firstHeading(body);
@@ -35305,7 +35306,7 @@ function createHandler(config) {
     if (entries.length === 0 && !settings.vaultRoot) {
       for (const candidate of knownVaultCandidates()) {
         try {
-          const st = await stat3(candidate);
+          const st = await stat2(candidate);
           if (!st.isDirectory()) continue;
           const scan = await scanVault(candidate);
           if (scan.entries.length > 0) suggestions.push({ path: candidate, notes: scan.entries.length });
@@ -35619,7 +35620,7 @@ function createHandler(config) {
         }
         for (const name of names) {
           try {
-            const st = await stat3((0, import_node_path6.join)(abs, name));
+            const st = await stat2((0, import_node_path6.join)(abs, name));
             if (st.isFile()) {
               assetBytes += st.size;
               assetCount += 1;
@@ -35649,7 +35650,7 @@ function createHandler(config) {
     const type = /\.(mp3)$/.test(lower) ? "audio/mpeg" : /\.(ogg)$/.test(lower) ? "audio/ogg" : /\.(m4a|aac)$/.test(lower) ? "audio/mp4" : /\.(wav)$/.test(lower) ? "audio/wav" : /\.(flac)$/.test(lower) ? "audio/flac" : /\.(png)$/.test(lower) ? "image/png" : /\.(jpe?g)$/.test(lower) ? "image/jpeg" : /\.(gif)$/.test(lower) ? "image/gif" : /\.(webp)$/.test(lower) ? "image/webp" : /\.(md)$/.test(lower) ? "text/markdown; charset=utf-8" : null;
     if (type === null) throw Object.assign(new Error("\u4E0D\u652F\u6301\u7684\u6587\u4EF6\u7C7B\u578B"), { status: 400 });
     const { abs } = resolveInside(root, rel);
-    const st = await stat3(abs);
+    const st = await stat2(abs);
     if (!st.isFile()) throw Object.assign(new Error("\u4E0D\u662F\u6587\u4EF6"), { status: 400 });
     const headers = {
       "content-type": type,
@@ -35674,13 +35675,13 @@ function createHandler(config) {
         headers["content-range"] = `bytes ${start}-${end}/${st.size}`;
         headers["content-length"] = String(end - start + 1);
         res.writeHead(206, headers);
-        const whole = await readFile3(abs);
+        const whole = await readFile2(abs);
         return res.end(whole.subarray(start, end + 1));
       }
     }
     headers["content-length"] = String(st.size);
     res.writeHead(200, headers);
-    return res.end(await readFile3(abs));
+    return res.end(await readFile2(abs));
   }
   async function handleSave(req, res) {
     const body = await readJsonBody(req, MAX_BODY);
@@ -35748,7 +35749,7 @@ function createHandler(config) {
           const { abs: srcAbs } = resolveInside(root, path);
           let finalName = base;
           let targetAbs = resolveInside(root, `${dir}/${base}`, { create: true }).abs;
-          await mkdir3((0, import_node_path6.dirname)(targetAbs), { recursive: true });
+          await mkdir2((0, import_node_path6.dirname)(targetAbs), { recursive: true });
           let suffix = 2;
           for (; ; ) {
             try {
@@ -35760,7 +35761,7 @@ function createHandler(config) {
               break;
             }
           }
-          await rename3(srcAbs, targetAbs);
+          await rename2(srcAbs, targetAbs);
           changed += 1;
         }
       } catch (err) {
@@ -36716,6 +36717,7 @@ function applyCors(res) {
   res.setHeader("access-control-allow-headers", "content-type, range, x-getnote-import-mode");
   res.setHeader("access-control-expose-headers", "content-type, content-length, content-range, accept-ranges");
   res.setHeader("access-control-max-age", "600");
+  res.setHeader("access-control-allow-private-network", "true");
 }
 function listenOn(server, port) {
   return new Promise((resolve5, reject) => {
@@ -44127,12 +44129,18 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     const adapter2 = this.app.vault.adapter;
     const basePath2 = typeof adapter2.getBasePath === "function" ? adapter2.getBasePath() : "";
     const dataDir = this.resolveDataDir(basePath2);
-    configure({ dataDir, vaultBase: basePath2, subfolder: DEFAULT_SUBFOLDER });
-    configure2({ adapter: adapter2, basePath: basePath2 });
+    configure2({ dataDir, vaultBase: basePath2, subfolder: DEFAULT_SUBFOLDER });
+    configure({ adapter: adapter2, basePath: basePath2 });
     configureCardScripts({ baseDir: dataDir });
     const stored = await readSettings();
     if (stored.subfolder && stored.subfolder !== DEFAULT_SUBFOLDER) {
-      configure({ subfolder: stored.subfolder });
+      configure2({ subfolder: stored.subfolder });
+    }
+    const vaultRoot = resolveVaultRoot().root;
+    try {
+      await mkdir2(vaultRoot, { recursive: true });
+    } catch (error) {
+      new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A\u7B14\u8BB0\u76EE\u5F55\u5EFA\u4E0D\u51FA\u6765 \u2014\u2014 ${error && error.message ? error.message : error}`);
     }
     const preferredPort = Number(stored.localPort) > 0 ? Number(stored.localPort) : 0;
     try {
