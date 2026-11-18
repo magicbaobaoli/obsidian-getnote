@@ -31,6 +31,10 @@ function applyCors(res) {
   res.setHeader('access-control-allow-headers', 'content-type, range, x-getnote-import-mode')
   res.setHeader('access-control-expose-headers', 'content-type, content-length, content-range, accept-ranges')
   res.setHeader('access-control-max-age', '600')
+  // Chromium 的 Private Network Access：从 app://obsidian.md 这类非公网源访问
+  // 127.0.0.1 时，预检会多带一个 access-control-request-private-network，
+  // 不回这个头浏览器会直接拦掉请求（面板里表现为所有接口 CORS 失败）。
+  res.setHeader('access-control-allow-private-network', 'true')
 }
 
 function listenOn(server, port) {
