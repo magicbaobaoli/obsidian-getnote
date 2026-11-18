@@ -28,6 +28,9 @@
     "esbuild": "^0.25.0",
     "jsdom": "^31.0.1"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "private": false,
   "dependencies": {
     "react": "^18.3.1",

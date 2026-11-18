@@ -305,9 +305,20 @@ test('面板改笔记目录 = 在库里换个子目录，换不到库外面去',
   assert.equal(created.status, 200, JSON.stringify(created.json).slice(0, 200))
   assert.ok(adapter._dump().some((p) => p.startsWith('李欣颀/知识库/得到大脑归档/')), adapter._dump().join(', '))
 
-  // 库外的绝对路径一律拒绝（Obsidian 的 adapter 只能碰库内文件）
-  const outside = await post('/settings', { vaultPath: 'D:/别的地方' })
-  assert.equal(outside.status, 400, JSON.stringify(outside.json))
+  // 库外的绝对路径一律拒绝（Obsidian 的 adapter 只能碰库内文件）。
+  // 两种写法都要测：盘符路径和 POSIX 根路径。node:path 的 isAbsolute 是按平台
+  // 判断的，只测 'D:/...' 的话在 Linux 上会被当成相对路径，这条断言就测了个寂寞。
+  for (const outsidePath of ['D:/别的地方', '/别的地方', '\\\\server\\share']) {
+    const outside = await post('/settings', { vaultPath: outsidePath })
+    assert.equal(outside.status, 400, outsidePath + ' → ' + JSON.stringify(outside.json))
+  }
+  // 库根本身（绝对路径、且在库内）不算越界，但它会收敛回默认子目录：
+  // 把笔记目录设成库根等于让插件扫描并写入用户自己的整个库，笔记会和用户
+  // 的文件混在一起，所以「子目录为空」一律回落到默认目录，而不是当成库根。
+  const atRoot = await post('/settings', { vaultPath: BASE })
+  assert.equal(atRoot.status, 200, JSON.stringify(atRoot.json))
+  assert.equal(atRoot.json.subfolder, '得到大脑')
+  assert.equal(atRoot.json.effectiveRoot.replace(/\\/g, '/'), BASE + '/得到大脑')
   const escaped = await post('/settings', { vaultPath: '../../../外面' })
   assert.equal(escaped.status, 200, '带 .. 的会被收敛回默认目录，不是 400')
   assert.equal(escaped.json.subfolder, '得到大脑')

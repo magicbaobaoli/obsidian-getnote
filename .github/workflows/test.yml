@@ -12,9 +12,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 必须 ≥ 22：jsdom 31 依赖的 undici 用了 zlib.createZstdDecompress，
+      # Node 20 没有这个 API，面板/视图两个测试会直接崩在 require 阶段
+      # （不是断言失败，是进程起不来）。
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
 
       # npm ci 需要 package-lock.json 与 package.json 完全一致；

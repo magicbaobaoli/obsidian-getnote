@@ -32561,7 +32561,7 @@ function toSubfolder(input) {
   let rel = raw;
   if (base !== "" && raw.toLowerCase().startsWith(base.toLowerCase())) rel = raw.slice(base.length);
   rel = rel.replace(/^\/+/, "").replace(/\/+$/, "");
-  if (rel === "") return "";
+  if (rel === "") return "\u5F97\u5230\u5927\u8111";
   if (rel.split("/").includes("..")) return "\u5F97\u5230\u5927\u8111";
   return rel;
 }
@@ -32665,10 +32665,11 @@ async function setVaultRoot(input) {
   if (typeof expanded !== "string" || expanded.trim() === "") {
     throw Object.assign(new Error("\u76EE\u5F55\u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
   }
-  if ((0, import_node_path.isAbsolute)(expanded)) {
+  if ((0, import_node_path.isAbsolute)(expanded) || /^[A-Za-z]:[\\/]/.test(expanded) || /^[\\/]{2}/.test(expanded)) {
     const base = runtime.vaultBase.replace(/\\/g, "/").toLowerCase();
     const normalized = expanded.replace(/\\/g, "/").toLowerCase();
-    if (base !== "" && !normalized.startsWith(base)) {
+    const inside = base !== "" && (normalized === base || normalized.startsWith(base + "/"));
+    if (!inside) {
       throw Object.assign(new Error("\u53EA\u80FD\u4F7F\u7528\u5F53\u524D\u5E93\u5185\u7684\u76EE\u5F55"), { status: 400 });
     }
   }

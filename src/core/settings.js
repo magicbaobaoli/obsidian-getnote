@@ -87,7 +87,11 @@ function toSubfolder(input) {
   let rel = raw
   if (base !== '' && raw.toLowerCase().startsWith(base.toLowerCase())) rel = raw.slice(base.length)
   rel = rel.replace(/^\/+/, '').replace(/\/+$/, '')
-  if (rel === '') return ''
+  // 收敛成空 = 用户指的正是库根本身。这里必须回落到默认子目录，而不是返回空串：
+  // 空串会被 defaultVaultRoot 拼成「库根」，等于让插件把笔记铺进用户自己的库，
+  // 而且 setVaultRoot 会把 runtime.subfolder 置空、却把 '得到大脑' 写进设置文件，
+  // 内存与磁盘当场不一致（下一次 /status 报的目录和这次响应里的对不上）。
+  if (rel === '') return '得到大脑'
   if (rel.split('/').includes('..')) return '得到大脑'
   return rel
 }
@@ -238,10 +242,19 @@ export async function setVaultRoot(input) {
     throw Object.assign(new Error('目录不能为空'), { status: 400 })
   }
   // 绝对路径但不在库内 → 拒绝（Obsidian 的 adapter 只能操作库内文件）
-  if (isAbsolute(expanded)) {
+  //
+  // 这里不能只用 node:path 的 isAbsolute：它是**按当前平台**判断的，所以
+  // 'D:/别的地方' 在 Windows 上算绝对路径、在 Linux/macOS 上算相对路径，
+  // 同一条输入在两个平台会走出完全不同的分支（CI 上就撞到过：Linux 把它当
+  // 子目录拼到库根后面，返回 200 而不是 400）。笔记库可能被同步到别的系统，
+  // 盘符写法也常常是用户从 Windows 里复制过来的，所以显式认这两种形态：
+  //   - 盘符：C:/x、d:\x
+  //   - POSIX 根：/x
+  if (isAbsolute(expanded) || /^[A-Za-z]:[\\/]/.test(expanded) || /^[\\/]{2}/.test(expanded)) {
     const base = runtime.vaultBase.replace(/\\/g, '/').toLowerCase()
     const normalized = expanded.replace(/\\/g, '/').toLowerCase()
-    if (base !== '' && !normalized.startsWith(base)) {
+    const inside = base !== '' && (normalized === base || normalized.startsWith(base + '/'))
+    if (!inside) {
       throw Object.assign(new Error('只能使用当前库内的目录'), { status: 400 })
     }
   }
