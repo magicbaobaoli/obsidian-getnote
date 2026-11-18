@@ -27,3 +27,16 @@ jobs:
       # 测试脚本自己会先跑一次 build（启动/视图/面板验收加载的是打包产物），
       # 所以这里不需要额外 build 一步。
       - run: npm test
+
+      # 产物一致性：main.js 是构建出来的，但它也在仓库里（社区惯例是提交，
+      # 方便用户直接下载）。源码改了却忘了重新构建、或者构建后忘了提交，
+      # 都会让「仓库里的 main.js」和源码分叉——用户下到的就是旧代码。
+      # 重新构建一次，产物有任何字节不同就说明分叉了。
+      - name: 构建产物与源码一致
+        run: |
+          npm run build
+          if [ -n "$(git status --porcelain main.js card locale)" ]; then
+            echo "::error::main.js 与源码不一致，请在本地跑 npm run build 后提交产物"
+            git --no-pager diff --stat main.js
+            exit 1
+          fi

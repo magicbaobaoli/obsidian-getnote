@@ -6,6 +6,7 @@
  */
 
 import * as React from 'preact/compat'
+import { error as logError, setDebugLogging } from '../core/log.js'
 
 import { MarkdownView, hasMarkdownHost, openLinkInVault } from './markdown.js'
 
@@ -342,6 +343,10 @@ async function saveFile(url, filename) {
         'archive.import': '导入 zip',
         'archive.exporting': '正在导出…',
       'archive.exported': '已导出归档包',
+      'archive.scope': '导出范围',
+      'archive.scopeAll': '整库',
+      'archive.scopeNotes': '只要文字',
+      'archive.scopeAssets': '只要附件',
         'archive.imported': '导入完成：新增/跳过',
         'archive.importMode': '同名时',
         'archive.mode.rename': '另存一份',
@@ -707,6 +712,10 @@ async function saveFile(url, filename) {
         'archive.import': 'Import zip',
         'archive.exporting': 'Exporting…',
       'archive.exported': 'Archive exported',
+      'archive.scope': 'Export range',
+      'archive.scopeAll': 'Whole vault',
+      'archive.scopeNotes': 'Notes only',
+      'archive.scopeAssets': 'Attachments only',
         'archive.imported': 'Import done — added/skipped',
         'archive.importMode': 'On name clash',
         'archive.mode.rename': 'Keep both',
@@ -1071,6 +1080,10 @@ async function saveFile(url, filename) {
         'archive.import': 'Zip importeren',
         'archive.exporting': 'Exporteren…',
       'archive.exported': 'Archief geëxporteerd',
+      'archive.scope': 'Exportbereik',
+      'archive.scopeAll': 'Hele kluis',
+      'archive.scopeNotes': 'Alleen notities',
+      'archive.scopeAssets': 'Alleen bijlagen',
         'archive.imported': 'Import klaar — toegevoegd/overgeslagen',
         'archive.importMode': 'Bij naamconflict',
         'archive.mode.rename': 'Beide houden',
@@ -2512,6 +2525,8 @@ async function saveFile(url, filename) {
   border-radius:7px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;
   font-size:12px;outline:none}
 .dshgn_input:focus{border-color:var(--dsw-alias-brand-primary)}
+/* 工具栏里的小下拉：不该像正文输入框那样抢走半行宽度 */
+.dshgn_selectSm{flex:none;min-width:0;width:auto;height:24px;padding:0 6px;font-size:11.5px;cursor:pointer}
 .dshgn_badge{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 7px;border-radius:10px;
   font-size:10.5px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}
 .dshgn_badgeOk{background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-brand-primary)}
@@ -6391,6 +6406,9 @@ async function saveFile(url, filename) {
       const [info, setInfo] = React.useState(null)
       const [busy, setBusy] = React.useState(false)
       const [importMode, setImportMode] = React.useState('rename')
+      // 导出范围：整库 / 只要文字 / 只要附件。附件常常比笔记大两个数量级，
+      // 只想备份文字的人不该每次等几百兆。
+      const [exportScope, setExportScope] = React.useState('all')
       const fileRef = React.useRef(null)
 
       React.useEffect(() => {
@@ -6410,8 +6428,9 @@ async function saveFile(url, filename) {
       const exportZip = React.useCallback(async () => {
         setBusy(true)
         try {
-          const url = withToken(`${apiOrigin()}/getnote/archive/export`)
-          const name = '得到大脑归档-' + new Date().toISOString().slice(0, 10) + '.zip'
+          const suffix = exportScope === 'notes' ? '-文字' : exportScope === 'assets' ? '-附件' : ''
+          const url = withToken(`${apiOrigin()}/getnote/archive/export?scope=${encodeURIComponent(exportScope)}`)
+          const name = '得到大脑归档' + suffix + '-' + new Date().toISOString().slice(0, 10) + '.zip'
           // 宿主能弹保存框就走它（用户能选位置），否则退回 a[download]。
           const saved = await saveFile(url, name)
           if (saved) {
@@ -6429,7 +6448,7 @@ async function saveFile(url, filename) {
           // 下载是浏览器接管的，这边没法知道何时完成，给一个短延迟就恢复
           window.setTimeout(() => setBusy(false), 1200)
         }
-      }, [showToast, t])
+      }, [exportScope, showToast, t])
 
       const doImport = React.useCallback(
         async (file) => {
@@ -6470,6 +6489,20 @@ async function saveFile(url, filename) {
           h(
             'div',
             { className: 'dshgn_rowLine', style: { gap: 6 } },
+            h(
+              'select',
+              {
+                className: 'dshgn_input dshgn_selectSm',
+                value: exportScope,
+                title: t('archive.scope'),
+                'aria-label': t('archive.scope'),
+                onChange: (event) => setExportScope(event.target.value),
+                disabled: busy,
+              },
+              h('option', { value: 'all' }, t('archive.scopeAll')),
+              h('option', { value: 'notes' }, t('archive.scopeNotes')),
+              h('option', { value: 'assets' }, t('archive.scopeAssets')),
+            ),
             h(
               'button',
               { type: 'button', className: 'dshgn_btn dshgn_btnPri', onClick: exportZip, disabled: busy },
@@ -9063,7 +9096,7 @@ async function saveFile(url, filename) {
       componentDidCatch(error, info) {
         // 不静默吞：控制台留痕，便于把「哪个组件把面板打挂」定位到具体栈。
         // eslint-disable-next-line no-console
-        console.error('[dsh-getnote] 面板渲染异常，已降级显示：', error, info && info.componentStack)
+        logError('面板渲染异常，已降级显示：', error, info && info.componentStack)
       }
 
       retry() {

@@ -71,7 +71,7 @@ class PluginSettingTab { constructor(app, plugin) { this.app = app; this.plugin 
 class Setting {
   constructor(el) { this.el = el }
   setName() { return this } setDesc() { return this } addText() { return this }
-  addButton() { return this } setButtonText() { return this } setCta() { return this }
+  addButton() { return this } addToggle() { return this } setButtonText() { return this } setCta() { return this }
   onClick() { return this } setPlaceholder() { return this } setValue() { return this } onChange() { return this }
 }
 class ItemView {

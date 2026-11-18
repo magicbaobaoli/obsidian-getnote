@@ -491,6 +491,12 @@ async function indexNoteIds(absRoot) {
  *          `bytes` 是归档本身的大小；`sourceBytes` 是被打进去的原始字节总数。
  */
 export async function exportVaultToZip(root, options = {}) {
+  // 导出范围：'all' 整库、'notes' 只要 Markdown、'assets' 只要附件。
+  // 库里附件常常比笔记大两个数量级（录音、图片），只想备份文字的人没必要
+  // 每次拖一个几百兆的包下来。
+  const scope = options.scope === 'notes' || options.scope === 'assets' ? options.scope : 'all'
+  // 只导出某个子目录（库内相对路径，空串表示整库）。
+  const onlyDir = typeof options.dir === 'string' ? options.dir.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') : ''
   const maxBytes = options.maxBytes ?? 512 * MB
   const maxFileBytes = options.maxFileBytes ?? 64 * MB
   const maxTotalBytes = options.maxTotalBytes ?? 512 * MB
@@ -511,6 +517,8 @@ export async function exportVaultToZip(root, options = {}) {
     items.sort((a, b) => a.name.localeCompare(b.name, 'en'))
     for (const item of items) {
       const rel = relDir === '' ? item.name : `${relDir}/${item.name}`
+      // 指定了子目录：只在它下面走，别处的直接跳过（整棵子树都不进）。
+      if (onlyDir !== '' && !(rel === onlyDir || rel.startsWith(onlyDir + '/'))) continue
       if (item.isDirectory()) {
         if (IGNORED_DIRS.has(item.name)) continue
         await walk(join(dirAbs, item.name), rel)
@@ -519,6 +527,8 @@ export async function exportVaultToZip(root, options = {}) {
       // 符号链接/设备文件一律不跟：跟出去可能读到库外，跟成环还可能转不出来。
       if (!item.isFile()) continue
       if (item.name.endsWith('.bak')) continue // 历史副本，不是用户要备份的内容
+      if (scope === 'notes' && !item.name.endsWith('.md')) continue
+      if (scope === 'assets' && item.name.endsWith('.md')) continue
       let st
       try {
         st = await lstat(join(dirAbs, item.name))

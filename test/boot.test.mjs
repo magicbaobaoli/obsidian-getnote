@@ -89,6 +89,7 @@ class Setting {
   setDesc() { return this }
   addText() { return this }
   addButton() { return this }
+  addToggle() { return this }
   setButtonText() { return this }
   setCta() { return this }
   onClick() { return this }
@@ -494,6 +495,34 @@ test('整库导出能拿到真 zip（面板「导出」按钮打的就是这个�
   // host.test 里那 57 项归档包测试覆盖）。
   assert.equal(buf.subarray(0, 2).toString('latin1'), 'PK', '导出的应该是 zip')
   assert.ok(buf.length > 0, 'zip 不该是空的')
+
+  // 只要文字：库里那篇 .md 该在里面，附件不该在里面。
+  // 直接看 zip 里的文件名字节，不解析结构（结构由归档包测试负责）。
+  await adapter.write('得到大脑/随手记/范围验收.md', '# 范围验收\n')
+  await adapter.write('得到大脑/随手记/范围验收.mp3', Buffer.from([0x49, 0x44, 0x33]))
+  const notesOnly = Buffer.from(
+    await fetch(plugin.server.origin + '/getnote/archive/export?scope=notes', {
+      headers: { 'x-getnote-token': plugin.server.token },
+    }).then((r) => r.arrayBuffer()),
+  )
+  assert.ok(notesOnly.includes(Buffer.from('范围验收.md', 'utf8')), 'scope=notes 应包含 Markdown')
+  assert.ok(!notesOnly.includes(Buffer.from('范围验收.mp3', 'utf8')), 'scope=notes 不该包含附件')
+
+  const assetsOnly = Buffer.from(
+    await fetch(plugin.server.origin + '/getnote/archive/export?scope=assets', {
+      headers: { 'x-getnote-token': plugin.server.token },
+    }).then((r) => r.arrayBuffer()),
+  )
+  assert.ok(assetsOnly.includes(Buffer.from('范围验收.mp3', 'utf8')), 'scope=assets 应包含附件')
+  assert.ok(!assetsOnly.includes(Buffer.from('范围验收.md', 'utf8')), 'scope=assets 不该包含 Markdown')
+
+  // 只要某个子目录
+  const oneDir = Buffer.from(
+    await fetch(plugin.server.origin + '/getnote/archive/export?dir=' + encodeURIComponent('随手记'), {
+      headers: { 'x-getnote-token': plugin.server.token },
+    }).then((r) => r.arrayBuffer()),
+  )
+  assert.ok(oneDir.includes(Buffer.from('范围验收.md', 'utf8')), 'dir=随手记 应包含该目录下的笔记')
 })
 
 /**

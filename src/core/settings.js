@@ -197,6 +197,8 @@ export async function readSettings() {
     // Obsidian 版专有：本地回环服务的端口。固定端口才能让 OAuth 的
     // redirect_uri 跨会话稳定，不必每次登录都重新动态注册一个 client。
     localPort: Number.isInteger(data.localPort) && data.localPort > 0 && data.localPort < 65536 ? data.localPort : null,
+    // 详细日志默认关：控制台里挤着几十个插件，刷屏的输出用户反而不看。
+    debugLogging: data.debugLogging === true,
   }
 }
 
@@ -216,6 +218,7 @@ export async function updateSettings(patch = {}) {
     templates: 'templates' in patch ? normalizeTemplates(patch.templates) : cur.templates,
     subfolder: patch.subfolder !== undefined ? toSubfolder(patch.subfolder) : cur.subfolder,
     localPort: patch.localPort !== undefined ? patch.localPort : cur.localPort,
+    debugLogging: patch.debugLogging !== undefined ? patch.debugLogging === true : cur.debugLogging,
   }
   await writeJsonAtomic(settingsPath(), next)
   return readSettings()

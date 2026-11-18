@@ -21,6 +21,7 @@ import { join } from 'node:path'
 import * as settingsStore from './core/settings.js'
 import { configure as configureVfs, mkdir as vfsMkdir, readFile as vfsRead, writeFile as vfsWrite } from './core/vfs.js'
 import { configureCardScripts } from './core/card.js'
+import { setDebugLogging } from './core/log.js'
 import { invalidateScan } from './core/vault.js'
 import { startAutoSync, markPanelVisible } from './core/service.js'
 import { startLocalServer } from './host/server.js'
@@ -123,6 +124,9 @@ export default class GetnoteObsidianPlugin extends Plugin {
     })
 
     const stored = await settingsStore.readSettings()
+    // 详细日志默认关。设置里打开过就在 onload 就生效，不必等用户进设置页。
+    this.debugLogging = stored.debugLogging === true
+    setDebugLogging(this.debugLogging)
     if (stored.subfolder && stored.subfolder !== DEFAULT_SUBFOLDER) {
       settingsStore.configure({ subfolder: stored.subfolder })
     }
@@ -450,6 +454,17 @@ class GetnoteSettingTab extends PluginSettingTab {
             }`
           : '未运行。重启 Obsidian 或看控制台里的报错。',
       )
+
+    new Setting(containerEl)
+      .setName('详细日志')
+      .setDesc('把面板与同步的每一步打进开发者控制台（Ctrl+Shift+I）。排查问题时打开，平时关着——控制台里挤着几十个插件，刷屏的输出反而没人看。')
+      .addToggle((toggle) => {
+        toggle.setValue(this.plugin.debugLogging === true).onChange(async (value) => {
+          this.plugin.debugLogging = value === true
+          setDebugLogging(this.plugin.debugLogging)
+          await settingsStore.updateSettings({ debugLogging: this.plugin.debugLogging })
+        })
+      })
 
     new Setting(containerEl)
       .setName('打开面板')

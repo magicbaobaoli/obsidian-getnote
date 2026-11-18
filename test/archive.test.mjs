@@ -278,6 +278,50 @@ try {
   check('上限: 超 maxTotalBytes 抛 413', totalErr !== null && totalErr.status === 413, totalErr ? `${totalErr.status} ${totalErr.message}` : '没有抛错')
   check('上限: 413 文案提示分批导出', totalErr !== null && /分批导出/.test(totalErr.message), totalErr && totalErr.message)
 
+  // ── 附加：导出范围（只要文字 / 只要附件 / 只某个子目录） ──────────────────
+  const srcScope = join(base, 'src-scope')
+  await makeVault(srcScope, {
+    '随手记/一.md': '# 一\n',
+    '随手记/二.md': '# 二\n',
+    '随手记/asset/录音.mp3': randomBytes(512),
+    '做过的项目/三.md': '# 三\n',
+    '做过的项目/asset/图.png': Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+  })
+  const allZip = await exportVaultToZip(srcScope)
+  check('范围: 不传参数就是整库', allZip.entries.length === 5, JSON.stringify(allZip.entries.map((e) => e.path)))
+  const notesZip = await exportVaultToZip(srcScope, { scope: 'notes' })
+  const notesPaths = notesZip.entries.map((e) => e.path)
+  check(
+    '范围: scope=notes 只留 Markdown',
+    notesPaths.length === 3 && notesPaths.every((p) => p.endsWith('.md')),
+    JSON.stringify(notesPaths),
+  )
+  const assetsZip = await exportVaultToZip(srcScope, { scope: 'assets' })
+  const assetPaths = assetsZip.entries.map((e) => e.path)
+  check(
+    '范围: scope=assets 只留附件',
+    assetPaths.length === 2 && assetPaths.every((p) => !p.endsWith('.md')),
+    JSON.stringify(assetPaths),
+  )
+  check('范围: 认不出的 scope 当成整库', (await exportVaultToZip(srcScope, { scope: '什么鬼' })).entries.length === 5)
+  const dirZip = await exportVaultToZip(srcScope, { dir: '随手记' })
+  const dirPaths = dirZip.entries.map((e) => e.path)
+  check(
+    '范围: dir 限定子目录，别处的都不进',
+    dirPaths.length === 3 && dirPaths.every((p) => p.startsWith('随手记/')),
+    JSON.stringify(dirPaths),
+  )
+  check(
+    '范围: dir 认尾斜杠与反斜杠',
+    (await exportVaultToZip(srcScope, { dir: '随手记/' })).entries.length === 3 &&
+      (await exportVaultToZip(srcScope, { dir: '随手记\\' })).entries.length === 3,
+  )
+  check(
+    '范围: dir 与 scope 能叠加',
+    (await exportVaultToZip(srcScope, { dir: '随手记', scope: 'notes' })).entries.map((e) => e.path).join(',') ===
+      '随手记/一.md,随手记/二.md',
+  )
+
   // ── 附加：不存在的库根导入会自动建目录 ────────────────────────────────────
   const freshRoot = join(base, 'fresh-root', 'nested')
   const impFresh = await importZipToVault(freshRoot, zip4.buffer)

@@ -54,7 +54,8 @@
 
 ### 其它
 
-- **归档包**：整库导出为 zip、从 zip 导入（可选合并/覆盖模式）。
+- **归档包**：整库导出为 zip、从 zip 导入（可选合并/覆盖模式）。导出可选范围——整库 /
+  只要文字 / 只要附件；附件常常比笔记大两个数量级，只想备份文字的人不该每次等几百兆。
 - **模板**：保存常用正文模板，新建时一键套用（最多 12 个）。
 - **多语言**：中文 / English / Nederlands。
 - **主题**：跟随 Obsidian 主题，深浅色自动适配。
@@ -77,13 +78,19 @@
 ```bash
 npm install
 npm run build      # 产出 main.js，并把 card/ 与 locale/ 复制到插件根
-npm test           # 564 项离线测试（需 Node ≥ 22，jsdom 31 依赖 Node 22 的 zstd API）
+npm test           # 571 项离线测试（需 Node ≥ 22，jsdom 31 依赖 Node 22 的 zstd API）
 ```
 
 开发时用 `npm run dev` 进入 watch 模式。
 
 推上去之后 GitHub Actions 会跑同一套测试（`.github/workflows/test.yml`）：
-`npm ci` + `npm test`，Node 22 / Ubuntu。
+`npm ci` + `npm test`，Node 22 / Ubuntu。CI 最后一步还会重新构建一次再
+`git status --porcelain main.js card locale`——构建产物和源码不一致（改了源码忘重建、
+或重建后忘提交）会直接判失败，免得用户下到的是旧代码。
+
+打标签即发布（`.github/workflows/release.yml`）：`git tag 0.1.0 && git push --tags`
+会重跑测试、打包出 `getnote-obsidian-<tag>.zip`（含 `main.js` / `manifest.json` /
+`styles.css` / `card/` / `locale/`）挂到 Release 上，可以直接下载解压进插件目录。
 
 ---
 
@@ -153,7 +160,7 @@ src/
 npm test
 ```
 
-覆盖：vault 算法（110 项）、归档包（57 项）、历史快照（46 项）、同步合并（66 项）、
+覆盖：vault 算法（110 项）、归档包（64 项）、历史快照（46 项）、同步合并（66 项）、
 **9 项文件系统适配层验收**（`app.vault.adapter` 与 `node:fs` 的语义差异：`list()` 回裸文件名
 还是完整路径都得吃得住、`mkdir` 不建父目录要自己逐级补齐、删目录得走 `rmdir(recursive)`
 而不是 `remove`）、**236 项 HTTP 路由验收**（真起服务、真打请求、真读文件，含 Range 206/416、路径逃逸拒绝、
@@ -163,7 +170,8 @@ npm test
 写入真的走 `app.vault.adapter` 而不是直接落盘、插件状态只落在
 `.obsidian/plugins/<id>` 里、无令牌请求被 401 挡住、同一动作重放只落一份、
 扫描缓存不会给出过期数据、深链认得出四种动作且乱传不炸、同步摘要按日记核心插件的
-目录与格式写进当天日记（没开日记插件或这轮没拉到新笔记就不写）——
+目录与格式写进当天日记（没开日记插件或这轮没拉到新笔记就不写）、导出范围三种都只带
+该带的文件——
 **11 项面板渲染验收**：用 jsdom 造浏览器环境，把 8000 行的面板真渲染出来，
 确认它不掉进错误边界、发出的请求全部指向本地服务、六个标签页逐个切换都不炸，
 宿主切到深色主题时面板跟着变深、切回来能还原（配色按宿主的 `theme-dark` 类名

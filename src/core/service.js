@@ -889,10 +889,15 @@ export function createHandler(config) {
    * 走 GET 且直接写二进制流，不用 JSON 包 base64——几十上百 MB 的库
    * base64 一遍会膨胀 33%，浏览器拼 Blob 时还要再拷一次。
    */
-  async function handleArchiveExport(req, res) {
+  async function handleArchiveExport(req, res, url) {
     const { root, missing } = await currentRoot()
     if (missing) throw Object.assign(new Error(`本地库目录不存在：${missing}`), { status: 404 })
-    const result = await exportVaultToZip(root)
+    // scope=notes 只要文字、scope=assets 只要附件，dir 限定某个子目录。
+    // 三个参数都可省，省略即整库全量，与旧行为一致。
+    const result = await exportVaultToZip(root, {
+      scope: url?.searchParams.get('scope') || 'all',
+      dir: url?.searchParams.get('dir') || '',
+    })
     const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
     res.writeHead(200, {
       'content-type': 'application/zip',
@@ -2143,7 +2148,7 @@ export function createHandler(config) {
         if (action === 'history' && parts[2] === 'list') return await handleHistoryList(res, url)
         if (action === 'history' && parts[2] === 'read') return await handleHistoryRead(res, url)
         // 整库导出（C1）
-        if (action === 'archive' && parts[2] === 'export') return await handleArchiveExport(req, res)
+        if (action === 'archive' && parts[2] === 'export') return await handleArchiveExport(req, res, url)
         if (action === 'archive' && parts[2] === 'info') return await handleArchiveInfo(res)
         // 云端（Open API）
         if (action === 'api' && parts[2] === 'probe') return await handleCloudProbe(res)

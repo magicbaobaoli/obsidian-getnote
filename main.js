@@ -427,8 +427,8 @@ async function scanVault(root, options = {}) {
     let dirents;
     try {
       dirents = await readdir2(dir, { withFileTypes: true });
-    } catch (error) {
-      errors.push({ path: relDir || ".", message: String(error && error.message ? error.message : error) });
+    } catch (error2) {
+      errors.push({ path: relDir || ".", message: String(error2 && error2.message ? error2.message : error2) });
       return;
     }
     for (const dirent2 of dirents) {
@@ -479,8 +479,8 @@ async function scanVault(root, options = {}) {
           const oldest = entryMemo.keys().next();
           if (!oldest.done) entryMemo.delete(oldest.value);
         }
-      } catch (error) {
-        errors.push({ path: rel, message: String(error && error.message ? error.message : error) });
+      } catch (error2) {
+        errors.push({ path: rel, message: String(error2 && error2.message ? error2.message : error2) });
       }
     }
   }
@@ -654,8 +654,8 @@ async function createNote(root, { dir = "", title = "", content = "", date, with
       candidate = `${stem}-${counter}${NOTE_EXT}`;
       counter += 1;
       if (counter > 99) throw Object.assign(new Error("\u540C\u540D\u7B14\u8BB0\u8FC7\u591A"), { status: 409 });
-    } catch (error) {
-      if (error && error.status === 409) throw error;
+    } catch (error2) {
+      if (error2 && error2.status === 409) throw error2;
       break;
     }
   }
@@ -754,8 +754,8 @@ async function restoreNote(root, trashPath, targetRel) {
       const ext = (0, import_node_path3.extname)(rel);
       const next = `${stem}-${counter}${ext}`;
       candidate = dir === "." || dir === "" ? next : import_node_path3.posix.join(dir, next);
-    } catch (error) {
-      if (error && error.status === 409) throw error;
+    } catch (error2) {
+      if (error2 && error2.status === 409) throw error2;
       break;
     }
   }
@@ -1172,8 +1172,8 @@ async function createDir(root, dirInput) {
   const { abs } = resolveInside(root, rel, { create: true });
   try {
     await mkdir2(abs, { recursive: true });
-  } catch (error) {
-    throw Object.assign(new Error(`\u5EFA\u76EE\u5F55\u5931\u8D25\uFF1A${error && error.message ? error.message : error}`), { status: 500 });
+  } catch (error2) {
+    throw Object.assign(new Error(`\u5EFA\u76EE\u5F55\u5931\u8D25\uFF1A${error2 && error2.message ? error2.message : error2}`), { status: 500 });
   }
   invalidateScan(root);
   return { ok: true, path: rel };
@@ -1204,8 +1204,8 @@ async function removeDir(root, dirInput) {
   }
   try {
     await rmdir2(abs);
-  } catch (error) {
-    throw Object.assign(new Error(`\u5220\u76EE\u5F55\u5931\u8D25\uFF1A${error && error.message ? error.message : error}`), { status: 500 });
+  } catch (error2) {
+    throw Object.assign(new Error(`\u5220\u76EE\u5F55\u5931\u8D25\uFF1A${error2 && error2.message ? error2.message : error2}`), { status: 500 });
   }
   invalidateScan(root);
   return { ok: true, path: rel };
@@ -1285,8 +1285,8 @@ async function removeTag(root, tagInput, entries, options = {}) {
       }
       await writeNote(root, entry.path, updated, { backup: snapshot === null });
       changed += 1;
-    } catch (error) {
-      failed.push({ path: entry.path, error: error && error.message ? error.message : String(error) });
+    } catch (error2) {
+      failed.push({ path: entry.path, error: error2 && error2.message ? error2.message : String(error2) });
     }
   }
   return { ok: true, changed, failed, total: entries.length, tag };
@@ -1323,8 +1323,8 @@ async function renameTag(root, fromInput, toInput, entries, options = {}) {
       }
       await writeNote(root, entry.path, updated, { backup: snapshot === null });
       changed += 1;
-    } catch (error) {
-      failed.push({ path: entry.path, error: error && error.message ? error.message : String(error) });
+    } catch (error2) {
+      failed.push({ path: entry.path, error: error2 && error2.message ? error2.message : String(error2) });
     }
   }
   return { ok: true, changed, failed, total: entries.length, from, to };
@@ -1591,10 +1591,10 @@ function once(url, init, redirectsLeft) {
       }
     );
     req.on("error", (cause) => {
-      const error = new Error(`\u8FDE\u4E0D\u4E0A ${target.hostname}\uFF08${cause && cause.message ? cause.message : "\u7F51\u7EDC\u9519\u8BEF"}\uFF09`);
-      error.status = 502;
-      error.cause = cause;
-      reject(error);
+      const error2 = new Error(`\u8FDE\u4E0D\u4E0A ${target.hostname}\uFF08${cause && cause.message ? cause.message : "\u7F51\u7EDC\u9519\u8BEF"}\uFF09`);
+      error2.status = 502;
+      error2.cause = cause;
+      reject(error2);
     });
     const signal = init.signal;
     if (signal) {
@@ -1638,9 +1638,9 @@ __export(biji_exports, {
 });
 function remoteError(what, status, body) {
   const snippet = String(body || "").replace(/\s+/g, " ").slice(0, 300);
-  const error = new Error(`${what} \u5931\u8D25\uFF08HTTP ${status}\uFF09${snippet ? `\uFF1A${snippet}` : ""}`);
-  error.status = status;
-  return error;
+  const error2 = new Error(`${what} \u5931\u8D25\uFF08HTTP ${status}\uFF09${snippet ? `\uFF1A${snippet}` : ""}`);
+  error2.status = status;
+  return error2;
 }
 async function httpJson(url, init = {}) {
   const controller = new AbortController();
@@ -2012,7 +2012,9 @@ async function readSettings() {
     subfolder: typeof data.subfolder === "string" && data.subfolder.trim() !== "" ? data.subfolder.trim() : null,
     // Obsidian 版专有：本地回环服务的端口。固定端口才能让 OAuth 的
     // redirect_uri 跨会话稳定，不必每次登录都重新动态注册一个 client。
-    localPort: Number.isInteger(data.localPort) && data.localPort > 0 && data.localPort < 65536 ? data.localPort : null
+    localPort: Number.isInteger(data.localPort) && data.localPort > 0 && data.localPort < 65536 ? data.localPort : null,
+    // 详细日志默认关：控制台里挤着几十个插件，刷屏的输出用户反而不看。
+    debugLogging: data.debugLogging === true
   };
 }
 async function updateSettings(patch = {}) {
@@ -2029,7 +2031,8 @@ async function updateSettings(patch = {}) {
     uiLocale: "uiLocale" in patch ? normalizeLocale(patch.uiLocale) : cur.uiLocale,
     templates: "templates" in patch ? normalizeTemplates(patch.templates) : cur.templates,
     subfolder: patch.subfolder !== void 0 ? toSubfolder(patch.subfolder) : cur.subfolder,
-    localPort: patch.localPort !== void 0 ? patch.localPort : cur.localPort
+    localPort: patch.localPort !== void 0 ? patch.localPort : cur.localPort,
+    debugLogging: patch.debugLogging !== void 0 ? patch.debugLogging === true : cur.debugLogging
   };
   await writeJsonAtomic(settingsPath(), next);
   return readSettings();
@@ -2251,13 +2254,13 @@ function runBridge(args, { timeoutMs = DEFAULT_TIMEOUT_MS, python = null, script
       child.stderr.on("data", (chunk) => {
         err += chunk;
       });
-      child.on("error", (error) => {
+      child.on("error", (error2) => {
         clearTimeout(timer);
-        if (error && error.code === "ENOENT") {
+        if (error2 && error2.code === "ENOENT") {
           attempt(index + 1);
           return;
         }
-        finish(reject, Object.assign(error, { status: 502 }));
+        finish(reject, Object.assign(error2, { status: 502 }));
       });
       child.on("close", () => {
         clearTimeout(timer);
@@ -2324,13 +2327,13 @@ async function checkCardEnvironment() {
       bridge: BRIDGE(),
       error: info.bleakReady === true ? null : info.bleakError || "\u7F3A\u5C11 bleak"
     };
-  } catch (error) {
+  } catch (error2) {
     return {
       ready: false,
       python: null,
       bleak: null,
       bridge: BRIDGE(),
-      error: error && error.message ? error.message : String(error)
+      error: error2 && error2.message ? error2.message : String(error2)
     };
   }
 }
@@ -2476,14 +2479,14 @@ async function importCardRecordings(root, options = {}) {
         deletedOnCard: item.deletedOnCard === true
       });
       log(`\u5DF2\u5BFC\u5165\uFF1A${created.path}`);
-    } catch (error) {
+    } catch (error2) {
       summary.failed += 1;
       summary.items.push({
         name: sourceName,
         status: "failed",
-        error: error && error.message ? error.message : String(error)
+        error: error2 && error2.message ? error2.message : String(error2)
       });
-      log(`\u5BFC\u5165\u5931\u8D25\uFF1A${sourceName} \u2014 ${error && error.message ? error.message : error}`);
+      log(`\u5BFC\u5165\u5931\u8D25\uFF1A${sourceName} \u2014 ${error2 && error2.message ? error2.message : error2}`);
     }
   }
   return summary;
@@ -2521,6 +2524,24 @@ async function wifiLeave() {
   return runBridge(["leave"], { script: WIFI(), timeoutMs: 60 * 1e3 });
 }
 
+// src/core/log.js
+var debugEnabled = false;
+function setDebugLogging(enabled) {
+  debugEnabled = enabled === true;
+}
+function emit(level, args) {
+  const method = level === "error" ? "error" : level === "warn" ? "warn" : "log";
+  const fn2 = typeof console !== "undefined" ? console[method] : null;
+  if (typeof fn2 !== "function") return;
+  try {
+    fn2.apply(console, ["[\u5F97\u5230\u5927\u8111]", ...args]);
+  } catch {
+  }
+}
+function error(...args) {
+  emit("error", args);
+}
+
 // src/main.js
 init_vault();
 
@@ -2549,8 +2570,8 @@ function badInput(message) {
 function notFound() {
   return Object.assign(new Error("\u8FD9\u4E00\u7248\u5FEB\u7167\u4E0D\u5728\u4E86"), { status: 404 });
 }
-function isMissing(error) {
-  return Boolean(error) && (error.code === "ENOENT" || error.code === "ENOTDIR");
+function isMissing(error2) {
+  return Boolean(error2) && (error2.code === "ENOENT" || error2.code === "ENOTDIR");
 }
 function clampLimit(limit) {
   const n2 = Number(limit);
@@ -2604,9 +2625,9 @@ async function readSnapshots(dirAbs) {
   let names;
   try {
     names = await readdir2(dirAbs);
-  } catch (error) {
-    if (isMissing(error)) return [];
-    throw error;
+  } catch (error2) {
+    if (isMissing(error2)) return [];
+    throw error2;
   }
   const items = [];
   for (const name of names) {
@@ -2650,9 +2671,9 @@ async function snapshotNote(root, relPath, { now = Date.now(), limit = HISTORY_L
   let st;
   try {
     st = await stat2(abs);
-  } catch (error) {
-    if (isMissing(error)) return { saved: false, reason: "missing" };
-    throw error;
+  } catch (error2) {
+    if (isMissing(error2)) return { saved: false, reason: "missing" };
+    throw error2;
   }
   if (!st.isFile()) return { saved: false, reason: "missing" };
   if (st.size > MAX_SNAPSHOT_BYTES) return { saved: false, reason: "too-large" };
@@ -2669,9 +2690,9 @@ async function snapshotNote(root, relPath, { now = Date.now(), limit = HISTORY_L
       await writeFile2((0, import_node_path4.join)(dirAbs, candidate), buf, { flag: "wx" });
       name = candidate;
       break;
-    } catch (error) {
-      if (error && error.code === "EEXIST") continue;
-      throw error;
+    } catch (error2) {
+      if (error2 && error2.code === "EEXIST") continue;
+      throw error2;
     }
   }
   if (name === "") throw Object.assign(new Error("\u540C\u4E00\u6BEB\u79D2\u7684\u5FEB\u7167\u8FC7\u591A"), { status: 409 });
@@ -2705,17 +2726,17 @@ async function readHistoryEntry(root, relPath, name) {
   let st;
   try {
     st = await stat2(abs);
-  } catch (error) {
-    if (isMissing(error)) throw notFound();
-    throw error;
+  } catch (error2) {
+    if (isMissing(error2)) throw notFound();
+    throw error2;
   }
   if (!st.isFile()) throw notFound();
   let buf;
   try {
     buf = await readFile2(abs);
-  } catch (error) {
-    if (isMissing(error)) throw notFound();
-    throw error;
+  } catch (error2) {
+    if (isMissing(error2)) throw notFound();
+    throw error2;
   }
   const stamp = parseStamp(name);
   return {
@@ -3115,6 +3136,8 @@ async function indexNoteIds(absRoot) {
   return ids;
 }
 async function exportVaultToZip(root, options = {}) {
+  const scope = options.scope === "notes" || options.scope === "assets" ? options.scope : "all";
+  const onlyDir = typeof options.dir === "string" ? options.dir.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "") : "";
   const maxBytes = options.maxBytes ?? 512 * MB;
   const maxFileBytes = options.maxFileBytes ?? 64 * MB;
   const maxTotalBytes = options.maxTotalBytes ?? 512 * MB;
@@ -3131,6 +3154,7 @@ async function exportVaultToZip(root, options = {}) {
     items.sort((a3, b3) => a3.name.localeCompare(b3.name, "en"));
     for (const item of items) {
       const rel = relDir === "" ? item.name : `${relDir}/${item.name}`;
+      if (onlyDir !== "" && !(rel === onlyDir || rel.startsWith(onlyDir + "/"))) continue;
       if (item.isDirectory()) {
         if (IGNORED_DIRS2.has(item.name)) continue;
         await walk((0, import_node_path5.join)(dirAbs, item.name), rel);
@@ -3138,6 +3162,8 @@ async function exportVaultToZip(root, options = {}) {
       }
       if (!item.isFile()) continue;
       if (item.name.endsWith(".bak")) continue;
+      if (scope === "notes" && !item.name.endsWith(".md")) continue;
+      if (scope === "assets" && item.name.endsWith(".md")) continue;
       let st;
       try {
         st = await lstat2((0, import_node_path5.join)(dirAbs, item.name));
@@ -3375,8 +3401,8 @@ async function listTopics(client, log) {
     let result;
     try {
       result = await client.callTool("list_topics", { page, page_size: 50 });
-    } catch (error) {
-      log(`\u8BFB\u53D6\u77E5\u8BC6\u5E93\u5217\u8868\u5931\u8D25\uFF08\u7EE7\u7EED\u6309\u5168\u90E8\u7B14\u8BB0\u5BFC\u5165\uFF09\uFF1A${error.message}`);
+    } catch (error2) {
+      log(`\u8BFB\u53D6\u77E5\u8BC6\u5E93\u5217\u8868\u5931\u8D25\uFF08\u7EE7\u7EED\u6309\u5168\u90E8\u7B14\u8BB0\u5BFC\u5165\uFF09\uFF1A${error2.message}`);
       break;
     }
     const items = Array.isArray(result) ? result : result && Array.isArray(result.topics) ? result.topics : result && Array.isArray(result.list) ? result.list : [];
@@ -3409,8 +3435,8 @@ async function fetchAllNotes(client, topics, log) {
     let result;
     try {
       result = await client.callTool("list_notes", { page, page_size: NOTE_PAGE_SIZE });
-    } catch (error) {
-      log(`\u5168\u5C40\u5217\u8868\u4E0D\u53EF\u7528\uFF0C\u6539\u4E3A\u9010\u77E5\u8BC6\u5E93\u8BFB\u53D6\uFF1A${error.message}`);
+    } catch (error2) {
+      log(`\u5168\u5C40\u5217\u8868\u4E0D\u53EF\u7528\uFF0C\u6539\u4E3A\u9010\u77E5\u8BC6\u5E93\u8BFB\u53D6\uFF1A${error2.message}`);
       routeA = false;
       break;
     }
@@ -3431,8 +3457,8 @@ async function fetchAllNotes(client, topics, log) {
         let result;
         try {
           result = await client.callTool("list_topic_notes", { topic_id: topic.id, page: pageNo, page_size: NOTE_PAGE_SIZE });
-        } catch (error) {
-          log(`\u77E5\u8BC6\u5E93\u300C${topic.name}\u300D\u8BFB\u53D6\u5931\u8D25\uFF1A${error.message}`);
+        } catch (error2) {
+          log(`\u77E5\u8BC6\u5E93\u300C${topic.name}\u300D\u8BFB\u53D6\u5931\u8D25\uFF1A${error2.message}`);
           break;
         }
         const items = Array.isArray(result) ? result : result && Array.isArray(result.notes) ? result.notes : result && Array.isArray(result.list) ? result.list : [];
@@ -3506,9 +3532,9 @@ async function importAllNotes(client, root, { log = () => {
       if (id) ids.add(id);
       stats.notes.push({ noteId: id, title, path: created.path });
       if (stats.created % 20 === 0) log(`\u5DF2\u5199\u5165 ${stats.created} \u7BC7\u2026`);
-    } catch (error) {
+    } catch (error2) {
       stats.failed += 1;
-      stats.notes.push({ noteId: id, title: titleOf(note), error: String(error && error.message ? error.message : error) });
+      stats.notes.push({ noteId: id, title: titleOf(note), error: String(error2 && error2.message ? error2.message : error2) });
     }
   }
   stats.durationMs = Date.now() - startedAt;
@@ -3522,8 +3548,8 @@ async function probeAccessToken(accessToken) {
   try {
     const info = await client.initialize();
     return { ok: true, serverInfo: info };
-  } catch (error) {
-    return { ok: false, error: String(error && error.message ? error.message : error) };
+  } catch (error2) {
+    return { ok: false, error: String(error2 && error2.message ? error2.message : error2) };
   }
 }
 
@@ -3879,11 +3905,11 @@ init_net();
 
 // src/core/mcp-cloud.js
 init_biji();
-function wrapError(what, error) {
-  const message = error && error.message ? error.message : String(error);
+function wrapError(what, error2) {
+  const message = error2 && error2.message ? error2.message : String(error2);
   const e3 = new Error(`\u5F97\u5230\u5927\u8111 ${what} \u5931\u8D25\uFF1A${message}`);
   e3.status = /401|unauthorized|no bearer token/i.test(message) ? 401 : 502;
-  e3.cause = error;
+  e3.cause = error2;
   return e3;
 }
 function bridgeAudio(raw) {
@@ -3903,9 +3929,9 @@ function createMcpCloudClient({ accessToken, url } = {}) {
   let ready = null;
   function ensureReady() {
     if (ready === null) {
-      ready = mcp.initialize().catch((error) => {
+      ready = mcp.initialize().catch((error2) => {
         ready = null;
-        throw wrapError("\u63E1\u624B", error);
+        throw wrapError("\u63E1\u624B", error2);
       });
     }
     return ready;
@@ -3914,8 +3940,8 @@ function createMcpCloudClient({ accessToken, url } = {}) {
     await ensureReady();
     try {
       return await mcp.callTool(name, args);
-    } catch (error) {
-      throw wrapError(name, error);
+    } catch (error2) {
+      throw wrapError(name, error2);
     }
   }
   async function listNotes({ cursor, limit } = {}) {
@@ -4546,7 +4572,7 @@ function readBody(req, cap) {
       }
       chunks.push(chunk);
     });
-    req.on("error", (error) => rejectBody(error));
+    req.on("error", (error2) => rejectBody(error2));
     req.on("end", () => resolveBody(Buffer.concat(chunks).toString("utf8")));
   });
 }
@@ -4563,7 +4589,7 @@ function readBufferBody(req, cap) {
       }
       chunks.push(chunk);
     });
-    req.on("error", (error) => rejectBody(error));
+    req.on("error", (error2) => rejectBody(error2));
     req.on("end", () => resolveBody(Buffer.concat(chunks)));
   });
 }
@@ -4583,9 +4609,9 @@ function sweepPending() {
     if (now - entry.createdAt > AUTH_TTL_MS) pendingAuthorizations.delete(state);
   }
 }
-function fail2(res, error) {
-  const status = error && typeof error.status === "number" ? error.status : 500;
-  const message = error && error.message ? error.message : "internal error";
+function fail2(res, error2) {
+  const status = error2 && typeof error2.status === "number" ? error2.status : 500;
+  const message = error2 && error2.message ? error2.message : "internal error";
   send(res, status, { error: message });
 }
 async function ensureAccessToken({ allowRefresh = true } = {}) {
@@ -4649,14 +4675,14 @@ function guardOpenApi(openapi, makeFallback) {
       const result = await state.client[name](...args);
       state.decided = true;
       return result;
-    } catch (error) {
-      const denied = error && (error.status === 401 || error.reason === "invalid_api_key");
+    } catch (error2) {
+      const denied = error2 && (error2.status === 401 || error2.reason === "invalid_api_key");
       if (!denied) {
         state.decided = true;
-        throw error;
+        throw error2;
       }
       openApiRejected = true;
-      lastKeyError = error.message || "API Key \u88AB\u62D2\u7EDD";
+      lastKeyError = error2.message || "API Key \u88AB\u62D2\u7EDD";
       if (!state.fallbackMade) {
         state.fallbackMade = true;
         state.client = makeFallback();
@@ -4741,8 +4767,8 @@ function createHandler(config) {
         entries = scan.entries;
         errors = scan.errors;
         truncated = scan.truncated;
-      } catch (error) {
-        errors = [{ path: ".", message: String(error && error.message ? error.message : error) }];
+      } catch (error2) {
+        errors = [{ path: ".", message: String(error2 && error2.message ? error2.message : error2) }];
       }
     }
     const stats = await vaultStats(root, entries);
@@ -5031,10 +5057,13 @@ function createHandler(config) {
     const result = await restoreHistoryEntry(root, path, name, { keepCurrent: body.keepCurrent !== false });
     send(res, 200, { ok: true, ...result });
   }
-  async function handleArchiveExport(req, res) {
+  async function handleArchiveExport(req, res, url) {
     const { root, missing } = await currentRoot();
     if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
-    const result = await exportVaultToZip(root);
+    const result = await exportVaultToZip(root, {
+      scope: url?.searchParams.get("scope") || "all",
+      dir: url?.searchParams.get("dir") || ""
+    });
     const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-").slice(0, 19);
     res.writeHead(200, {
       "content-type": "application/zip",
@@ -5390,12 +5419,12 @@ function createHandler(config) {
     send(res, 200, { ok: true, url, redirectUri });
   }
   async function handleAuthCallback(res, url) {
-    const error = url.searchParams.get("error");
+    const error2 = url.searchParams.get("error");
     const code = url.searchParams.get("code");
     const state = url.searchParams.get("state") || "";
     const pending = pendingAuthorizations.get(state);
     pendingAuthorizations.delete(state);
-    if (error) return sendHtml(res, 400, callbackPage("\u6388\u6743\u88AB\u62D2\u7EDD", `\u5F97\u5230\u5927\u8111\u8FD4\u56DE\uFF1A${escapeHtml(error)}`, false));
+    if (error2) return sendHtml(res, 400, callbackPage("\u6388\u6743\u88AB\u62D2\u7EDD", `\u5F97\u5230\u5927\u8111\u8FD4\u56DE\uFF1A${escapeHtml(error2)}`, false));
     if (!code) return sendHtml(res, 400, callbackPage("\u6388\u6743\u5931\u8D25", "\u56DE\u8C03\u91CC\u6CA1\u6709 code \u53C2\u6570\u3002", false));
     if (!pending) return sendHtml(res, 400, callbackPage("\u6388\u6743\u5DF2\u8FC7\u671F", "\u8FD9\u6B21\u767B\u5F55\u8BF7\u6C42\u5DF2\u8D85\u65F6\u6216\u88AB\u91CD\u590D\u4F7F\u7528\uFF0C\u8BF7\u56DE\u5230\u9762\u677F\u91CD\u65B0\u70B9\u300C\u767B\u5F55\u300D\u3002", false));
     try {
@@ -5444,8 +5473,8 @@ function createHandler(config) {
     let client;
     try {
       client = await openClient();
-    } catch (error) {
-      return send(res, error.status === 401 ? 401 : 502, { ok: false, error: error.message });
+    } catch (error2) {
+      return send(res, error2.status === 401 ? 401 : 502, { ok: false, error: error2.message });
     }
     importState.running = true;
     importState.startedAt = (/* @__PURE__ */ new Date()).toISOString();
@@ -5465,8 +5494,8 @@ function createHandler(config) {
         });
         await updateSettings({ lastSyncAt: (/* @__PURE__ */ new Date()).toISOString() });
         importState.result = { root, ...stats };
-      } catch (error) {
-        importState.error = String(error && error.message ? error.message : error);
+      } catch (error2) {
+        importState.error = String(error2 && error2.message ? error2.message : error2);
         push(`\u5BFC\u5165\u4E2D\u65AD\uFF1A${importState.error}`);
       } finally {
         importState.running = false;
@@ -5495,8 +5524,8 @@ function createHandler(config) {
       } catch {
       }
       send(res, 200, { ok: true, serverInfo: client.serverInfo, toolCount: tools.length, topics });
-    } catch (error) {
-      send(res, 200, { ok: false, error: String(error && error.message ? error.message : error) });
+    } catch (error2) {
+      send(res, 200, { ok: false, error: String(error2 && error2.message ? error2.message : error2) });
     }
   }
   async function handleSetCloud(req, res) {
@@ -5533,8 +5562,8 @@ function createHandler(config) {
     let client;
     try {
       client = await openCloudClient();
-    } catch (error) {
-      return send(res, 200, { ok: false, configured: false, error: error.message });
+    } catch (error2) {
+      return send(res, 200, { ok: false, configured: false, error: error2.message });
     }
     try {
       const page = await client.listNotes({ limit: 1 });
@@ -5545,15 +5574,15 @@ function createHandler(config) {
         sampleCount: page.notes.length,
         hasMore: page.hasMore
       });
-    } catch (error) {
+    } catch (error2) {
       send(res, 200, {
         ok: false,
         configured: true,
-        reachable: error.status !== 502,
-        status: error.status ?? null,
-        reason: error.reason ?? null,
-        requestId: error.requestId ?? null,
-        error: error.message
+        reachable: error2.status !== 502,
+        status: error2.status ?? null,
+        reason: error2.reason ?? null,
+        requestId: error2.requestId ?? null,
+        error: error2.message
       });
     }
   }
@@ -5610,8 +5639,8 @@ function createHandler(config) {
     let local = null;
     try {
       local = await syncOne(noteId);
-    } catch (error) {
-      local = { error: error.message };
+    } catch (error2) {
+      local = { error: error2.message };
     }
     send(res, 200, { ok: true, local });
   }
@@ -5632,8 +5661,8 @@ function createHandler(config) {
         await writeSyncState(state);
         local = { trashed: rec.path };
       }
-    } catch (error) {
-      local = { error: error.message };
+    } catch (error2) {
+      local = { error: error2.message };
     }
     send(res, 200, { ok: true, local });
   }
@@ -5757,8 +5786,8 @@ function createHandler(config) {
     const full = body.full === true;
     try {
       await openCloudClient();
-    } catch (error) {
-      return send(res, error.status === 401 ? 401 : 502, { ok: false, error: error.message });
+    } catch (error2) {
+      return send(res, error2.status === 401 ? 401 : 502, { ok: false, error: error2.message });
     }
     void (async () => {
       const result = await performSync({ full, reason: "manual" });
@@ -5842,8 +5871,8 @@ function createHandler(config) {
         if (result.failed > 0) {
           cardState.error = `${result.failed} \u4E2A\u6587\u4EF6\u5BFC\u5165\u5931\u8D25\uFF0C\u8BE6\u60C5\u770B\u65E5\u5FD7`;
         }
-      } catch (error) {
-        cardState.error = error && error.message ? error.message : String(error);
+      } catch (error2) {
+        cardState.error = error2 && error2.message ? error2.message : String(error2);
         push(`\u51FA\u9519\uFF1A${cardState.error}`);
       } finally {
         cardState.running = false;
@@ -5968,7 +5997,7 @@ function createHandler(config) {
         if (action === "conflict" && parts[2] === "read") return await handleConflictRead(res, url);
         if (action === "history" && parts[2] === "list") return await handleHistoryList(res, url);
         if (action === "history" && parts[2] === "read") return await handleHistoryRead(res, url);
-        if (action === "archive" && parts[2] === "export") return await handleArchiveExport(req, res);
+        if (action === "archive" && parts[2] === "export") return await handleArchiveExport(req, res, url);
         if (action === "archive" && parts[2] === "info") return await handleArchiveInfo(res);
         if (action === "api" && parts[2] === "probe") return await handleCloudProbe(res);
         if (action === "cloud" && parts[2] === "list") return await handleCloudList(res, url);
@@ -6022,8 +6051,8 @@ function createHandler(config) {
         if (action === "sync" && parts[2] === "auto") return await handleAutoSyncSettings(req, res);
       }
       return send(res, 404, { error: `unknown action: ${action}` });
-    } catch (error) {
-      return fail2(res, error);
+    } catch (error2) {
+      return fail2(res, error2);
     }
   };
 }
@@ -6074,10 +6103,10 @@ async function performSyncImpl({ full = false, reason = "manual", config = {} } 
     syncState.lastError = result.errors.length > 0 ? result.errors[0].message : null;
     for (const e3 of result.errors) log(`\u5931\u8D25\uFF1A${e3.title || e3.noteId || e3.stage} \u2014 ${e3.message}`);
     return { ok: true, ...syncState.lastResult, lines };
-  } catch (error) {
-    syncState.lastError = String(error && error.message ? error.message : error);
+  } catch (error2) {
+    syncState.lastError = String(error2 && error2.message ? error2.message : error2);
     log(`\u540C\u6B65\u4E2D\u65AD\uFF1A${syncState.lastError}`);
-    return { ok: false, error: syncState.lastError, lines, status: error.status ?? null };
+    return { ok: false, error: syncState.lastError, lines, status: error2.status ?? null };
   } finally {
     syncState.running = false;
     syncState.finishedAt = (/* @__PURE__ */ new Date()).toISOString();
@@ -6195,9 +6224,9 @@ function tokenOf(req, url) {
 }
 function listenOn(server, port) {
   return new Promise((resolve5, reject) => {
-    const onError = (error) => {
+    const onError = (error2) => {
       server.removeListener("listening", onListening);
-      reject(error);
+      reject(error2);
     };
     const onListening = () => {
       server.removeListener("error", onError);
@@ -6232,8 +6261,8 @@ async function startLocalServer({ vaultPath = "", preferredPort = 0, token = "" 
       res.end(JSON.stringify({ error: "unauthorized", hint: "\u8BF7\u6C42\u7F3A\u5C11\u6216\u5E26\u9519\u4E86\u672C\u673A\u670D\u52A1\u4EE4\u724C" }));
       return;
     }
-    Promise.resolve(handler(req, res)).catch((error) => {
-      const message = error && error.message ? error.message : String(error);
+    Promise.resolve(handler(req, res)).catch((error2) => {
+      const message = error2 && error2.message ? error2.message : String(error2);
       try {
         if (!res.headersSent) {
           res.writeHead(500, { "content-type": "application/json; charset=utf-8" });
@@ -6257,9 +6286,9 @@ async function startLocalServer({ vaultPath = "", preferredPort = 0, token = "" 
       usedFallback = wanted && port === 0;
       lastError = null;
       break;
-    } catch (error) {
-      lastError = error;
-      if (port === 0) throw error;
+    } catch (error2) {
+      lastError = error2;
+      if (port === 0) throw error2;
     }
   }
   if (lastError) throw lastError;
@@ -7509,6 +7538,10 @@ var LEX = {
     "archive.import": "\u5BFC\u5165 zip",
     "archive.exporting": "\u6B63\u5728\u5BFC\u51FA\u2026",
     "archive.exported": "\u5DF2\u5BFC\u51FA\u5F52\u6863\u5305",
+    "archive.scope": "\u5BFC\u51FA\u8303\u56F4",
+    "archive.scopeAll": "\u6574\u5E93",
+    "archive.scopeNotes": "\u53EA\u8981\u6587\u5B57",
+    "archive.scopeAssets": "\u53EA\u8981\u9644\u4EF6",
     "archive.imported": "\u5BFC\u5165\u5B8C\u6210\uFF1A\u65B0\u589E/\u8DF3\u8FC7",
     "archive.importMode": "\u540C\u540D\u65F6",
     "archive.mode.rename": "\u53E6\u5B58\u4E00\u4EFD",
@@ -7870,6 +7903,10 @@ var LEX = {
     "archive.import": "Import zip",
     "archive.exporting": "Exporting\u2026",
     "archive.exported": "Archive exported",
+    "archive.scope": "Export range",
+    "archive.scopeAll": "Whole vault",
+    "archive.scopeNotes": "Notes only",
+    "archive.scopeAssets": "Attachments only",
     "archive.imported": "Import done \u2014 added/skipped",
     "archive.importMode": "On name clash",
     "archive.mode.rename": "Keep both",
@@ -8231,6 +8268,10 @@ var LEX = {
     "archive.import": "Zip importeren",
     "archive.exporting": "Exporteren\u2026",
     "archive.exported": "Archief ge\xEBxporteerd",
+    "archive.scope": "Exportbereik",
+    "archive.scopeAll": "Hele kluis",
+    "archive.scopeNotes": "Alleen notities",
+    "archive.scopeAssets": "Alleen bijlagen",
     "archive.imported": "Import klaar \u2014 toegevoegd/overgeslagen",
     "archive.importMode": "Bij naamconflict",
     "archive.mode.rename": "Beide houden",
@@ -8513,12 +8554,12 @@ async function api(path, init) {
         throw err;
       }
       return json;
-    } catch (error) {
-      const aborted = error !== null && typeof error === "object" && (error.name === "AbortError" || signal.aborted);
-      if (aborted) throw error;
-      const hasStatus = error !== null && typeof error === "object" && typeof error.status === "number";
+    } catch (error2) {
+      const aborted = error2 !== null && typeof error2 === "object" && (error2.name === "AbortError" || signal.aborted);
+      if (aborted) throw error2;
+      const hasStatus = error2 !== null && typeof error2 === "object" && typeof error2.status === "number";
       const retryable = idempotent && !hasStatus && attempt < RETRY_DELAYS.length;
-      if (!retryable) throw error;
+      if (!retryable) throw error2;
       await sleep2(RETRY_DELAYS[attempt]);
       attempt += 1;
     }
@@ -9455,6 +9496,8 @@ var CSS = `
   border-radius:7px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;
   font-size:12px;outline:none}
 .dshgn_input:focus{border-color:var(--dsw-alias-brand-primary)}
+/* \u5DE5\u5177\u680F\u91CC\u7684\u5C0F\u4E0B\u62C9\uFF1A\u4E0D\u8BE5\u50CF\u6B63\u6587\u8F93\u5165\u6846\u90A3\u6837\u62A2\u8D70\u534A\u884C\u5BBD\u5EA6 */
+.dshgn_selectSm{flex:none;min-width:0;width:auto;height:24px;padding:0 6px;font-size:11.5px;cursor:pointer}
 .dshgn_badge{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 7px;border-radius:10px;
   font-size:10.5px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}
 .dshgn_badgeOk{background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-brand-primary)}
@@ -10000,7 +10043,7 @@ function GetnotePage() {
   const [draft, setDraft] = h2(null);
   const [busy, setBusy] = h2(false);
   const [toast, setToast] = h2(null);
-  const [error, setError] = h2(null);
+  const [error2, setError] = h2(null);
   const [refreshState, setRefreshState] = h2("idle");
   const refreshTimer = A2(null);
   const refreshSpinTimer = A2(null);
@@ -11125,7 +11168,7 @@ function GetnotePage() {
       "div",
       { className: "dshgn_root", style: rootStyle },
       head,
-      error !== null ? h4("div", { className: "dshgn_error", role: "alert" }, `${t3("error.prefix")}: ${error}`) : null,
+      error2 !== null ? h4("div", { className: "dshgn_error", role: "alert" }, `${t3("error.prefix")}: ${error2}`) : null,
       // key 用 tab：切换页签时 React 会换掉整个节点，动画才会从头播一遍。
       // 不加 key 的话 React 复用同一个 DOM，transition 没有「变化」可播，
       // 表现就是切页签时内容硬跳一下。
@@ -12821,6 +12864,7 @@ function ArchiveCard(props) {
   const [info, setInfo] = h2(null);
   const [busy, setBusy] = h2(false);
   const [importMode, setImportMode] = h2("rename");
+  const [exportScope, setExportScope] = h2("all");
   const fileRef = A2(null);
   y2(() => {
     let alive = true;
@@ -12835,8 +12879,9 @@ function ArchiveCard(props) {
   const exportZip = q2(async () => {
     setBusy(true);
     try {
-      const url = withToken(`${apiOrigin()}/getnote/archive/export`);
-      const name = "\u5F97\u5230\u5927\u8111\u5F52\u6863-" + (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) + ".zip";
+      const suffix = exportScope === "notes" ? "-\u6587\u5B57" : exportScope === "assets" ? "-\u9644\u4EF6" : "";
+      const url = withToken(`${apiOrigin()}/getnote/archive/export?scope=${encodeURIComponent(exportScope)}`);
+      const name = "\u5F97\u5230\u5927\u8111\u5F52\u6863" + suffix + "-" + (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) + ".zip";
       const saved = await saveFile(url, name);
       if (saved) {
         showToast(t3("archive.exported"));
@@ -12852,7 +12897,7 @@ function ArchiveCard(props) {
     } finally {
       window.setTimeout(() => setBusy(false), 1200);
     }
-  }, [showToast, t3]);
+  }, [exportScope, showToast, t3]);
   const doImport = q2(
     async (file) => {
       if (!file) return;
@@ -12891,6 +12936,20 @@ function ArchiveCard(props) {
       h4(
         "div",
         { className: "dshgn_rowLine", style: { gap: 6 } },
+        h4(
+          "select",
+          {
+            className: "dshgn_input dshgn_selectSm",
+            value: exportScope,
+            title: t3("archive.scope"),
+            "aria-label": t3("archive.scope"),
+            onChange: (event) => setExportScope(event.target.value),
+            disabled: busy
+          },
+          h4("option", { value: "all" }, t3("archive.scopeAll")),
+          h4("option", { value: "notes" }, t3("archive.scopeNotes")),
+          h4("option", { value: "assets" }, t3("archive.scopeAssets"))
+        ),
         h4(
           "button",
           { type: "button", className: "dshgn_btn dshgn_btnPri", onClick: exportZip, disabled: busy },
@@ -14578,7 +14637,7 @@ function ImportPane(props) {
   const [state, setState] = h2(null);
   const [authUrl, setAuthUrl] = h2(null);
   const [waiting, setWaiting] = h2(false);
-  const [error, setError] = h2(null);
+  const [error2, setError] = h2(null);
   const [busy, setBusy] = h2(false);
   const loadStatus = q2(async () => {
     try {
@@ -14732,7 +14791,7 @@ function ImportPane(props) {
           )
         ) : null
       ),
-      error !== null ? h4("div", { className: "dshgn_error", role: "alert" }, error) : null,
+      error2 !== null ? h4("div", { className: "dshgn_error", role: "alert" }, error2) : null,
       result !== null ? h4(
         "div",
         { className: "dshgn_section" },
@@ -15096,11 +15155,11 @@ var PanelBoundary = class extends ErrorBoundaryBase {
     this.state = { error: null };
     this.retry = this.retry.bind(this);
   }
-  static getDerivedStateFromError(error) {
-    return { error: error || new Error("\u6E32\u67D3\u5F02\u5E38") };
+  static getDerivedStateFromError(error2) {
+    return { error: error2 || new Error("\u6E32\u67D3\u5F02\u5E38") };
   }
-  componentDidCatch(error, info) {
-    console.error("[dsh-getnote] \u9762\u677F\u6E32\u67D3\u5F02\u5E38\uFF0C\u5DF2\u964D\u7EA7\u663E\u793A\uFF1A", error, info && info.componentStack);
+  componentDidCatch(error2, info) {
+    error("\u9762\u677F\u6E32\u67D3\u5F02\u5E38\uFF0C\u5DF2\u964D\u7EA7\u663E\u793A\uFF1A", error2, info && info.componentStack);
   }
   retry() {
     this.setState({ error: null });
@@ -15263,14 +15322,16 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       return true;
     });
     const stored = await readSettings();
+    this.debugLogging = stored.debugLogging === true;
+    setDebugLogging(this.debugLogging);
     if (stored.subfolder && stored.subfolder !== DEFAULT_SUBFOLDER) {
       configure2({ subfolder: stored.subfolder });
     }
     const vaultRoot = resolveVaultRoot().root;
     try {
       await mkdir2(vaultRoot, { recursive: true });
-    } catch (error) {
-      new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A\u7B14\u8BB0\u76EE\u5F55\u5EFA\u4E0D\u51FA\u6765 \u2014\u2014 ${error && error.message ? error.message : error}`);
+    } catch (error2) {
+      new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A\u7B14\u8BB0\u76EE\u5F55\u5EFA\u4E0D\u51FA\u6765 \u2014\u2014 ${error2 && error2.message ? error2.message : error2}`);
     }
     const preferredPort = Number(stored.localPort) > 0 ? Number(stored.localPort) : 0;
     try {
@@ -15282,11 +15343,11 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       if (this.localPort !== preferredPort) {
         await this.saveLocalPort(this.localPort);
       }
-    } catch (error) {
+    } catch (error2) {
       this.server = null;
       this.localPort = 0;
       this.portFallback = false;
-      new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A\u672C\u5730\u670D\u52A1\u542F\u52A8\u5931\u8D25 \u2014\u2014 ${error && error.message ? error.message : error}`);
+      new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A\u672C\u5730\u670D\u52A1\u542F\u52A8\u5931\u8D25 \u2014\u2014 ${error2 && error2.message ? error2.message : error2}`);
     }
     this.registerView(VIEW_TYPE_GETNOTE, (leaf) => new GetnoteView(leaf, this));
     const ribbon = this.addRibbonIcon("brain", "\u5F97\u5230\u5927\u8111", () => {
@@ -15496,14 +15557,21 @@ var GetnoteSettingTab = class extends import_obsidian2.PluginSettingTab {
         try {
           await setVaultRoot(trimmed);
           new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A\u7B14\u8BB0\u76EE\u5F55\u5DF2\u6539\u4E3A\u300C${trimmed}\u300D`);
-        } catch (error) {
-          new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A${error && error.message ? error.message : error}`);
+        } catch (error2) {
+          new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A${error2 && error2.message ? error2.message : error2}`);
         }
       });
     });
     new import_obsidian2.Setting(containerEl).setName("\u672C\u5730\u670D\u52A1").setDesc(
       this.plugin.localPort ? `\u8FD0\u884C\u4E2D\uFF1Ahttp://127.0.0.1:${this.plugin.localPort}${this.plugin.portFallback ? "\uFF08\u4F60\u6307\u5B9A\u7684\u7AEF\u53E3\u88AB\u5360\u7528\uFF0C\u8FD9\u6B21\u7528\u4E86\u7CFB\u7EDF\u5206\u914D\u7684\uFF1B\u4E91\u7AEF\u6388\u6743\u53EF\u80FD\u9700\u8981\u91CD\u65B0\u767B\u5F55\u4E00\u6B21\uFF09" : ""}` : "\u672A\u8FD0\u884C\u3002\u91CD\u542F Obsidian \u6216\u770B\u63A7\u5236\u53F0\u91CC\u7684\u62A5\u9519\u3002"
     );
+    new import_obsidian2.Setting(containerEl).setName("\u8BE6\u7EC6\u65E5\u5FD7").setDesc("\u628A\u9762\u677F\u4E0E\u540C\u6B65\u7684\u6BCF\u4E00\u6B65\u6253\u8FDB\u5F00\u53D1\u8005\u63A7\u5236\u53F0\uFF08Ctrl+Shift+I\uFF09\u3002\u6392\u67E5\u95EE\u9898\u65F6\u6253\u5F00\uFF0C\u5E73\u65F6\u5173\u7740\u2014\u2014\u63A7\u5236\u53F0\u91CC\u6324\u7740\u51E0\u5341\u4E2A\u63D2\u4EF6\uFF0C\u5237\u5C4F\u7684\u8F93\u51FA\u53CD\u800C\u6CA1\u4EBA\u770B\u3002").addToggle((toggle) => {
+      toggle.setValue(this.plugin.debugLogging === true).onChange(async (value) => {
+        this.plugin.debugLogging = value === true;
+        setDebugLogging(this.plugin.debugLogging);
+        await updateSettings({ debugLogging: this.plugin.debugLogging });
+      });
+    });
     new import_obsidian2.Setting(containerEl).setName("\u6253\u5F00\u9762\u677F").setDesc("\u4E5F\u53EF\u4EE5\u7528\u5DE6\u4FA7\u680F\u7684\u5927\u8111\u56FE\u6807\uFF0C\u6216\u547D\u4EE4\u9762\u677F\u91CC\u7684\u300C\u6253\u5F00\u5F97\u5230\u5927\u8111\u9762\u677F\u300D\u3002").addButton((button) => {
       button.setButtonText("\u6253\u5F00").setCta().onClick(() => {
         void this.plugin.activateView();
