@@ -1,0 +1,26 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      # npm ci 需要 package-lock.json 与 package.json 完全一致；
+      # 不一致时这里会直接失败，比让测试跑起来再莫名其妙挂掉好定位。
+      - run: npm ci
+
+      # 测试脚本自己会先跑一次 build（启动/视图/面板验收加载的是打包产物），
+      # 所以这里不需要额外 build 一步。
+      - run: npm test

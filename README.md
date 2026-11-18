@@ -75,6 +75,9 @@ npm test           # 538 项离线测试
 
 开发时用 `npm run dev` 进入 watch 模式。
 
+推上去之后 GitHub Actions 会跑同一套测试（`.github/workflows/test.yml`）：
+`npm ci` + `npm test`，Node 20 / Ubuntu。
+
 ---
 
 ## 使用
