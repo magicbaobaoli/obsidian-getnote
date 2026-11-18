@@ -1,0 +1,35 @@
+{
+  "name": "obsidian-getnote",
+  "version": "0.1.0",
+  "description": "把「得到大脑（Get笔记）」搬进 Obsidian：本地优先的 Markdown 笔记库面板，含云端同步与录音卡导入。",
+  "type": "module",
+  "main": "main.js",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/build.mjs --watch",
+    "test": "node --test test/*.test.mjs"
+  },
+  "keywords": [
+    "obsidian",
+    "obsidian-plugin",
+    "getnote",
+    "biji",
+    "得到大脑",
+    "markdown",
+    "second-brain"
+  ],
+  "license": "MIT",
+  "author": "magicbaobaoli",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/magicbaobaoli/obsidian-getnote.git"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  },
+  "private": false,
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}

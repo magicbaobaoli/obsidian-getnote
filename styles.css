@@ -1,0 +1,81 @@
+/*
+ * styles.css —— 主题变量映射 + 视图容器
+ *
+ * panel.js 是从 DSH 版机械移植的，里面 344 处用的是 DSH 的主题变量
+ * `--dsw-alias-*`（且都没写兜底值）。Obsidian 里没有这些变量，
+ * 不映射的话面板会整片黑白、边框全丢。
+ *
+ * 这里把它们映射到 Obsidian 自己的主题变量上：跟随用户的明暗主题和
+ * 第三方主题配色，而不是硬编码一套颜色。
+ */
+
+body {
+  /* 背景 */
+  --dsw-alias-bg-base: var(--background-primary);
+  --dsw-alias-bg-overlay: var(--background-primary-alt);
+  --dsw-alias-elevation-prominent: 0 8px 28px rgba(0, 0, 0, 0.22);
+
+  /* 描边 */
+  --dsw-alias-border-l1: var(--background-modifier-border);
+  --dsw-alias-border-l2: var(--background-modifier-border-hover);
+
+  /* 品牌色 */
+  --dsw-alias-brand-primary: var(--interactive-accent);
+  --dsw-alias-button-primary-fill: var(--interactive-accent);
+  --dsw-alias-button-primary-hover: var(--interactive-accent-hover);
+  --dsw-alias-label-primary-foreground: var(--text-on-accent);
+
+  /* 文字 */
+  --dsw-alias-label-primary: var(--text-normal);
+  --dsw-alias-label-secondary: var(--text-muted);
+  --dsw-alias-label-tertiary: var(--text-faint);
+  --dsw-alias-label-dimmed: var(--text-faint);
+
+  /* 交互态 */
+  --dsw-alias-interactive-bg-hover: var(--background-modifier-hover);
+  --dsw-alias-interactive-bg-active: var(--background-modifier-active-hover);
+  --dsw-alias-interactive-bg-hover-accent: var(--background-modifier-hover);
+
+  /* 状态色 */
+  --dsw-alias-state-error-primary: var(--text-error);
+  --dsw-alias-state-success-primary: var(--text-success);
+  --dsw-alias-state-warn-primary: var(--text-warning);
+
+  /* 轻提示 */
+  --dsw-alias-toast-bg: var(--background-secondary-alt);
+  --dsw-alias-toast-label: var(--text-normal);
+
+  /* 字体 */
+  --dsw-font-sans: var(--font-interface);
+  --dsw-font-mono: var(--font-monospace);
+}
+
+/* 面板要贴满整个叶子，Obsidian 默认的 padding 会把三栏挤变形 */
+.workspace-leaf-content[data-type='getnote-obsidian-view'] .view-content {
+  padding: 0;
+  overflow: hidden;
+}
+
+.dshgn_view {
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.dshgn_mount {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 面板自己会滚，外层不要再套一层滚动条 */
+.dshgn_mount > * {
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.dshgn_ribbon {
+  --icon-color: var(--text-muted);
+}
