@@ -88,13 +88,18 @@ async function adapterExists(rel) {
     return false;
   }
 }
+function entryName(entry) {
+  const raw = String(entry == null ? "" : entry).replace(/\\/g, "/").replace(/\/+$/, "");
+  const cut = raw.lastIndexOf("/");
+  return cut >= 0 ? raw.slice(cut + 1) : raw;
+}
 async function readdir2(dir, options = {}) {
   if (!adapter) return nodefs.readdir(dir, options);
   const rel = relOf(dir);
   if (!await adapterExists(rel)) throw enoent(dir);
   const listed = await adapter.list(rel);
-  const folders = Array.isArray(listed.folders) ? listed.folders : [];
-  const files = Array.isArray(listed.files) ? listed.files : [];
+  const folders = (Array.isArray(listed.folders) ? listed.folders : []).map(entryName).filter(Boolean);
+  const files = (Array.isArray(listed.files) ? listed.files : []).map(entryName).filter(Boolean);
   if (options && options.withFileTypes) {
     return [...folders.map((name) => dirent(name, true)), ...files.map((name) => dirent(name, false))];
   }
@@ -170,7 +175,29 @@ async function rm2(target, options = {}) {
     if (options && options.force) return;
     throw enoent(target);
   }
-  await adapter.remove(rel);
+  let isDir = false;
+  if (typeof adapter.stat === "function") {
+    try {
+      const st = await adapter.stat(rel);
+      isDir = !!(st && st.type === "folder");
+    } catch {
+      isDir = false;
+    }
+  }
+  if (isDir) {
+    if (typeof adapter.rmdir === "function") await adapter.rmdir(rel, true);
+    else await adapter.remove(rel);
+    return;
+  }
+  try {
+    await adapter.remove(rel);
+  } catch (err) {
+    if (typeof adapter.rmdir === "function") {
+      await adapter.rmdir(rel, true);
+      return;
+    }
+    throw err;
+  }
 }
 async function rmdir2(dir) {
   if (!adapter) return nodefs.rmdir(dir);

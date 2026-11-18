@@ -110,13 +110,31 @@ async function adapterExists(rel) {
 
 // ── 读 ───────────────────────────────────────────────────────────────────────
 
+/**
+ * 把 adapter.list() 返回的条目收敛成「裸文件名」。
+ *
+ * Obsidian 官方类型只写了 `ListedFiles.files/folders: string[]`，没有说明这两个数组
+ * 里装的是裸文件名还是「相对库根的完整路径」。不同版本、不同 adapter（桌面
+ * FileSystemAdapter / 移动 CapacitorAdapter）都有社区代码按两种方式使用过。
+ * 上层（vault.js 的 scanVault / buildTree）拿到的必须是裸文件名，否则
+ * `join(dir, name)` 会把整条路径当文件名再拼一次，扫描直接失效。
+ *
+ * 所以这里不猜：一律取 basename。返回裸文件名时是恒等变换，返回完整路径时
+ * 也能正确收敛，两种情况都安全。
+ */
+function entryName(entry) {
+  const raw = String(entry == null ? '' : entry).replace(/\\/g, '/').replace(/\/+$/, '')
+  const cut = raw.lastIndexOf('/')
+  return cut >= 0 ? raw.slice(cut + 1) : raw
+}
+
 export async function readdir(dir, options = {}) {
   if (!adapter) return nodefs.readdir(dir, options)
   const rel = relOf(dir)
   if (!(await adapterExists(rel))) throw enoent(dir)
   const listed = await adapter.list(rel)
-  const folders = Array.isArray(listed.folders) ? listed.folders : []
-  const files = Array.isArray(listed.files) ? listed.files : []
+  const folders = (Array.isArray(listed.folders) ? listed.folders : []).map(entryName).filter(Boolean)
+  const files = (Array.isArray(listed.files) ? listed.files : []).map(entryName).filter(Boolean)
   if (options && options.withFileTypes) {
     return [...folders.map((name) => dirent(name, true)), ...files.map((name) => dirent(name, false))]
   }
@@ -195,6 +213,7 @@ export async function writeFile(file, data, options) {
 export async function appendFile(file, data, options) {
   if (!adapter) return nodefs.appendFile(file, data, options)
   const rel = relOf(file)
+  await ensureDir(rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : '')
   if (typeof data === 'string') await adapter.append(rel, data)
   else await adapter.appendBinary(rel, data)
 }
@@ -226,7 +245,33 @@ export async function rm(target, options = {}) {
     if (options && options.force) return
     throw enoent(target)
   }
-  await adapter.remove(rel)
+  // Obsidian 的 adapter.remove 只删文件；目录要走 rmdir(recursive)。
+  // 上层（vault.js 删目录、清空回收站）传的是 rm(dir, { recursive: true })，
+  // 直接丢给 remove 会抛错或者删不掉，所以这里自己判断一次。
+  let isDir = false
+  if (typeof adapter.stat === 'function') {
+    try {
+      const st = await adapter.stat(rel)
+      isDir = !!(st && st.type === 'folder')
+    } catch {
+      isDir = false
+    }
+  }
+  if (isDir) {
+    if (typeof adapter.rmdir === 'function') await adapter.rmdir(rel, true)
+    else await adapter.remove(rel)
+    return
+  }
+  // 拿不到 stat（老版本 adapter）时先按文件删，删不掉再当目录删一次。
+  try {
+    await adapter.remove(rel)
+  } catch (err) {
+    if (typeof adapter.rmdir === 'function') {
+      await adapter.rmdir(rel, true)
+      return
+    }
+    throw err
+  }
 }
 
 export async function rmdir(dir) {
