@@ -20,7 +20,7 @@ import { configure as configureVfs, mkdir as vfsMkdir } from './core/vfs.js'
 import { configureCardScripts } from './core/card.js'
 import { startAutoSync, markPanelVisible } from './core/service.js'
 import { startLocalServer } from './host/server.js'
-import { setApiOrigin } from './view/panel.js'
+import { setApiOrigin, setOpenExternal } from './view/panel.js'
 import { GetnoteView, VIEW_TYPE_GETNOTE, PanelIcon } from './view/view.js'
 
 const DEFAULT_SUBFOLDER = '得到大脑'
@@ -36,6 +36,22 @@ export default class GetnoteObsidianPlugin extends Plugin {
     configureVfs({ adapter, basePath })
     // 录音卡的 Python 桥脚本跟 main.js 一起装在插件目录里（构建时复制到 card/）。
     configureCardScripts({ baseDir: dataDir })
+
+    // OAuth 授权必须落到系统浏览器：渲染进程里的 window.open 在 Electron 里
+    // 行为不可靠。Obsidian 桌面版能拿到 electron 的 shell，直接交给它。
+    setOpenExternal((url) => {
+      try {
+        // eslint-disable-next-line global-require
+        const electron = typeof require === 'function' ? require('electron') : null
+        if (electron && electron.shell && typeof electron.shell.openExternal === 'function') {
+          void electron.shell.openExternal(url)
+          return true
+        }
+      } catch {
+        // 拿不到 electron（比如测试环境）就返回 false，让面板退回 window.open
+      }
+      return false
+    })
 
     const stored = await settingsStore.readSettings()
     if (stored.subfolder && stored.subfolder !== DEFAULT_SUBFOLDER) {
@@ -58,6 +74,11 @@ export default class GetnoteObsidianPlugin extends Plugin {
       this.server = await startLocalServer({ preferredPort })
       setApiOrigin(this.server.origin)
       this.localPort = this.server.port
+      // 记住这次真正用上的端口：下次启动优先复用它，OAuth 的 redirect_uri
+      // 才能跨会话稳定（服务端是按 redirect_uri 注册的 client）。
+      if (this.localPort !== preferredPort) {
+        await this.saveLocalPort(this.localPort)
+      }
     } catch (error) {
       // 起不来也不能让整个插件挂掉：面板会显示「服务未就绪」，其余功能（设置页）还能用。
       this.server = null

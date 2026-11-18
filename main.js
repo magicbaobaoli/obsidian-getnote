@@ -36796,6 +36796,19 @@ function setApiOrigin(origin) {
 function apiOrigin() {
   return __apiBase;
 }
+var __openExternal = null;
+function setOpenExternal(fn) {
+  __openExternal = typeof fn === "function" ? fn : null;
+}
+function openExternal(url) {
+  if (__openExternal !== null) {
+    try {
+      if (__openExternal(url) === true) return;
+    } catch {
+    }
+  }
+  window.open(url, "_blank", "noopener,width=520,height=760");
+}
 var h = React.createElement;
 var NS = "dsh-getnote";
 var STYLE_ID = "dshgn-style";
@@ -38714,6 +38727,8 @@ var CSS = `
 .dshgn_hr{border:0;border-top:0.5px solid var(--dsw-alias-border-l2);margin:16px 0}
 .dshgn_link{color:var(--dsw-alias-brand-primary);text-decoration:none}
 .dshgn_link:hover{text-decoration:underline}
+/* \u5916\u94FE\u6309\u94AE\uFF1A\u5916\u89C2\u7167\u94FE\u63A5\u8D70\uFF0C\u884C\u4E3A\u662F\u6309\u94AE\uFF08\u907F\u514D\u81EA\u5B9A\u4E49\u89C6\u56FE\u91CC\u70B9\u5916\u94FE\u628A\u5E94\u7528\u5BFC\u822A\u8D70\uFF09 */
+.dshgn_linkBtn{background:none;border:0;padding:0;font:inherit;cursor:pointer;text-align:left}
 .dshgn_code{padding:1px 5px;border-radius:4px;background:var(--dsw-alias-interactive-bg-hover);
   font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}
 .dshgn_pre{position:relative;margin:10px 0;padding:11px 12px;border-radius:9px;overflow-x:auto;
@@ -43557,7 +43572,7 @@ function ImportPane(props) {
       setAuthUrl(json.url);
       setWaiting(true);
       try {
-        window.open(json.url, "_blank", "noopener,width=520,height=760");
+        openExternal(json.url);
       } catch {
       }
     } catch (err) {
@@ -43665,7 +43680,17 @@ function ImportPane(props) {
           "div",
           { className: "dshgn_sectionDesc" },
           waiting ? `${t("import.authorizeWait")} ` : "",
-          h("a", { className: "dshgn_link", href: authUrl, target: "_blank", rel: "noreferrer noopener" }, t("import.openLink"))
+          // 用按钮而不是 a[target=_blank]：Obsidian 的自定义视图里点外链
+          // 有时会把整个应用导航走，比打开浏览器难收拾得多。
+          h(
+            "button",
+            {
+              type: "button",
+              className: "dshgn_link dshgn_linkBtn",
+              onClick: () => openExternal(authUrl)
+            },
+            t("import.openLink")
+          )
         ) : null
       ),
       error !== null ? h("div", { className: "dshgn_error", role: "alert" }, error) : null,
@@ -44132,6 +44157,17 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     configure2({ dataDir, vaultBase: basePath2, subfolder: DEFAULT_SUBFOLDER });
     configure({ adapter: adapter2, basePath: basePath2 });
     configureCardScripts({ baseDir: dataDir });
+    setOpenExternal((url) => {
+      try {
+        const electron = typeof require === "function" ? require("electron") : null;
+        if (electron && electron.shell && typeof electron.shell.openExternal === "function") {
+          void electron.shell.openExternal(url);
+          return true;
+        }
+      } catch {
+      }
+      return false;
+    });
     const stored = await readSettings();
     if (stored.subfolder && stored.subfolder !== DEFAULT_SUBFOLDER) {
       configure2({ subfolder: stored.subfolder });
@@ -44147,6 +44183,9 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       this.server = await startLocalServer({ preferredPort });
       setApiOrigin(this.server.origin);
       this.localPort = this.server.port;
+      if (this.localPort !== preferredPort) {
+        await this.saveLocalPort(this.localPort);
+      }
     } catch (error) {
       this.server = null;
       this.localPort = 0;

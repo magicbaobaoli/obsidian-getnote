@@ -25,7 +25,8 @@
     "url": "git+https://github.com/magicbaobaoli/obsidian-getnote.git"
   },
   "devDependencies": {
-    "esbuild": "^0.25.0"
+    "esbuild": "^0.25.0",
+    "jsdom": "^31.0.1"
   },
   "private": false,
   "dependencies": {

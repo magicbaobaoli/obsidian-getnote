@@ -17,6 +17,24 @@ function apiOrigin() {
   return __apiBase
 }
 
+// 授权要在系统浏览器里走：Obsidian 渲染进程里的 window.open 会被
+// Electron 接走（有时开成新窗口、有时直接没反应），所以由宿主注入一个
+// 「用系统浏览器打开」的实现；没注入时退回 window.open。
+let __openExternal = null
+export function setOpenExternal(fn) {
+  __openExternal = typeof fn === 'function' ? fn : null
+}
+function openExternal(url) {
+  if (__openExternal !== null) {
+    try {
+      if (__openExternal(url) === true) return
+    } catch {
+      // 注入的实现失败了就往下走 window.open
+    }
+  }
+  window.open(url, '_blank', 'noopener,width=520,height=760')
+}
+
     const h = React.createElement
     const NS = 'dsh-getnote'
     const PANEL_ID = 'dsh-getnote'
@@ -2103,6 +2121,8 @@ function apiOrigin() {
 .dshgn_hr{border:0;border-top:0.5px solid var(--dsw-alias-border-l2);margin:16px 0}
 .dshgn_link{color:var(--dsw-alias-brand-primary);text-decoration:none}
 .dshgn_link:hover{text-decoration:underline}
+/* 外链按钮：外观照链接走，行为是按钮（避免自定义视图里点外链把应用导航走） */
+.dshgn_linkBtn{background:none;border:0;padding:0;font:inherit;cursor:pointer;text-align:left}
 .dshgn_code{padding:1px 5px;border-radius:4px;background:var(--dsw-alias-interactive-bg-hover);
   font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}
 .dshgn_pre{position:relative;margin:10px 0;padding:11px 12px;border-radius:9px;overflow-x:auto;
@@ -7607,11 +7627,11 @@ function apiOrigin() {
           const json = await api('/oauth/start', { method: 'POST' })
           setAuthUrl(json.url)
           setWaiting(true)
-          // 桌面版里 window.open 可能被拦：不依赖它的返回值，面板上始终给可点的链接
+          // 打开系统浏览器可能失败：不依赖它的返回值，面板上始终给可点的链接
           try {
-            window.open(json.url, '_blank', 'noopener,width=520,height=760')
+            openExternal(json.url)
           } catch {
-            // 拦截了也没关系，下面有手动链接
+            // 打开失败也没关系，下面有手动链接
           }
         } catch (err) {
           setError(err && err.message ? err.message : String(err))
@@ -7730,7 +7750,17 @@ function apiOrigin() {
                   'div',
                   { className: 'dshgn_sectionDesc' },
                   waiting ? `${t('import.authorizeWait')} ` : '',
-                  h('a', { className: 'dshgn_link', href: authUrl, target: '_blank', rel: 'noreferrer noopener' }, t('import.openLink')),
+                  // 用按钮而不是 a[target=_blank]：Obsidian 的自定义视图里点外链
+                  // 有时会把整个应用导航走，比打开浏览器难收拾得多。
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'dshgn_link dshgn_linkBtn',
+                      onClick: () => openExternal(authUrl),
+                    },
+                    t('import.openLink'),
+                  ),
                 )
               : null,
           ),
