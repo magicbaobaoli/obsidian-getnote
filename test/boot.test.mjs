@@ -336,6 +336,13 @@ const app = {
     }),
     openPopoutLeaf: () => ({ setViewState: async () => {} }),
   },
+  // 宿主生成链接的能力。「复制引用」得按用户的「使用 Wiki 链接 / 新链接格式」
+  // 两项设置来，那只有 fileManager 知道。这里返回一个能看出路径的假链接。
+  fileManager: {
+    generateMarkdownLink(file) {
+      return `[[${String(file && file.path ? file.path : '')}]]`
+    },
+  },
   // 宿主的链接索引。插件拿它回答「谁引用了这篇」「这篇引用了谁」，
   // 不必为了一次点击重扫全库正文——那正是 Obsidian 自己一直在维护的东西。
   metadataCache: {
@@ -1059,6 +1066,32 @@ test('反链与出链优先问宿主的链接索引，问不到才自己扫', as
   app.metadataCache = broken
   app.metadataCache.resolvedLinks = {}
   app.metadataCache.fileCache = {}
+})
+
+test('复制引用用的是宿主自己的链接格式，找不到文件就交回面板自己拼', async () => {
+  await adapter.mkdir('得到大脑')
+  await adapter.mkdir('得到大脑/随手记')
+  await adapter.write('得到大脑/随手记/链接验收.md', '# 链接验收')
+
+  // 面板给的是「相对笔记目录」的路径，宿主要的是库内相对路径
+  assert.equal(plugin.markdownLinkFor('随手记/链接验收.md'), '[[得到大脑/随手记/链接验收.md]]')
+  // 已经是库内相对路径的照样认（不重复拼子目录）
+  assert.equal(plugin.markdownLinkFor('得到大脑/随手记/链接验收.md'), '[[得到大脑/随手记/链接验收.md]]')
+  // 前导斜杠可容忍
+  assert.equal(plugin.markdownLinkFor('/随手记/链接验收.md'), '[[得到大脑/随手记/链接验收.md]]')
+
+  // 找不到文件 / 空路径 → 空串，面板退回绝对路径口径
+  assert.equal(plugin.markdownLinkFor('随手记/根本没有.md'), '')
+  assert.equal(plugin.markdownLinkFor(''), '')
+  assert.equal(plugin.markdownLinkFor(null), '')
+
+  // 宿主没提供 generateMarkdownLink，或它自己炸了，都不抛
+  const manager = app.fileManager
+  app.fileManager = {}
+  assert.equal(plugin.markdownLinkFor('随手记/链接验收.md'), '')
+  app.fileManager = { generateMarkdownLink() { throw new Error('生成不了') } }
+  assert.equal(plugin.markdownLinkFor('随手记/链接验收.md'), '')
+  app.fileManager = manager
 })
 
 test('onunload 会关掉本地服务', async () => {

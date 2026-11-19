@@ -43,6 +43,7 @@ import {
   setSyncReport,
   setConfirmDialog,
   setOpenInEditor,
+  setMarkdownLink,
   setVaultGraph,
   setStatusReport,
   notifyCssChange,
@@ -146,6 +147,9 @@ export default class GetnoteObsidianPlugin extends Plugin {
     // 「在 Obsidian 里打开」：面板的编辑器够用来看和改正文，但没有补全、没有
     // Vim、没有别的插件挂上来的命令。真要动结构的时候，得把用户送回宿主编辑器。
     setOpenInEditor((path) => this.openInVaultEditor(path))
+    // 「复制引用」用宿主自己的链接格式：用户偏好 Wiki 链接还是 Markdown 链接、
+    // 路径写全还是写短，只有 app.fileManager 知道。
+    setMarkdownLink((path) => this.markdownLinkFor(path))
 
     // 反链、出链交给宿主的 metadataCache。
     //
@@ -810,6 +814,34 @@ export default class GetnoteObsidianPlugin extends Plugin {
       return true
     } catch {
       return false
+    }
+  }
+
+  /**
+   * 生成一条指向这篇笔记的链接，格式按用户的 Obsidian 设置来。
+   *
+   * `app.fileManager.generateMarkdownLink` 会读「使用 Wiki 链接」与「新链接格式」
+   * 两项设置，给出 `[[随手记/甲|甲]]` 或 `[甲](随手记/甲.md)`。面板的「复制引用」
+   * 拿它当首选——用户复制引用是为了粘进另一篇笔记，不是喂给外部工具。
+   *
+   * 面板传进来的是「相对笔记目录」的路径，宿主要的是库内相对路径，这里补上子目录。
+   * 拿不到文件或宿主没提供这个方法时返回空串，面板退回原来的绝对路径口径。
+   */
+  markdownLinkFor(path) {
+    try {
+      const rel = String(path || '').replace(/^\/+/, '')
+      if (rel === '') return ''
+      const runtime = settingsStore.getRuntime()
+      const sub = String(runtime.subfolder || DEFAULT_SUBFOLDER).replace(/^\/+|\/+$/g, '')
+      const inVault = sub === '' || rel.startsWith(sub + '/') ? rel : `${sub}/${rel}`
+      const file = this.app.vault.getAbstractFileByPath(inVault)
+      if (!file) return ''
+      const manager = this.app.fileManager
+      if (!manager || typeof manager.generateMarkdownLink !== 'function') return ''
+      const link = manager.generateMarkdownLink(file, '')
+      return typeof link === 'string' ? link : ''
+    } catch {
+      return ''
     }
   }
 

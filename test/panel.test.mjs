@@ -987,3 +987,60 @@ test('别处改了库里那篇，面板跟着变；自己刚存过的不重复�
   await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '删掉之后退回空态')
 })
 
+/**
+ * 复制引用要按宿主的链接格式来。
+ *
+ * 用户复制引用是为了粘进另一篇笔记，所以要的是 `[[甲]]` / `[甲](路径)`，
+ * 而不是喂给外部工具的绝对路径。格式由宿主决定（Wiki 还是 Markdown、路径
+ * 写全还是写短），面板只负责把路径递过去。
+ */
+test('复制引用先问宿主的链接格式，没注入才退回绝对路径', async () => {
+  const { readSession } = panel.__internals
+  await clickTab('笔记')
+  await waitFor(() => window.document.querySelector('.dshgn_card') !== null, 8000, '列表有卡片')
+
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const backBtn = window.document.querySelector('.dshgn_noteBack')
+  if (backBtn !== null) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '先退回列表')
+    panel.setConfirmDialog(null)
+  }
+
+  window.document.querySelector('.dshgn_card').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 8000, '笔记打开')
+  await waitFor(() => readSession().path !== '', 5000, '记下了开着的那一篇')
+  const path = readSession().path
+
+  const written = []
+  clipboard.writeText = async (text) => { written.push(String(text)) }
+  const asked = []
+  panel.setMarkdownLink((p) => {
+    asked.push(String(p))
+    return '[[宿主给的链接]]'
+  })
+
+  const copyBtn = () => window.document.querySelector('.dshgn_iconBtn[title="复制引用"]')
+  await waitFor(() => copyBtn() !== null, 5000, '笔记头上有复制引用')
+  copyBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => written.length > 0, 5000, '复制到剪贴板')
+  assert.equal(written[0], '[[宿主给的链接]]', '应该用宿主生成的链接，实际 ' + written[0])
+  assert.deepEqual(asked, [path], '递给宿主的应该是这篇笔记的路径')
+
+  // 宿主给不出（返回空）时退回绝对路径口径，不能复制出一段空白
+  panel.setMarkdownLink(() => '')
+  copyBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => written.length > 1, 5000, '第二次复制')
+  assert.ok(written[1].startsWith('@') || written[1].startsWith('@"'), '应该退回 @绝对路径，实际 ' + written[1])
+  assert.ok(written[1].includes(path), '绝对路径里应该有这篇的相对路径')
+
+  // 宿主实现炸了也不该把复制弄成空
+  panel.setMarkdownLink(() => { throw new Error('宿主炸了') })
+  copyBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => written.length > 2, 5000, '第三次复制')
+  assert.ok(written[2].includes(path), '宿主炸了也要退回绝对路径，实际 ' + written[2])
+
+  panel.setMarkdownLink(null)
+})
+

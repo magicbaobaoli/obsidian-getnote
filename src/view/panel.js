@@ -205,6 +205,27 @@ async function saveFile(url, filename) {
       }
     }
 
+    // 复制引用该用宿主自己的链接格式。
+    //
+    // 面板原来拼的是「库根绝对路径 + @前缀」，那是喂给外部工具（Claude Code 之类）
+    // 的口径。但用户在 Obsidian 里复制引用，十有八九是想粘进另一篇笔记里——
+    // 那要的是 `[[随手记/甲|甲]]` 或 `[甲](随手记/甲.md)`，取决于他自己的
+    // 「使用 Wiki 链接」和「新链接格式」设置。这两项只有 app.fileManager 知道，
+    // 所以交给宿主生成；没注入时（离线测试、早期加载）退回原来的绝对路径。
+    let __markdownLink = null
+    export function setMarkdownLink(fn) {
+      __markdownLink = typeof fn === 'function' ? fn : null
+    }
+    function markdownLinkOf(path) {
+      if (__markdownLink === null) return ''
+      try {
+        const text = __markdownLink(String(path || ''))
+        return typeof text === 'string' ? text : ''
+      } catch {
+        return ''
+      }
+    }
+
     // 宿主换主题时 Obsidian 会发 'css-change' 事件，比 MutationObserver 盯 body
     // 的 class 更准（用户改了字体、字号、界面缩放也能收到）。没有宿主时靠
     // MutationObserver 兜底，两者最终都只是让面板重新算一次配色。
@@ -3984,8 +4005,13 @@ async function saveFile(url, filename) {
 
       const copyReference = React.useCallback(async () => {
         if (current === null || status === null) return
-        const abs = `${status.vaultRoot}${status.vaultRoot.endsWith('/') || status.vaultRoot.endsWith('\\') ? '' : '/'}${current.path}`
-        const text = /[\s"]/.test(abs) ? `@"${abs}"` : `@${abs}`
+        // 先问宿主：它知道用户偏好 Wiki 链接还是 Markdown 链接、路径写全还是写短。
+        const hosted = markdownLinkOf(current.path)
+        let text = hosted
+        if (text === '') {
+          const abs = `${status.vaultRoot}${status.vaultRoot.endsWith('/') || status.vaultRoot.endsWith('\\') ? '' : '/'}${current.path}`
+          text = /[\s"]/.test(abs) ? `@"${abs}"` : `@${abs}`
+        }
         try {
           await navigator.clipboard.writeText(text)
           showToast(t('action.copied'))
