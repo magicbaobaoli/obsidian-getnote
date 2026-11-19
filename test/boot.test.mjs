@@ -1198,6 +1198,45 @@ test('附件地址走宿主自己的资源协议，宿主没给才退回本地�
   app.vault.adapter = realAdapter
 })
 
+test('「在文件列表里定位」把这一项亮给宿主，没有接口就明说', async () => {
+  await adapter.write('得到大脑/随手记/定位验收.md', '---\ntitle: 定位验收\n---\n\n正文\n')
+
+  // ① 宿主把文件列表的实例给了我们：路径要真的交到 revealInFolder 上
+  const revealed = []
+  app.internalPlugins = {
+    getPluginById: (id) =>
+      id === 'file-explorer' ? { enabled: true, instance: { revealInFolder: (file) => revealed.push(file.path) } } : null,
+  }
+  assert.equal(plugin.revealInVaultItem('随手记/定位验收.md'), true, '相对笔记目录的口径要认')
+  assert.deepEqual(revealed, ['得到大脑/随手记/定位验收.md'], '交给宿主的应该是库内相对路径')
+
+  // 库内相对路径的口径也认，且不该重复补前缀
+  assert.equal(plugin.revealInVaultItem('得到大脑/随手记/定位验收.md'), true)
+  assert.deepEqual(revealed, ['得到大脑/随手记/定位验收.md', '得到大脑/随手记/定位验收.md'])
+
+  // ② 老版本没有 internalPlugins，只有叶子视图：也要能定位
+  app.internalPlugins = null
+  const viewRevealed = []
+  const realLeaves = app.workspace.getLeavesOfType
+  app.workspace.getLeavesOfType = (type) =>
+    type === 'file-explorer' ? [{ view: { revealInFolder: (file) => viewRevealed.push(file.path) } }] : []
+  assert.equal(plugin.revealInVaultItem('随手记/定位验收.md'), true, '叶子视图上的接口也要认')
+  assert.deepEqual(viewRevealed, ['得到大脑/随手记/定位验收.md'])
+  app.workspace.getLeavesOfType = realLeaves
+
+  // ③ 库里没有这一篇：不动作
+  assert.equal(plugin.revealInVaultItem('随手记/根本没有.md'), false)
+  assert.equal(plugin.revealInVaultItem(''), false)
+  assert.equal(plugin.revealInVaultItem(null), false)
+
+  // ④ 两处接口都没有：要说出来，不能静默
+  app.internalPlugins = null
+  const before = calls.notices.length
+  assert.equal(plugin.revealInVaultItem('随手记/定位验收.md'), false)
+  assert.equal(calls.notices.length, before + 1, '定位不了的时候得告诉用户一声')
+  assert.match(String(calls.notices[calls.notices.length - 1]), /文件列表|定位/)
+})
+
 test('onunload 会关掉本地服务', async () => {
   const origin = plugin.server.origin
   plugin.onunload()

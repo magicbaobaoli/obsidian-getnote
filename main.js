@@ -7685,6 +7685,21 @@ function assetUrlOf(path) {
     return "";
   }
 }
+var __revealInVault = null;
+function setRevealInVault(fn2) {
+  __revealInVault = typeof fn2 === "function" ? fn2 : null;
+}
+function hasRevealInVault() {
+  return __revealInVault !== null;
+}
+function revealInVault(path) {
+  if (__revealInVault === null) return false;
+  try {
+    return __revealInVault(String(path || "")) === true;
+  } catch {
+    return false;
+  }
+}
 var __cssListeners = /* @__PURE__ */ new Set();
 function notifyCssChange() {
   for (const listener of Array.from(__cssListeners)) {
@@ -7770,6 +7785,8 @@ var LEX = {
     "batch.move": "\u79FB\u52A8",
     "batch.delete": "\u79FB\u5230\u56DE\u6536\u7AD9",
     "batch.confirmDelete": "\u786E\u5B9A\u628A\u8FD9 \u7BC7\u79FB\u5230\u56DE\u6536\u7AD9\uFF1F",
+    "drop.pickDirFirst": "\u5148\u5728\u5DE6\u8FB9\u9009\u4E00\u4E2A\u76EE\u5F55\uFF0C\u518D\u5F80\u91CC\u62D6",
+    "drop.moved": "\u5DF2\u7ECF\u632A\u8FDB\u8FD9\u4E2A\u76EE\u5F55",
     "batch.done": "\u5DF2\u5904\u7406",
     "search.searching": "\u641C\u7D22\u4E2D\u2026",
     "search.clear": "\u6E05\u7A7A",
@@ -7802,6 +7819,7 @@ var LEX = {
     "tree.menuDelete": "\u5220\u9664",
     "tree.menuCancel": "\u53D6\u6D88",
     "tree.menuRename": "\u6539\u540D",
+    "tree.menuReveal": "\u5728\u6587\u4EF6\u5217\u8868\u91CC\u5B9A\u4F4D",
     "tree.tagRenamed": "\u6807\u7B7E\u5DF2\u6539\u540D",
     "todo.toggle": "\u70B9\u4E00\u4E0B\u52FE\u6389",
     "todo.done": "\u5DF2\u52FE\u6389",
@@ -8148,6 +8166,8 @@ var LEX = {
     "batch.move": "Move",
     "batch.delete": "Move to trash",
     "batch.confirmDelete": "Move these notes to trash?",
+    "drop.pickDirFirst": "Pick a folder on the left first, then drop",
+    "drop.moved": "Moved into this folder",
     "batch.done": "Processed",
     "search.searching": "Searching\u2026",
     "search.clear": "Clear",
@@ -8177,6 +8197,7 @@ var LEX = {
     "tree.menuDelete": "Delete",
     "tree.menuCancel": "Cancel",
     "tree.menuRename": "Rename",
+    "tree.menuReveal": "Reveal in file explorer",
     "tree.tagRenamed": "Tag renamed",
     "todo.toggle": "Click to tick off",
     "todo.done": "Ticked off",
@@ -8523,6 +8544,8 @@ var LEX = {
     "batch.move": "Verplaatsen",
     "batch.delete": "Naar prullenbak",
     "batch.confirmDelete": "Deze notities naar de prullenbak verplaatsen?",
+    "drop.pickDirFirst": "Kies eerst links een map en sleep dan hierheen",
+    "drop.moved": "Naar deze map verplaatst",
     "batch.done": "Verwerkt",
     "search.searching": "Zoeken\u2026",
     "search.clear": "Wissen",
@@ -8552,6 +8575,7 @@ var LEX = {
     "tree.menuDelete": "Verwijderen",
     "tree.menuCancel": "Annuleren",
     "tree.menuRename": "Naam wijzigen",
+    "tree.menuReveal": "Toon in bestandsverkenner",
     "tree.tagRenamed": "Tag hernoemd",
     "todo.toggle": "Klik om af te vinken",
     "todo.done": "Afgevinkt",
@@ -9078,6 +9102,14 @@ function docOfEvent(event) {
   if (target.ownerDocument) return target.ownerDocument;
   if (target.document) return target.document;
   return void 0;
+}
+function inPanel(event) {
+  const target = event ? event.target : null;
+  if (!target || typeof target !== "object") return false;
+  for (const root of rootsOf(docOfEvent(event))) {
+    if (typeof root.contains === "function" && root.contains(target)) return true;
+  }
+  return false;
 }
 function findInPanel(selector, doc) {
   const groups = doc ? [rootsOf(doc), rootsOf()] : [rootsOf()];
@@ -11173,6 +11205,41 @@ function GetnotePage() {
     },
     [batchDir, batchTag, clearPicked, current, picked, refresh, setBusy, setError, showToast, t3]
   );
+  const dropIntoDir = q2(
+    async (rawPaths) => {
+      const target = activeDir;
+      if (target === "") {
+        showToast(t3("drop.pickDirFirst"));
+        return;
+      }
+      const sub = status !== null && typeof status.subfolder === "string" ? status.subfolder.replace(/^\/+|\/+$/g, "") : "";
+      const paths = [];
+      for (const raw of rawPaths) {
+        const rel = String(raw || "").replace(/\\/g, "/").replace(/^\/+/, "");
+        if (rel === "") continue;
+        if (sub !== "" && !rel.startsWith(`${sub}/`)) continue;
+        const inner = sub !== "" ? rel.slice(sub.length + 1) : rel;
+        if (!/\.md$/i.test(inner)) continue;
+        paths.push(inner);
+      }
+      if (paths.length === 0) return;
+      setBusy(true);
+      try {
+        const json = await api("/batch", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "move", paths, dir: target })
+        });
+        showToast(`${t3("batch.done")} ${json.changed || 0}`);
+        await refresh();
+      } catch (err) {
+        setError(err && err.message ? err.message : String(err));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [activeDir, refresh, setBusy, setError, showToast, status, t3]
+  );
   const vaultReady = status !== null && !status.vaultMissing;
   y2(() => {
     const onKey = (event) => {
@@ -11213,6 +11280,19 @@ function GetnotePage() {
     };
     return attachOnPanelWindows("keydown", onKey);
   }, [current, newNote, openNote, shown, tab, vaultReady]);
+  y2(() => {
+    const onDragOver = (event) => {
+      if (!inPanel(event)) return;
+      event.preventDefault();
+      if (event.dataTransfer) {
+        try {
+          event.dataTransfer.dropEffect = "copy";
+        } catch {
+        }
+      }
+    };
+    return attachOnPanelWindows("dragover", onDragOver);
+  }, []);
   const tabButton = (id, label, badge) => h4(
     "button",
     { type: "button", className: "dshgn_tab", "data-on": tab === id ? "true" : "false", onClick: () => setTab(id) },
@@ -11608,7 +11688,23 @@ function GetnotePage() {
         ) : null,
         h4(
           "div",
-          { className: "dshgn_listBody", onScroll: onListScroll },
+          {
+            className: "dshgn_listBody",
+            onScroll: onListScroll,
+            // 宿主的文件拖到列表里 = 把它挪进当前筛的这个目录。
+            // 从宿主文件树拖进来的是宿主自己的路径口径，交给 onDropNote 去认。
+            onDrop: (event) => {
+              const files = event && event.dataTransfer ? event.dataTransfer.files : null;
+              if (!files || files.length === 0) return;
+              event.preventDefault();
+              const paths = [];
+              for (const file of Array.from(files)) {
+                const path = file && typeof file.path === "string" ? file.path : "";
+                if (path !== "") paths.push(path);
+              }
+              if (paths.length > 0) void dropIntoDir(paths);
+            }
+          },
           visible.length === 0 && !searchMode ? h4(
             "div",
             { className: "dshgn_empty", style: { padding: "24px 12px" } },
@@ -11680,6 +11776,13 @@ function GetnotePage() {
                         label: t3("action.openInEditor"),
                         run: () => {
                           openInEditor(entry.path);
+                        }
+                      } : null,
+                      hasRevealInVault() ? {
+                        id: "reveal-in-vault",
+                        label: t3("tree.menuReveal"),
+                        run: () => {
+                          revealInVault(entry.path);
                         }
                       } : null,
                       {
@@ -14735,6 +14838,23 @@ function TreePane(props) {
         h4(Icon, { name: "edit", size: 11 }),
         h4("span", null, t3("tree.menuRename"))
       ) : null,
+      // 「在文件列表里定位」：面板的列表是平的，用户想知道这个目录在库里
+      // 的哪儿、旁边还有什么时，把它交给宿主的文件列表比自己解释路径直观。
+      // 只给目录：标签不是文件，宿主那边没有可定位的东西。
+      target.kind === "dir" && hasRevealInVault() ? h4(
+        "button",
+        {
+          type: "button",
+          className: "dshgn_rowBtn",
+          title: t3("tree.menuReveal"),
+          onClick: () => {
+            revealInVault(target.name);
+            setMenu(null);
+          }
+        },
+        h4(Icon, { name: "external-link", size: 11 }),
+        h4("span", null, t3("tree.menuReveal"))
+      ) : null,
       h4(
         "button",
         {
@@ -16134,6 +16254,7 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     setOpenInEditor((path) => this.openInVaultEditor(path));
     setMarkdownLink((path) => this.markdownLinkFor(path));
     setAssetUrl((path) => this.assetUrlFor(path));
+    setRevealInVault((path) => this.revealInVaultItem(path));
     setVaultGraph((path, kind) => this.vaultGraphOf(path, kind));
     setStatusReport((info) => this.updateStatusBar(info));
     const stored = await readSettings();
@@ -16692,6 +16813,66 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       }
       new ConfirmModal(this.app).open();
     });
+  }
+  /**
+   * 宿主文件列表的接口（能「在文件夹里亮出这一项」的那个）。
+   *
+   * Obsidian 没把这件事做成公开 API：老版本挂在 internalPlugins 的
+   * file-explorer 实例上，新版本也可能只有叶子视图上有。两处都试一遍，
+   * 都拿不到就返回 null，让调用方明说「定位不了」而不是静默失败。
+   */
+  fileExplorerApi() {
+    try {
+      const internal = this.app.internalPlugins;
+      const plugin = internal && typeof internal.getPluginById === "function" ? internal.getPluginById("file-explorer") : null;
+      const instance = plugin && plugin.instance ? plugin.instance : null;
+      if (instance && typeof instance.revealInFolder === "function") return instance;
+      const leaves = this.app.workspace.getLeavesOfType ? this.app.workspace.getLeavesOfType("file-explorer") : [];
+      const view = leaves && leaves.length > 0 && leaves[0].view ? leaves[0].view : null;
+      if (view && typeof view.revealInFolder === "function") return view;
+      return null;
+    } catch {
+      return null;
+    }
+  }
+  /**
+   * 把这一项在宿主的文件列表里亮出来。
+   *
+   * 面板传的可能是相对笔记目录的路径（列表里 entry.path 就是这种），也可能
+   * 是库内相对路径，两种都认。
+   */
+  revealInVaultItem(path) {
+    try {
+      const raw = String(path || "").replace(/\\/g, "/").replace(/^\/+/, "");
+      if (raw === "") return false;
+      const runtime2 = getRuntime();
+      const sub = String(runtime2.subfolder || DEFAULT_SUBFOLDER).replace(/^\/+|\/+$/g, "");
+      const candidates = [raw];
+      if (sub !== "" && !raw.startsWith(sub + "/")) candidates.push(`${sub}/${raw}`);
+      let file = null;
+      for (const candidate of candidates) {
+        const hit = this.app.vault.getAbstractFileByPath(candidate);
+        if (hit) {
+          file = hit;
+          break;
+        }
+      }
+      if (file === null) return false;
+      const explorer = this.fileExplorerApi();
+      if (explorer === null) {
+        new import_obsidian2.Notice("\u5F97\u5230\u5927\u8111\uFF1A\u8FD9\u4E2A\u7248\u672C\u7684 Obsidian \u6CA1\u6709\u6587\u4EF6\u5217\u8868\u63A5\u53E3\uFF0C\u5B9A\u4F4D\u4E0D\u4E86");
+        return false;
+      }
+      try {
+        const leaf = this.app.workspace.getLeavesOfType("file-explorer")[0];
+        if (leaf && typeof this.app.workspace.revealLeaf === "function") this.app.workspace.revealLeaf(leaf);
+      } catch {
+      }
+      explorer.revealInFolder(file);
+      return true;
+    } catch {
+      return false;
+    }
   }
   /**
    * 把库内相对路径交给宿主编辑器打开。

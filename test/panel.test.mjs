@@ -360,6 +360,25 @@ test('右键笔记卡片会把动作清单交给宿主，执行其中一项真�
   assert.equal(opened.length, 1, '执行这一项应该把路径交给宿主一次')
   assert.match(opened[0], /右键菜单验收\.md$/, '交出去的是这篇的路径，实际 ' + opened[0])
 
+  // 接上「在文件列表里定位」之后，清单里多一项：用户在列表里扫到一篇，想看看
+  // 它在库里的哪儿、旁边还有什么，交给宿主的文件列表比自己解释路径直观。
+  const revealed = []
+  panel.setRevealInVault((path) => {
+    revealed.push(String(path))
+    return true
+  })
+  panel.setNoteMenu((event, items) => {
+    const item = items.find((one) => one.id === 'reveal-in-vault')
+    assert.ok(item, '接上定位之后，清单里应该有「在文件列表里定位」，实际 ' + items.map((one) => one.id).join(','))
+    item.run()
+    return true
+  })
+  card.dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+  await sleep(120)
+  assert.equal(revealed.length, 1, '执行这一项应该把路径交给宿主一次')
+  assert.match(revealed[0], /右键菜单验收\.md$/, '交出去的是这篇的路径，实际 ' + revealed[0])
+
+  panel.setRevealInVault(null)
   panel.setOpenInEditor(null)
   panel.setNoteMenu(null)
 })
@@ -1224,4 +1243,107 @@ test('popout 窗口里的面板有自己的一份样式，快捷键也跟着窗�
     popWindow.close()
   }
 })
+
+/**
+ * 从宿主的文件树里把笔记拖到列表上 = 挪进当前筛的这个目录。
+ *
+ * 用户最顺手的一条路是：在 Obsidian 左边文件树里按住一篇、拖到得到大脑的列表里。
+ * 面板这时只知道「有文件被拖进来了」，认路径的活儿得自己做——拖进来的是宿主的
+ * 库内相对路径（带笔记子目录前缀），/batch 认的是面板口径。
+ */
+test('从宿主文件树拖进来的笔记会挪进当前目录，没选目录就先说一声', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+  await clickTab('笔记')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+  // 目标目录里先放一篇，列表才有这个目录可点；来源那篇放库根。
+  // 建出来的文件名带日期前缀（2026-11-19-xxx.md），得用它返回的真路径。
+  await post('/getnote/create', { dir: '拖入验收', title: '拖入验收-目标', content: '正文', requestId: 'seed-drop-target' })
+  const source = await post('/getnote/create', { dir: '', title: '拖入验收-来源', content: '正文', requestId: 'seed-drop-source' })
+  const sourcePath = String(source.path || '')
+  assert.ok(sourcePath.endsWith('.md'), '预置的来源笔记应该建出来了，实际 ' + JSON.stringify(source))
+  const sourceName = sourcePath.split('/').pop()
+
+  const rowOf = (name) =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+      const label = el.querySelector('.dshgn_treeName')
+      return label !== null && (label.textContent || '').trim() === name
+    })
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  assert.ok(refreshBtn(), '应该有一个刷新按钮')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rowOf('拖入验收') !== undefined, 8000, '左栏里出现新目录')
+  await waitFor(() => rowOf('全部笔记') !== undefined, 8000, '左栏里有「全部笔记」')
+
+  const dropWith = (files) => {
+    const body = window.document.querySelector('.dshgn_listBody')
+    assert.ok(body, '列表容器应该在')
+    const event = new window.Event('drop', { bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'dataTransfer', { value: { files }, configurable: true })
+    body.dispatchEvent(event)
+  }
+
+  // ① 还没选目录：不能瞎猜一个地方放，得告诉用户先选
+  rowOf('全部笔记').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(200)
+  const toastText = () => (window.document.querySelector('.dshgn_toast') || { textContent: '' }).textContent
+  dropWith([{ path: '得到大脑/' + sourcePath }])
+  await waitFor(() => toastText().includes('选一个目录'), 5000, '没选目录时给出提示')
+
+  // ② 选中目录后拖进来：真的走 /batch move，路径按面板口径交出去
+  rowOf('拖入验收').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(200)
+  const before = fetchCalls.length
+  dropWith([{ path: '得到大脑/' + sourcePath }])
+  await waitFor(
+    () => fetchCalls.slice(before).some((url) => url.includes('/getnote/batch')),
+    8000,
+    '拖动之后应该打一次批量移动',
+  )
+
+  // 挪过去了：新位置能读到，原位置读不到（保留原文件名，别改成人不认识的）
+  //
+  // fetchCalls 是在请求**发出时**记的，挪动本身还在路上，所以这里要轮询到真的能读到。
+  const readAt = async (rel) =>
+    realFetch(server.origin + '/getnote/read?path=' + encodeURIComponent(rel), {
+      headers: { 'x-getnote-token': server.token },
+    })
+  let moved = null
+  for (let attempt = 0; attempt < 60 && moved === null; attempt += 1) {
+    const res = await readAt('拖入验收/' + sourceName)
+    if (res.status === 200) moved = res
+    else await sleep(100)
+  }
+  assert.ok(moved !== null, '拖进来的笔记应该出现在目标目录里')
+  const gone = await realFetch(
+    server.origin + '/getnote/read?path=' + encodeURIComponent(sourcePath),
+    { headers: { 'x-getnote-token': server.token } },
+  )
+  assert.notEqual(gone.status, 200, '原位置不该还留着一份')
+
+  // ③ 目录外的文件、非 Markdown 一律不理，别把库搅乱
+  const callsBefore = fetchCalls.filter((url) => url.includes('/getnote/batch')).length
+  dropWith([{ path: '别处/不相干.md' }, { path: '得到大脑/图.png' }])
+  await sleep(300)
+  assert.equal(
+    fetchCalls.filter((url) => url.includes('/getnote/batch')).length,
+    callsBefore,
+    '不该为目录外或非 Markdown 的文件发批量请求',
+  )
+
+  // ④ 没有 files 的拖放不该炸（拖进来一段文字、或者别的窗口拖来的东西）
+  dropWith([])
+  const empty = new window.Event('drop', { bubbles: true, cancelable: true })
+  window.document.querySelector('.dshgn_listBody').dispatchEvent(empty)
+})
+
 

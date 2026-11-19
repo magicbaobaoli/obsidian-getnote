@@ -45,6 +45,7 @@ import {
   setOpenInEditor,
   setMarkdownLink,
   setAssetUrl,
+  setRevealInVault,
   setVaultGraph,
   setStatusReport,
   notifyCssChange,
@@ -155,6 +156,9 @@ export default class GetnoteObsidianPlugin extends Plugin {
     // 图片、录音的地址交给宿主：adapter.getResourcePath() 给的是宿主资源协议下的
     // 地址，浏览器直接能加载，还吃宿主的缓存与 Range 处理。
     setAssetUrl((path) => this.assetUrlFor(path))
+    // 「在文件列表里定位」：面板的列表是平的，用户想知道这一篇在库里挨着什么，
+    // 只有宿主自己的文件列表说得清。
+    setRevealInVault((path) => this.revealInVaultItem(path))
 
     // 反链、出链交给宿主的 metadataCache。
     //
@@ -855,6 +859,70 @@ export default class GetnoteObsidianPlugin extends Plugin {
       }
       new ConfirmModal(this.app).open()
     })
+  }
+
+  /**
+   * 宿主文件列表的接口（能「在文件夹里亮出这一项」的那个）。
+   *
+   * Obsidian 没把这件事做成公开 API：老版本挂在 internalPlugins 的
+   * file-explorer 实例上，新版本也可能只有叶子视图上有。两处都试一遍，
+   * 都拿不到就返回 null，让调用方明说「定位不了」而不是静默失败。
+   */
+  fileExplorerApi() {
+    try {
+      const internal = this.app.internalPlugins
+      const plugin = internal && typeof internal.getPluginById === 'function' ? internal.getPluginById('file-explorer') : null
+      const instance = plugin && plugin.instance ? plugin.instance : null
+      if (instance && typeof instance.revealInFolder === 'function') return instance
+      const leaves = this.app.workspace.getLeavesOfType ? this.app.workspace.getLeavesOfType('file-explorer') : []
+      const view = leaves && leaves.length > 0 && leaves[0].view ? leaves[0].view : null
+      if (view && typeof view.revealInFolder === 'function') return view
+      return null
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * 把这一项在宿主的文件列表里亮出来。
+   *
+   * 面板传的可能是相对笔记目录的路径（列表里 entry.path 就是这种），也可能
+   * 是库内相对路径，两种都认。
+   */
+  revealInVaultItem(path) {
+    try {
+      const raw = String(path || '').replace(/\\/g, '/').replace(/^\/+/, '')
+      if (raw === '') return false
+      const runtime = settingsStore.getRuntime()
+      const sub = String(runtime.subfolder || DEFAULT_SUBFOLDER).replace(/^\/+|\/+$/g, '')
+      const candidates = [raw]
+      if (sub !== '' && !raw.startsWith(sub + '/')) candidates.push(`${sub}/${raw}`)
+      let file = null
+      for (const candidate of candidates) {
+        const hit = this.app.vault.getAbstractFileByPath(candidate)
+        if (hit) {
+          file = hit
+          break
+        }
+      }
+      if (file === null) return false
+      const explorer = this.fileExplorerApi()
+      if (explorer === null) {
+        new Notice('得到大脑：这个版本的 Obsidian 没有文件列表接口，定位不了')
+        return false
+      }
+      // 先把文件列表所在的叶子亮出来：侧栏收起来时「定位」等于什么都没发生。
+      try {
+        const leaf = this.app.workspace.getLeavesOfType('file-explorer')[0]
+        if (leaf && typeof this.app.workspace.revealLeaf === 'function') this.app.workspace.revealLeaf(leaf)
+      } catch {
+        // 亮不出来也还是能定位，别因此中断
+      }
+      explorer.revealInFolder(file)
+      return true
+    } catch {
+      return false
+    }
   }
 
   /**

@@ -247,6 +247,28 @@ async function saveFile(url, filename) {
       }
     }
 
+    // 在宿主的文件列表里定位这一篇（或这个目录）。
+    //
+    // 面板的列表是平的、按目录筛的，用户想「这到底在库里的哪儿、旁边还有哪些」
+    // 时，光看路径字符串没有空间感。宿主自己的文件列表知道这件事，把那一项
+    // 亮出来比解释一遍路径直观。注入失败（宿主没这个接口）时菜单里就不出现这一项，
+    // 免得点了没反应。
+    let __revealInVault = null
+    export function setRevealInVault(fn) {
+      __revealInVault = typeof fn === 'function' ? fn : null
+    }
+    function hasRevealInVault() {
+      return __revealInVault !== null
+    }
+    function revealInVault(path) {
+      if (__revealInVault === null) return false
+      try {
+        return __revealInVault(String(path || '')) === true
+      } catch {
+        return false
+      }
+    }
+
     // 宿主换主题时 Obsidian 会发 'css-change' 事件，比 MutationObserver 盯 body
     // 的 class 更准（用户改了字体、字号、界面缩放也能收到）。没有宿主时靠
     // MutationObserver 兜底，两者最终都只是让面板重新算一次配色。
@@ -374,6 +396,8 @@ async function saveFile(url, filename) {
         'batch.move': '移动',
         'batch.delete': '移到回收站',
         'batch.confirmDelete': '确定把这 篇移到回收站？',
+        'drop.pickDirFirst': '先在左边选一个目录，再往里拖',
+        'drop.moved': '已经挪进这个目录',
         'batch.done': '已处理',
         'search.searching': '搜索中…',
         'search.clear': '清空',
@@ -406,6 +430,7 @@ async function saveFile(url, filename) {
         'tree.menuDelete': '删除',
         'tree.menuCancel': '取消',
         'tree.menuRename': '改名',
+        'tree.menuReveal': '在文件列表里定位',
         'tree.tagRenamed': '标签已改名',
         'todo.toggle': '点一下勾掉',
         'todo.done': '已勾掉',
@@ -756,6 +781,8 @@ async function saveFile(url, filename) {
         'batch.move': 'Move',
         'batch.delete': 'Move to trash',
         'batch.confirmDelete': 'Move these notes to trash?',
+        'drop.pickDirFirst': 'Pick a folder on the left first, then drop',
+        'drop.moved': 'Moved into this folder',
         'batch.done': 'Processed',
         'search.searching': 'Searching…',
         'search.clear': 'Clear',
@@ -785,6 +812,7 @@ async function saveFile(url, filename) {
         'tree.menuDelete': 'Delete',
         'tree.menuCancel': 'Cancel',
         'tree.menuRename': 'Rename',
+        'tree.menuReveal': 'Reveal in file explorer',
         'tree.tagRenamed': 'Tag renamed',
         'todo.toggle': 'Click to tick off',
         'todo.done': 'Ticked off',
@@ -1135,6 +1163,8 @@ async function saveFile(url, filename) {
         'batch.move': 'Verplaatsen',
         'batch.delete': 'Naar prullenbak',
         'batch.confirmDelete': 'Deze notities naar de prullenbak verplaatsen?',
+        'drop.pickDirFirst': 'Kies eerst links een map en sleep dan hierheen',
+        'drop.moved': 'Naar deze map verplaatst',
         'batch.done': 'Verwerkt',
         'search.searching': 'Zoeken…',
         'search.clear': 'Wissen',
@@ -1164,6 +1194,7 @@ async function saveFile(url, filename) {
         'tree.menuDelete': 'Verwijderen',
         'tree.menuCancel': 'Annuleren',
         'tree.menuRename': 'Naam wijzigen',
+        'tree.menuReveal': 'Toon in bestandsverkenner',
         'tree.tagRenamed': 'Tag hernoemd',
         'todo.toggle': 'Klik om af te vinken',
         'todo.done': 'Afgevinkt',
@@ -1833,6 +1864,15 @@ async function saveFile(url, filename) {
       if (target.ownerDocument) return target.ownerDocument
       if (target.document) return target.document
       return undefined
+    }
+    /** 这个事件是不是从面板自己的子树里冒上来的（拖到面板外头不该算拖进来）。 */
+    function inPanel(event) {
+      const target = event ? event.target : null
+      if (!target || typeof target !== 'object') return false
+      for (const root of rootsOf(docOfEvent(event))) {
+        if (typeof root.contains === 'function' && root.contains(target)) return true
+      }
+      return false
     }
     function findInPanel(selector, doc) {
       const groups = doc ? [rootsOf(doc), rootsOf()] : [rootsOf()]
@@ -4236,6 +4276,49 @@ async function saveFile(url, filename) {
         [batchDir, batchTag, clearPicked, current, picked, refresh, setBusy, setError, showToast, t],
       )
 
+      // 从宿主的文件树里拖一篇笔记到列表上 = 挪进当前筛的这个目录。
+      //
+      // 拖进来的是宿主自己的路径口径（库内相对路径，带笔记子目录前缀），而
+      // /batch 认的是面板口径（相对笔记目录）。先归一，再交给同一个批量移动
+      // 端点——拖动和「批量移目录」必须是同一条路，否则两边行为会慢慢走偏。
+      const dropIntoDir = React.useCallback(
+        async (rawPaths) => {
+          const target = activeDir
+          if (target === '') {
+            showToast(t('drop.pickDirFirst'))
+            return
+          }
+          const sub = status !== null && typeof status.subfolder === 'string' ? status.subfolder.replace(/^\/+|\/+$/g, '') : ''
+          const paths = []
+          for (const raw of rawPaths) {
+            const rel = String(raw || '').replace(/\\/g, '/').replace(/^\/+/, '')
+            if (rel === '') continue
+            // 只收笔记目录里的东西：拖进来的是「库里的另一篇笔记」，不是「把库外
+            // 任意文件搬进笔记目录」。后者是个大得多的动作，不该由一次误拖触发。
+            if (sub !== '' && !rel.startsWith(`${sub}/`)) continue
+            const inner = sub !== '' ? rel.slice(sub.length + 1) : rel
+            if (!/\.md$/i.test(inner)) continue
+            paths.push(inner)
+          }
+          if (paths.length === 0) return
+          setBusy(true)
+          try {
+            const json = await api('/batch', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ action: 'move', paths, dir: target }),
+            })
+            showToast(`${t('batch.done')} ${json.changed || 0}`)
+            await refresh()
+          } catch (err) {
+            setError(err && err.message ? err.message : String(err))
+          } finally {
+            setBusy(false)
+          }
+        },
+        [activeDir, refresh, setBusy, setError, showToast, status, t],
+      )
+
       // vaultMissing 正常时是 null（不是 false）：这里原本写 === false，
       // 于是「+」和刷新按钮永远处于 disabled 状态，用户点了以为没反应。
       // 只要 status 拿到了、且没报缺失，就算就绪。
@@ -4286,6 +4369,26 @@ async function saveFile(url, filename) {
         // 每个面板窗口各挂一份：popout 里按 Ctrl+K 也得能聚焦搜索框。
         return attachOnPanelWindows('keydown', onKey)
       }, [current, newNote, openNote, shown, tab, vaultReady])
+
+      // 把宿主的文件拖进面板时，别让浏览器把它当成「打开这个文件」。
+      //
+      // 浏览器默认行为是「拖到窗口里就导航到那个文件」，在 Obsidian 里表现成
+      // 整个工作区被换掉，用户就以为面板炸了。只有拖到面板自己身上才拦：
+      // 拖到别处（宿主自己的编辑器、别的插件）那是它们的事。
+      React.useEffect(() => {
+        const onDragOver = (event) => {
+          if (!inPanel(event)) return
+          event.preventDefault()
+          if (event.dataTransfer) {
+            try {
+              event.dataTransfer.dropEffect = 'copy'
+            } catch {
+              // 某些环境 dataTransfer 是只读的，拦默认行为本身已经够了
+            }
+          }
+        }
+        return attachOnPanelWindows('dragover', onDragOver)
+      }, [])
 
       // badge 是文字右边的小胶囊（像邮件未读那种），不是骑在页签右上角的角标——
       // 角标会压住页签本身的边距，还会让相邻页签的间距看起来不齐。
@@ -4708,7 +4811,23 @@ async function saveFile(url, filename) {
               : null,
             h(
               'div',
-              { className: 'dshgn_listBody', onScroll: onListScroll },
+              {
+                className: 'dshgn_listBody',
+                onScroll: onListScroll,
+                // 宿主的文件拖到列表里 = 把它挪进当前筛的这个目录。
+                // 从宿主文件树拖进来的是宿主自己的路径口径，交给 onDropNote 去认。
+                onDrop: (event) => {
+                  const files = event && event.dataTransfer ? event.dataTransfer.files : null
+                  if (!files || files.length === 0) return
+                  event.preventDefault()
+                  const paths = []
+                  for (const file of Array.from(files)) {
+                    const path = file && typeof file.path === 'string' ? file.path : ''
+                    if (path !== '') paths.push(path)
+                  }
+                  if (paths.length > 0) void dropIntoDir(paths)
+                },
+              },
               visible.length === 0 && !searchMode
                 ? h(
                     'div',
@@ -4788,6 +4907,15 @@ async function saveFile(url, filename) {
                                   label: t('action.openInEditor'),
                                   run: () => {
                                     openInEditor(entry.path)
+                                  },
+                                }
+                              : null,
+                            hasRevealInVault()
+                              ? {
+                                  id: 'reveal-in-vault',
+                                  label: t('tree.menuReveal'),
+                                  run: () => {
+                                    revealInVault(entry.path)
                                   },
                                 }
                               : null,
@@ -8389,6 +8517,25 @@ async function saveFile(url, filename) {
                 },
                 h(Icon, { name: 'edit', size: 11 }),
                 h('span', null, t('tree.menuRename')),
+              )
+            : null,
+          // 「在文件列表里定位」：面板的列表是平的，用户想知道这个目录在库里
+          // 的哪儿、旁边还有什么时，把它交给宿主的文件列表比自己解释路径直观。
+          // 只给目录：标签不是文件，宿主那边没有可定位的东西。
+          target.kind === 'dir' && hasRevealInVault()
+            ? h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dshgn_rowBtn',
+                  title: t('tree.menuReveal'),
+                  onClick: () => {
+                    revealInVault(target.name)
+                    setMenu(null)
+                  },
+                },
+                h(Icon, { name: 'external-link', size: 11 }),
+                h('span', null, t('tree.menuReveal')),
               )
             : null,
           h(
