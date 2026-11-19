@@ -690,6 +690,7 @@ async function saveFile(url, filename) {
         'note.fontSize.m': '标准',
         'note.fontSize.l': '大字',
         'note.wikilinkMissing': '库里找不到「{name}」这篇笔记',
+        'note.anchorMissing': '这一篇里没有「{name}」这一节',
         'note.image': '图片',
         'action.close': '关闭',
         'action.back': '返回列表',
@@ -1076,6 +1077,7 @@ async function saveFile(url, filename) {
         'note.fontSize.m': 'Normal',
         'note.fontSize.l': 'Large',
         'note.wikilinkMissing': 'No note named "{name}" in this vault',
+        'note.anchorMissing': 'No section called "{name}" in this note',
         'note.image': 'Image',
         'action.close': 'Close',
         'action.back': 'Back to list',
@@ -1461,6 +1463,7 @@ async function saveFile(url, filename) {
         'note.fontSize.m': 'Normaal',
         'note.fontSize.l': 'Groot',
         'note.wikilinkMissing': 'Geen notitie met de naam ‘{name}’ in deze map',
+        'note.anchorMissing': 'Geen kop met de naam ‘{name}’ in deze notitie',
         'note.image': 'Afbeelding',
         'action.close': 'Sluiten',
         'action.back': 'Terug naar lijst',
@@ -2227,8 +2230,16 @@ async function saveFile(url, filename) {
           const embed = token.startsWith('!')
           const inner = token.slice(embed ? 3 : 2, -2)
           const pipe = inner.indexOf('|')
-          const target = (pipe === -1 ? inner : inner.slice(0, pipe)).trim()
-          const label = (pipe === -1 ? inner : inner.slice(pipe + 1)).trim()
+          const linkText = (pipe === -1 ? inner : inner.slice(0, pipe)).trim()
+          // 没有竖线就是没有自定义显示文字。这里必须给空串，不能拿整串顶上去——
+          // 顶上去的话 `[[#第二节]]` 会显示成「#第二节」，「笔记 › 小节」那套也永远走不到。
+          const label = pipe === -1 ? '' : inner.slice(pipe + 1).trim()
+          // 双链可以带小节：`[[笔记#小节]]`、`[[#本页的小节]]`。
+          // 宿主解析路径时只认 # 前面那段，所以这里就切开，别整串递过去——
+          // 整串递过去宿主找不到这一篇，点击会变成「库里找不到」。
+          const hash = linkText.indexOf('#')
+          const target = (hash === -1 ? linkText : linkText.slice(0, hash)).trim()
+          const anchor = hash === -1 ? '' : linkText.slice(hash + 1).trim()
           if (embed) {
             nodes.push(h('span', { key, className: 'dshgn_embed' }, renderEmbed(target, key, opts)))
           } else {
@@ -2242,10 +2253,12 @@ async function saveFile(url, filename) {
                   // 双链在 Obsidian 里是跳转。这里没有 Obsidian 的解析器，尽力而为：
                   // 有完整路径就按路径打开，只写标题就在当前库里按标题/文件名找。
                   onClick: () => {
-                    if (typeof opts.onOpenWikiLink === 'function') opts.onOpenWikiLink(target)
+                    if (typeof opts.onOpenWikiLink === 'function') opts.onOpenWikiLink(target, anchor)
                   },
                 },
-                label || target,
+                // 带小节时显示「笔记 › 小节」：只显示笔记名的话，同一篇被链到
+                // 不同小节看起来一模一样，点进去落在哪儿全靠猜。
+                label || (target === '' ? anchor : anchor === '' ? target : `${target} › ${anchor}`),
               ),
             )
           }
@@ -2269,6 +2282,36 @@ async function saveFile(url, filename) {
       }
       if (last < text.length) nodes.push(text.slice(last))
       return nodes
+    }
+
+    /**
+     * 标题比对用的归一化。
+     *
+     * 双链里写的小节名和正文里那行标题常常差在几处：正文可能带行尾的 `###`、
+     * 中间多几个空格、大小写不一致。宿主的双链是按标题文字找的，我们也照这个来，
+     * 只是先抹平这几处差异，否则「明明有这个标题却跳不过去」很难自己看出来。
+     */
+    function normalizeHeading(text) {
+      return String(text || '')
+        .replace(/^#+\s*/, '')
+        .replace(/\s+#+\s*$/, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase()
+    }
+
+    /**
+     * 找出一篇正文里的标题元素。
+     *
+     * 两种渲染路径产出的标题不一样：手写渲染器给我们自己的 `.dshgn_h`，
+     * 宿主的 MarkdownRenderer 给的是普通的 h1..h6。只认前者的话，接上宿主之后
+     * 大纲点击和「跳到某一节」都会静默失效——点了没反应，也没人知道为什么。
+     */
+    function headingNodes(host) {
+      if (!host) return []
+      const own = host.querySelectorAll('.dshgn_h')
+      if (own.length > 0) return Array.from(own)
+      return Array.from(host.querySelectorAll('h1, h2, h3, h4, h5, h6'))
     }
 
     /** 图像扩展名判定：只认浏览器能直接显示的格式。 */
@@ -3665,6 +3708,12 @@ async function saveFile(url, filename) {
       const [busy, setBusy] = React.useState(false)
       const [toast, setToast] = React.useState(null)
       const [error, setError] = React.useState(null)
+      // 从 `[[笔记#小节]]` 跳进来的那一节。正文是异步读回来的，设锚点的
+      // 时候 DOM 里还一个标题都没有，所以先记下来，等 NotePane 渲染完再滚。
+      // 带 seq 是为了「点同一节两次」也能再滚一次——只存文字的话状态没变化，
+      // effect 不会重跑，用户会觉得第二次点没反应。
+      const [pendingAnchor, setPendingAnchor] = React.useState(null)
+      const anchorSeq = React.useRef(0)
       // 刷新按钮的反馈状态：idle → running（转三圈）→ ok/fail（变色）→ 5 秒后 idle
       const [refreshState, setRefreshState] = React.useState('idle')
       const refreshTimer = React.useRef(null)
@@ -4014,6 +4063,20 @@ async function saveFile(url, filename) {
       }, [current])
 
       /**
+       * 记下「打开这一篇之后滚到哪一节」。
+       *
+       * 连目标路径一起记：正文是异步读回来的，记下锚点的这一刻 DOM 里还是上一篇
+       * 的标题，拿它去比对只会得出「这一节不存在」。带上路径之后，等那一篇真的
+       * 渲染出来再滚。
+       */
+      const requestAnchor = React.useCallback((text, path) => {
+        const clean = String(text || '').trim()
+        if (clean === '') return
+        anchorSeq.current += 1
+        setPendingAnchor({ text: clean, path: String(path || ''), seq: anchorSeq.current })
+      }, [])
+
+      /**
        * 打开 Obsidian 双链的目标。
        *
        * 双链写法有三种：`[[完整/路径/笔记]]`、`[[笔记标题]]`、`[[标题|显示文字]]`。
@@ -4022,9 +4085,14 @@ async function saveFile(url, filename) {
        * 都找不到就明确提示，而不是静默什么都不做（那样用户以为点击没反应）。
        */
       const openWikiLink = React.useCallback(
-        (target) => {
+        (target, anchor) => {
           const raw = String(target || '').trim()
-          if (raw === '') return
+          const section = typeof anchor === 'string' ? anchor.trim() : ''
+          // `[[#小节]]`：链接的就是当前这一篇里的某个小节，没有别的笔记要打开。
+          if (raw === '') {
+            if (section !== '') requestAnchor(section, current !== null ? current.path : '')
+            return
+          }
           // 先问宿主的索引：别名、同名取最近、路径前缀这些规则都在它那儿，
           // 我们自己在 entries 里找容易指到另一篇同名笔记上去。
           const sub = status !== null && typeof status.subfolder === 'string' ? status.subfolder.replace(/^\/+|\/+$/g, '') : ''
@@ -4032,6 +4100,7 @@ async function saveFile(url, filename) {
           const sourceRel = rel === '' ? sub : sub === '' ? rel : `${sub}/${rel}`
           const hosted = resolveViaHost(raw, sourceRel)
           if (hosted !== '') {
+            if (section !== '') requestAnchor(section, hosted)
             void openNote(hosted)
             return
           }
@@ -4039,6 +4108,7 @@ async function saveFile(url, filename) {
           const list = entries || []
           const direct = list.find((entry) => entry.path === raw || entry.path === `${wanted}.md`)
           if (direct !== undefined) {
+            if (section !== '') requestAnchor(section, direct.path)
             void openNote(direct.path)
             return
           }
@@ -4047,18 +4117,20 @@ async function saveFile(url, filename) {
             return name === wanted
           })
           if (byName !== undefined) {
+            if (section !== '') requestAnchor(section, byName.path)
             void openNote(byName.path)
             return
           }
           const lowered = wanted.toLowerCase()
           const byTitle = list.find((entry) => String(entry.title || '').toLowerCase() === lowered)
           if (byTitle !== undefined) {
+            if (section !== '') requestAnchor(section, byTitle.path)
             void openNote(byTitle.path)
             return
           }
           setError(t('note.wikilinkMissing').replace('{name}', wanted))
         },
-        [current, entries, openNote, status, t],
+        [current, entries, openNote, requestAnchor, status, t],
       )
 
       const dirty = current !== null && draft !== null && draft !== current.content
@@ -5323,6 +5395,8 @@ async function saveFile(url, filename) {
               // 用户会以为恢复没生效。
               await openNote(current.path)
             },
+            anchor: pendingAnchor,
+            onAnchorDone: () => setPendingAnchor(null),
             onError: (message) => setError(message),
             // 勾待办直接落盘再重读：本地文件已经变了，只改前端状态的话
             // 下次保存草稿会把旧内容写回去，把刚勾的那一下冲掉。
@@ -9079,6 +9153,8 @@ async function saveFile(url, filename) {
 
     function NotePane(props) {
       const { t, status, current, draft, setDraft, dirty, busy, onSave, onRename, onDelete, onCopyReference, onOpenWikiLink, onSyncOne, onRestored, onError, onToggleTodo, onClose } = props
+      const anchorRequest = props.anchor
+      const onAnchorDone = props.onAnchorDone
       // 渲染器要的是「库内相对路径」：status.vaultRoot 是绝对路径，笔记在库里
       // 真正的位置是「<子目录>/<笔记相对路径>」。相对链接、图片、嵌入块都靠它解析。
       const subfolder = status !== null && typeof status.subfolder === 'string' ? status.subfolder.replace(/^\/+|\/+$/g, '') : ''
@@ -9249,7 +9325,7 @@ async function saveFile(url, filename) {
       const jumpToHeading = React.useCallback((index) => {
         const host = scrollRef.current
         if (!host) return
-        const heads = host.querySelectorAll('.dshgn_h')
+        const heads = headingNodes(host)
         const target = heads[index]
         if (!target) return
         // 不用 scrollIntoView：它会把**外层每一个可滚动祖先**一起滚，包括横向。
@@ -9259,6 +9335,39 @@ async function saveFile(url, filename) {
         const offset = target.getBoundingClientRect().top - host.getBoundingClientRect().top + host.scrollTop - 8
         host.scrollTo({ top: Math.max(0, offset), behavior: 'smooth' })
       }, [])
+
+      // 从 `[[笔记#小节]]` 跳进来时滚到那一节。
+      //
+      // 为什么带 pendingAnchor.seq 依赖：点两次同一个双链，文字没变、状态没变，
+      // 只依赖文字的话 effect 不会重跑，第二次点看起来像没反应。seq 每次请求都加一，
+      // 保证重跑。为什么滚完就调 onAnchorDone 清掉：不清的话用户接着自己往下翻，
+      // 下次这篇笔记重新渲染（比如勾了个待办）又会莫名其妙滚回去。
+      React.useEffect(() => {
+        if (anchorRequest === null || anchorRequest === undefined) return
+        // 还在上一篇上：等目标那一篇读回来再说。这里不清 pendingAnchor，
+        // 清了就等于把用户的这次跳转丢掉了。
+        if (String(anchorRequest.path || '') !== '' && String(anchorRequest.path) !== String(currentPath || '')) return
+        const want = normalizeHeading(anchorRequest.text)
+        const host = scrollRef.current
+        if (want !== '' && host) {
+          const heads = headingNodes(host)
+          let hit = null
+          for (let i = 0; i < heads.length; i += 1) {
+            if (normalizeHeading(heads[i].textContent) === want) {
+              hit = heads[i]
+              break
+            }
+          }
+          if (hit !== null) {
+            const offset = hit.getBoundingClientRect().top - host.getBoundingClientRect().top + host.scrollTop - 8
+            host.scrollTo({ top: Math.max(0, offset), behavior: 'smooth' })
+          } else if (typeof onError === 'function') {
+            // 找不到就明说。静默不动的话，用户会以为这个双链是坏的。
+            onError(t('note.anchorMissing').replace('{name}', anchorRequest.text))
+          }
+        }
+        if (typeof onAnchorDone === 'function') onAnchorDone()
+      }, [anchorRequest, currentPath, onAnchorDone, onError, t])
 
       if (current === null) {
         return h(

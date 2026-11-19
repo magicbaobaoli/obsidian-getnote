@@ -1853,3 +1853,124 @@ test('「今天」新建时用宿主配的日记模板，问不到就建一篇�
 })
 
 
+
+/**
+ * 双链可以带小节：`[[笔记#小节]]`、`[[#本页的小节]]`。宿主里点这种链接会直接
+ * 滚到那一节；我们原来把整串 `笔记#小节` 当路径递过去，宿主找不到这一篇，于是
+ * 无论点多准都只会得到「库里找不到」。这条把两种写法都走一遍。
+ */
+test('双链带小节时跳到那一节，找不到就明说', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const backBtn = window.document.querySelector('.dshgn_noteBack')
+  if (backBtn) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    try {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+  }
+
+  const seed = async (title, content, requestId) => {
+    const res = await realFetch(server.origin + '/getnote/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({ dir: '随手记', title, content, withDatePrefix: false, requestId }),
+    })
+    const json = await res.json()
+    assert.equal(json.path, `随手记/${title}.md`, '这条要按真路径测，不能靠猜文件名')
+    return json.path
+  }
+
+  const target = await seed('锚点目标', '## 乙节\n\n被跳到的地方\n', 'seed-anchor-target')
+  const source = await seed(
+    '锚点来源',
+    '## 第一节\n\n开头\n\n## 第二节\n\n跳到 [[#第二节]]\n\n还有 [[锚点目标#乙节]]\n\n坏链 [[#没有这一节]]\n',
+    'seed-anchor-source',
+  )
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  const card = await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_card')).find(
+        (el) => el.getAttribute('title') === source,
+      ),
+    5000,
+    '来源笔记出现在列表里',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  // 空态里也有 .dshgn_note（写着「选一篇笔记开始阅读」），所以要等正文本身出现
+  await waitFor(
+    () => ((window.document.querySelector('.dshgn_note') || {}).textContent || '').includes('跳到'),
+    5000,
+    '来源笔记打开了',
+  )
+
+  // jsdom 的 scrollTo 是个空实现：换成能记账的版本，才看得出到底滚没滚
+  const scrollCalls = []
+  const originalScrollTo = window.HTMLElement.prototype.scrollTo
+  window.HTMLElement.prototype.scrollTo = function scrollTo(options) {
+    scrollCalls.push(options)
+  }
+  try {
+    const wikilink = (text) =>
+      Array.from(window.document.querySelectorAll('.dshgn_wikilink')).find(
+        (el) => (el.textContent || '').trim() === text,
+      )
+
+    // ① 本节里的锚点：显示成「第二节」，点了要滚
+    const sameNote = await waitFor(() => wikilink('第二节'), 5000, '本页小节的双链')
+    sameNote.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => scrollCalls.length > 0, 3000, '滚到那一节')
+    assert.equal(typeof scrollCalls[0].top, 'number', '滚的是一个具体位置，不是瞎滚')
+
+    // ② 跨笔记的锚点：先打开那一篇，再滚过去
+    const crossNote = await waitFor(() => wikilink('锚点目标 › 乙节'), 5000, '跨笔记小节的双链')
+    const before = scrollCalls.length
+    crossNote.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    const opened = await waitFor(
+      () => {
+        const el = window.document.querySelector('.dshgn_note')
+        if (!el) return null
+        return (el.textContent || '').includes('被跳到的地方') ? el : null
+      },
+      5000,
+      '打开了被链到的那一篇',
+    )
+    assert.ok(opened, '跨笔记锚点要真的打开那一篇')
+    await waitFor(() => scrollCalls.length > before, 3000, '打开之后再滚到那一节')
+
+    // ③ 锚点写错了：明说这一节不存在，不要静默不动
+    refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+    const backToSource = await waitFor(
+      () =>
+        Array.from(window.document.querySelectorAll('.dshgn_card')).find(
+          (el) => el.getAttribute('title') === source,
+        ),
+      5000,
+      '回到来源笔记',
+    )
+    backToSource.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    const bad = await waitFor(() => wikilink('没有这一节'), 5000, '坏链')
+    bad.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    const alert = await waitFor(
+      () => window.document.querySelector('.dshgn_error'),
+      3000,
+      '找不到这一节时说一声',
+    )
+    assert.match(alert.textContent || '', /没有这一节/, '提示里要说清是哪一节找不到')
+  } finally {
+    window.HTMLElement.prototype.scrollTo = originalScrollTo
+    panel.setLinkResolve(null)
+    panel.setVaultGraph(null)
+  }
+})

@@ -8022,6 +8022,7 @@ var LEX = {
     "note.fontSize.m": "\u6807\u51C6",
     "note.fontSize.l": "\u5927\u5B57",
     "note.wikilinkMissing": "\u5E93\u91CC\u627E\u4E0D\u5230\u300C{name}\u300D\u8FD9\u7BC7\u7B14\u8BB0",
+    "note.anchorMissing": "\u8FD9\u4E00\u7BC7\u91CC\u6CA1\u6709\u300C{name}\u300D\u8FD9\u4E00\u8282",
     "note.image": "\u56FE\u7247",
     "action.close": "\u5173\u95ED",
     "action.back": "\u8FD4\u56DE\u5217\u8868",
@@ -8404,6 +8405,7 @@ var LEX = {
     "note.fontSize.m": "Normal",
     "note.fontSize.l": "Large",
     "note.wikilinkMissing": 'No note named "{name}" in this vault',
+    "note.anchorMissing": 'No section called "{name}" in this note',
     "note.image": "Image",
     "action.close": "Close",
     "action.back": "Back to list",
@@ -8786,6 +8788,7 @@ var LEX = {
     "note.fontSize.m": "Normaal",
     "note.fontSize.l": "Groot",
     "note.wikilinkMissing": "Geen notitie met de naam \u2018{name}\u2019 in deze map",
+    "note.anchorMissing": "Geen kop met de naam \u2018{name}\u2019 in deze notitie",
     "note.image": "Afbeelding",
     "action.close": "Sluiten",
     "action.back": "Terug naar lijst",
@@ -9385,8 +9388,11 @@ function renderInline(text, keyPrefix, options) {
       const embed = token.startsWith("!");
       const inner = token.slice(embed ? 3 : 2, -2);
       const pipe = inner.indexOf("|");
-      const target = (pipe === -1 ? inner : inner.slice(0, pipe)).trim();
-      const label = (pipe === -1 ? inner : inner.slice(pipe + 1)).trim();
+      const linkText = (pipe === -1 ? inner : inner.slice(0, pipe)).trim();
+      const label = pipe === -1 ? "" : inner.slice(pipe + 1).trim();
+      const hash = linkText.indexOf("#");
+      const target = (hash === -1 ? linkText : linkText.slice(0, hash)).trim();
+      const anchor = hash === -1 ? "" : linkText.slice(hash + 1).trim();
       if (embed) {
         nodes.push(h4("span", { key, className: "dshgn_embed" }, renderEmbed(target, key, opts)));
       } else {
@@ -9400,10 +9406,12 @@ function renderInline(text, keyPrefix, options) {
               // 双链在 Obsidian 里是跳转。这里没有 Obsidian 的解析器，尽力而为：
               // 有完整路径就按路径打开，只写标题就在当前库里按标题/文件名找。
               onClick: () => {
-                if (typeof opts.onOpenWikiLink === "function") opts.onOpenWikiLink(target);
+                if (typeof opts.onOpenWikiLink === "function") opts.onOpenWikiLink(target, anchor);
               }
             },
-            label || target
+            // 带小节时显示「笔记 › 小节」：只显示笔记名的话，同一篇被链到
+            // 不同小节看起来一模一样，点进去落在哪儿全靠猜。
+            label || (target === "" ? anchor : anchor === "" ? target : `${target} \u203A ${anchor}`)
           )
         );
       }
@@ -9427,6 +9435,15 @@ function renderInline(text, keyPrefix, options) {
   }
   if (last < text.length) nodes.push(text.slice(last));
   return nodes;
+}
+function normalizeHeading(text) {
+  return String(text || "").replace(/^#+\s*/, "").replace(/\s+#+\s*$/, "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+function headingNodes(host) {
+  if (!host) return [];
+  const own = host.querySelectorAll(".dshgn_h");
+  if (own.length > 0) return Array.from(own);
+  return Array.from(host.querySelectorAll("h1, h2, h3, h4, h5, h6"));
 }
 var IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|avif|svg|bmp)$/i;
 function renderEmbed(target, key, options) {
@@ -10702,6 +10719,8 @@ function GetnotePage() {
   const [busy, setBusy] = h2(false);
   const [toast, setToast] = h2(null);
   const [error2, setError] = h2(null);
+  const [pendingAnchor, setPendingAnchor] = h2(null);
+  const anchorSeq = A2(0);
   const [refreshState, setRefreshState] = h2("idle");
   const refreshTimer = A2(null);
   const refreshSpinTimer = A2(null);
@@ -10939,15 +10958,26 @@ function GetnotePage() {
     if (!restoredRef.current) return;
     writeSession({ path: current !== null ? String(current.path || "") : "" });
   }, [current]);
+  const requestAnchor = q2((text, path) => {
+    const clean = String(text || "").trim();
+    if (clean === "") return;
+    anchorSeq.current += 1;
+    setPendingAnchor({ text: clean, path: String(path || ""), seq: anchorSeq.current });
+  }, []);
   const openWikiLink = q2(
-    (target) => {
+    (target, anchor) => {
       const raw = String(target || "").trim();
-      if (raw === "") return;
+      const section = typeof anchor === "string" ? anchor.trim() : "";
+      if (raw === "") {
+        if (section !== "") requestAnchor(section, current !== null ? current.path : "");
+        return;
+      }
       const sub = status !== null && typeof status.subfolder === "string" ? status.subfolder.replace(/^\/+|\/+$/g, "") : "";
       const rel = current !== null && typeof current.path === "string" ? current.path : "";
       const sourceRel = rel === "" ? sub : sub === "" ? rel : `${sub}/${rel}`;
       const hosted = resolveViaHost(raw, sourceRel);
       if (hosted !== "") {
+        if (section !== "") requestAnchor(section, hosted);
         void openNote(hosted);
         return;
       }
@@ -10955,6 +10985,7 @@ function GetnotePage() {
       const list = entries || [];
       const direct = list.find((entry) => entry.path === raw || entry.path === `${wanted}.md`);
       if (direct !== void 0) {
+        if (section !== "") requestAnchor(section, direct.path);
         void openNote(direct.path);
         return;
       }
@@ -10963,18 +10994,20 @@ function GetnotePage() {
         return name === wanted;
       });
       if (byName !== void 0) {
+        if (section !== "") requestAnchor(section, byName.path);
         void openNote(byName.path);
         return;
       }
       const lowered = wanted.toLowerCase();
       const byTitle = list.find((entry) => String(entry.title || "").toLowerCase() === lowered);
       if (byTitle !== void 0) {
+        if (section !== "") requestAnchor(section, byTitle.path);
         void openNote(byTitle.path);
         return;
       }
       setError(t3("note.wikilinkMissing").replace("{name}", wanted));
     },
-    [current, entries, openNote, status, t3]
+    [current, entries, openNote, requestAnchor, status, t3]
   );
   const dirty = current !== null && draft !== null && draft !== current.content;
   const saveNote = q2(async () => {
@@ -12077,6 +12110,8 @@ function GetnotePage() {
         onRestored: async () => {
           await openNote(current.path);
         },
+        anchor: pendingAnchor,
+        onAnchorDone: () => setPendingAnchor(null),
         onError: (message) => setError(message),
         // 勾待办直接落盘再重读：本地文件已经变了，只改前端状态的话
         // 下次保存草稿会把旧内容写回去，把刚勾的那一下冲掉。
@@ -15270,6 +15305,8 @@ ${t3("tree.menuDelete")}\uFF1A\u53F3\u952E`
 }
 function NotePane(props) {
   const { t: t3, status, current, draft, setDraft, dirty, busy, onSave, onRename, onDelete, onCopyReference, onOpenWikiLink, onSyncOne, onRestored, onError, onToggleTodo, onClose } = props;
+  const anchorRequest = props.anchor;
+  const onAnchorDone = props.onAnchorDone;
   const subfolder = status !== null && typeof status.subfolder === "string" ? status.subfolder.replace(/^\/+|\/+$/g, "") : "";
   const vaultPathOf = (note) => {
     const rel = note !== null && typeof note.path === "string" ? note.path : "";
@@ -15399,12 +15436,35 @@ function NotePane(props) {
   const jumpToHeading = q2((index) => {
     const host = scrollRef.current;
     if (!host) return;
-    const heads = host.querySelectorAll(".dshgn_h");
+    const heads = headingNodes(host);
     const target = heads[index];
     if (!target) return;
     const offset = target.getBoundingClientRect().top - host.getBoundingClientRect().top + host.scrollTop - 8;
     host.scrollTo({ top: Math.max(0, offset), behavior: "smooth" });
   }, []);
+  y2(() => {
+    if (anchorRequest === null || anchorRequest === void 0) return;
+    if (String(anchorRequest.path || "") !== "" && String(anchorRequest.path) !== String(currentPath || "")) return;
+    const want = normalizeHeading(anchorRequest.text);
+    const host = scrollRef.current;
+    if (want !== "" && host) {
+      const heads = headingNodes(host);
+      let hit = null;
+      for (let i3 = 0; i3 < heads.length; i3 += 1) {
+        if (normalizeHeading(heads[i3].textContent) === want) {
+          hit = heads[i3];
+          break;
+        }
+      }
+      if (hit !== null) {
+        const offset = hit.getBoundingClientRect().top - host.getBoundingClientRect().top + host.scrollTop - 8;
+        host.scrollTo({ top: Math.max(0, offset), behavior: "smooth" });
+      } else if (typeof onError === "function") {
+        onError(t3("note.anchorMissing").replace("{name}", anchorRequest.text));
+      }
+    }
+    if (typeof onAnchorDone === "function") onAnchorDone();
+  }, [anchorRequest, currentPath, onAnchorDone, onError, t3]);
   if (current === null) {
     return h4(
       "section",
