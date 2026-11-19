@@ -581,13 +581,9 @@ export async function syncSingleNote({ client, root, state, noteId, log = () => 
  * 只推「标题 + 正文」，**不推 frontmatter**（那是我们的簿记，不是用户内容），
  * 也去掉我们自己加的文末来源行，免得每推一次就把来源行叠一层。
  */
-export async function pushNote({ client, root, relPath, noteId } = {}) {
-  // readNote 返回 { content, body, frontmatter, title, ... }，没有 text 字段。
-  // 解构成 text 会拿到 undefined，于是正文和 frontmatter 全是空，推上去等于把
-  // 用户云端的笔记**清空**——这是最危险的一种静默失败。
-  const { content: fileText } = await readNote(root, relPath)
+export function pushPayloadOf(fileText) {
   const { data, body } = parseFrontmatter(fileText)
-  const id = noteId || (typeof data.note_id === 'string' ? data.note_id.replace(/^"|"$/g, '') : null)
+  const noteId = typeof data.note_id === 'string' ? data.note_id.replace(/^"|"$/g, '') : null
   const title = (typeof data.title === 'string' ? data.title : firstHeading(body)) || ''
   const content = stripSourceFooter(body)
     // 先吃掉前导空行：body 通常是 `\n# 标题\n\n正文`，不先 trim 开头的话
@@ -595,20 +591,31 @@ export async function pushNote({ client, root, relPath, noteId } = {}) {
     .replace(/^\s+/, '')
     .replace(/^#\s+.+\n+/, '')
     .trim()
-  if (content === '') {
+  const tags = Array.isArray(data.tags) ? data.tags.map(String).filter((t) => t !== '得到大脑') : undefined
+  return { noteId, title, content, tags }
+}
+
+export async function pushNote({ client, root, relPath, noteId } = {}) {
+  // readNote 返回 { content, body, frontmatter, title, ... }，没有 text 字段。
+  // 解构成 text 会拿到 undefined，于是正文和 frontmatter 全是空，推上去等于把
+  // 用户云端的笔记**清空**——这是最危险的一种静默失败。
+  const { content: fileText } = await readNote(root, relPath)
+  const payload = pushPayloadOf(fileText)
+  const id = noteId || payload.noteId
+  if (payload.content === '') {
     throw Object.assign(new Error('这篇笔记没有正文，不能推到云端（会清空云端内容）'), { status: 400 })
   }
 
   if (!id) {
     // 本地新建的笔记：当成新笔记推到云端
     const created = await client.createNote({
-      title: title || '来自 DSH 的笔记',
-      content,
-      tags: Array.isArray(data.tags) ? data.tags.map(String).filter((t) => t !== '得到大脑') : undefined,
+      title: payload.title || '来自 DSH 的笔记',
+      content: payload.content,
+      tags: payload.tags,
     })
     return { action: 'created', noteId: created.noteId }
   }
-  await client.updateNote({ noteId: id, title: title || undefined, content })
+  await client.updateNote({ noteId: id, title: payload.title || undefined, content: payload.content })
   return { action: 'updated', noteId: id }
 }
 

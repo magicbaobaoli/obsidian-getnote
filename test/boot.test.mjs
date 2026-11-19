@@ -79,6 +79,44 @@ class Menu {
   showAtMouseEvent() {}
 }
 
+// 原生确认框：真宿主是 Obsidian 的 Modal。这一层没有 jsdom（boot 只 require 打包产物），
+// 所以给一套不依赖 DOM 的假元素：够建出 <p> 和按钮、够让测试点按钮或直接关窗。
+function fakeModalEl(tag = 'div', opts = {}) {
+  const el = {
+    tag,
+    text: opts.text === undefined ? '' : String(opts.text),
+    cls: opts.cls || '',
+    children: [],
+    handlers: {},
+    appendChild(child) { el.children.push(child); return child },
+    createEl(t, o = {}) { const c = fakeModalEl(t, o); el.children.push(c); return c },
+    createDiv(o = {}) { const c = fakeModalEl('div', o); el.children.push(c); return c },
+    addEventListener(type, handler) { (el.handlers[type] = el.handlers[type] || []).push(handler) },
+    click() { for (const fn of el.handlers.click || []) fn() },
+    focus() {},
+    empty() { el.children.length = 0 },
+  }
+  return el
+}
+class Modal {
+  constructor(app) {
+    this.app = app
+    this.contentEl = null
+    this.closed = false
+    ;(calls.modals = calls.modals || []).push(this)
+  }
+  open() {
+    this.contentEl = fakeModalEl('div')
+    if (typeof this.onOpen === 'function') this.onOpen()
+    return this
+  }
+  close() {
+    if (this.closed) return
+    this.closed = true
+    if (typeof this.onClose === 'function') this.onClose()
+  }
+}
+
 class PluginSettingTab {
   constructor(app, plugin) { this.app = app; this.plugin = plugin; this.containerEl = null }
 }
@@ -104,7 +142,7 @@ class ItemView {
 
 class Notice { constructor(message) { calls.notices = calls.notices || []; calls.notices.push(message) } }
 
-const obsidianStub = { Menu, Plugin, PluginSettingTab, Setting, ItemView, Notice, WorkspaceLeaf: class {} }
+const obsidianStub = { Menu, Modal, Plugin, PluginSettingTab, Setting, ItemView, Notice, WorkspaceLeaf: class {} }
 
 const originalLoad = Module._load
 Module._load = function (request, parent, isMain) {
@@ -233,6 +271,12 @@ const app = {
   vault: {
     adapter,
     configDir: '.obsidian',
+    // 面板的「在 Obsidian 里打开」会把库内相对路径交给宿主查文件。
+    getAbstractFileByPath(path) {
+      const rel = String(path || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+      if (rel === '') return null
+      return adapter._dump().includes(rel) ? { path: rel } : null
+    },
     // Obsidian 的 Events.on：插件用它在库变动时丢扫描缓存。测试里只记下
     // 回调，需要时手动触发（见「库变动会让扫描缓存失效」那条）。
     handlers: {},
@@ -242,9 +286,19 @@ const app = {
     },
   },
   workspace: {
+    // 宿主的 css-change 事件：插件收到后让面板重算配色。测试里记下回调手动触发。
+    wsHandlers: {},
+    on(name, cb) {
+      ;(this.wsHandlers[name] = this.wsHandlers[name] || []).push(cb)
+      return { name, cb }
+    },
     getLeavesOfType: () => [],
     revealLeaf: () => {},
-    getLeaf: () => ({ setViewState: async () => {} }),
+    openedFiles: [],
+    getLeaf: () => ({
+      setViewState: async () => {},
+      openFile: async (file) => { app.workspace.openedFiles.push(file && file.path) },
+    }),
     openPopoutLeaf: () => ({ setViewState: async () => {} }),
   },
 }
@@ -666,6 +720,63 @@ test('Bases 视图与画布都能真的落到库里，重复执行不覆盖', as
   await plugin.addNoteToCanvas('得到大脑/随手记/画布验收.md')
   const again = JSON.parse(await adapter.read('得到大脑/得到大脑画布.canvas'))
   assert.equal(again.nodes.length, 1, '同一篇加两次不该变成两个节点')
+})
+
+/**
+ * 与宿主的三根线：原生确认框、在 Obsidian 里打开、css-change 事件。
+ *
+ * 这三条的共同点是「面板自己做不到、必须宿主接一手」。以前面板用 window.confirm
+ * 弹的是浏览器原生框，长得跟 Obsidian 完全不搭；「在宿主里打开」根本没有入口，
+ * 用户想用补全/Vim 只能自己去文件列表里翻。这里验的是线接上了、动作真的传到了宿主。
+ */
+test('原生确认框、在宿主里打开、css-change 都接到宿主上了', async () => {
+  // ① 确认框：点「确定」是 true，点「取消」或关窗是 false
+  const first = plugin.askConfirm('真的要删吗？')
+  const modal = calls.modals[calls.modals.length - 1]
+  assert.ok(modal, '应该弹出一个宿主的 Modal')
+  assert.equal(modal.contentEl.children[0].text, '真的要删吗？', '弹窗里要显示这句话')
+  const bar = modal.contentEl.children[1]
+  assert.equal(bar.children.length, 2, '按钮区应该有确定和取消两个按钮')
+  assert.equal(bar.children[0].text, '确定')
+  assert.equal(bar.children[1].text, '取消')
+  bar.children[0].click()
+  assert.equal(await first, true, '点确定应当 resolve(true)')
+  assert.equal(modal.closed, true, '点完要关窗')
+
+  // 关窗（Esc / 点遮罩）算取消
+  const second = plugin.askConfirm('再来一次？')
+  const modal2 = calls.modals[calls.modals.length - 1]
+  modal2.close()
+  assert.equal(await second, false, '直接关窗应当 resolve(false)')
+
+  // 点完确定再按 Esc 不能 resolve 两回（Promise 只认第一次，这里验不抛也不改值）
+  const third = plugin.askConfirm('只 resolve 一次？')
+  const modal3 = calls.modals[calls.modals.length - 1]
+  modal3.contentEl.children[1].children[0].click()
+  modal3.close()
+  assert.equal(await third, true, '先点确定再关窗仍然是 true')
+
+  // ② 在宿主编辑器里打开：路径要真的交给 workspace.openFile
+  await adapter.write('得到大脑/随手记/宿主打开验收.md', '---\ntitle: 宿主打开验收\n---\n\n正文\n')
+  app.workspace.openedFiles.length = 0
+  assert.equal(plugin.openInVaultEditor('得到大脑/随手记/宿主打开验收.md'), true)
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  assert.deepEqual(
+    app.workspace.openedFiles,
+    ['得到大脑/随手记/宿主打开验收.md'],
+    '应该把库内相对路径交给宿主编辑器',
+  )
+  // 前导斜杠要能容忍，找不到的文件要老实返回 false
+  assert.equal(plugin.openInVaultEditor('/得到大脑/随手记/宿主打开验收.md'), true)
+  assert.equal(plugin.openInVaultEditor('得到大脑/随手记/根本不存在.md'), false)
+  assert.equal(plugin.openInVaultEditor(''), false)
+
+  // ③ css-change：宿主发事件，插件要把它转给面板（重算配色本身由 panel.test 验）
+  const listeners = app.workspace.wsHandlers['css-change'] || []
+  assert.equal(listeners.length, 1, '应该注册了一个 css-change 监听')
+  assert.doesNotThrow(() => {
+    for (const fn of listeners) fn()
+  }, 'css-change 回调不该抛')
 })
 
 test('onunload 会关掉本地服务', async () => {

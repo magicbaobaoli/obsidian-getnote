@@ -84,6 +84,34 @@ class ItemView {
 }
 class Notice { constructor(message) { (calls.notices = calls.notices || []).push(message) } }
 
+// 原生确认框：真宿主是 Obsidian 的 Modal。这里只要 open() 建出 contentEl、
+// close() 走 onClose，测试就能模拟「点确定 / 点取消 / 按 Esc」三条路。
+function extendModalEl(el) {
+  el.empty = () => { while (el.firstChild) el.removeChild(el.firstChild) }
+  el.createEl = (tag, opts = {}) => {
+    const child = el.ownerDocument.createElement(tag)
+    if (opts.text !== undefined) child.textContent = opts.text
+    if (opts.cls) child.className = opts.cls
+    el.appendChild(child)
+    return child
+  }
+  el.createDiv = (opts = {}) => extendModalEl(el.createEl('div', opts))
+  return el
+}
+class Modal {
+  constructor(app) { this.app = app; this.contentEl = null; this.closed = false }
+  open() {
+    this.contentEl = extendModalEl(window.document.createElement('div'))
+    if (typeof this.onOpen === 'function') this.onOpen()
+    return this
+  }
+  close() {
+    if (this.closed) return
+    this.closed = true
+    if (typeof this.onClose === 'function') this.onClose()
+  }
+}
+
 class Menu {
   constructor() { this.items = [] }
   addItem(build) {
@@ -102,7 +130,7 @@ class Menu {
   showAtMouseEvent() {}
 }
 
-const obsidianStub = { Menu, Plugin, PluginSettingTab, Setting, ItemView, Notice, WorkspaceLeaf: class {} }
+const obsidianStub = { Menu, Modal, Plugin, PluginSettingTab, Setting, ItemView, Notice, WorkspaceLeaf: class {} }
 
 const originalLoad = Module._load
 Module._load = function (request, parent, isMain) {
@@ -154,8 +182,18 @@ const adapter = {
 }
 
 const app = {
-  vault: { adapter, configDir: '.obsidian', on() { return {} } },
+  vault: {
+    adapter,
+    configDir: '.obsidian',
+    on() { return {} },
+    getAbstractFileByPath(path) {
+      const rel = String(path || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+      if (rel === '') return null
+      return nodes.has(rel) ? { path: rel } : null
+    },
+  },
   workspace: {
+    on() { return {} },
     getLeavesOfType: () => [],
     revealLeaf: () => undefined,
     getLeaf: () => ({ setViewState: async () => undefined }),

@@ -963,6 +963,79 @@ try {
     check('POST /card/wifi-leave 回 ok', leave.json.ok === true, JSON.stringify(leave.json))
   }
 
+  // ── 批量反向同步（本地 → 云端）──────────────────────────────────────────
+  //
+  // 这一段最容易写错、也最容易弄坏用户数据的地方不是「能不能推」，而是
+  // 「什么时候不该推」：没改过的笔记不该反复 updateNote（既吃配额又把云端的
+  // 修改时间刷成现在），本地新建的笔记推完必须记住 note_id（否则下一轮又建一篇
+  // 重复的），单篇失败不该让整批停下来。
+  //
+  // 整段限定在「推送验收」这个目录里跑：前面几十项测试已经往库里写了不少笔记，
+  // 不带 dir 的话断言的数字会被它们污染。
+  {
+    const { setCloudClientFactory } = await import('../src/core/service.js')
+    const PUSH_DIR = '推送验收'
+    const pushed = { created: [], updated: [], fetched: [] }
+    let nextId = 9000
+    setCloudClientFactory(() => ({
+      async listNotes() {
+        return { notes: [], hasMore: false, cursor: null }
+      },
+      async getNote(noteId) {
+        pushed.fetched.push(noteId)
+        return { noteId, title: 'x', content: 'y', tags: [] }
+      },
+      async createNote(payload) {
+        nextId += 1
+        pushed.created.push({ noteId: String(nextId), ...payload })
+        return { noteId: String(nextId) }
+      },
+      async updateNote(payload) {
+        pushed.updated.push(payload)
+        return { ok: true }
+      },
+    }))
+
+    await mkdir(join(vault, PUSH_DIR), { recursive: true })
+    await writeFile(join(vault, PUSH_DIR, '2026-11-13-待推一.md'), '---\ntags: [得到大脑]\n---\n\n# 待推一\n\n第一版正文。\n', 'utf8')
+    await writeFile(join(vault, PUSH_DIR, '2026-11-13-待推二.md'), '---\ntags: [得到大脑]\n---\n\n# 待推二\n\n另一篇的正文。\n', 'utf8')
+    await writeFile(join(vault, PUSH_DIR, '2026-11-13-空壳.md'), '---\ntags: [得到大脑]\n---\n\n# 空壳\n\n\n', 'utf8')
+
+    const pushAll = (extra) => call('/sync/push-all', postJson('/sync/push-all', { dir: PUSH_DIR, limit: 200, ...extra }))
+
+    const first = await pushAll({})
+    check('POST /sync/push-all 200', first.status === 200, `status=${first.status} ${first.text.slice(0, 200)}`)
+    check('本地新建的两篇被推上去算新建', first.json && first.json.created === 2, JSON.stringify(first.json && { created: first.json.created }))
+    check('没有正文的那篇记成失败而不是整批中断', first.json && first.json.failed === 1, JSON.stringify(first.json && { failed: first.json.failed }))
+    check(
+      '失败原因写清了是哪一篇、为什么',
+      Array.isArray(first.json && first.json.errors) && first.json.errors.length === 1 && first.json.errors[0].path.includes('空壳') && /没有正文/.test(first.json.errors[0].message),
+      JSON.stringify(first.json && first.json.errors),
+    )
+    check('推上去的正文不带标题行（标题是单独字段）', pushed.created.length === 2 && pushed.created.every((n) => !n.content.startsWith('# ')), JSON.stringify(pushed.created.map((n) => n.content)))
+    check('推上去的标签去掉了「得到大脑」这个我们自己的标签', pushed.created.every((n) => !(n.tags || []).includes('得到大脑')), JSON.stringify(pushed.created.map((n) => n.tags)))
+
+    const second = await pushAll({})
+    check('第二次推送：改过的都算没改动，一次云端写都没有', second.json && second.json.pushed === 0 && second.json.skipped === 2, JSON.stringify(second.json && { pushed: second.json.pushed, skipped: second.json.skipped }))
+    check('第二次推送没有新增云端笔记', pushed.created.length === 2, `created=${pushed.created.length}`)
+
+    // 改一篇再推：应该走 updateNote（state 里已经记下了它的 note_id），
+    // 而不是又新建一篇重复的。
+    await writeFile(join(vault, PUSH_DIR, '2026-11-13-待推一.md'), '---\ntags: [得到大脑]\n---\n\n# 待推一\n\n改过的第二版正文。\n', 'utf8')
+    const third = await pushAll({})
+    check('改过的那篇走更新，没改的不动', third.json && third.json.updated === 1 && third.json.skipped === 1, JSON.stringify(third.json && { updated: third.json.updated, skipped: third.json.skipped }))
+    check('更新用的是上一次记下的 note_id，不是又新建一篇', pushed.created.length === 2 && pushed.updated.length === 1, `created=${pushed.created.length} updated=${pushed.updated.length}`)
+    check('更新带上了新正文', pushed.updated[0] && /改过的第二版正文/.test(pushed.updated[0].content), JSON.stringify(pushed.updated[0]))
+
+    const scoped = await pushAll({ dir: '不存在的目录' })
+    check('限定目录时只推该目录下的', scoped.json && scoped.json.pushed === 0, JSON.stringify(scoped.json && { pushed: scoped.json.pushed }))
+
+    const tiny = await pushAll({ limit: 1 })
+    check('limit 限制单轮条数并如实说被截断', tiny.json && tiny.json.pushed <= 1 && typeof tiny.json.truncated === 'boolean', JSON.stringify(tiny.json && { pushed: tiny.json.pushed, truncated: tiny.json.truncated }))
+
+    setCloudClientFactory(null)
+  }
+
   await rm(vault, { recursive: true, force: true })
   const missing = await call('/status')
   check('库被删后 /status 报 missing', missing.json.vaultMissing === vault, JSON.stringify(missing.json.vaultMissing))

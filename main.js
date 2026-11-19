@@ -4589,24 +4589,30 @@ async function syncSingleNote({ client, root, state, noteId, log = () => {
     }
   };
 }
-async function pushNote({ client, root, relPath, noteId } = {}) {
-  const { content: fileText } = await readNote(root, relPath);
+function pushPayloadOf(fileText) {
   const { data, body } = parseFrontmatter(fileText);
-  const id = noteId || (typeof data.note_id === "string" ? data.note_id.replace(/^"|"$/g, "") : null);
+  const noteId = typeof data.note_id === "string" ? data.note_id.replace(/^"|"$/g, "") : null;
   const title = (typeof data.title === "string" ? data.title : firstHeading(body)) || "";
   const content = stripSourceFooter(body).replace(/^\s+/, "").replace(/^#\s+.+\n+/, "").trim();
-  if (content === "") {
+  const tags = Array.isArray(data.tags) ? data.tags.map(String).filter((t3) => t3 !== "\u5F97\u5230\u5927\u8111") : void 0;
+  return { noteId, title, content, tags };
+}
+async function pushNote({ client, root, relPath, noteId } = {}) {
+  const { content: fileText } = await readNote(root, relPath);
+  const payload = pushPayloadOf(fileText);
+  const id = noteId || payload.noteId;
+  if (payload.content === "") {
     throw Object.assign(new Error("\u8FD9\u7BC7\u7B14\u8BB0\u6CA1\u6709\u6B63\u6587\uFF0C\u4E0D\u80FD\u63A8\u5230\u4E91\u7AEF\uFF08\u4F1A\u6E05\u7A7A\u4E91\u7AEF\u5185\u5BB9\uFF09"), { status: 400 });
   }
   if (!id) {
     const created = await client.createNote({
-      title: title || "\u6765\u81EA DSH \u7684\u7B14\u8BB0",
-      content,
-      tags: Array.isArray(data.tags) ? data.tags.map(String).filter((t3) => t3 !== "\u5F97\u5230\u5927\u8111") : void 0
+      title: payload.title || "\u6765\u81EA DSH \u7684\u7B14\u8BB0",
+      content: payload.content,
+      tags: payload.tags
     });
     return { action: "created", noteId: created.noteId };
   }
-  await client.updateNote({ noteId: id, title: title || void 0, content });
+  await client.updateNote({ noteId: id, title: payload.title || void 0, content: payload.content });
   return { action: "updated", noteId: id };
 }
 
@@ -4776,7 +4782,9 @@ async function openClient() {
   await client.initialize();
   return client;
 }
+var cloudClientFactory = null;
 async function openCloudClient() {
+  if (cloudClientFactory !== null) return cloudClientFactory();
   const cloud = await readCloud();
   const keyReady = cloud && cloud.apiKey !== "" && cloud.clientId !== "";
   const token = await ensureAccessToken();
@@ -5521,6 +5529,64 @@ function createHandler(config) {
     }
     send(res, 200, { ok: true, result });
   }
+  async function handleSyncPushAll(req, res) {
+    const body = await readJsonBody(req);
+    if (syncState.running) throw Object.assign(new Error("\u6B63\u5728\u8DD1\u4E00\u8F6E\u540C\u6B65\uFF0C\u7B49\u5B83\u7ED3\u675F\u518D\u63A8"), { status: 409 });
+    const dir = typeof body.dir === "string" ? body.dir.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "") : "";
+    const limit = Math.min(Math.max(Number(body.limit) || 200, 1), 500);
+    const { root, missing } = await currentRoot();
+    if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
+    const client = await openCloudClient();
+    const scan = await scanVault(root);
+    const state = await readSyncState();
+    state.notes = state.notes && typeof state.notes === "object" ? state.notes : {};
+    const idByPath = /* @__PURE__ */ new Map();
+    for (const [id, record] of Object.entries(state.notes)) {
+      if (record && typeof record.path === "string" && record.path !== "") idByPath.set(record.path, String(id));
+    }
+    const report = { pushed: 0, created: 0, updated: 0, skipped: 0, failed: 0, errors: [], truncated: false, dir };
+    const targets = scan.entries.filter((entry) => dir === "" || entry.path === dir || entry.path.startsWith(dir + "/"));
+    for (const entry of targets) {
+      if (report.pushed + report.failed >= limit) {
+        report.truncated = true;
+        break;
+      }
+      const noteId = idByPath.get(entry.path) || (entry.noteId ? String(entry.noteId) : "");
+      let localFp = null;
+      try {
+        localFp = await localFingerprintOf(resolveInside(root, entry.path).abs);
+      } catch {
+        localFp = null;
+      }
+      const record = noteId !== "" ? state.notes[noteId] : null;
+      if (record && localFp !== null && record.localFp === localFp) {
+        report.skipped += 1;
+        continue;
+      }
+      try {
+        const result = await pushNote({ client, root, relPath: entry.path, noteId: noteId || void 0 });
+        const key = String(result.noteId || "");
+        if (result.action === "created") report.created += 1;
+        else report.updated += 1;
+        report.pushed += 1;
+        if (key !== "") {
+          let cloudFp;
+          try {
+            const fresh = await client.getNote(key);
+            if (fresh) cloudFp = contentFingerprint(fresh);
+          } catch {
+            cloudFp = void 0;
+          }
+          state.notes[key] = { ...state.notes[key] || {}, path: entry.path, localFp: localFp || void 0, cloudFp };
+        }
+      } catch (error2) {
+        report.failed += 1;
+        report.errors.push({ path: entry.path, message: String(error2 && error2.message ? error2.message : error2) });
+      }
+    }
+    if (report.pushed > 0) await writeSyncState(state);
+    send(res, 200, { ok: true, ...report });
+  }
   async function noteIdOfPath(root, path, state) {
     if (path === "") return "";
     const notes = state && state.notes ? state.notes : {};
@@ -6171,6 +6237,7 @@ function createHandler(config) {
         if (action === "card" && parts[2] === "wifi-leave") return await handleCardWifiLeave(req, res);
         if (action === "sync" && parts[2] === "pull-one") return await handleSyncPullOne(req, res);
         if (action === "sync" && parts[2] === "push-one") return await handleSyncPushOne(req, res);
+        if (action === "sync" && parts[2] === "push-all") return await handleSyncPushAll(req, res);
         if (action === "api" && parts[2] === "credentials") return await handleSetCloud(req, res);
         if (action === "api" && parts[2] === "clear") return await handleClearCloud(res);
         if (action === "cloud" && parts[2] === "create") return await handleCloudCreate(req, res);
@@ -7526,6 +7593,54 @@ function showNoteMenu(anchor, items) {
     return false;
   }
 }
+var __confirm = null;
+function setConfirmDialog(fn2) {
+  __confirm = typeof fn2 === "function" ? fn2 : null;
+}
+function confirmDialog(message) {
+  if (__confirm !== null) {
+    try {
+      return Promise.resolve(__confirm(String(message))).then(
+        (value) => value === true,
+        () => window.confirm(String(message))
+      );
+    } catch {
+    }
+  }
+  try {
+    return Promise.resolve(window.confirm(String(message)) === true);
+  } catch {
+    return Promise.resolve(false);
+  }
+}
+var __openInEditor = null;
+function setOpenInEditor(fn2) {
+  __openInEditor = typeof fn2 === "function" ? fn2 : null;
+}
+function hasOpenInEditor() {
+  return __openInEditor !== null;
+}
+function openInEditor(path) {
+  if (__openInEditor === null) return false;
+  try {
+    return __openInEditor(String(path || "")) === true;
+  } catch {
+    return false;
+  }
+}
+var __cssListeners = /* @__PURE__ */ new Set();
+function notifyCssChange() {
+  for (const listener of Array.from(__cssListeners)) {
+    try {
+      listener();
+    } catch {
+    }
+  }
+}
+function subscribeCssChange(listener) {
+  __cssListeners.add(listener);
+  return () => __cssListeners.delete(listener);
+}
 var h4 = _;
 var NS = "dsh-getnote";
 var STYLE_ID = "dshgn-style";
@@ -7541,6 +7656,7 @@ var LEX = {
     "action.save": "\u4FDD\u5B58",
     "action.cancel": "\u53D6\u6D88",
     "action.edit": "\u7F16\u8F91",
+    "action.openInEditor": "\u5728 Obsidian \u91CC\u6253\u5F00",
     "action.delete": "\u5220\u9664",
     "action.copyRef": "\u590D\u5236\u5F15\u7528",
     "action.copied": "\u5DF2\u590D\u5236",
@@ -7811,6 +7927,13 @@ var LEX = {
     "sync.foregroundHint": "\u5173\u6389\u9762\u677F\u6216\u5408\u4E0A\u7535\u8111\u540E\u4E0D\u518D\u81EA\u52A8\u540C\u6B65\uFF0C\u7701\u4E91\u7AEF\u914D\u989D\u3002\u4E0B\u6B21\u6253\u5F00\u9762\u677F\u4F1A\u8865\u4E0A\u3002",
     "sync.now": "\u7ACB\u5373\u540C\u6B65",
     "sync.running": "\u6B63\u5728\u540C\u6B65\u2026",
+    "sync.pushAll": "\u628A\u672C\u5730\u6539\u52A8\u63A8\u4E0A\u53BB",
+    "sync.pushAllHint": "\u53EA\u63A8\u672C\u5730\u6539\u8FC7\u3001\u8FD8\u6CA1\u540C\u6B65\u4E0A\u53BB\u7684\u7B14\u8BB0\u3002\u4E91\u7AEF\u7684\u540C\u540D\u7B14\u8BB0\u6B63\u6587\u4F1A\u88AB\u8986\u76D6\uFF0C\u8BF7\u786E\u8BA4\u90A3\u4E9B\u6539\u52A8\u786E\u5B9E\u662F\u4F60\u5199\u7684\u3002",
+    "sync.pushAllDone": "\u63A8\u9001\u5B8C\u6210",
+    "sync.pushAllPushed": "\u5DF2\u63A8",
+    "sync.pushAllSkipped": "\u6CA1\u6539\u52A8",
+    "sync.pushAllFailed": "\u5931\u8D25",
+    "sync.pushAllTruncated": "\u4E00\u6B21\u6700\u591A 200 \u7BC7\uFF0C\u5269\u4E0B\u7684\u518D\u70B9\u4E00\u6B21",
     "sync.lastRun": "\u4E0A\u6B21\u540C\u6B65",
     "sync.never": "\u4ECE\u672A\u540C\u6B65",
     "sync.result": "\u540C\u6B65\u7ED3\u679C",
@@ -7910,6 +8033,7 @@ var LEX = {
     "action.save": "Save",
     "action.cancel": "Cancel",
     "action.edit": "Edit",
+    "action.openInEditor": "Open in Obsidian",
     "action.delete": "Delete",
     "action.copyRef": "Copy reference",
     "action.copied": "Copied",
@@ -8177,6 +8301,13 @@ var LEX = {
     "sync.foregroundHint": "Stops auto-sync when the panel is closed or the machine sleeps, saving cloud quota. Catches up next time you open it.",
     "sync.now": "Sync now",
     "sync.running": "Syncing\u2026",
+    "sync.pushAll": "Push local changes",
+    "sync.pushAllHint": "Only notes you edited locally and have not synced yet are pushed. The cloud copy of the same note will be overwritten \u2014 make sure those edits are really yours.",
+    "sync.pushAllDone": "Push finished",
+    "sync.pushAllPushed": "pushed",
+    "sync.pushAllSkipped": "unchanged",
+    "sync.pushAllFailed": "failed",
+    "sync.pushAllTruncated": "200 per run at most, click again for the rest",
     "sync.lastRun": "Last sync",
     "sync.never": "never",
     "sync.result": "Result",
@@ -8276,6 +8407,7 @@ var LEX = {
     "action.save": "Opslaan",
     "action.cancel": "Annuleren",
     "action.edit": "Bewerken",
+    "action.openInEditor": "Openen in Obsidian",
     "action.delete": "Verwijderen",
     "action.copyRef": "Referentie kopi\xEBren",
     "action.copied": "Gekopieerd",
@@ -8541,6 +8673,13 @@ var LEX = {
     "sync.foregroundHint": "Stopt met automatisch synchroniseren als het paneel dicht is of de machine slaapt, wat cloudquotum bespaart. De volgende keer wordt het ingehaald.",
     "sync.now": "Nu synchroniseren",
     "sync.running": "Synchroniseren\u2026",
+    "sync.pushAll": "Lokale wijzigingen pushen",
+    "sync.pushAllHint": "Alleen notities die je lokaal hebt gewijzigd en nog niet gesynchroniseerd zijn worden gepusht. De cloudversie van dezelfde notitie wordt overschreven \u2014 controleer of die wijzigingen echt van jou zijn.",
+    "sync.pushAllDone": "Push voltooid",
+    "sync.pushAllPushed": "gepusht",
+    "sync.pushAllSkipped": "onveranderd",
+    "sync.pushAllFailed": "mislukt",
+    "sync.pushAllTruncated": "maximaal 200 per keer, klik nog eens voor de rest",
     "sync.lastRun": "Laatste sync",
     "sync.never": "nooit",
     "sync.result": "Resultaat",
@@ -8913,7 +9052,8 @@ var ICONS = {
   book: "M4 5.5A1.5 1.5 0 0 1 5.5 4H19v16H5.5A1.5 1.5 0 0 1 4 18.5Z M8 4v16",
   chevron: "M9 6l6 6-6 6",
   calendar: "M4 7h16v13H4Z M4 11h16 M8 4v5 M16 4v5",
-  note: "M5 4h9l5 5v11H5Z M14 4v5h5 M8 13h8 M8 17h5"
+  note: "M5 4h9l5 5v11H5Z M14 4v5h5 M8 13h8 M8 17h5",
+  "external-link": "M14 4h6v6 M20 4l-9 9 M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"
 };
 function Icon(props) {
   const size = props && typeof props.size === "number" ? props.size : 16;
@@ -9236,7 +9376,8 @@ function renderBlocks(markdown, options) {
 }
 var CSS = `
 .dshgn_root{box-sizing:border-box;display:flex;flex-direction:column;height:100%;min-height:0;
-  background:var(--dsw-alias-bg-base,transparent);color:var(--dsw-alias-label-primary);font-size:13px}
+  background:var(--dsw-alias-bg-base,transparent);color:var(--dsw-alias-label-primary);
+  font-family:var(--font-interface,var(--dsw-font-sans,inherit));font-size:var(--font-ui-small,13px)}
 .dshgn_head{flex:none;display:flex;align-items:center;gap:10px;padding:10px 14px;
   border-bottom:0.5px solid var(--dsw-alias-border-l2)}
 .dshgn_headMain{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
@@ -9448,7 +9589,7 @@ var CSS = `
   background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);
   border-bottom:0.5px solid var(--dsw-alias-border-l1)}
 .dshgn_diffBody{flex:1;min-height:0;margin:0;padding:10px 12px;overflow:auto;
-  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px;
+  font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);font-size:11.5px;
   line-height:1.65;white-space:pre-wrap;word-break:break-word;
   color:var(--dsw-alias-label-primary)}
 /* \u6E32\u67D3\u6A21\u5F0F\uFF1A\u6CBF\u7528 .dshgn_md \u7684\u6392\u7248\u89C4\u5219\uFF08\u6807\u9898\u5C42\u7EA7/\u8868\u683C/\u5F15\u7528/\u56F4\u680F\uFF09\uFF0C
@@ -9576,7 +9717,9 @@ var CSS = `
 .dshgn_notePath{flex:1;min-width:0;font-size:11px;color:var(--dsw-alias-label-tertiary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_scroll{flex:1;overflow-y:auto;padding:16px clamp(16px,3vw,32px) 48px}
-.dshgn_md{max-width:760px;margin:0 auto;color:var(--dsw-alias-label-primary);font-size:13px;line-height:1.75}
+.dshgn_md{max-width:760px;margin:0 auto;color:var(--dsw-alias-label-primary);
+  font-family:var(--font-text,var(--dsw-font-sans,inherit));font-size:var(--font-text-size,13px);
+  line-height:var(--line-height-normal,1.75)}
 .dshgn_h{font-size:1em;margin:18px 0 8px;line-height:1.4;font-weight:600;color:var(--dsw-alias-label-primary)}
 /* \u6807\u9898\u7528 em \u800C\u4E0D\u662F px\uFF1A\u5B57\u53F7\u4E09\u6863\u53EA\u6539 .dshgn_md \u7684\u57FA\u51C6\u5B57\u53F7\uFF0C\u6807\u9898\u6309\u6BD4\u4F8B\u8DDF\u7740\u653E\u5927\uFF0C
    \u6574\u7BC7\u5C42\u7EA7\u5173\u7CFB\u4E0D\u53D8\u3002\u5199\u6B7B px \u7684\u8BDD\u628A\u6B63\u6587\u8C03\u5230 15px\uFF0C\u4E8C\u7EA7\u6807\u9898\u53CD\u800C\u6BD4\u6B63\u6587\u8FD8\u5C0F\u3002 */
@@ -9591,10 +9734,10 @@ var CSS = `
 /* \u5916\u94FE\u6309\u94AE\uFF1A\u5916\u89C2\u7167\u94FE\u63A5\u8D70\uFF0C\u884C\u4E3A\u662F\u6309\u94AE\uFF08\u907F\u514D\u81EA\u5B9A\u4E49\u89C6\u56FE\u91CC\u70B9\u5916\u94FE\u628A\u5E94\u7528\u5BFC\u822A\u8D70\uFF09 */
 .dshgn_linkBtn{background:none;border:0;padding:0;font:inherit;cursor:pointer;text-align:left}
 .dshgn_code{padding:1px 5px;border-radius:4px;background:var(--dsw-alias-interactive-bg-hover);
-  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}
+  font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);font-size:12px}
 .dshgn_pre{position:relative;margin:10px 0;padding:11px 12px;border-radius:9px;overflow-x:auto;
   background:var(--dsw-alias-interactive-bg-hover);border:0.5px solid var(--dsw-alias-border-l1)}
-.dshgn_pre code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;
+.dshgn_pre code{font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);font-size:12px;
   line-height:1.65;white-space:pre;color:var(--dsw-alias-label-primary)}
 .dshgn_preLang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--dsw-alias-label-dimmed)}
 /* \u9010\u5B57\u7A3F\u5355\u72EC\u4E00\u5957\u6392\u7248\uFF1A\u5B83\u662F\u4E00\u6BB5\u6BB5\u4E2D\u6587\u53E3\u8BED\uFF0C\u4E0D\u662F\u4EE3\u7801\u3002
@@ -9609,7 +9752,7 @@ var CSS = `
 .dshgn_transcript p{margin:0;padding:5px 0;border-bottom:0.5px solid var(--dsw-alias-border-l1)}
 .dshgn_transcript p:last-child{border-bottom:0}
 .dshgn_transcript .dshgn_ts{display:inline-block;min-width:56px;margin-right:8px;
-  font-family:var(--dsw-font-mono,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);
+  font-family:var(--dsw-font-mono,var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace));
   font-size:11px;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary);
   user-select:none}
 .dshgn_transcript .dshgn_speaker{color:var(--dsw-alias-brand-primary);font-weight:600;margin-right:6px}
@@ -9617,7 +9760,7 @@ var CSS = `
    \u5374\u53EA\u80FD\u81EA\u5DF1\u62D6\u8FDB\u5EA6\u6761\u53BB\u627E\u4F4D\u7F6E\u3002\u6837\u5F0F\u4E0A\u4ECD\u4FDD\u6301\u300C\u4E00\u5217\u5C0F\u5B57\u300D\u7684\u89C2\u611F\uFF0C\u53EA\u5728\u60AC\u505C
    \u548C\u805A\u7126\u65F6\u9732\u51FA\u53EF\u70B9\u7684\u7EBF\u7D22\uFF0C\u514D\u5F97\u6574\u6BB5\u9010\u5B57\u7A3F\u53D8\u6210\u4E00\u7247\u84DD\u8272\u6309\u94AE\u3002 */
 .dshgn_transcript .dshgn_tsBtn{background:none;border:0;padding:1px 4px;margin-left:-4px;border-radius:4px;
-  font:inherit;font-family:var(--dsw-font-mono,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);
+  font:inherit;font-family:var(--dsw-font-mono,var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace));
   font-size:11px;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary);
   cursor:pointer;text-align:left;user-select:none}
 .dshgn_transcript .dshgn_tsBtn:hover{background:var(--dsw-alias-interactive-bg-hover);
@@ -9650,7 +9793,8 @@ var CSS = `
   background:var(--dsw-alias-interactive-bg-hover)}
 .dshgn_editor{flex:1;width:100%;box-sizing:border-box;resize:none;border:0;outline:none;padding:16px clamp(16px,3vw,32px);
   background:transparent;color:var(--dsw-alias-label-primary);
-  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;line-height:1.7}
+  font-family:var(--font-text,var(--dsw-font-sans,inherit));font-size:var(--font-text-size,13px);
+  line-height:var(--line-height-normal,1.7)}
 .dshgn_empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:8px;padding:32px;text-align:center;color:var(--dsw-alias-label-tertiary)}
 .dshgn_emptyTitle{font-size:13px;color:var(--dsw-alias-label-secondary)}
@@ -9677,7 +9821,7 @@ var CSS = `
   box-shadow:inset 0 0 0 0.5px var(--dsw-alias-state-warn-primary)}
 .dshgn_badgeErr{color:var(--dsw-alias-state-error-primary)}
 .dshgn_log{max-height:220px;overflow-y:auto;padding:8px 10px;border-radius:8px;
-  background:var(--dsw-alias-interactive-bg-hover);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  background:var(--dsw-alias-interactive-bg-hover);font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,monospace);
   font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary);white-space:pre-wrap}
 .dshgn_error{padding:8px 10px;border-radius:8px;font-size:11.5px;line-height:1.6;
   color:var(--dsw-alias-state-error-primary);background:var(--dsw-alias-interactive-bg-hover)}
@@ -9705,7 +9849,7 @@ var CSS = `
   overflow:auto;background:var(--dsw-alias-interactive-bg-hover);
   border:0.5px solid var(--dsw-alias-border-l1);font-size:11.5px;line-height:1.6;
   color:var(--dsw-alias-label-secondary);
-  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap}
+  font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);white-space:pre-wrap}
 /* \u2500\u2500 \u97F3\u9891\u64AD\u653E\u5668 \u2500\u2500 */
 .dshgn_audioCard{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-radius:10px;
   border:0.5px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-overlay)}
@@ -9766,7 +9910,7 @@ var CSS = `
 .dshgn_btnRow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .dshgn_textarea{width:100%;box-sizing:border-box;min-height:180px;resize:vertical;padding:9px 10px;
   border:0.5px solid var(--dsw-alias-border-l2);border-radius:8px;background:transparent;
-  color:var(--dsw-alias-label-primary);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color:var(--dsw-alias-label-primary);font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);
   font-size:12px;line-height:1.65;outline:none}
 .dshgn_textarea:focus{border-color:var(--dsw-alias-brand-primary)}
 .dshgn_btn{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 11px;border-radius:7px;
@@ -10232,7 +10376,11 @@ function GetnotePage() {
     sync();
     const observer = new Observer(sync);
     observer.observe(document.body, { attributes: true, attributeFilter: ["class"] });
-    return () => observer.disconnect();
+    const unsubscribe = subscribeCssChange(sync);
+    return () => {
+      observer.disconnect();
+      unsubscribe();
+    };
   }, []);
   const [templatesOpen, setTemplatesOpen] = h2(false);
   const showToast = q2((text) => {
@@ -11156,8 +11304,9 @@ function GetnotePage() {
                 className: "dshgn_btn dshgn_btnDanger",
                 disabled: busy,
                 onClick: () => {
-                  if (!window.confirm(`${t3("batch.confirmDelete")} ${pickedCount}`)) return;
-                  void runBatch("delete");
+                  void confirmDialog(`${t3("batch.confirmDelete")} ${pickedCount}`).then((ok) => {
+                    if (ok) void runBatch("delete");
+                  });
                 }
               },
               t3("batch.delete")
@@ -11190,8 +11339,13 @@ function GetnotePage() {
                   // 其他列表（云端/冲突/回收站）没有勾选框就不用留这个空
                   "data-pick": "true",
                   onClick: () => {
-                    if (dirty && !window.confirm(t3("note.unsaved"))) return;
-                    void openNote(entry.path, true);
+                    if (!dirty) {
+                      void openNote(entry.path, true);
+                      return;
+                    }
+                    void confirmDialog(t3("note.unsaved")).then((ok) => {
+                      if (ok) void openNote(entry.path, true);
+                    });
                   },
                   // 右键：把这一篇能做的事一次列出来。先把它设为当前笔记，
                   // 因为下面的动作（复制引用、单篇同步、删除）都作用在 current 上。
@@ -11202,8 +11356,13 @@ function GetnotePage() {
                         id: "open",
                         label: t3("note.menuOpen"),
                         run: () => {
-                          if (dirty && !window.confirm(t3("note.unsaved"))) return;
-                          void openNote(entry.path, true);
+                          if (!dirty) {
+                            void openNote(entry.path, true);
+                            return;
+                          }
+                          void confirmDialog(t3("note.unsaved")).then((ok) => {
+                            if (ok) void openNote(entry.path, true);
+                          });
                         }
                       },
                       {
@@ -11761,7 +11920,7 @@ function CloudPane(props) {
   }, [detail, draftTitle, draftBody, openCloudNote, onError, onSynced, showToast, t3]);
   const deleteCloud = q2(async () => {
     if (!detail) return;
-    if (!window.confirm(`${t3("cloud.deleteCloud")}\uFF1A${detail.title || detail.noteId}\uFF1F`)) return;
+    if (!await confirmDialog(`${t3("cloud.deleteCloud")}\uFF1A${detail.title || detail.noteId}\uFF1F`)) return;
     setBusy(true);
     try {
       await api("/cloud/delete", {
@@ -11896,7 +12055,7 @@ function CloudPane(props) {
       onError(t3("cloud.noLocalCopy"));
       return;
     }
-    if (!window.confirm(`${t3("cloud.pushLocal")}
+    if (!await confirmDialog(`${t3("cloud.pushLocal")}
 
 ${t3("cloud.pushHint")}`)) return;
     setBusy(true);
@@ -12687,7 +12846,7 @@ function CardPane(props) {
   }, [onError]);
   const startImport = q2(async () => {
     if (deleteAfter) {
-      const ok = window.confirm(
+      const ok = await confirmDialog(
         "\u5BFC\u5165\u6210\u529F\u540E\u4F1A\u628A\u5361\u7247\u4E0A\u7684\u539F\u4EF6\u6C38\u4E45\u5220\u6389\uFF0C\u4E0D\u80FD\u6062\u590D\u3002\u786E\u5B9A\u8981\u8FD9\u6837\u5417\uFF1F"
       );
       if (!ok) return;
@@ -13523,7 +13682,7 @@ function TrashPane(props) {
   );
   const purgeOne = q2(
     async (item) => {
-      if (!window.confirm(t3("trash.purgeOneConfirm"))) return;
+      if (!await confirmDialog(t3("trash.purgeOneConfirm"))) return;
       setBusy(true);
       try {
         await api("/trash/purge", {
@@ -13543,7 +13702,7 @@ function TrashPane(props) {
     [load, onChanged, onError, showToast, t3]
   );
   const purgeAll = q2(async () => {
-    if (!window.confirm(t3("trash.purgeConfirm"))) return;
+    if (!await confirmDialog(t3("trash.purgeConfirm"))) return;
     setBusy(true);
     try {
       await api("/trash/purge", {
@@ -13709,6 +13868,28 @@ function SyncPane(props) {
       setBusy(false);
     }
   }, [fullScan, onError]);
+  const [pushReport, setPushReport] = h2(null);
+  const pushAll = q2(async () => {
+    if (!await confirmDialog(`${t3("sync.pushAll")}
+
+${t3("sync.pushAllHint")}`)) return;
+    setBusy(true);
+    setLastError(null);
+    try {
+      const json = await api("/sync/push-all", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ dir: "", limit: 200 })
+      });
+      setPushReport(json);
+      showToast(`${t3("sync.pushAllDone")}\uFF1A${json.pushed}`);
+      if (typeof onChanged === "function") await onChanged();
+    } catch (err) {
+      onError(err && err.message ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }, [onChanged, onError, showToast, t3]);
   const resultStats = lastResult ? [
     { label: t3("sync.pulled"), num: lastResult.pulled ?? 0 },
     { label: t3("sync.skipped"), num: lastResult.skipped ?? 0 },
@@ -13815,6 +13996,7 @@ function SyncPane(props) {
         "div",
         { className: "dshgn_rowLine" },
         h4("button", { type: "button", className: "dshgn_btn dshgn_btnPri", onClick: runNow, disabled: busy || running || !configured }, running ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "sync", size: 12 }), running ? t3("sync.running") : t3("sync.now")),
+        h4("button", { type: "button", className: "dshgn_btn", onClick: pushAll, disabled: busy || running || !configured, title: t3("sync.pushAllHint") }, t3("sync.pushAll")),
         h4(
           "label",
           { className: "dshgn_rowLine", style: { fontSize: 11.5, color: "var(--dsw-alias-label-secondary)" } },
@@ -13825,6 +14007,11 @@ function SyncPane(props) {
       !configured ? h4("div", { className: "dshgn_fieldHint" }, t3("cloud.notConfiguredDesc")) : null,
       lastError !== null ? h4("div", { className: "dshgn_error" }, lastError) : null,
       resultStats.length > 0 ? h4("div", { className: "dshgn_statGrid" }, resultStats.map((s3) => h4("div", { key: s3.label, className: "dshgn_stat" }, h4("span", { className: "dshgn_statNum" }, String(s3.num)), h4("span", { className: "dshgn_statLabel" }, s3.label)))) : null,
+      pushReport !== null ? h4(
+        "div",
+        { className: "dshgn_fieldHint" },
+        `${t3("sync.pushAllDone")}\uFF1A${t3("sync.pushAllPushed")} ${pushReport.pushed}\uFF0C${t3("sync.pushAllSkipped")} ${pushReport.skipped}${pushReport.failed > 0 ? `\uFF0C${t3("sync.pushAllFailed")} ${pushReport.failed}` : ""}${pushReport.truncated ? `\uFF08${t3("sync.pushAllTruncated")}\uFF09` : ""}`
+      ) : null,
       lastResult !== null && lastResult.at ? h4("div", { className: "dshgn_fieldHint" }, `${t3("sync.result")}: ${formatTime(lastResult.at)}`) : null
     ),
     h4(LegacyImport)
@@ -14648,6 +14835,18 @@ function NotePane(props) {
           },
           h4(Icon, { name: "clock", size: 15 })
         ),
+        // 去宿主编辑器里改：补全、Vim、插件命令都在那边。
+        // 宿主没注入时（离线测试）不显示，免得点了没反应。
+        hasOpenInEditor() ? h4(
+          "button",
+          {
+            type: "button",
+            className: "dshgn_iconBtn",
+            title: t3("action.openInEditor"),
+            onClick: () => openInEditor(absolute)
+          },
+          h4(Icon, { name: "external-link", size: 15 })
+        ) : null,
         h4(
           "button",
           { type: "button", className: "dshgn_iconBtn", title: t3("action.delete"), onClick: onDelete, disabled: busy },
@@ -15262,7 +15461,7 @@ function CloudCredCard(props) {
     }
   }, [onError, t3]);
   const clear = q2(async () => {
-    if (!window.confirm(t3("api.clear"))) return;
+    if (!await confirmDialog(t3("api.clear"))) return;
     setBusy(true);
     setProbe(null);
     try {
@@ -15525,6 +15724,8 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       menu.showAtMouseEvent(event);
       return true;
     });
+    setConfirmDialog((message) => this.askConfirm(message));
+    setOpenInEditor((path) => this.openInVaultEditor(path));
     const stored = await readSettings();
     this.debugLogging = stored.debugLogging === true;
     setDebugLogging(this.debugLogging);
@@ -15651,6 +15852,7 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     this.registerEvent(this.app.vault.on("create", bump));
     this.registerEvent(this.app.vault.on("delete", bump));
     this.registerEvent(this.app.vault.on("rename", bump));
+    this.registerEvent(this.app.workspace.on("css-change", () => notifyCssChange()));
     setSyncReport((result) => {
       void this.appendSyncReport(result);
     });
@@ -15827,6 +16029,67 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     const leaf = newWindow ? this.app.workspace.openPopoutLeaf({ size: { width: 1100, height: 780 } }) : this.app.workspace.getLeaf(true);
     await leaf.setViewState({ type: VIEW_TYPE_GETNOTE, active: true });
     this.app.workspace.revealLeaf(leaf);
+  }
+  /**
+   * 面板里的确认框。
+   *
+   * 面板原来用 window.confirm：Electron 里能用，但长得跟宿主完全不搭，移动端
+   * WebView 还可能根本不弹——删除、清空这种不可逆的动作就等于没有二次确认。
+   * Modal 由宿主渲染，遮罩、焦点、Esc 都归 Obsidian 管。
+   *
+   * 返回 Promise<boolean>，用户点「确定」才是 true；关窗（Esc、点遮罩）算取消。
+   */
+  askConfirm(message) {
+    if (typeof import_obsidian2.Modal !== "function") return Promise.resolve(false);
+    return new Promise((resolve5) => {
+      let settled = false;
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        resolve5(value);
+      };
+      class ConfirmModal extends import_obsidian2.Modal {
+        onOpen() {
+          const { contentEl } = this;
+          contentEl.createEl("p", { text: String(message) });
+          const bar = contentEl.createDiv({ cls: "modal-button-container" });
+          const ok = bar.createEl("button", { text: "\u786E\u5B9A", cls: "mod-cta" });
+          ok.addEventListener("click", () => {
+            finish(true);
+            this.close();
+          });
+          const cancel = bar.createEl("button", { text: "\u53D6\u6D88" });
+          cancel.addEventListener("click", () => {
+            finish(false);
+            this.close();
+          });
+          if (typeof cancel.focus === "function") cancel.focus();
+        }
+        onClose() {
+          finish(false);
+          if (this.contentEl && typeof this.contentEl.empty === "function") this.contentEl.empty();
+        }
+      }
+      new ConfirmModal(this.app).open();
+    });
+  }
+  /**
+   * 把库内相对路径交给宿主编辑器打开。
+   *
+   * 面板自己的编辑器只能改正文：没有补全、没有 Vim、没有别的插件挂上来的命令。
+   * 找不到这个文件（刚被删、路径带错）返回 false，面板据此决定要不要提示。
+   */
+  openInVaultEditor(path) {
+    try {
+      const rel = String(path || "").replace(/^\/+/, "");
+      if (rel === "") return false;
+      const file = this.app.vault.getAbstractFileByPath(rel);
+      if (!file) return false;
+      void this.app.workspace.getLeaf("tab").openFile(file);
+      return true;
+    } catch {
+      return false;
+    }
   }
   async saveLocalPort(port) {
     await updateSettings({ localPort: port });

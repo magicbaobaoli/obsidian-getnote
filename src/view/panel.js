@@ -157,6 +157,72 @@ async function saveFile(url, filename) {
       }
     }
 
+    // 确认框。宿主注入的是 Obsidian 的 Modal——它跟设置页、命令面板长得一样，
+    // 能用键盘操作，也会被宿主的弹层层级管着；window.confirm 是浏览器原生的，
+    // 在 Obsidian 里既不像宿主的一部分，某些平台（移动端 WebView）还会直接不弹。
+    // 没有注入时（离线测试、早期加载阶段）退回 window.confirm。
+    let __confirm = null
+    export function setConfirmDialog(fn) {
+      __confirm = typeof fn === 'function' ? fn : null
+    }
+    function confirmDialog(message) {
+      if (__confirm !== null) {
+        try {
+          return Promise.resolve(__confirm(String(message))).then(
+            (value) => value === true,
+            () => window.confirm(String(message)),
+          )
+        } catch {
+          // 宿主实现炸了也不能把用户卡在一个点了没反应的按钮上
+        }
+      }
+      try {
+        return Promise.resolve(window.confirm(String(message)) === true)
+      } catch {
+        return Promise.resolve(false)
+      }
+    }
+
+    // 在宿主的编辑器里打开这一篇。
+    //
+    // 面板的编辑器只服务「扫一眼、改两笔」：没有补全、没有 Vim、没有
+    // 插件提供的命令（格式化、模板、AI 补全）。真要动结构，用户还是得去
+    // Obsidian 自己的编辑器——所以笔记头上得有个能过去的门，而不是逼他
+    // 在文件列表里找。
+    let __openInEditor = null
+    export function setOpenInEditor(fn) {
+      __openInEditor = typeof fn === 'function' ? fn : null
+    }
+    function hasOpenInEditor() {
+      return __openInEditor !== null
+    }
+    function openInEditor(path) {
+      if (__openInEditor === null) return false
+      try {
+        return __openInEditor(String(path || '')) === true
+      } catch {
+        return false
+      }
+    }
+
+    // 宿主换主题时 Obsidian 会发 'css-change' 事件，比 MutationObserver 盯 body
+    // 的 class 更准（用户改了字体、字号、界面缩放也能收到）。没有宿主时靠
+    // MutationObserver 兜底，两者最终都只是让面板重新算一次配色。
+    const __cssListeners = new Set()
+    export function notifyCssChange() {
+      for (const listener of Array.from(__cssListeners)) {
+        try {
+          listener()
+        } catch {
+          // 一个监听器出错不能影响其它监听器
+        }
+      }
+    }
+    function subscribeCssChange(listener) {
+      __cssListeners.add(listener)
+      return () => __cssListeners.delete(listener)
+    }
+
     const h = React.createElement
     const NS = 'dsh-getnote'
     const PANEL_ID = 'dsh-getnote'
@@ -177,6 +243,7 @@ async function saveFile(url, filename) {
         'action.save': '保存',
         'action.cancel': '取消',
         'action.edit': '编辑',
+        'action.openInEditor': '在 Obsidian 里打开',
         'action.delete': '删除',
         'action.copyRef': '复制引用',
         'action.copied': '已复制',
@@ -450,6 +517,13 @@ async function saveFile(url, filename) {
         'sync.foregroundHint': '关掉面板或合上电脑后不再自动同步，省云端配额。下次打开面板会补上。',
         'sync.now': '立即同步',
         'sync.running': '正在同步…',
+        'sync.pushAll': '把本地改动推上去',
+        'sync.pushAllHint': '只推本地改过、还没同步上去的笔记。云端的同名笔记正文会被覆盖，请确认那些改动确实是你写的。',
+        'sync.pushAllDone': '推送完成',
+        'sync.pushAllPushed': '已推',
+        'sync.pushAllSkipped': '没改动',
+        'sync.pushAllFailed': '失败',
+        'sync.pushAllTruncated': '一次最多 200 篇，剩下的再点一次',
         'sync.lastRun': '上次同步',
         'sync.never': '从未同步',
         'sync.result': '同步结果',
@@ -550,6 +624,7 @@ async function saveFile(url, filename) {
         'action.save': 'Save',
         'action.cancel': 'Cancel',
         'action.edit': 'Edit',
+        'action.openInEditor': 'Open in Obsidian',
         'action.delete': 'Delete',
         'action.copyRef': 'Copy reference',
         'action.copied': 'Copied',
@@ -820,6 +895,13 @@ async function saveFile(url, filename) {
         'sync.foregroundHint': 'Stops auto-sync when the panel is closed or the machine sleeps, saving cloud quota. Catches up next time you open it.',
         'sync.now': 'Sync now',
         'sync.running': 'Syncing…',
+        'sync.pushAll': 'Push local changes',
+        'sync.pushAllHint': 'Only notes you edited locally and have not synced yet are pushed. The cloud copy of the same note will be overwritten — make sure those edits are really yours.',
+        'sync.pushAllDone': 'Push finished',
+        'sync.pushAllPushed': 'pushed',
+        'sync.pushAllSkipped': 'unchanged',
+        'sync.pushAllFailed': 'failed',
+        'sync.pushAllTruncated': '200 per run at most, click again for the rest',
         'sync.lastRun': 'Last sync',
         'sync.never': 'never',
         'sync.result': 'Result',
@@ -920,6 +1002,7 @@ async function saveFile(url, filename) {
         'action.save': 'Opslaan',
         'action.cancel': 'Annuleren',
         'action.edit': 'Bewerken',
+        'action.openInEditor': 'Openen in Obsidian',
         'action.delete': 'Verwijderen',
         'action.copyRef': 'Referentie kopiëren',
         'action.copied': 'Gekopieerd',
@@ -1185,6 +1268,13 @@ async function saveFile(url, filename) {
         'sync.foregroundHint': 'Stopt met automatisch synchroniseren als het paneel dicht is of de machine slaapt, wat cloudquotum bespaart. De volgende keer wordt het ingehaald.',
         'sync.now': 'Nu synchroniseren',
         'sync.running': 'Synchroniseren…',
+        'sync.pushAll': 'Lokale wijzigingen pushen',
+        'sync.pushAllHint': 'Alleen notities die je lokaal hebt gewijzigd en nog niet gesynchroniseerd zijn worden gepusht. De cloudversie van dezelfde notitie wordt overschreven — controleer of die wijzigingen echt van jou zijn.',
+        'sync.pushAllDone': 'Push voltooid',
+        'sync.pushAllPushed': 'gepusht',
+        'sync.pushAllSkipped': 'onveranderd',
+        'sync.pushAllFailed': 'mislukt',
+        'sync.pushAllTruncated': 'maximaal 200 per keer, klik nog eens voor de rest',
         'sync.lastRun': 'Laatste sync',
         'sync.never': 'nooit',
         'sync.result': 'Resultaat',
@@ -1689,6 +1779,7 @@ async function saveFile(url, filename) {
       chevron: 'M9 6l6 6-6 6',
       calendar: 'M4 7h16v13H4Z M4 11h16 M8 4v5 M16 4v5',
       note: 'M5 4h9l5 5v11H5Z M14 4v5h5 M8 13h8 M8 17h5',
+      'external-link': 'M14 4h6v6 M20 4l-9 9 M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5',
     }
 
     function Icon(props) {
@@ -2097,7 +2188,8 @@ async function saveFile(url, filename) {
 
     const CSS = `
 .dshgn_root{box-sizing:border-box;display:flex;flex-direction:column;height:100%;min-height:0;
-  background:var(--dsw-alias-bg-base,transparent);color:var(--dsw-alias-label-primary);font-size:13px}
+  background:var(--dsw-alias-bg-base,transparent);color:var(--dsw-alias-label-primary);
+  font-family:var(--font-interface,var(--dsw-font-sans,inherit));font-size:var(--font-ui-small,13px)}
 .dshgn_head{flex:none;display:flex;align-items:center;gap:10px;padding:10px 14px;
   border-bottom:0.5px solid var(--dsw-alias-border-l2)}
 .dshgn_headMain{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
@@ -2309,7 +2401,7 @@ async function saveFile(url, filename) {
   background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);
   border-bottom:0.5px solid var(--dsw-alias-border-l1)}
 .dshgn_diffBody{flex:1;min-height:0;margin:0;padding:10px 12px;overflow:auto;
-  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px;
+  font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);font-size:11.5px;
   line-height:1.65;white-space:pre-wrap;word-break:break-word;
   color:var(--dsw-alias-label-primary)}
 /* 渲染模式：沿用 .dshgn_md 的排版规则（标题层级/表格/引用/围栏），
@@ -2437,7 +2529,9 @@ async function saveFile(url, filename) {
 .dshgn_notePath{flex:1;min-width:0;font-size:11px;color:var(--dsw-alias-label-tertiary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_scroll{flex:1;overflow-y:auto;padding:16px clamp(16px,3vw,32px) 48px}
-.dshgn_md{max-width:760px;margin:0 auto;color:var(--dsw-alias-label-primary);font-size:13px;line-height:1.75}
+.dshgn_md{max-width:760px;margin:0 auto;color:var(--dsw-alias-label-primary);
+  font-family:var(--font-text,var(--dsw-font-sans,inherit));font-size:var(--font-text-size,13px);
+  line-height:var(--line-height-normal,1.75)}
 .dshgn_h{font-size:1em;margin:18px 0 8px;line-height:1.4;font-weight:600;color:var(--dsw-alias-label-primary)}
 /* 标题用 em 而不是 px：字号三档只改 .dshgn_md 的基准字号，标题按比例跟着放大，
    整篇层级关系不变。写死 px 的话把正文调到 15px，二级标题反而比正文还小。 */
@@ -2452,10 +2546,10 @@ async function saveFile(url, filename) {
 /* 外链按钮：外观照链接走，行为是按钮（避免自定义视图里点外链把应用导航走） */
 .dshgn_linkBtn{background:none;border:0;padding:0;font:inherit;cursor:pointer;text-align:left}
 .dshgn_code{padding:1px 5px;border-radius:4px;background:var(--dsw-alias-interactive-bg-hover);
-  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}
+  font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);font-size:12px}
 .dshgn_pre{position:relative;margin:10px 0;padding:11px 12px;border-radius:9px;overflow-x:auto;
   background:var(--dsw-alias-interactive-bg-hover);border:0.5px solid var(--dsw-alias-border-l1)}
-.dshgn_pre code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;
+.dshgn_pre code{font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);font-size:12px;
   line-height:1.65;white-space:pre;color:var(--dsw-alias-label-primary)}
 .dshgn_preLang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--dsw-alias-label-dimmed)}
 /* 逐字稿单独一套排版：它是一段段中文口语，不是代码。
@@ -2470,7 +2564,7 @@ async function saveFile(url, filename) {
 .dshgn_transcript p{margin:0;padding:5px 0;border-bottom:0.5px solid var(--dsw-alias-border-l1)}
 .dshgn_transcript p:last-child{border-bottom:0}
 .dshgn_transcript .dshgn_ts{display:inline-block;min-width:56px;margin-right:8px;
-  font-family:var(--dsw-font-mono,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);
+  font-family:var(--dsw-font-mono,var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace));
   font-size:11px;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary);
   user-select:none}
 .dshgn_transcript .dshgn_speaker{color:var(--dsw-alias-brand-primary);font-weight:600;margin-right:6px}
@@ -2478,7 +2572,7 @@ async function saveFile(url, filename) {
    却只能自己拖进度条去找位置。样式上仍保持「一列小字」的观感，只在悬停
    和聚焦时露出可点的线索，免得整段逐字稿变成一片蓝色按钮。 */
 .dshgn_transcript .dshgn_tsBtn{background:none;border:0;padding:1px 4px;margin-left:-4px;border-radius:4px;
-  font:inherit;font-family:var(--dsw-font-mono,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);
+  font:inherit;font-family:var(--dsw-font-mono,var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace));
   font-size:11px;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary);
   cursor:pointer;text-align:left;user-select:none}
 .dshgn_transcript .dshgn_tsBtn:hover{background:var(--dsw-alias-interactive-bg-hover);
@@ -2511,7 +2605,8 @@ async function saveFile(url, filename) {
   background:var(--dsw-alias-interactive-bg-hover)}
 .dshgn_editor{flex:1;width:100%;box-sizing:border-box;resize:none;border:0;outline:none;padding:16px clamp(16px,3vw,32px);
   background:transparent;color:var(--dsw-alias-label-primary);
-  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;line-height:1.7}
+  font-family:var(--font-text,var(--dsw-font-sans,inherit));font-size:var(--font-text-size,13px);
+  line-height:var(--line-height-normal,1.7)}
 .dshgn_empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:8px;padding:32px;text-align:center;color:var(--dsw-alias-label-tertiary)}
 .dshgn_emptyTitle{font-size:13px;color:var(--dsw-alias-label-secondary)}
@@ -2538,7 +2633,7 @@ async function saveFile(url, filename) {
   box-shadow:inset 0 0 0 0.5px var(--dsw-alias-state-warn-primary)}
 .dshgn_badgeErr{color:var(--dsw-alias-state-error-primary)}
 .dshgn_log{max-height:220px;overflow-y:auto;padding:8px 10px;border-radius:8px;
-  background:var(--dsw-alias-interactive-bg-hover);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  background:var(--dsw-alias-interactive-bg-hover);font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,monospace);
   font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary);white-space:pre-wrap}
 .dshgn_error{padding:8px 10px;border-radius:8px;font-size:11.5px;line-height:1.6;
   color:var(--dsw-alias-state-error-primary);background:var(--dsw-alias-interactive-bg-hover)}
@@ -2566,7 +2661,7 @@ async function saveFile(url, filename) {
   overflow:auto;background:var(--dsw-alias-interactive-bg-hover);
   border:0.5px solid var(--dsw-alias-border-l1);font-size:11.5px;line-height:1.6;
   color:var(--dsw-alias-label-secondary);
-  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap}
+  font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);white-space:pre-wrap}
 /* ── 音频播放器 ── */
 .dshgn_audioCard{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-radius:10px;
   border:0.5px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-overlay)}
@@ -2627,7 +2722,7 @@ async function saveFile(url, filename) {
 .dshgn_btnRow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .dshgn_textarea{width:100%;box-sizing:border-box;min-height:180px;resize:vertical;padding:9px 10px;
   border:0.5px solid var(--dsw-alias-border-l2);border-radius:8px;background:transparent;
-  color:var(--dsw-alias-label-primary);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color:var(--dsw-alias-label-primary);font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);
   font-size:12px;line-height:1.65;outline:none}
 .dshgn_textarea:focus{border-color:var(--dsw-alias-brand-primary)}
 .dshgn_btn{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 11px;border-radius:7px;
@@ -3134,7 +3229,13 @@ async function saveFile(url, filename) {
         sync()
         const observer = new Observer(sync)
         observer.observe(document.body, { attributes: true, attributeFilter: ['class'] })
-        return () => observer.disconnect()
+        // 宿主发 'css-change' 时（改主题、改字体字号、改界面缩放）也重算一次。
+        // 光盯 body 的 class 会漏掉「同一套深浅、但换了主题片段」的情况。
+        const unsubscribe = subscribeCssChange(sync)
+        return () => {
+          observer.disconnect()
+          unsubscribe()
+        }
       }, [])
       // 新建模板菜单的开关。点「+」不再直接建空笔记，而是先让用户选一类——
       // 日记/读书/会议/随手记的日期与结构都是固定的，每次手写是重复劳动。
@@ -4199,8 +4300,9 @@ async function saveFile(url, filename) {
                             disabled: busy,
                             onClick: () => {
                               // 批量删除不可撤销地进回收站，必须先确认一次
-                              if (!window.confirm(`${t('batch.confirmDelete')} ${pickedCount}`)) return
-                              void runBatch('delete')
+                              void confirmDialog(`${t('batch.confirmDelete')} ${pickedCount}`).then((ok) => {
+                                if (ok) void runBatch('delete')
+                              })
                             },
                           },
                           t('batch.delete'),
@@ -4239,8 +4341,14 @@ async function saveFile(url, filename) {
                         // 其他列表（云端/冲突/回收站）没有勾选框就不用留这个空
                         'data-pick': 'true',
                         onClick: () => {
-                          if (dirty && !window.confirm(t('note.unsaved'))) return
-                          void openNote(entry.path, true)
+                          // 有未保存的草稿才拦一下；没改动时不该弹框
+                          if (!dirty) {
+                            void openNote(entry.path, true)
+                            return
+                          }
+                          void confirmDialog(t('note.unsaved')).then((ok) => {
+                            if (ok) void openNote(entry.path, true)
+                          })
                         },
                         // 右键：把这一篇能做的事一次列出来。先把它设为当前笔记，
                         // 因为下面的动作（复制引用、单篇同步、删除）都作用在 current 上。
@@ -4251,8 +4359,13 @@ async function saveFile(url, filename) {
                               id: 'open',
                               label: t('note.menuOpen'),
                               run: () => {
-                                if (dirty && !window.confirm(t('note.unsaved'))) return
-                                void openNote(entry.path, true)
+                                if (!dirty) {
+                                  void openNote(entry.path, true)
+                                  return
+                                }
+                                void confirmDialog(t('note.unsaved')).then((ok) => {
+                                  if (ok) void openNote(entry.path, true)
+                                })
                               },
                             },
                             {
@@ -4927,7 +5040,7 @@ async function saveFile(url, filename) {
 
       const deleteCloud = React.useCallback(async () => {
         if (!detail) return
-        if (!window.confirm(`${t('cloud.deleteCloud')}：${detail.title || detail.noteId}？`)) return
+        if (!(await confirmDialog(`${t('cloud.deleteCloud')}：${detail.title || detail.noteId}？`))) return
         setBusy(true)
         try {
           await api('/cloud/delete', {
@@ -5078,7 +5191,7 @@ async function saveFile(url, filename) {
           onError(t('cloud.noLocalCopy'))
           return
         }
-        if (!window.confirm(`${t('cloud.pushLocal')}\n\n${t('cloud.pushHint')}`)) return
+        if (!(await confirmDialog(`${t('cloud.pushLocal')}\n\n${t('cloud.pushHint')}`))) return
         setBusy(true)
         try {
           await api('/sync/push', {
@@ -6030,7 +6143,7 @@ async function saveFile(url, filename) {
 
       const startImport = React.useCallback(async () => {
         if (deleteAfter) {
-          const ok = window.confirm(
+          const ok = await confirmDialog(
             '导入成功后会把卡片上的原件永久删掉，不能恢复。确定要这样吗？',
           )
           if (!ok) return
@@ -6986,7 +7099,7 @@ async function saveFile(url, filename) {
 
       const purgeOne = React.useCallback(
         async (item) => {
-          if (!window.confirm(t('trash.purgeOneConfirm'))) return
+          if (!(await confirmDialog(t('trash.purgeOneConfirm')))) return
           setBusy(true)
           try {
             await api('/trash/purge', {
@@ -7007,7 +7120,7 @@ async function saveFile(url, filename) {
       )
 
       const purgeAll = React.useCallback(async () => {
-        if (!window.confirm(t('trash.purgeConfirm'))) return
+        if (!(await confirmDialog(t('trash.purgeConfirm')))) return
         setBusy(true)
         try {
           await api('/trash/purge', {
@@ -7191,6 +7304,30 @@ async function saveFile(url, filename) {
         }
       }, [fullScan, onError])
 
+      // 反向同步（本地 → 云端）的批量版：离线写了一批之后，一篇篇右键推太笨。
+      // 服务端只推「本地指纹和上次同步记下的不一样」的笔记，所以反复点也不会
+      // 把整库刷一遍。
+      const [pushReport, setPushReport] = React.useState(null)
+      const pushAll = React.useCallback(async () => {
+        if (!(await confirmDialog(`${t('sync.pushAll')}\n\n${t('sync.pushAllHint')}`))) return
+        setBusy(true)
+        setLastError(null)
+        try {
+          const json = await api('/sync/push-all', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ dir: '', limit: 200 }),
+          })
+          setPushReport(json)
+          showToast(`${t('sync.pushAllDone')}：${json.pushed}`)
+          if (typeof onChanged === 'function') await onChanged()
+        } catch (err) {
+          onError(err && err.message ? err.message : String(err))
+        } finally {
+          setBusy(false)
+        }
+      }, [onChanged, onError, showToast, t])
+
       const resultStats = lastResult
         ? [
             { label: t('sync.pulled'), num: lastResult.pulled ?? 0 },
@@ -7305,6 +7442,7 @@ async function saveFile(url, filename) {
             'div',
             { className: 'dshgn_rowLine' },
             h('button', { type: 'button', className: 'dshgn_btn dshgn_btnPri', onClick: runNow, disabled: busy || running || !configured }, running ? h('span', { className: 'dshgn_spin' }) : h(Icon, { name: 'sync', size: 12 }), running ? t('sync.running') : t('sync.now')),
+            h('button', { type: 'button', className: 'dshgn_btn', onClick: pushAll, disabled: busy || running || !configured, title: t('sync.pushAllHint') }, t('sync.pushAll')),
             h(
               'label',
               { className: 'dshgn_rowLine', style: { fontSize: 11.5, color: 'var(--dsw-alias-label-secondary)' } },
@@ -7315,6 +7453,13 @@ async function saveFile(url, filename) {
           !configured ? h('div', { className: 'dshgn_fieldHint' }, t('cloud.notConfiguredDesc')) : null,
           lastError !== null ? h('div', { className: 'dshgn_error' }, lastError) : null,
           resultStats.length > 0 ? h('div', { className: 'dshgn_statGrid' }, resultStats.map((s) => h('div', { key: s.label, className: 'dshgn_stat' }, h('span', { className: 'dshgn_statNum' }, String(s.num)), h('span', { className: 'dshgn_statLabel' }, s.label)))) : null,
+          pushReport !== null
+            ? h(
+                'div',
+                { className: 'dshgn_fieldHint' },
+                `${t('sync.pushAllDone')}：${t('sync.pushAllPushed')} ${pushReport.pushed}，${t('sync.pushAllSkipped')} ${pushReport.skipped}${pushReport.failed > 0 ? `，${t('sync.pushAllFailed')} ${pushReport.failed}` : ''}${pushReport.truncated ? `（${t('sync.pushAllTruncated')}）` : ''}`,
+              )
+            : null,
           lastResult !== null && lastResult.at ? h('div', { className: 'dshgn_fieldHint' }, `${t('sync.result')}: ${formatTime(lastResult.at)}`) : null,
         ),
         h(LegacyImport),
@@ -8286,6 +8431,20 @@ async function saveFile(url, filename) {
                   },
                   h(Icon, { name: 'clock', size: 15 }),
                 ),
+                // 去宿主编辑器里改：补全、Vim、插件命令都在那边。
+                // 宿主没注入时（离线测试）不显示，免得点了没反应。
+                hasOpenInEditor()
+                  ? h(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'dshgn_iconBtn',
+                        title: t('action.openInEditor'),
+                        onClick: () => openInEditor(absolute),
+                      },
+                      h(Icon, { name: 'external-link', size: 15 }),
+                    )
+                  : null,
                 h(
                   'button',
                   { type: 'button', className: 'dshgn_iconBtn', title: t('action.delete'), onClick: onDelete, disabled: busy },
@@ -9012,7 +9171,7 @@ async function saveFile(url, filename) {
       }, [onError, t])
 
       const clear = React.useCallback(async () => {
-        if (!window.confirm(t('api.clear'))) return
+        if (!(await confirmDialog(t('api.clear')))) return
         setBusy(true)
         setProbe(null)
         try {

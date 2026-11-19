@@ -326,6 +326,123 @@ test('右键笔记卡片会把动作清单交给宿主，执行其中一项真�
 })
 
 /**
+ * 确认框要交给宿主。
+ *
+ * 面板里原来的 window.confirm 在 Obsidian 里长得跟宿主完全不搭，移动端 WebView
+ * 还可能根本不弹——删除这类不可逆动作就等于没有二次确认。这条验的是：确认
+ * 真的问到了宿主，而且宿主说「不要」的时候，动作一步都没走。
+ */
+test('面板的确认框交给宿主，宿主说不要就一步都不走', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  // 先勾一篇，批量栏才会出现
+  const card = await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) =>
+        (el.textContent || '').includes('右键菜单验收'),
+      ),
+    5000,
+    '列表里出现预置笔记',
+  )
+  const box = card.querySelector('.dshgn_pickBox')
+  assert.ok(box, '卡片上应该有勾选框')
+  box.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_batchBar') !== null, 3000, '批量栏出现')
+
+  // 展开批量操作菜单，找到「移到回收站」
+  const batchBtn = Array.from(window.document.querySelectorAll('.dshgn_batchBtn')).find(
+    (el) => (el.textContent || '').trim() === '批量操作',
+  )
+  assert.ok(batchBtn, '应该有「批量操作」按钮')
+  batchBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const delBtn = await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_btnDanger')).find((el) =>
+        (el.textContent || '').includes('移到回收站'),
+      ),
+    3000,
+    '出现「移到回收站」按钮',
+  )
+
+  const asked = []
+  panel.setConfirmDialog((message) => {
+    asked.push(String(message))
+    return Promise.resolve(false)
+  })
+  try {
+    delBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => asked.length > 0, 3000, '确认框问到宿主')
+    assert.ok(asked[0].includes('回收站'), '问的话里要写清楚后果，实际：' + asked[0])
+
+    // 宿主说「不要」：笔记必须还在
+    await sleep(200)
+    const still = await fetch(
+      server.origin + '/getnote/tree',
+      { headers: { 'x-getnote-token': server.token } },
+    ).then((res) => res.json())
+    assert.ok(
+      JSON.stringify(still).includes('右键菜单验收'),
+      '取消之后不该真的删掉：' + JSON.stringify(still).slice(0, 300),
+    )
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+})
+
+/**
+ * 「在 Obsidian 里打开」。
+ *
+ * 面板的编辑器只服务「扫一眼、改两笔」，没有补全、没有 Vim、没有插件命令。
+ * 真要动结构得回宿主编辑器——这条验按钮在、点了会把库内相对路径交出去。
+ */
+test('笔记头上有「在 Obsidian 里打开」，点了把路径交给宿主', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  // 宿主没注入时不显示这个按钮（点了没反应比没有更让人困惑）
+  assert.equal(
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).some(
+      (el) => el.title === '在 Obsidian 里打开',
+    ),
+    false,
+    '没有宿主实现时不该出现这个按钮',
+  )
+
+  const opened = []
+  panel.setOpenInEditor((path) => {
+    opened.push(path)
+    return true
+  })
+  try {
+    // 重新打开一遍这篇笔记，让笔记头按「有宿主」重渲染
+    await clickTab('云端')
+    await clickTab('笔记')
+    const card = await waitFor(
+      () =>
+        Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) =>
+          (el.textContent || '').includes('右键菜单验收'),
+        ),
+      5000,
+    )
+    card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    const btn = await waitFor(
+      () =>
+        Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find(
+          (el) => el.title === '在 Obsidian 里打开',
+        ),
+      5000,
+      '出现「在 Obsidian 里打开」按钮',
+    )
+    btn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => opened.length > 0, 3000, '路径交给宿主')
+    assert.match(opened[0], /右键菜单验收\.md$/, '交出去的应该是库内相对路径，实际 ' + opened[0])
+  } finally {
+    panel.setOpenInEditor(null)
+  }
+})
+
+/**
  * 命令面板投递的意图要真的落到面板上。
  *
  * 命令面板触发时面板可能刚被创建、还没渲染完，所以意图是「投递」而不是直接
@@ -401,6 +518,28 @@ test('同步结束后把结果交给宿主（宿主据此写日记摘要）', as
   } finally {
     panel.setSyncReport(null)
   }
+})
+
+/**
+ * 「把本地改动推上去」这个按钮得真的在设置页里，且没配云端时是灰的。
+ *
+ * 批量反向同步是这次新加的能力，最怕的是后端做好了、面板上却没有入口——用户
+ * 找不到就等于没做。这里只验入口：按钮存在、文案是那一句、没配凭证时点不动。
+ * 真正「推哪些、不该推哪些」的规则在 host 测试里用假客户端验。
+ */
+test('设置页有「把本地改动推上去」，没配云端时点不动', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+  await clickTab('设置')
+
+  const buttons = Array.from(window.document.querySelectorAll('button'))
+  const pushBtn = buttons.find((el) => (el.textContent || '').trim() === '把本地改动推上去')
+  assert.ok(pushBtn, '设置页里应该有一个「把本地改动推上去」按钮')
+  assert.equal(pushBtn.disabled, true, '这条测试里没配云端凭证，按钮应该是灰的')
+  assert.ok((pushBtn.getAttribute('title') || '').length > 0, '按钮上要挂一句说明，讲清楚会覆盖云端正文')
+
+  // 后面的测试默认停在笔记页（左栏/中栏/拖拽手柄都在那儿），别把它们留在设置页
+  await clickTab('笔记')
 })
 
 /**

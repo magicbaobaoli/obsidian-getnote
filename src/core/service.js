@@ -374,7 +374,22 @@ async function openClient() {
  * 的是「插件坏了」而不是「这个 Key 不对」。所以这里在 Open API 报 401 时自动改用
  * MCP，并把「你的 Key 被拒了」记在 lastKeyError 上，由 /status 显示出来。
  */
+/**
+ * 测试用的云端客户端注入口。
+ *
+ * 生产环境永远是 null，走下面真实的双通道逻辑。但「批量推送」这类 handler
+ * 的正确性（哪些该推、推完 state 记了什么、失败是否中断整批）不该靠联网才验得
+ * 出来——那些规则才是真会弄坏用户云端笔记的部分。所以留一个口子，让离线测试
+ * 塞一个假 client 进来，跑的还是同一份 handler 代码。
+ */
+let cloudClientFactory = null
+
+export function setCloudClientFactory(fn) {
+  cloudClientFactory = typeof fn === 'function' ? fn : null
+}
+
 async function openCloudClient() {
+  if (cloudClientFactory !== null) return cloudClientFactory()
   const cloud = await readCloud()
   const keyReady = cloud && cloud.apiKey !== '' && cloud.clientId !== ''
   const token = await ensureAccessToken()
@@ -1378,6 +1393,82 @@ export function createHandler(config) {
     send(res, 200, { ok: true, result })
   }
 
+  /**
+   * 「把本地攒下的改动一次性推上去」。
+   *
+   * 单篇推送（/sync/push-one）解决的是「眼前这一篇」，但用户离线写了一批之后，
+   * 一篇篇右键推太笨。这里按目录范围批量推，规则只有三条：
+   *
+   *   1. 只推「本地指纹和上次同步记下的不一样」的笔记。指纹一致的跳过——
+   *      否则每点一次就把整库 updateNote 一遍，既吃配额又会把云端修改时间
+   *      刷成现在，之后想判断「云端到底有没有被别人改过」就再也判断不出来了。
+   *   2. 本地新建（没有 note_id）的笔记推上去算新建，推完立刻把 note_id 与
+   *      指纹记进 state，下一轮才不会又建一篇重复的。
+   *   3. 单篇失败不中断整批：把错误攒进 errors 一起回给面板，用户能看见
+   *      「推了 40 篇，3 篇失败，失败的是这几篇」。
+   */
+  async function handleSyncPushAll(req, res) {
+    const body = await readJsonBody(req)
+    if (syncState.running) throw Object.assign(new Error('正在跑一轮同步，等它结束再推'), { status: 409 })
+    const dir = typeof body.dir === 'string' ? body.dir.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') : ''
+    const limit = Math.min(Math.max(Number(body.limit) || 200, 1), 500)
+    const { root, missing } = await currentRoot()
+    if (missing) throw Object.assign(new Error(`本地库目录不存在：${missing}`), { status: 404 })
+    const client = await openCloudClient()
+    const scan = await scanVault(root)
+    const state = await readSyncState()
+    state.notes = state.notes && typeof state.notes === 'object' ? state.notes : {}
+
+    // 路径 → note_id 的反查表：state 里记过的优先，其次用扫描时读到的 frontmatter。
+    const idByPath = new Map()
+    for (const [id, record] of Object.entries(state.notes)) {
+      if (record && typeof record.path === 'string' && record.path !== '') idByPath.set(record.path, String(id))
+    }
+
+    const report = { pushed: 0, created: 0, updated: 0, skipped: 0, failed: 0, errors: [], truncated: false, dir }
+    const targets = scan.entries.filter((entry) => dir === '' || entry.path === dir || entry.path.startsWith(dir + '/'))
+    for (const entry of targets) {
+      if (report.pushed + report.failed >= limit) {
+        report.truncated = true
+        break
+      }
+      const noteId = idByPath.get(entry.path) || (entry.noteId ? String(entry.noteId) : '')
+      let localFp = null
+      try {
+        localFp = await localFingerprintOf(resolveInside(root, entry.path).abs)
+      } catch {
+        localFp = null
+      }
+      const record = noteId !== '' ? state.notes[noteId] : null
+      if (record && localFp !== null && record.localFp === localFp) {
+        report.skipped += 1
+        continue
+      }
+      try {
+        const result = await pushLocalNote({ client, root, relPath: entry.path, noteId: noteId || undefined })
+        const key = String(result.noteId || '')
+        if (result.action === 'created') report.created += 1
+        else report.updated += 1
+        report.pushed += 1
+        if (key !== '') {
+          let cloudFp
+          try {
+            const fresh = await client.getNote(key)
+            if (fresh) cloudFp = contentFingerprint(fresh)
+          } catch {
+            cloudFp = undefined
+          }
+          state.notes[key] = { ...(state.notes[key] || {}), path: entry.path, localFp: localFp || undefined, cloudFp }
+        }
+      } catch (error) {
+        report.failed += 1
+        report.errors.push({ path: entry.path, message: String(error && error.message ? error.message : error) })
+      }
+    }
+    if (report.pushed > 0) await writeSyncState(state)
+    send(res, 200, { ok: true, ...report })
+  }
+
   /** 从 state 里反查某条本地路径对应的云端 note_id。 */
   async function noteIdOfPath(root, path, state) {
     if (path === '') return ''
@@ -2253,6 +2344,7 @@ export function createHandler(config) {
         // 单篇同步（B1）
         if (action === 'sync' && parts[2] === 'pull-one') return await handleSyncPullOne(req, res)
         if (action === 'sync' && parts[2] === 'push-one') return await handleSyncPushOne(req, res)
+        if (action === 'sync' && parts[2] === 'push-all') return await handleSyncPushAll(req, res)
         // 云端凭证（只写不回）
         if (action === 'api' && parts[2] === 'credentials') return await handleSetCloud(req, res)
         if (action === 'api' && parts[2] === 'clear') return await handleClearCloud(res)

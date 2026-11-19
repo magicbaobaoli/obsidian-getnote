@@ -13,7 +13,7 @@
  *   ctx.effect 清理                     onunload
  */
 
-import { Menu, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian'
+import { Menu, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -41,6 +41,9 @@ import {
   setHostLocale,
   requestIntent,
   setSyncReport,
+  setConfirmDialog,
+  setOpenInEditor,
+  notifyCssChange,
 } from './view/panel.js'
 import { GetnoteView, VIEW_TYPE_GETNOTE, PanelIcon } from './view/view.js'
 
@@ -129,6 +132,17 @@ export default class GetnoteObsidianPlugin extends Plugin {
       menu.showAtMouseEvent(event)
       return true
     })
+
+    // 确认框走 Obsidian 自己的 Modal。
+    //
+    // 面板里原本用 window.confirm：它在 Electron 里能用，但长得跟宿主完全不搭，
+    // 移动端 WebView 还可能根本不弹——删除、清空这种不可逆的动作就没有二次确认了。
+    // Modal 由宿主渲染，键盘焦点、遮罩、Esc 都由 Obsidian 管。
+    setConfirmDialog((message) => this.askConfirm(message))
+
+    // 「在 Obsidian 里打开」：面板的编辑器够用来看和改正文，但没有补全、没有
+    // Vim、没有别的插件挂上来的命令。真要动结构的时候，得把用户送回宿主编辑器。
+    setOpenInEditor((path) => this.openInVaultEditor(path))
 
     const stored = await settingsStore.readSettings()
     // 详细日志默认关。设置里打开过就在 onload 就生效，不必等用户进设置页。
@@ -301,6 +315,11 @@ export default class GetnoteObsidianPlugin extends Plugin {
     this.registerEvent(this.app.vault.on('create', bump))
     this.registerEvent(this.app.vault.on('delete', bump))
     this.registerEvent(this.app.vault.on('rename', bump))
+
+    // 宿主换主题（或改字体、字号、界面缩放）会发 css-change。面板的配色是按
+    // 宿主的 CSS 变量现场推导的，收到就得重算一遍——比 MutationObserver 盯
+    // body 的 class 更准：换字体、调字号这些不改 class 的情况也能收到。
+    this.registerEvent(this.app.workspace.on('css-change', () => notifyCssChange()))
 
     // 一轮同步跑完之后，把「今天补进来几篇」写进当天的日记。
     //
@@ -512,6 +531,73 @@ export default class GetnoteObsidianPlugin extends Plugin {
       : this.app.workspace.getLeaf(true)
     await leaf.setViewState({ type: VIEW_TYPE_GETNOTE, active: true })
     this.app.workspace.revealLeaf(leaf)
+  }
+
+  /**
+   * 面板里的确认框。
+   *
+   * 面板原来用 window.confirm：Electron 里能用，但长得跟宿主完全不搭，移动端
+   * WebView 还可能根本不弹——删除、清空这种不可逆的动作就等于没有二次确认。
+   * Modal 由宿主渲染，遮罩、焦点、Esc 都归 Obsidian 管。
+   *
+   * 返回 Promise<boolean>，用户点「确定」才是 true；关窗（Esc、点遮罩）算取消。
+   */
+  askConfirm(message) {
+    if (typeof Modal !== 'function') return Promise.resolve(false)
+    return new Promise((resolve) => {
+      // close() 会触发 onClose，点按钮和按 Esc 都走同一条路。用标记保证只
+      // resolve 一次：否则「先点确定、再按 Esc」会 resolve 两回。
+      let settled = false
+      const finish = (value) => {
+        if (settled) return
+        settled = true
+        resolve(value)
+      }
+      class ConfirmModal extends Modal {
+        onOpen() {
+          const { contentEl } = this
+          contentEl.createEl('p', { text: String(message) })
+          const bar = contentEl.createDiv({ cls: 'modal-button-container' })
+          const ok = bar.createEl('button', { text: '确定', cls: 'mod-cta' })
+          ok.addEventListener('click', () => {
+            finish(true)
+            this.close()
+          })
+          const cancel = bar.createEl('button', { text: '取消' })
+          cancel.addEventListener('click', () => {
+            finish(false)
+            this.close()
+          })
+          // 默认焦点给「取消」：这种弹窗多数是拦误操作，回车不该直接把笔记删了。
+          if (typeof cancel.focus === 'function') cancel.focus()
+        }
+
+        onClose() {
+          finish(false)
+          if (this.contentEl && typeof this.contentEl.empty === 'function') this.contentEl.empty()
+        }
+      }
+      new ConfirmModal(this.app).open()
+    })
+  }
+
+  /**
+   * 把库内相对路径交给宿主编辑器打开。
+   *
+   * 面板自己的编辑器只能改正文：没有补全、没有 Vim、没有别的插件挂上来的命令。
+   * 找不到这个文件（刚被删、路径带错）返回 false，面板据此决定要不要提示。
+   */
+  openInVaultEditor(path) {
+    try {
+      const rel = String(path || '').replace(/^\/+/, '')
+      if (rel === '') return false
+      const file = this.app.vault.getAbstractFileByPath(rel)
+      if (!file) return false
+      void this.app.workspace.getLeaf('tab').openFile(file)
+      return true
+    } catch {
+      return false
+    }
   }
 
   async saveLocalPort(port) {
