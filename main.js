@@ -7660,6 +7660,7 @@ var STYLE_ID = "dshgn-style";
 var LEX = {
   zh: {
     "panel.title": "\u5F97\u5230\u5927\u8111",
+    "panel.toggleTree": "\u76EE\u5F55\u9762\u677F",
     "panel.hint": "\u672C\u5730\u7B14\u8BB0\u5E93",
     "tab.notes": "\u7B14\u8BB0",
     "tab.import": "\u5BFC\u5165",
@@ -8038,6 +8039,7 @@ var LEX = {
   en: {
     "panel.title": "Get\u7B14\u8BB0",
     "panel.hint": "Local note vault",
+    "panel.toggleTree": "Folder panel",
     "tab.notes": "Notes",
     "tab.import": "Import",
     "tab.settings": "Settings",
@@ -8412,6 +8414,7 @@ var LEX = {
   nl: {
     "panel.title": "Get\u7B14\u8BB0",
     "panel.hint": "Lokale notitiemap",
+    "panel.toggleTree": "Mappenpaneel",
     "tab.notes": "Notities",
     "tab.import": "Importeren",
     "tab.settings": "Instellingen",
@@ -9701,6 +9704,28 @@ var CSS = `
   background:var(--dsw-alias-border-l2);transition:background .12s}
 .dshgn_splitter:hover::after,.dshgn_splitterOn::after{background:var(--dsw-alias-brand-primary)}
 .dshgn_splitter:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}
+/* \u7A84\u7A97\u53E3\uFF1AObsidian \u7684\u4FA7\u680F\u53EF\u4EE5\u53EA\u6709\u4E24\u4E09\u767E\u50CF\u7D20\u5BBD\uFF0Cpopout \u7A97\u53E3\u4E5F\u80FD\u968F\u4FBF\u62C9\u3002
+   \u89C6\u53E3\u5BBD\u5EA6\u5224\u65AD\u4E0D\u4E86\u8FD9\u4EF6\u4E8B\u2014\u2014\u7A97\u53E3\u5F88\u5BBD\u3001\u4FA7\u680F\u5F88\u7A84\u662F\u5E38\u6001\uFF0C\u6240\u4EE5\u7528\u5BB9\u5668\u67E5\u8BE2\u76EF
+   \u9762\u677F\u6839\u8282\u70B9\u7684**\u5B9E\u9645\u5BBD\u5EA6**\uFF1A\u5DE6\u680F\u6536\u6210\u62BD\u5C49\uFF0C\u518D\u7A84\u5C31\u628A\u4E2D\u680F\u4E5F\u8BA9\u51FA\u6765\u3002 */
+.dshgn_treeToggle,.dshgn_noteBack{display:none}
+@container dshgn (max-width:760px){
+  .dshgn_treeToggle{display:inline-flex}
+  .dshgn_splitter{display:none}
+  /* \u5DE6\u680F\u6539\u6210\u6D6E\u5728\u5217\u8868\u4E0A\u7684\u62BD\u5C49\uFF1A\u5BBD\u5EA6\u56FA\u5B9A\uFF0C\u70B9\u5B8C\u76EE\u5F55\u5C31\u81EA\u5DF1\u6536\u56DE\u53BB */
+  .dshgn_body{position:relative}
+  .dshgn_tree{position:absolute;left:0;top:0;bottom:0;z-index:20;display:none;
+    width:min(240px,72%);box-shadow:0 8px 28px rgba(0,0,0,.28)}
+  .dshgn_root[data-narrow-tree="true"] .dshgn_tree{display:flex}
+}
+@container dshgn (max-width:560px){
+  /* \u4E00\u7BC7\u7B14\u8BB0\u5F00\u7740\u7684\u65F6\u5019\uFF0C\u5217\u8868\u8BA9\u4F4D\uFF1A\u4E24\u680F\u6324\u5728\u4E00\u8D77\u8C01\u90FD\u8BFB\u4E0D\u4E86 */
+  .dshgn_noteBack{display:inline-flex}
+  .dshgn_root[data-has-note="true"] .dshgn_list{display:none}
+  .dshgn_head{padding:8px 10px;gap:6px}
+  .dshgn_sub{display:none}
+  .dshgn_tabs{overflow-x:auto;scrollbar-width:none}
+  .dshgn_tabs::-webkit-scrollbar{display:none}
+}
 .dshgn_searchWrap{flex:none;display:flex;align-items:center;gap:6px;padding:8px 10px;
   border-bottom:0.5px solid var(--dsw-alias-border-l2)}
 .dshgn_search{flex:1;min-width:0;height:26px;padding:0 8px;border:0.5px solid var(--dsw-alias-border-l2);
@@ -9842,7 +9867,7 @@ var CSS = `
   display:flex;align-items:center;gap:6px;padding:7px 13px;border-radius:9px;
   background:var(--dsw-alias-toast-bg);color:var(--dsw-alias-toast-label);
   font-size:12px;box-shadow:0 6px 22px rgba(0,0,0,.16)}
-.dshgn_rel{position:relative;height:100%}
+.dshgn_rel{position:relative;height:100%;container-type:inline-size;container-name:dshgn}
 .dshgn_spin{display:inline-block;width:12px;height:12px;border-radius:50%;
   border:1.5px solid var(--dsw-alias-border-l2);border-top-color:var(--dsw-alias-brand-primary);
   animation:dshgn-spin .8s linear infinite}
@@ -10368,8 +10393,10 @@ function GetnotePage() {
   const [dirSort, setDirSort] = h2(() => makeSortPref("dshgn.sortDir").read());
   const [tagSort, setTagSort] = h2(() => makeSortPref("dshgn.sortTag").read());
   const [colWidths, setColWidths] = h2(() => readColWidths());
+  const [treeOpen, setTreeOpen] = h2(false);
   const [listLimit, setListLimit] = h2(LIST_PAGE_SIZE);
   const [current, setCurrent] = h2(null);
+  const openSeq = A2(0);
   const [draft, setDraft] = h2(null);
   const [busy, setBusy] = h2(false);
   const [toast, setToast] = h2(null);
@@ -10523,6 +10550,8 @@ function GetnotePage() {
   );
   const openNote = q2(
     async (path, toggle = false) => {
+      const seq = openSeq.current + 1;
+      openSeq.current = seq;
       if (toggle && current !== null && current.path === path) {
         setCurrent(null);
         setDraft(null);
@@ -10532,9 +10561,11 @@ function GetnotePage() {
       setError(null);
       try {
         const note = await api(`/read?path=${encodeURIComponent(path)}`);
+        if (openSeq.current !== seq) return;
         setCurrent(note);
         setDraft(note.content);
       } catch (err) {
+        if (openSeq.current !== seq) return;
         setCurrent(null);
         setDraft(null);
         setError(err && err.message ? err.message : String(err));
@@ -10957,6 +10988,19 @@ function GetnotePage() {
   const head = h4(
     "div",
     { className: "dshgn_head" },
+    // 窄窗口里左栏是抽屉，没有这个按钮就再也打不开了。
+    // 宽窗口下 display:none，不占位。
+    tab === "notes" ? h4(
+      "button",
+      {
+        type: "button",
+        className: "dshgn_iconBtn dshgn_treeToggle",
+        title: t3("panel.toggleTree"),
+        "aria-expanded": treeOpen ? "true" : "false",
+        onClick: () => setTreeOpen((prev) => !prev)
+      },
+      h4(Icon, { name: "folder", size: 15 })
+    ) : null,
     h4(
       "div",
       { className: "dshgn_headMain" },
@@ -11128,6 +11172,8 @@ function GetnotePage() {
       h4(TreePane, {
         t: t3,
         tree,
+        // 窄窗口抽屉里点完目录要自己收回去，否则它还盖在列表上
+        onNarrowPick: () => setTreeOpen(false),
         dirs,
         entries,
         activeDir,
@@ -11351,7 +11397,7 @@ function GetnotePage() {
                   // 勾选框需要左侧留白停靠（见 .dshgn_card[data-pick]），
                   // 其他列表（云端/冲突/回收站）没有勾选框就不用留这个空
                   "data-pick": "true",
-                  onClick: () => {
+                  onClick: (event) => {
                     if (!dirty) {
                       void openNote(entry.path, true);
                       return;
@@ -11496,6 +11542,12 @@ function GetnotePage() {
         setDraft,
         dirty,
         busy,
+        // 窄窗口里「返回列表」用：把当前笔记收起，中栏就回来了
+        onClose: () => {
+          openSeq.current += 1;
+          setCurrent(null);
+          setDraft(null);
+        },
         onSave: saveNote,
         onDelete: deleteNote,
         onCopyReference: copyReference,
@@ -11541,7 +11593,14 @@ function GetnotePage() {
     { className: "dshgn_rel" },
     h4(
       "div",
-      { className: "dshgn_root", style: rootStyle },
+      {
+        className: "dshgn_root",
+        style: rootStyle,
+        // 窄窗口的两条状态：抽屉开没开、当前有没有打开笔记。
+        // 挂在根节点上而不是每个组件里判断，容器查询只负责显示/隐藏。
+        "data-narrow-tree": treeOpen ? "true" : "false",
+        "data-has-note": current !== null ? "true" : "false"
+      },
       head,
       error2 !== null ? h4("div", { className: "dshgn_error", role: "alert" }, `${t3("error.prefix")}: ${error2}`) : null,
       // key 用 tab：切换页签时 React 会换掉整个节点，动画才会从头播一遍。
@@ -14241,9 +14300,14 @@ function TreePane(props) {
     onCreateTag,
     onRenameTag,
     heatmap,
-    currentNoteId
+    currentNoteId,
+    onNarrowPick
   } = props;
   const total = Array.isArray(entries) ? entries.length : 0;
+  const picked = (fn2) => (arg) => {
+    fn2(arg);
+    if (typeof onNarrowPick === "function") onNarrowPick();
+  };
   const [menu, setMenu] = h2(null);
   const [confirm, setConfirm] = h2(null);
   const [creating, setCreating] = h2(null);
@@ -14451,7 +14515,7 @@ function TreePane(props) {
       {
         className: "dshgn_treeRow",
         "data-on": activeDir === "" && activeTag === "" ? "true" : "false",
-        onClick: () => onPickDir("")
+        onClick: picked(() => onPickDir(""))
       },
       h4(Icon, { name: "brain", size: 14 }),
       h4("span", { className: "dshgn_treeName" }, t3("tree.all")),
@@ -14501,7 +14565,7 @@ function TreePane(props) {
           className: "dshgn_treeRow",
           "data-on": activeDir === node.path ? "true" : "false",
           style: { paddingLeft: `${7 + node.depth * 11}px` },
-          onClick: () => onPickDir(node.path),
+          onClick: picked(() => onPickDir(node.path)),
           onContextMenu: (event) => openMenu(event, "dir", node.path),
           title: `${node.path}
 ${t3("tree.menuDelete")}\uFF1A\u53F3\u952E`
@@ -14584,7 +14648,7 @@ ${t3("tree.menuDelete")}\uFF1A\u53F3\u952E`
               type: "button",
               className: "dshgn_tagRow",
               "data-on": activeTag === tag ? "true" : "false",
-              onClick: () => onPickTag(activeTag === tag ? "" : tag),
+              onClick: picked(() => onPickTag(activeTag === tag ? "" : tag)),
               onContextMenu: (event) => openMenu(event, "tag", tag)
             },
             `${tag} ${count}`
@@ -14637,7 +14701,7 @@ ${t3("tree.menuDelete")}\uFF1A\u53F3\u952E`
   );
 }
 function NotePane(props) {
-  const { t: t3, status, current, draft, setDraft, dirty, busy, onSave, onDelete, onCopyReference, onOpenWikiLink, onSyncOne, onRestored, onError, onToggleTodo } = props;
+  const { t: t3, status, current, draft, setDraft, dirty, busy, onSave, onDelete, onCopyReference, onOpenWikiLink, onSyncOne, onRestored, onError, onToggleTodo, onClose } = props;
   const subfolder = status !== null && typeof status.subfolder === "string" ? status.subfolder.replace(/^\/+|\/+$/g, "") : "";
   const vaultPathOf = (note) => {
     const rel = note !== null && typeof note.path === "string" ? note.path : "";
@@ -14717,11 +14781,32 @@ function NotePane(props) {
     }
   }, []);
   y2(() => {
+    if (!editing) return void 0;
+    const onKey = (event) => {
+      const meta = event.ctrlKey || event.metaKey;
+      if (meta && String(event.key).toLowerCase() === "s") {
+        event.preventDefault();
+        if (!busy && dirty) void onSave();
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setDraft(current !== null ? current.content : null);
+        setEditing(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [busy, current, dirty, editing, onSave, setDraft]);
+  const pathKey = current !== null ? current.path : null;
+  const [lastPathKey, setLastPathKey] = h2(pathKey);
+  if (lastPathKey !== pathKey) {
+    setLastPathKey(pathKey);
     setEditing(false);
     setHistoryOpen(false);
     setHistoryItems(null);
     setHistoryPreview(null);
-  }, [current !== null ? current.path : null]);
+  }
   const currentPath = current !== null ? current.path : null;
   y2(() => {
     if (currentPath === null) {
@@ -14773,6 +14858,21 @@ function NotePane(props) {
     h4(
       "div",
       { className: "dshgn_noteHead" },
+      // 窄窗口里中栏被笔记让掉了（两栏挤在一起谁都读不了），
+      // 没有这个按钮就回不到列表。宽窗口下 CSS 把它藏起来。
+      h4(
+        "button",
+        {
+          type: "button",
+          className: "dshgn_iconBtn dshgn_noteBack",
+          title: t3("action.back"),
+          onClick: () => {
+            if (typeof onClose === "function") onClose();
+          }
+        },
+        // chevron 是朝右的，翻过来当「返回」用，省一个图标
+        h4("span", { style: { display: "inline-flex", transform: "rotate(180deg)" } }, h4(Icon, { name: "chevron", size: 15 }))
+      ),
       h4("div", { className: "dshgn_notePath", title: absolute }, current.path),
       // 字号三档。放在笔记头而不是设置页：用户是在「读这篇字太小」的那一刻
       // 想调它，跑到设置页去调完再回来，会打断阅读。

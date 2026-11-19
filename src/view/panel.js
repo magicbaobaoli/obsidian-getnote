@@ -266,6 +266,7 @@ async function saveFile(url, filename) {
     const LEX = {
       zh: {
         'panel.title': '得到大脑',
+        'panel.toggleTree': '目录面板',
         'panel.hint': '本地笔记库',
         'tab.notes': '笔记',
         'tab.import': '导入',
@@ -648,6 +649,7 @@ async function saveFile(url, filename) {
       en: {
         'panel.title': 'Get笔记',
         'panel.hint': 'Local note vault',
+        'panel.toggleTree': 'Folder panel',
         'tab.notes': 'Notes',
         'tab.import': 'Import',
         'tab.settings': 'Settings',
@@ -1026,6 +1028,7 @@ async function saveFile(url, filename) {
       nl: {
         'panel.title': 'Get笔记',
         'panel.hint': 'Lokale notitiemap',
+        'panel.toggleTree': 'Mappenpaneel',
         'tab.notes': 'Notities',
         'tab.import': 'Importeren',
         'tab.settings': 'Instellingen',
@@ -2532,6 +2535,28 @@ async function saveFile(url, filename) {
   background:var(--dsw-alias-border-l2);transition:background .12s}
 .dshgn_splitter:hover::after,.dshgn_splitterOn::after{background:var(--dsw-alias-brand-primary)}
 .dshgn_splitter:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}
+/* 窄窗口：Obsidian 的侧栏可以只有两三百像素宽，popout 窗口也能随便拉。
+   视口宽度判断不了这件事——窗口很宽、侧栏很窄是常态，所以用容器查询盯
+   面板根节点的**实际宽度**：左栏收成抽屉，再窄就把中栏也让出来。 */
+.dshgn_treeToggle,.dshgn_noteBack{display:none}
+@container dshgn (max-width:760px){
+  .dshgn_treeToggle{display:inline-flex}
+  .dshgn_splitter{display:none}
+  /* 左栏改成浮在列表上的抽屉：宽度固定，点完目录就自己收回去 */
+  .dshgn_body{position:relative}
+  .dshgn_tree{position:absolute;left:0;top:0;bottom:0;z-index:20;display:none;
+    width:min(240px,72%);box-shadow:0 8px 28px rgba(0,0,0,.28)}
+  .dshgn_root[data-narrow-tree="true"] .dshgn_tree{display:flex}
+}
+@container dshgn (max-width:560px){
+  /* 一篇笔记开着的时候，列表让位：两栏挤在一起谁都读不了 */
+  .dshgn_noteBack{display:inline-flex}
+  .dshgn_root[data-has-note="true"] .dshgn_list{display:none}
+  .dshgn_head{padding:8px 10px;gap:6px}
+  .dshgn_sub{display:none}
+  .dshgn_tabs{overflow-x:auto;scrollbar-width:none}
+  .dshgn_tabs::-webkit-scrollbar{display:none}
+}
 .dshgn_searchWrap{flex:none;display:flex;align-items:center;gap:6px;padding:8px 10px;
   border-bottom:0.5px solid var(--dsw-alias-border-l2)}
 .dshgn_search{flex:1;min-width:0;height:26px;padding:0 8px;border:0.5px solid var(--dsw-alias-border-l2);
@@ -2673,7 +2698,7 @@ async function saveFile(url, filename) {
   display:flex;align-items:center;gap:6px;padding:7px 13px;border-radius:9px;
   background:var(--dsw-alias-toast-bg);color:var(--dsw-alias-toast-label);
   font-size:12px;box-shadow:0 6px 22px rgba(0,0,0,.16)}
-.dshgn_rel{position:relative;height:100%}
+.dshgn_rel{position:relative;height:100%;container-type:inline-size;container-name:dshgn}
 .dshgn_spin{display:inline-block;width:12px;height:12px;border-radius:50%;
   border:1.5px solid var(--dsw-alias-border-l2);border-top-color:var(--dsw-alias-brand-primary);
   animation:dshgn-spin .8s linear infinite}
@@ -3222,10 +3247,15 @@ async function saveFile(url, filename) {
       // 三栏宽度。拖动过程中只改内存状态（每帧都写 localStorage 会卡），
       // 松手后由下面那个 effect 落盘。
       const [colWidths, setColWidths] = React.useState(() => readColWidths())
+      // 窄窗口下左栏变成抽屉，这是它的开关。宽窗口里这个按钮由 CSS 藏起来，
+      // 状态留着也无害（抽屉样式只在容器查询命中时才生效）。
+      const [treeOpen, setTreeOpen] = React.useState(false)
       // 列表一次渲染多少条。库大了以后把几千个卡片全塞进 DOM，滚动会明显发涩，
       // 所以先渲染一屏多一点，滚到底再续。搜索、切目录、切标签都会重置回初始值。
       const [listLimit, setListLimit] = React.useState(LIST_PAGE_SIZE)
       const [current, setCurrent] = React.useState(null)
+      // 在飞的 /read 请求序号，见 openNote 里的说明
+      const openSeq = React.useRef(0)
       const [draft, setDraft] = React.useState(null)
       const [busy, setBusy] = React.useState(false)
       const [toast, setToast] = React.useState(null)
@@ -3453,6 +3483,11 @@ async function saveFile(url, filename) {
        */
       const openNote = React.useCallback(
         async (path, toggle = false) => {
+          // 序号闸门：打开一篇要等 /read 回来，这中间用户可能已经关掉笔记
+          // 或者点了另一篇。晚到的那份响应不能把界面按回旧状态——否则点
+          // 「返回列表」之后旧笔记会自己又冒出来。
+          const seq = openSeq.current + 1
+          openSeq.current = seq
           if (toggle && current !== null && current.path === path) {
             setCurrent(null)
             setDraft(null)
@@ -3462,9 +3497,11 @@ async function saveFile(url, filename) {
           setError(null)
           try {
             const note = await api(`/read?path=${encodeURIComponent(path)}`)
+            if (openSeq.current !== seq) return
             setCurrent(note)
             setDraft(note.content)
           } catch (err) {
+            if (openSeq.current !== seq) return
             setCurrent(null)
             setDraft(null)
             setError(err && err.message ? err.message : String(err))
@@ -3956,6 +3993,21 @@ async function saveFile(url, filename) {
       const head = h(
         'div',
         { className: 'dshgn_head' },
+        // 窄窗口里左栏是抽屉，没有这个按钮就再也打不开了。
+        // 宽窗口下 display:none，不占位。
+        tab === 'notes'
+          ? h(
+              'button',
+              {
+                type: 'button',
+                className: 'dshgn_iconBtn dshgn_treeToggle',
+                title: t('panel.toggleTree'),
+                'aria-expanded': treeOpen ? 'true' : 'false',
+                onClick: () => setTreeOpen((prev) => !prev),
+              },
+              h(Icon, { name: 'folder', size: 15 }),
+            )
+          : null,
         h(
           'div',
           { className: 'dshgn_headMain' },
@@ -4133,6 +4185,8 @@ async function saveFile(url, filename) {
           h(TreePane, {
             t,
             tree,
+            // 窄窗口抽屉里点完目录要自己收回去，否则它还盖在列表上
+            onNarrowPick: () => setTreeOpen(false),
             dirs,
             entries,
             activeDir,
@@ -4372,7 +4426,8 @@ async function saveFile(url, filename) {
                         // 勾选框需要左侧留白停靠（见 .dshgn_card[data-pick]），
                         // 其他列表（云端/冲突/回收站）没有勾选框就不用留这个空
                         'data-pick': 'true',
-                        onClick: () => {
+                        onClick: (event) => {
+
                           // 有未保存的草稿才拦一下；没改动时不该弹框
                           if (!dirty) {
                             void openNote(entry.path, true)
@@ -4525,6 +4580,12 @@ async function saveFile(url, filename) {
             setDraft,
             dirty,
             busy,
+            // 窄窗口里「返回列表」用：把当前笔记收起，中栏就回来了
+            onClose: () => {
+              openSeq.current += 1
+              setCurrent(null)
+              setDraft(null)
+            },
             onSave: saveNote,
             onDelete: deleteNote,
             onCopyReference: copyReference,
@@ -4586,7 +4647,14 @@ async function saveFile(url, filename) {
         { className: 'dshgn_rel' },
         h(
           'div',
-          { className: 'dshgn_root', style: rootStyle },
+          {
+            className: 'dshgn_root',
+            style: rootStyle,
+            // 窄窗口的两条状态：抽屉开没开、当前有没有打开笔记。
+            // 挂在根节点上而不是每个组件里判断，容器查询只负责显示/隐藏。
+            'data-narrow-tree': treeOpen ? 'true' : 'false',
+            'data-has-note': current !== null ? 'true' : 'false',
+          },
           head,
           error !== null ? h('div', { className: 'dshgn_error', role: 'alert' }, `${t('error.prefix')}: ${error}`) : null,
           // key 用 tab：切换页签时 React 会换掉整个节点，动画才会从头播一遍。
@@ -7757,8 +7825,15 @@ async function saveFile(url, filename) {
         onRenameTag,
         heatmap,
         currentNoteId,
+        onNarrowPick,
       } = props
       const total = Array.isArray(entries) ? entries.length : 0
+      // 窄窗口里左栏是浮在列表上的抽屉，选完就该消失，不然它一直盖着结果。
+      // 宽窗口下 CSS 根本没把左栏做成抽屉，这个回调也就没人调用。
+      const picked = (fn) => (arg) => {
+        fn(arg)
+        if (typeof onNarrowPick === 'function') onNarrowPick()
+      }
 
       // 右键菜单与二次确认：菜单是「删除」这一项，点它之后才弹确认框。
       // 两步是刻意的——右键菜单里直接删，手一抖就没了；而弹窗里再点一次
@@ -8009,7 +8084,7 @@ async function saveFile(url, filename) {
           {
             className: 'dshgn_treeRow',
             'data-on': activeDir === '' && activeTag === '' ? 'true' : 'false',
-            onClick: () => onPickDir(''),
+            onClick: picked(() => onPickDir('')),
           },
           h(Icon, { name: 'brain', size: 14 }),
           h('span', { className: 'dshgn_treeName' }, t('tree.all')),
@@ -8063,7 +8138,7 @@ async function saveFile(url, filename) {
               className: 'dshgn_treeRow',
               'data-on': activeDir === node.path ? 'true' : 'false',
               style: { paddingLeft: `${7 + node.depth * 11}px` },
-              onClick: () => onPickDir(node.path),
+              onClick: picked(() => onPickDir(node.path)),
               onContextMenu: (event) => openMenu(event, 'dir', node.path),
               title: `${node.path}\n${t('tree.menuDelete')}：右键`,
             },
@@ -8153,7 +8228,7 @@ async function saveFile(url, filename) {
                           type: 'button',
                           className: 'dshgn_tagRow',
                           'data-on': activeTag === tag ? 'true' : 'false',
-                          onClick: () => onPickTag(activeTag === tag ? '' : tag),
+                          onClick: picked(() => onPickTag(activeTag === tag ? '' : tag)),
                           onContextMenu: (event) => openMenu(event, 'tag', tag),
                         },
                         `${tag} ${count}`,
@@ -8213,7 +8288,7 @@ async function saveFile(url, filename) {
     // ── 阅读 / 编辑 ───────────────────────────────────────────────────────────
 
     function NotePane(props) {
-      const { t, status, current, draft, setDraft, dirty, busy, onSave, onDelete, onCopyReference, onOpenWikiLink, onSyncOne, onRestored, onError, onToggleTodo } = props
+      const { t, status, current, draft, setDraft, dirty, busy, onSave, onDelete, onCopyReference, onOpenWikiLink, onSyncOne, onRestored, onError, onToggleTodo, onClose } = props
       // 渲染器要的是「库内相对路径」：status.vaultRoot 是绝对路径，笔记在库里
       // 真正的位置是「<子目录>/<笔记相对路径>」。相对链接、图片、嵌入块都靠它解析。
       const subfolder = status !== null && typeof status.subfolder === 'string' ? status.subfolder.replace(/^\/+|\/+$/g, '') : ''
@@ -8309,14 +8384,44 @@ async function saveFile(url, filename) {
         }
       }, [])
 
+      // 编辑态里的两个快捷键，跟宿主编辑器同一个口径：Ctrl/Cmd+S 保存、
+      // Esc 退出编辑。挂在 window 上而不是 textarea 上，是因为用户按
+      // Ctrl+S 时焦点可能已经点到别处（比如刚复制完一段），那时也应该保存。
+      // 注意只在编辑态才接管：阅读态下 Ctrl+S 该由宿主处理，抢了就是添乱。
       React.useEffect(() => {
-        // 换笔记时退出编辑态：留着编辑态会让用户以为新笔记也是可编辑草稿
+        if (!editing) return undefined
+        const onKey = (event) => {
+          const meta = event.ctrlKey || event.metaKey
+          if (meta && String(event.key).toLowerCase() === 's') {
+            event.preventDefault()
+            if (!busy && dirty) void onSave()
+            return
+          }
+          if (event.key === 'Escape') {
+            event.preventDefault()
+            setDraft(current !== null ? current.content : null)
+            setEditing(false)
+          }
+        }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+      }, [busy, current, dirty, editing, onSave, setDraft])
+
+      // 换笔记时退出编辑态与历史面板：留着编辑态会让用户以为新笔记也是可编辑草稿，
+      // 留着上一篇的版本列表会让人点开就恢复错文件。
+      //
+      // 为什么在渲染期比较而不是 useEffect：effect 是排队执行的，用户「打开笔记 →
+      // 立刻点编辑」时 effect 还没轮到，它后到那一下会把刚打开的编辑态又按回关闭。
+      // 渲染期比较是同步的，不存在这个窗口。
+      const pathKey = current !== null ? current.path : null
+      const [lastPathKey, setLastPathKey] = React.useState(pathKey)
+      if (lastPathKey !== pathKey) {
+        setLastPathKey(pathKey)
         setEditing(false)
-        // 历史面板同理：留着上一篇的版本列表会让人点开就恢复错文件
         setHistoryOpen(false)
         setHistoryItems(null)
         setHistoryPreview(null)
-      }, [current !== null ? current.path : null])
+      }
 
       // 反查引用单独请求：一次反查要读全库正文，和打开一篇笔记不是一个量级，
       // 塞进 /read 会把「点开笔记」这个最常做的动作拖慢。
@@ -8388,6 +8493,21 @@ async function saveFile(url, filename) {
         h(
           'div',
           { className: 'dshgn_noteHead' },
+          // 窄窗口里中栏被笔记让掉了（两栏挤在一起谁都读不了），
+          // 没有这个按钮就回不到列表。宽窗口下 CSS 把它藏起来。
+          h(
+            'button',
+            {
+              type: 'button',
+              className: 'dshgn_iconBtn dshgn_noteBack',
+              title: t('action.back'),
+              onClick: () => {
+                if (typeof onClose === 'function') onClose()
+              },
+            },
+            // chevron 是朝右的，翻过来当「返回」用，省一个图标
+            h('span', { style: { display: 'inline-flex', transform: 'rotate(180deg)' } }, h(Icon, { name: 'chevron', size: 15 })),
+          ),
           h('div', { className: 'dshgn_notePath', title: absolute }, current.path),
           // 字号三档。放在笔记头而不是设置页：用户是在「读这篇字太小」的那一刻
           // 想调它，跑到设置页去调完再回来，会打断阅读。

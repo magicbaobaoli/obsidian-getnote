@@ -704,3 +704,87 @@ test('列表一次只渲染一屏，其余交给「显示更多」', async () =>
   await waitFor(() => cards().length === total + 0 || cards().length === total, 5000, '渲染完全部笔记')
   assert.equal(moreBtn(), null, '全部渲染完之后不该还留着「显示更多」')
 })
+
+/**
+ * 窄窗口适配与编辑快捷键。
+ *
+ * Obsidian 的侧栏可以只有两三百像素宽，popout 窗口也能随便拉，三栏横排
+ * 在那个宽度下谁都读不了。jsdom 不实现容器查询（CSS 里的显示/隐藏算不出来），
+ * 所以这里守的是「状态与开关」那一半：根节点上的两个 data 属性、抽屉开关
+ * 按一下真的翻、选完目录自己收回、笔记能退回列表。样式由容器查询负责。
+ */
+test('窄窗口：左栏能收成抽屉，笔记能退回列表', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+  await clickTab('笔记')
+
+  const rowOf = (name) =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+      const label = el.querySelector('.dshgn_treeName')
+      return label !== null && (label.textContent || '').trim() === name
+    })
+  // 回到「全部笔记」，把上一条测试留下的目录筛选清掉
+  await waitFor(() => rowOf('全部笔记') !== undefined, 8000, '左栏里有「全部笔记」')
+  rowOf('全部笔记').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => window.document.querySelectorAll('.dshgn_card').length > 0, 8000, '列表有卡片')
+
+  const toggle = () => window.document.querySelector('.dshgn_treeToggle')
+  assert.ok(toggle(), '笔记页应该有一个左栏开关（宽窗口下由 CSS 藏起来）')
+  assert.equal(rootNode().getAttribute('data-narrow-tree'), 'false', '默认抽屉是收起的')
+  toggle().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(60)
+  assert.equal(rootNode().getAttribute('data-narrow-tree'), 'true', '点一下要打开抽屉')
+
+  // 在抽屉里选一个目录，抽屉要自己收回，否则它一直盖着列表
+  rowOf('全部笔记').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(60)
+  assert.equal(rootNode().getAttribute('data-narrow-tree'), 'false', '选完目录抽屉要自己收回')
+
+  // 打开一篇笔记 → 中栏让位；点「返回」→ 回到列表
+  window.document.querySelector('.dshgn_card').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 8000, '笔记打开后根节点标出这一点')
+
+  const back = window.document.querySelector('.dshgn_noteBack')
+  assert.ok(back, '笔记头上应该有「返回列表」（宽窗口下由 CSS 藏起来）')
+  back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '返回后回到列表')
+  await waitFor(() => window.document.querySelector('.dshgn_empty') !== null, 5000, '右栏回到空态')
+})
+
+/**
+ * 编辑态的快捷键要和宿主编辑器同一个口径：Ctrl/Cmd+S 保存、Esc 退出编辑。
+ * 只测这两件会真坏的事——按了保存却没落盘，按了 Esc 却还卡在编辑态。
+ */
+test('编辑态里 Ctrl+S 保存、Esc 退出编辑', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+  await clickTab('笔记')
+  await waitFor(() => window.document.querySelector('.dshgn_card') !== null, 8000, '列表有卡片')
+
+  window.document.querySelector('.dshgn_card').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 8000, '笔记打开')
+
+  const editBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '编辑')
+  assert.ok(editBtn(), '阅读态应该有编辑按钮')
+  editBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const area = await waitFor(() => window.document.querySelector('.dshgn_editor'), 5000, '进入编辑态')
+
+  // Preact 的 onChange 落在 input 事件上，jsdom 里要自己派发
+  area.value = '快捷键验收：改过的正文'
+  area.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(60)
+
+  const savesBefore = fetchCalls.filter((url) => url.includes('/getnote/save')).length
+  window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true }))
+  await waitFor(
+    () => fetchCalls.filter((url) => url.includes('/getnote/save')).length > savesBefore,
+    8000,
+    'Ctrl+S 之后要真的打一次保存',
+  )
+
+  // Esc：退出编辑态（保存后可能已经退出，也接受再进一次）
+  window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_editor') === null, 5000, 'Esc 之后要退出编辑态')
+})
+
