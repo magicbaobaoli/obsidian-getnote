@@ -966,6 +966,50 @@ test('新建笔记落在哪儿跟着宿主的设置走，落在笔记目录之�
   app.vault.vaultConfig = realConfig
 })
 
+test('「今天」用宿主日记插件里配的模板，读不到就建一篇空的', async () => {
+  // 模板文件在库里，宿主记的是库内相对路径
+  await adapter.mkdir('得到大脑/模板')
+  await adapter.write(
+    '得到大脑/模板/日记模板.md',
+    '## 今天做了什么\n\n- \n\n## 明天\n\n- \n',
+  )
+
+  app.internalPlugins = {
+    getPluginById: () => ({
+      enabled: true,
+      instance: { options: { folder: '得到大脑/日记', format: 'YYYY-MM-DD', template: '得到大脑/模板/日记模板.md' } },
+    }),
+  }
+  const body = await plugin.dailyTemplateContent()
+  assert.match(body, /今天做了什么/, '要拿到模板正文')
+
+  // 反斜杠与前导斜杠都容忍
+  app.internalPlugins = {
+    getPluginById: () => ({
+      enabled: true,
+      instance: { options: { template: '/得到大脑\\模板\\日记模板.md' } },
+    }),
+  }
+  assert.match(await plugin.dailyTemplateContent(), /明天/, '反斜杠与前导斜杠都要容忍')
+
+  // 没配模板：建一篇空的，不要凭空造一套
+  app.internalPlugins = { getPluginById: () => ({ enabled: true, instance: { options: {} } }) }
+  assert.equal(await plugin.dailyTemplateContent(), '', '没配模板时不该给内容')
+
+  // 模板文件不存在（被删、路径写错）：安静当没有
+  app.internalPlugins = {
+    getPluginById: () => ({ enabled: true, instance: { options: { template: '得到大脑/模板/根本没有.md' } } }),
+  }
+  assert.equal(await plugin.dailyTemplateContent(), '', '模板文件读不到时不该抛')
+
+  // 日记插件关掉 / 根本没有：同样当没有
+  app.internalPlugins = { getPluginById: () => ({ enabled: false, instance: { options: { template: '得到大脑/模板/日记模板.md' } } }) }
+  assert.equal(await plugin.dailyTemplateContent(), '', '日记插件关掉时不该给内容')
+  app.internalPlugins = null
+  assert.equal(await plugin.dailyTemplateContent(), '', '没有日记插件时不该给内容')
+  delete app.internalPlugins
+})
+
 test('录音卡自动导入：默认关、开关能存下来、巡检在没卡时安静退出', async () => {
   const settings = await import('../src/core/settings.js')
   // 默认必须是关的：它会定期占蓝牙适配器，不能替用户做主

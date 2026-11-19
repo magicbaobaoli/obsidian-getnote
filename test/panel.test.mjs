@@ -1655,4 +1655,94 @@ test('面板里的图片点了交给宿主打开，没接上宿主就不假装�
   assert.equal(renderEmbed('说明.pdf', 'k5', {}).props.className, 'dshgn_embedFile')
 })
 
+/**
+ * 宿主日记插件里配了「模板文件」：新建日记时那边会把整篇填进去（标题骨架、
+ * 提问、常用标签）。我们建一篇空的，同一个库里就有两种「今天的日记」——
+ * 用户在宿主里新建看到有骨架，在我们这儿新建是白纸，很难不觉得是坏了。
+ */
+test('「今天」新建时用宿主配的日记模板，问不到就建一篇空的', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  // 上一条用例可能还开着笔记：先退回空态
+  const backBtn = window.document.querySelector('.dshgn_noteBack')
+  if (backBtn) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    try {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(
+        () => rootNode().getAttribute('data-has-note') === 'false',
+        5000,
+        '退回空态',
+      )
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+  }
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  const readAt = async (rel) =>
+    realFetch(server.origin + '/getnote/read?path=' + encodeURIComponent(rel), {
+      headers: { 'x-getnote-token': server.token },
+    })
+
+  // 等到某一篇真的出现在库里，把正文交回来（新建是异步的，要自己轮询）
+  const waitNote = async (rel) => {
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      const res = await readAt(rel)
+      if (res.status === 200) return await res.json()
+      await sleep(100)
+    }
+    return null
+  }
+
+  const stamp = String(Date.now())
+
+  // ① 宿主给了模板：新建出来的日记要带上模板正文
+  const withTemplate = `日记/模板验收-${stamp}.md`
+  panel.setDailyNote(() => withTemplate)
+  panel.setDailyTemplate(() => '## 模板验收\n\n- 骨架\n')
+  try {
+    panel.requestIntent({ type: 'today' })
+    const note = await waitNote(withTemplate)
+    assert.ok(note !== null, '配了模板时也该把今天的日记建出来')
+    assert.match(
+      String(note.body ?? note.content ?? ''),
+      /骨架/,
+      '新建的日记要带上宿主配的模板正文',
+    )
+  } finally {
+    panel.setDailyNote(null)
+    panel.setDailyTemplate(null)
+  }
+
+  // ② 问模板这条路坏了（宿主还没准备好）：日记照样建得出来，只是空的
+  const noTemplate = `日记/模板验收-${stamp}-空.md`
+  panel.setDailyNote(() => noTemplate)
+  panel.setDailyTemplate(() => {
+    throw new Error('宿主还没准备好')
+  })
+  try {
+    panel.requestIntent({ type: 'today' })
+    const note = await waitNote(noTemplate)
+    assert.ok(note !== null, '问不到模板时也要把日记建出来')
+    assert.doesNotMatch(
+      String(note.body ?? note.content ?? ''),
+      /骨架/,
+      '问不到模板时不该凭空造一套',
+    )
+  } finally {
+    panel.setDailyNote(null)
+    panel.setDailyTemplate(null)
+  }
+
+  // ③ 没注入宿主时 dailyTemplateOf 安静返回空串，不抛
+  assert.equal(await panel.__internals.dailyTemplateOf(), '', '没接上宿主时不该有模板正文')
+})
+
 

@@ -7749,6 +7749,19 @@ function newNotePlacementOf() {
     return "";
   }
 }
+var __dailyTemplate = null;
+function setDailyTemplate(fn2) {
+  __dailyTemplate = typeof fn2 === "function" ? fn2 : null;
+}
+async function dailyTemplateOf() {
+  if (__dailyTemplate === null) return "";
+  try {
+    const answer = await __dailyTemplate();
+    return typeof answer === "string" ? answer : "";
+  } catch {
+    return "";
+  }
+}
 var __openAsset = null;
 function setOpenAsset(fn2) {
   __openAsset = typeof fn2 === "function" ? fn2 : null;
@@ -11117,27 +11130,31 @@ function GetnotePage() {
         const todayTitle = hosted !== null ? hosted.title : stamp;
         const todayPath = todayDir === "" ? `${todayTitle}.md` : `${todayDir}/${todayTitle}.md`;
         setTab("notes");
-        const hit = (entries || []).find((entry) => entry.path === todayPath) || (entries || []).find(
-          (entry) => hosted !== null && String(entry.title || "").trim() === todayTitle || entry.date === stamp || String(entry.title || "").trim() === stamp
-        );
+        const hit = (entries || []).find((entry) => entry.path === todayPath) || (hosted !== null ? (entries || []).find(
+          (entry) => String(entry.title || "").trim() === todayTitle
+        ) : (entries || []).find(
+          (entry) => entry.date === stamp || String(entry.title || "").trim() === stamp
+        ));
         if (hit !== void 0) {
           void openNote(hit.path);
           return;
         }
         if (status === null || status.vaultMissing) return;
         setBusy(true);
-        void api("/create", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            dir: hosted !== null ? todayDir : activeDir,
-            title: todayTitle,
-            content: "",
-            // 宿主的日记名可能本身就是日期，别再叠一层日期前缀
-            withDatePrefix: hosted === null,
-            requestId: requestId()
+        void dailyTemplateOf().then(
+          (template) => api("/create", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              dir: hosted !== null ? todayDir : activeDir,
+              title: todayTitle,
+              content: template,
+              // 宿主的日记名可能本身就是日期，别再叠一层日期前缀
+              withDatePrefix: hosted === null,
+              requestId: requestId()
+            })
           })
-        }).then(async (created) => {
+        ).then(async (created) => {
           showToast(t3("note.created"));
           await refresh();
           await openNote(created.path);
@@ -16357,6 +16374,7 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     setLinkResolve((linkpath, sourcePath) => this.linkResolveFor(linkpath, sourcePath));
     setNewNotePlacement(() => this.newNoteDir());
     setOpenAsset((path) => this.openAssetInVault(path));
+    setDailyTemplate(() => this.dailyTemplateContent());
     setVaultGraph((path, kind) => this.vaultGraphOf(path, kind));
     setStatusReport((info) => this.updateStatusBar(info));
     const stored = await readSettings();
@@ -16804,6 +16822,33 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     if (sub === "") return full;
     if (!full.startsWith(`${sub}/`)) return "";
     return full.slice(sub.length + 1);
+  }
+  /**
+   * 宿主日记插件里配好的模板正文；没配或读不到就返回空串。
+   *
+   * 「设置 → 核心插件 → 日记 → 模板文件」指向一篇库里的笔记，新建日记时会把它
+   * 整个填进去（标题骨架、几个提问、常用标签）。我们这边如果建一篇空的，用户
+   * 在同一个库里就有两种「今天的日记」——一种有骨架，一种光秃秃。
+   *
+   * 读文件用 vfs，走宿主的 adapter；读不到（文件被删、路径写错、模板在库外）
+   * 一律当没有，不让新建失败。
+   */
+  async dailyTemplateContent() {
+    try {
+      const plugins = this.app.internalPlugins;
+      const daily = plugins && typeof plugins.getPluginById === "function" ? plugins.getPluginById("daily-notes") : null;
+      if (!daily || daily.enabled === false) return "";
+      const options = daily.instance && daily.instance.options ? daily.instance.options : null;
+      if (!options || typeof options.template !== "string") return "";
+      const rel = options.template.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+      if (rel === "") return "";
+      const base = String(getRuntime().vaultBase || "").replace(/\\/g, "/").replace(/\/+$/, "");
+      const abs = base === "" ? rel : `${base}/${rel}`;
+      const text = await readFile2(abs, "utf8");
+      return typeof text === "string" ? text : "";
+    } catch {
+      return "";
+    }
   }
   /**
    * 新建的笔记该落在哪个目录（面板口径），按宿主的设置来。

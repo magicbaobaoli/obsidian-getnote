@@ -50,6 +50,7 @@ import {
   setLinkResolve,
   setNewNotePlacement,
   setOpenAsset,
+  setDailyTemplate,
   setVaultGraph,
   setStatusReport,
   notifyCssChange,
@@ -175,6 +176,9 @@ export default class GetnoteObsidianPlugin extends Plugin {
     // 面板里的图片点了交给宿主：宿主有自己的图片视图（缩放、翻页），比在面板里
     // 再塞一个全屏浮层更符合 Obsidian 用户的习惯。
     setOpenAsset((path) => this.openAssetInVault(path))
+    // 「今天」新建时填宿主配好的日记模板：那边已经有骨架了，再让用户在我们这儿
+    // 配一遍，同一个库里就会出现两种「今天的日记」。
+    setDailyTemplate(() => this.dailyTemplateContent())
 
     // 反链、出链交给宿主的 metadataCache。
     //
@@ -750,6 +754,38 @@ export default class GetnoteObsidianPlugin extends Plugin {
     if (sub === '') return full
     if (!full.startsWith(`${sub}/`)) return ''
     return full.slice(sub.length + 1)
+  }
+
+  /**
+   * 宿主日记插件里配好的模板正文；没配或读不到就返回空串。
+   *
+   * 「设置 → 核心插件 → 日记 → 模板文件」指向一篇库里的笔记，新建日记时会把它
+   * 整个填进去（标题骨架、几个提问、常用标签）。我们这边如果建一篇空的，用户
+   * 在同一个库里就有两种「今天的日记」——一种有骨架，一种光秃秃。
+   *
+   * 读文件用 vfs，走宿主的 adapter；读不到（文件被删、路径写错、模板在库外）
+   * 一律当没有，不让新建失败。
+   */
+  async dailyTemplateContent() {
+    try {
+      const plugins = this.app.internalPlugins
+      const daily = plugins && typeof plugins.getPluginById === 'function' ? plugins.getPluginById('daily-notes') : null
+      if (!daily || daily.enabled === false) return ''
+      const options = daily.instance && daily.instance.options ? daily.instance.options : null
+      if (!options || typeof options.template !== 'string') return ''
+      // 宿主记的模板路径是**库内相对**的（相对库根，不是相对笔记目录）。
+      // 拿笔记根去拼会变成「得到大脑/得到大脑/模板/…」，于是永远读不到。
+      const rel = options.template.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+      if (rel === '') return ''
+      const base = String(settingsStore.getRuntime().vaultBase || '')
+        .replace(/\\/g, '/')
+        .replace(/\/+$/, '')
+      const abs = base === '' ? rel : `${base}/${rel}`
+      const text = await vfsRead(abs, 'utf8')
+      return typeof text === 'string' ? text : ''
+    } catch {
+      return ''
+    }
   }
 
   /**

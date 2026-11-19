@@ -351,6 +351,29 @@ async function saveFile(url, filename) {
       }
     }
 
+    // 「今天」新建时填什么内容，宿主的日记插件里已经配好一个模板文件了
+    // （设置 → 核心插件 → 日记 → 模板文件）。再让用户在我们这儿配一遍，
+    // 同一个库里就会出现两种「今天的日记」。
+    let __dailyTemplate = null
+    export function setDailyTemplate(fn) {
+      __dailyTemplate = typeof fn === 'function' ? fn : null
+    }
+    /**
+     * 问宿主日记模板的正文；没配、读不到都返回空串（那就建一篇空的）。
+     *
+     * 宿主那边要读一次文件，所以是异步的；面板在新建日记之前等它一下，
+     * 新建本来就是异步的，多这一跳不影响手感。
+     */
+    async function dailyTemplateOf() {
+      if (__dailyTemplate === null) return ''
+      try {
+        const answer = await __dailyTemplate()
+        return typeof answer === 'string' ? answer : ''
+      } catch {
+        return ''
+      }
+    }
+
     // 面板里的图片（正文里的 ![[图]] 与附件区的图）点了交给宿主打开：宿主有自己的
     // 图片视图（能缩放、能翻页），比在面板里再塞一个全屏浮层更符合 Obsidian 用户
     // 的习惯，也不用我们操心滚轮缩放、键盘翻页这些细节。
@@ -4197,33 +4220,43 @@ async function saveFile(url, filename) {
               const todayPath = todayDir === '' ? `${todayTitle}.md` : `${todayDir}/${todayTitle}.md`
               setTab('notes')
               // 先按路径认（宿主的格式可能不是日期，比如「YYYY年MM月DD日」），
-              // 再退回按日期认（用户手写过同名日期笔记的情况）。
+              // 再退回按标题认（宿主的格式认不出来时，至少标题对得上）。
+              //
+              // 「今天」这个日期只有在问不到宿主时才拿来认：宿主已经明说今天
+              // 在哪一篇了，就不该因为库里另有几篇也是今天的日期而打开别的。
               const hit =
                 (entries || []).find((entry) => entry.path === todayPath) ||
-                (entries || []).find(
-                  (entry) =>
-                    (hosted !== null && String(entry.title || '').trim() === todayTitle) ||
-                    entry.date === stamp ||
-                    String(entry.title || '').trim() === stamp,
-                )
+                (hosted !== null
+                  ? (entries || []).find(
+                      (entry) => String(entry.title || '').trim() === todayTitle,
+                    )
+                  : (entries || []).find(
+                      (entry) =>
+                        entry.date === stamp || String(entry.title || '').trim() === stamp,
+                    ))
               if (hit !== undefined) {
                 void openNote(hit.path)
                 return
               }
               if (status === null || status.vaultMissing) return
               setBusy(true)
-              void api('/create', {
-                method: 'POST',
-                headers: { 'content-type': 'application/json' },
-                body: JSON.stringify({
-                  dir: hosted !== null ? todayDir : activeDir,
-                  title: todayTitle,
-                  content: '',
-                  // 宿主的日记名可能本身就是日期，别再叠一层日期前缀
-                  withDatePrefix: hosted === null,
-                  requestId: requestId(),
-                }),
-              })
+              // 宿主的日记模板：那边配好的标题骨架、提问、标签都在这儿。
+              // 问不到就建一篇空的——凭空造一套模板比空着更糟。
+              void dailyTemplateOf()
+                .then((template) =>
+                  api('/create', {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({
+                      dir: hosted !== null ? todayDir : activeDir,
+                      title: todayTitle,
+                      content: template,
+                      // 宿主的日记名可能本身就是日期，别再叠一层日期前缀
+                      withDatePrefix: hosted === null,
+                      requestId: requestId(),
+                    }),
+                  }),
+                )
                 .then(async (created) => {
                   showToast(t('note.created'))
                   await refresh()
@@ -10214,5 +10247,5 @@ export const __internals = {
   TrashPane, renderEmbed, assetLabel, ThemeCard, readSession, writeSession, SESSION_KEY,
   themeVars, parseHex, rgbToHsl, hslToHex, ConflictPane, ArchiveCard, CardPane,
   TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale,
-  reportSync,
+  reportSync, dailyTemplateOf,
 }
