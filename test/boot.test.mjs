@@ -1417,6 +1417,36 @@ test('「在文件列表里定位」把这一项亮给宿主，没有接口就�
   assert.match(String(calls.notices[calls.notices.length - 1]), /文件列表|定位/)
 })
 
+test('图片交给宿主打开，路径口径与别处一致', async () => {
+  await adapter.mkdir('得到大脑/随手记')
+  await adapter.writeBinary('得到大脑/随手记/图验收.png', Buffer.from([137, 80, 78, 71]))
+
+  app.workspace.openedFiles.length = 0
+  // 相对笔记目录的口径：补上笔记子目录再交给宿主
+  assert.equal(plugin.openAssetInVault('随手记/图验收.png'), true, '相对笔记目录的口径要认')
+  // 库内相对路径的口径也认，且不该重复补前缀
+  assert.equal(plugin.openAssetInVault('得到大脑/随手记/图验收.png'), true)
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  assert.deepEqual(
+    app.workspace.openedFiles,
+    ['得到大脑/随手记/图验收.png', '得到大脑/随手记/图验收.png'],
+    '交给宿主的应该是库内相对路径',
+  )
+
+  // 库里没有这张图（附件还在云端）：不动作
+  assert.equal(plugin.openAssetInVault('随手记/根本没有.png'), false)
+  assert.equal(plugin.openAssetInVault(''), false)
+  assert.equal(plugin.openAssetInVault(null), false)
+
+  // 宿主查文件时抛错：返回 false，不能把面板带崩
+  const realGet = app.vault.getAbstractFileByPath
+  app.vault.getAbstractFileByPath = () => {
+    throw new Error('索引还没建好')
+  }
+  assert.equal(plugin.openAssetInVault('随手记/图验收.png'), false)
+  app.vault.getAbstractFileByPath = realGet
+})
+
 test('onunload 会关掉本地服务', async () => {
   const origin = plugin.server.origin
   plugin.onunload()

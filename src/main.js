@@ -49,6 +49,7 @@ import {
   setDailyNote,
   setLinkResolve,
   setNewNotePlacement,
+  setOpenAsset,
   setVaultGraph,
   setStatusReport,
   notifyCssChange,
@@ -171,6 +172,9 @@ export default class GetnoteObsidianPlugin extends Plugin {
     setDailyNote(() => this.dailyNoteRel())
     setLinkResolve((linkpath, sourcePath) => this.linkResolveFor(linkpath, sourcePath))
     setNewNotePlacement(() => this.newNoteDir())
+    // 面板里的图片点了交给宿主：宿主有自己的图片视图（缩放、翻页），比在面板里
+    // 再塞一个全屏浮层更符合 Obsidian 用户的习惯。
+    setOpenAsset((path) => this.openAssetInVault(path))
 
     // 反链、出链交给宿主的 metadataCache。
     //
@@ -1013,6 +1017,42 @@ export default class GetnoteObsidianPlugin extends Plugin {
       }
       explorer.revealInFolder(file)
       return true
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * 把一张图片交给宿主打开。
+   *
+   * 面板里的图片是拿资源地址直接画出来的，点了本来什么都不会发生。宿主自己
+   * 有图片视图（滚轮缩放、左右翻页、能拖出去），交给它比在面板里再写一个
+   * 全屏浮层更省事，也更符合用户在 Obsidian 里的习惯。
+   *
+   * 路径口径与面板别处一致：可以是相对笔记目录的，也可以是库内相对的。
+   * 找不到（附件还在云端、或者路径带错）返回 false，面板据此不提示。
+   */
+  openAssetInVault(path) {
+    try {
+      const raw = String(path || '').replace(/\\/g, '/')
+      if (raw === '') return false
+      const runtime = settingsStore.getRuntime()
+      const base = String(runtime.vaultBase || '').replace(/\\/g, '/').replace(/\/+$/, '')
+      const sub = String(runtime.subfolder || DEFAULT_SUBFOLDER).replace(/^\/+|\/+$/g, '')
+      let rel = raw.replace(/^\/+/, '')
+      const baseBare = base.replace(/^\/+/, '')
+      if (baseBare !== '' && rel.startsWith(baseBare + '/')) rel = rel.slice(baseBare.length + 1)
+      const candidates = [rel]
+      if (sub !== '' && !rel.startsWith(sub + '/')) candidates.push(`${sub}/${rel}`)
+      for (const candidate of candidates) {
+        const file = this.app.vault.getAbstractFileByPath(candidate)
+        if (file) {
+          // 图片不走编辑器叶子：宿主会用图片视图打开它（缩放、翻页都在那边）。
+          void this.app.workspace.getLeaf('tab').openFile(file)
+          return true
+        }
+      }
+      return false
     } catch {
       return false
     }

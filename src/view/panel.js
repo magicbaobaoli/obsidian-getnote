@@ -351,6 +351,25 @@ async function saveFile(url, filename) {
       }
     }
 
+    // 面板里的图片（正文里的 ![[图]] 与附件区的图）点了交给宿主打开：宿主有自己的
+    // 图片视图（能缩放、能翻页），比在面板里再塞一个全屏浮层更符合 Obsidian 用户
+    // 的习惯，也不用我们操心滚轮缩放、键盘翻页这些细节。
+    let __openAsset = null
+    export function setOpenAsset(fn) {
+      __openAsset = typeof fn === 'function' ? fn : null
+    }
+    function hasOpenAsset() {
+      return __openAsset !== null
+    }
+    function openAssetInHost(path) {
+      if (__openAsset === null) return false
+      try {
+        return __openAsset(String(path || '')) === true
+      } catch {
+        return false
+      }
+    }
+
     // 宿主换主题时 Obsidian 会发 'css-change' 事件，比 MutationObserver 盯 body
     // 的 class 更准（用户改了字体、字号、界面缩放也能收到）。没有宿主时靠
     // MutationObserver 兜底，两者最终都只是让面板重新算一次配色。
@@ -584,6 +603,7 @@ async function saveFile(url, filename) {
         'note.menuOpen': '打开这篇',
         'note.localAudio': '本地录音',
         'note.outline': '本文大纲',
+        'note.openImage': '在 Obsidian 里打开这张图',
         'note.backlinks': '引用了这篇的笔记',
         'note.fontSize': '字号',
         'panel.loading': '正在读取笔记库…',
@@ -966,6 +986,7 @@ async function saveFile(url, filename) {
         'note.menuOpen': 'Open this note',
         'note.localAudio': 'Local recording',
         'note.outline': 'Outline',
+        'note.openImage': 'Open this image in Obsidian',
         'note.backlinks': 'Notes linking here',
         'note.fontSize': 'Text size',
         'panel.loading': 'Loading vault…',
@@ -1347,6 +1368,7 @@ async function saveFile(url, filename) {
         'note.menuOpen': 'Deze notitie openen',
         'note.localAudio': 'Lokale opname',
         'note.outline': 'Overzicht',
+        'note.openImage': 'Open deze afbeelding in Obsidian',
         'note.backlinks': 'Notities die hierheen linken',
         'note.fontSize': 'Tekstgrootte',
         'panel.loading': 'Notitiemap laden…',
@@ -2212,12 +2234,21 @@ async function saveFile(url, filename) {
       const path = (hit && hit.path) || clean
       if (IMAGE_EXT_RE.test(path)) {
         const hosted = assetUrlOf(path)
+        // 点了交给宿主打开；没注入宿主时不给光标、不挂 onClick——挂一个点了
+        // 什么都不会发生的处理器，比不能点更让人困惑。
+        const openable = hasOpenAsset()
         return h('img', {
           key,
-          className: 'dshgn_img',
+          className: 'dshgn_img' + (openable ? ' dshgn_imgOpen' : ''),
           src: hosted !== '' ? hosted : withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(path)}`),
           alt: base,
           loading: 'lazy',
+          onClick: openable
+            ? (event) => {
+                if (event && typeof event.stopPropagation === 'function') event.stopPropagation()
+                openAssetInHost(path)
+              }
+            : undefined,
         })
       }
       return h('span', { key, className: 'dshgn_embedFile' }, base)
@@ -3143,7 +3174,8 @@ async function saveFile(url, filename) {
   color:var(--dsw-alias-label-primary-foreground);font-weight:500}
 /* 图片附件：一行横向排，单张最高 200px，避免一张竖构图手机截图把整篇文章推到屏幕外。 */
 .dshgn_imgRow{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
-.dshgn_img{max-width:100%;max-height:200px;border-radius:8px;object-fit:contain;
+.dshgn_imgOpen{cursor:zoom-in}
+    .dshgn_img{max-width:100%;max-height:200px;border-radius:8px;object-fit:contain;
   border:0.5px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-interactive-bg-hover)}
 /* Obsidian 双链：外观要像链接但不能真跳（库内跳转由 JS 处理），所以用 button 而不是 a。 */
 .dshgn_wikilink{display:inline;padding:0;margin:0;border:0;background:transparent;font:inherit;
@@ -9403,14 +9435,20 @@ async function saveFile(url, filename) {
                       .map((asset, index) =>
                         h('img', {
                           key: `${asset.path}-${index}`,
-                          className: 'dshgn_img',
+                          className: 'dshgn_img' + (hasOpenAsset() ? ' dshgn_imgOpen' : ''),
                           src:
                             assetUrlOf(asset.path) !== ''
                               ? assetUrlOf(asset.path)
                               : withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(asset.path)}`),
                           alt: asset.name,
-                          title: asset.name,
+                          title: hasOpenAsset() ? `${t('note.openImage')} · ${asset.name}` : asset.name,
                           loading: 'lazy',
+                          onClick: hasOpenAsset()
+                            ? (event) => {
+                                if (event && typeof event.stopPropagation === 'function') event.stopPropagation()
+                                openAssetInHost(asset.path)
+                              }
+                            : undefined,
                         }),
                       ),
                   )

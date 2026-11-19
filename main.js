@@ -7749,6 +7749,21 @@ function newNotePlacementOf() {
     return "";
   }
 }
+var __openAsset = null;
+function setOpenAsset(fn2) {
+  __openAsset = typeof fn2 === "function" ? fn2 : null;
+}
+function hasOpenAsset() {
+  return __openAsset !== null;
+}
+function openAssetInHost(path) {
+  if (__openAsset === null) return false;
+  try {
+    return __openAsset(String(path || "")) === true;
+  } catch {
+    return false;
+  }
+}
 var __cssListeners = /* @__PURE__ */ new Set();
 function notifyCssChange() {
   for (const listener of Array.from(__cssListeners)) {
@@ -7939,6 +7954,7 @@ var LEX = {
     "note.menuOpen": "\u6253\u5F00\u8FD9\u7BC7",
     "note.localAudio": "\u672C\u5730\u5F55\u97F3",
     "note.outline": "\u672C\u6587\u5927\u7EB2",
+    "note.openImage": "\u5728 Obsidian \u91CC\u6253\u5F00\u8FD9\u5F20\u56FE",
     "note.backlinks": "\u5F15\u7528\u4E86\u8FD9\u7BC7\u7684\u7B14\u8BB0",
     "note.fontSize": "\u5B57\u53F7",
     "panel.loading": "\u6B63\u5728\u8BFB\u53D6\u7B14\u8BB0\u5E93\u2026",
@@ -8317,6 +8333,7 @@ var LEX = {
     "note.menuOpen": "Open this note",
     "note.localAudio": "Local recording",
     "note.outline": "Outline",
+    "note.openImage": "Open this image in Obsidian",
     "note.backlinks": "Notes linking here",
     "note.fontSize": "Text size",
     "panel.loading": "Loading vault\u2026",
@@ -8695,6 +8712,7 @@ var LEX = {
     "note.menuOpen": "Deze notitie openen",
     "note.localAudio": "Lokale opname",
     "note.outline": "Overzicht",
+    "note.openImage": "Open deze afbeelding in Obsidian",
     "note.backlinks": "Notities die hierheen linken",
     "note.fontSize": "Tekstgrootte",
     "panel.loading": "Notitiemap laden\u2026",
@@ -9382,12 +9400,17 @@ function renderEmbed(target, key, options) {
   const path = hit && hit.path || clean;
   if (IMAGE_EXT_RE.test(path)) {
     const hosted = assetUrlOf(path);
+    const openable = hasOpenAsset();
     return h4("img", {
       key,
-      className: "dshgn_img",
+      className: "dshgn_img" + (openable ? " dshgn_imgOpen" : ""),
       src: hosted !== "" ? hosted : withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(path)}`),
       alt: base,
-      loading: "lazy"
+      loading: "lazy",
+      onClick: openable ? (event) => {
+        if (event && typeof event.stopPropagation === "function") event.stopPropagation();
+        openAssetInHost(path);
+      } : void 0
     });
   }
   return h4("span", { key, className: "dshgn_embedFile" }, base);
@@ -10250,7 +10273,8 @@ var CSS = `
   color:var(--dsw-alias-label-primary-foreground);font-weight:500}
 /* \u56FE\u7247\u9644\u4EF6\uFF1A\u4E00\u884C\u6A2A\u5411\u6392\uFF0C\u5355\u5F20\u6700\u9AD8 200px\uFF0C\u907F\u514D\u4E00\u5F20\u7AD6\u6784\u56FE\u624B\u673A\u622A\u56FE\u628A\u6574\u7BC7\u6587\u7AE0\u63A8\u5230\u5C4F\u5E55\u5916\u3002 */
 .dshgn_imgRow{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
-.dshgn_img{max-width:100%;max-height:200px;border-radius:8px;object-fit:contain;
+.dshgn_imgOpen{cursor:zoom-in}
+    .dshgn_img{max-width:100%;max-height:200px;border-radius:8px;object-fit:contain;
   border:0.5px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-interactive-bg-hover)}
 /* Obsidian \u53CC\u94FE\uFF1A\u5916\u89C2\u8981\u50CF\u94FE\u63A5\u4F46\u4E0D\u80FD\u771F\u8DF3\uFF08\u5E93\u5185\u8DF3\u8F6C\u7531 JS \u5904\u7406\uFF09\uFF0C\u6240\u4EE5\u7528 button \u800C\u4E0D\u662F a\u3002 */
 .dshgn_wikilink{display:inline;padding:0;margin:0;border:0;background:transparent;font:inherit;
@@ -15574,11 +15598,15 @@ function NotePane(props) {
         (current.assets || []).filter((asset) => asset.kind === "image").map(
           (asset, index) => h4("img", {
             key: `${asset.path}-${index}`,
-            className: "dshgn_img",
+            className: "dshgn_img" + (hasOpenAsset() ? " dshgn_imgOpen" : ""),
             src: assetUrlOf(asset.path) !== "" ? assetUrlOf(asset.path) : withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(asset.path)}`),
             alt: asset.name,
-            title: asset.name,
-            loading: "lazy"
+            title: hasOpenAsset() ? `${t3("note.openImage")} \xB7 ${asset.name}` : asset.name,
+            loading: "lazy",
+            onClick: hasOpenAsset() ? (event) => {
+              if (event && typeof event.stopPropagation === "function") event.stopPropagation();
+              openAssetInHost(asset.path);
+            } : void 0
           })
         )
       ) : null,
@@ -16328,6 +16356,7 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     setDailyNote(() => this.dailyNoteRel());
     setLinkResolve((linkpath, sourcePath) => this.linkResolveFor(linkpath, sourcePath));
     setNewNotePlacement(() => this.newNoteDir());
+    setOpenAsset((path) => this.openAssetInVault(path));
     setVaultGraph((path, kind) => this.vaultGraphOf(path, kind));
     setStatusReport((info) => this.updateStatusBar(info));
     const stored = await readSettings();
@@ -17021,6 +17050,40 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       }
       explorer.revealInFolder(file);
       return true;
+    } catch {
+      return false;
+    }
+  }
+  /**
+   * 把一张图片交给宿主打开。
+   *
+   * 面板里的图片是拿资源地址直接画出来的，点了本来什么都不会发生。宿主自己
+   * 有图片视图（滚轮缩放、左右翻页、能拖出去），交给它比在面板里再写一个
+   * 全屏浮层更省事，也更符合用户在 Obsidian 里的习惯。
+   *
+   * 路径口径与面板别处一致：可以是相对笔记目录的，也可以是库内相对的。
+   * 找不到（附件还在云端、或者路径带错）返回 false，面板据此不提示。
+   */
+  openAssetInVault(path) {
+    try {
+      const raw = String(path || "").replace(/\\/g, "/");
+      if (raw === "") return false;
+      const runtime2 = getRuntime();
+      const base = String(runtime2.vaultBase || "").replace(/\\/g, "/").replace(/\/+$/, "");
+      const sub = String(runtime2.subfolder || DEFAULT_SUBFOLDER).replace(/^\/+|\/+$/g, "");
+      let rel = raw.replace(/^\/+/, "");
+      const baseBare = base.replace(/^\/+/, "");
+      if (baseBare !== "" && rel.startsWith(baseBare + "/")) rel = rel.slice(baseBare.length + 1);
+      const candidates = [rel];
+      if (sub !== "" && !rel.startsWith(sub + "/")) candidates.push(`${sub}/${rel}`);
+      for (const candidate of candidates) {
+        const file = this.app.vault.getAbstractFileByPath(candidate);
+        if (file) {
+          void this.app.workspace.getLeaf("tab").openFile(file);
+          return true;
+        }
+      }
+      return false;
     } catch {
       return false;
     }

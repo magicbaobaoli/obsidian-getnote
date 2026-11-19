@@ -1613,4 +1613,46 @@ test('新建笔记落在宿主指定的目录里，没指定就还落在原来�
   panel.setNewNotePlacement(null)
 })
 
+test('面板里的图片点了交给宿主打开，没接上宿主就不假装能点', async () => {
+  const { renderEmbed } = panel.__internals
+  assert.ok(typeof renderEmbed === 'function', 'renderEmbed 要能取到')
+
+  // 没注入宿主：不给光标样式，也不挂一个点了什么都不会发生的处理器
+  const plain = renderEmbed('随手记/图/点图验收.png', 'k1', {})
+  assert.equal(plain.props.className, 'dshgn_img')
+  assert.equal(plain.props.onClick, undefined, '没接上宿主时不该挂点击处理器')
+
+  const opened = []
+  panel.setOpenAsset((path) => {
+    opened.push(String(path))
+    return true
+  })
+  try {
+    const live = renderEmbed('随手记/图/点图验收.png', 'k2', {})
+    assert.equal(live.props.className, 'dshgn_img dshgn_imgOpen', '能点的时候要给个「可以点」的样子')
+    assert.equal(typeof live.props.onClick, 'function')
+    live.props.onClick({ stopPropagation() {} })
+    assert.deepEqual(opened, ['随手记/图/点图验收.png'], '交出去的应该是面板自己的路径口径')
+
+    // 正文里的 ![[图.png]] 只写了文件名：要交给附件里的真实路径
+    const hosted = renderEmbed('图.png', 'k3', {
+      assets: [{ name: '图.png', path: '随手记/asset/图.png' }],
+    })
+    hosted.props.onClick({})
+    assert.deepEqual(opened, ['随手记/图/点图验收.png', '随手记/asset/图.png'])
+
+    // 宿主那边炸了也不能把面板带崩（点一下没反应比白屏强）
+    panel.setOpenAsset(() => {
+      throw new Error('宿主还没准备好')
+    })
+    const thrown = renderEmbed('随手记/图/点图验收.png', 'k4', {})
+    assert.doesNotThrow(() => thrown.props.onClick({}))
+  } finally {
+    panel.setOpenAsset(null)
+  }
+
+  // 认不出来的附件仍然只给文件名，不该变成一张图
+  assert.equal(renderEmbed('说明.pdf', 'k5', {}).props.className, 'dshgn_embedFile')
+})
+
 
