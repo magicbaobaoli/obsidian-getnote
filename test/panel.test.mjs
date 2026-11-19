@@ -71,6 +71,26 @@ globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window)
 globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window)
 // jsdom 没实现 scrollTo（面板跳大纲时用），补一个空实现
 window.HTMLElement.prototype.scrollTo = function scrollTo() {}
+
+// jsdom 在 app:// 这种不透明源上取 localStorage 会抛 SecurityError。面板里所有
+// 读写都包了 try/catch（隐私模式就回落默认值），但那样「记住栏宽」「记住上次
+// 看到哪儿」这些偏好一条都测不到。换成内存实现，让它们能真跑一遍。
+const memoryStore = new Map()
+const fakeStorage = {
+  getItem: (key) => (memoryStore.has(String(key)) ? memoryStore.get(String(key)) : null),
+  setItem: (key, value) => {
+    memoryStore.set(String(key), String(value))
+  },
+  removeItem: (key) => {
+    memoryStore.delete(String(key))
+  },
+  clear: () => memoryStore.clear(),
+  key: (index) => Array.from(memoryStore.keys())[index] ?? null,
+  get length() {
+    return memoryStore.size
+  },
+}
+Object.defineProperty(window, 'localStorage', { value: fakeStorage, configurable: true })
 globalThis.IS_REACT_ACT_ENVIRONMENT = false
 
 const React = await import('preact/compat')
@@ -832,5 +852,68 @@ test('编辑态里 Ctrl+S 保存、Esc 退出编辑', async () => {
   // Esc：退出编辑态（保存后可能已经退出，也接受再进一次）
   window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
   await waitFor(() => window.document.querySelector('.dshgn_editor') === null, 5000, 'Esc 之后要退出编辑态')
+})
+
+/**
+ * 上次看到哪儿了。
+ *
+ * Obsidian 关掉再开很常见（重启、切库、叶子关掉又拉回来），每次回来都从
+ * 「笔记 / 全部 / 没打开任何一篇」开始，等于让人重新找一遍刚才的位置。
+ * 这里守三件事：位置真的记下来了、重开时真的回到那儿、存的东西坏了不炸。
+ */
+test('面板记得上次停在哪个页签、哪个目录、开着哪一篇', async () => {
+  const { readSession, writeSession, SESSION_KEY } = panel.__internals
+  await clickTab('笔记')
+  await waitFor(() => window.document.querySelector('.dshgn_card') !== null, 8000, '列表有卡片')
+
+  // 上一条用例结束时笔记还开着；先退回列表，否则这次点卡片是「再点一下收起」
+  const backBtn = window.document.querySelector('.dshgn_noteBack')
+  if (backBtn !== null) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(
+      () => window.document.querySelector('.dshgn_root').getAttribute('data-has-note') === 'false',
+      5000,
+      '先退回列表',
+    )
+    panel.setConfirmDialog(null)
+  }
+
+  // 打开一篇，位置就该被记下来
+  window.document.querySelector('.dshgn_card').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_root').getAttribute('data-has-note') === 'true', 8000, '笔记打开')
+  await waitFor(() => readSession().path !== '', 5000, '开着的那一篇被记下来')
+  assert.equal(readSession().tab, 'notes', '页签也要记')
+  assert.ok(readSession().path.endsWith('.md'), '记的是路径：' + readSession().path)
+  // 先留一份：下面要故意把存储写坏来验回落，坏掉之后就读不出它了
+  const openPath = readSession().path
+
+  // 切到别的页签也要跟上
+  await clickTab('设置')
+  await waitFor(() => readSession().tab === 'settings', 5000, '页签变化被记下来')
+
+  // 存坏了 / 存了不认识的页签：当作没有，不抛错
+  window.localStorage.setItem(SESSION_KEY, '{ 这不是 JSON')
+  assert.deepEqual(readSession(), { tab: '', dir: '', tag: '', path: '' })
+  window.localStorage.setItem(SESSION_KEY, JSON.stringify({ tab: '不存在的页签', dir: 3, path: null }))
+  assert.deepEqual(readSession(), { tab: '', dir: '', tag: '', path: '' })
+
+  // 换一个「新窗口」：清掉内存里的组件树，用刚写下的位置重新挂一次
+  writeSession({ tab: 'notes', dir: '', tag: '', path: openPath })
+  await clickTab('笔记')
+  await waitFor(() => readSession().path !== '', 5000, '位置已经写好')
+  const saved = readSession()
+  assert.equal(saved.tab, 'notes')
+
+  root.unmount()
+  root = createRoot(rootEl)
+  root.render(React.createElement(panel.PanelRoot, {}))
+  // 重开之后应该直接停在那一篇上，而不是空态
+  await waitFor(
+    () => window.document.querySelector('.dshgn_root') !== null &&
+      window.document.querySelector('.dshgn_root').getAttribute('data-has-note') === 'true',
+    10000,
+    '重开之后回到上次开着的那一篇',
+  )
 })
 

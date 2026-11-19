@@ -10376,14 +10376,15 @@ function GetnotePage() {
   const [locale, setLocale] = h2(() => activeUiLocale());
   setUiLocale(locale);
   const t3 = T2(() => makeT(), [locale]);
-  const [tab, setTab] = h2("notes");
+  const [bootSession] = h2(() => readSession());
+  const [tab, setTab] = h2(bootSession.tab === "" ? "notes" : bootSession.tab);
   const [status, setStatus] = h2(null);
   const [tree, setTree] = h2(null);
   const [entries, setEntries] = h2([]);
   const [dirs, setDirs] = h2([]);
   const [query, setQuery] = h2("");
-  const [activeDir, setActiveDir] = h2("");
-  const [activeTag, setActiveTag] = h2("");
+  const [activeDir, setActiveDir] = h2(bootSession.dir);
+  const [activeTag, setActiveTag] = h2(bootSession.tag);
   const makeSortPref = (key) => {
     const read = () => {
       try {
@@ -10590,6 +10591,25 @@ function GetnotePage() {
     },
     [current]
   );
+  const restoredRef = A2(false);
+  y2(() => {
+    if (restoredRef.current) return;
+    if (bootSession.path === "") {
+      restoredRef.current = true;
+      return;
+    }
+    if (!Array.isArray(entries) || entries.length === 0) return;
+    restoredRef.current = true;
+    const hit = entries.find((entry) => entry.path === bootSession.path);
+    if (hit !== void 0) void openNote(hit.path);
+  }, [bootSession.path, entries, openNote]);
+  y2(() => {
+    writeSession({ tab, dir: activeDir, tag: activeTag });
+  }, [tab, activeDir, activeTag]);
+  y2(() => {
+    if (!restoredRef.current) return;
+    writeSession({ path: current !== null ? String(current.path || "") : "" });
+  }, [current]);
   const openWikiLink = q2(
     (target) => {
       const raw = String(target || "").trim();
@@ -14255,6 +14275,34 @@ function readColWidths() {
 function writeColWidths(widths) {
   try {
     window.localStorage.setItem(COL_WIDTH_KEY, JSON.stringify(widths));
+  } catch {
+  }
+}
+var SESSION_KEY = "dshgn.session";
+var SESSION_TABS = ["notes", "cloud", "settings", "card", "conflict", "trash"];
+function readSession() {
+  const empty = { tab: "", dir: "", tag: "", path: "" };
+  try {
+    const raw = window.localStorage.getItem(SESSION_KEY);
+    if (raw === null) return empty;
+    const parsed = JSON.parse(raw);
+    if (parsed === null || typeof parsed !== "object") return empty;
+    const str = (value) => typeof value === "string" ? value : "";
+    const tab = str(parsed.tab);
+    return {
+      tab: SESSION_TABS.includes(tab) ? tab : "",
+      dir: str(parsed.dir),
+      tag: str(parsed.tag),
+      path: str(parsed.path)
+    };
+  } catch {
+    return empty;
+  }
+}
+function writeSession(patch) {
+  try {
+    const prev = readSession();
+    window.localStorage.setItem(SESSION_KEY, JSON.stringify({ ...prev, ...patch }));
   } catch {
   }
 }

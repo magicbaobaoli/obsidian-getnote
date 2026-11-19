@@ -3225,14 +3225,17 @@ async function saveFile(url, filename) {
       setUiLocale(locale)
       // t 缓存的是「取文案的函数」，locale 一变就换一个新的，整棵子树的文案才跟着变
       const t = React.useMemo(() => makeT(), [locale])
-      const [tab, setTab] = React.useState('notes')
+      // 上次停在哪儿（页签 / 目录 / 标签 / 开着的那篇），见 readSession 的说明。
+      // 只在首帧读一次，之后由下面两个 effect 负责写回。
+      const [bootSession] = React.useState(() => readSession())
+      const [tab, setTab] = React.useState(bootSession.tab === '' ? 'notes' : bootSession.tab)
       const [status, setStatus] = React.useState(null)
       const [tree, setTree] = React.useState(null)
       const [entries, setEntries] = React.useState([])
       const [dirs, setDirs] = React.useState([])
       const [query, setQuery] = React.useState('')
-      const [activeDir, setActiveDir] = React.useState('')
-      const [activeTag, setActiveTag] = React.useState('')
+      const [activeDir, setActiveDir] = React.useState(bootSession.dir)
+      const [activeTag, setActiveTag] = React.useState(bootSession.tag)
       // 左栏排序：time（按修改时间）/ name（按名称）/ count（按条数）。
       // 存 localStorage 而不是 host 设置：这是纯展示偏好，不涉及数据，
       // 也没必要为它多一个接口；隐私模式下 localStorage 抛错就回落默认值。
@@ -3536,6 +3539,32 @@ async function saveFile(url, filename) {
         },
         [current],
       )
+
+      // 恢复上次开着的那一篇。等列表回来再开：笔记可能已经被删掉或改了名，
+      // 直接 /read 会 404 弹一条没头没尾的错；先确认它还在列表里。
+      const restoredRef = React.useRef(false)
+      React.useEffect(() => {
+        if (restoredRef.current) return
+        if (bootSession.path === '') {
+          restoredRef.current = true
+          return
+        }
+        if (!Array.isArray(entries) || entries.length === 0) return
+        restoredRef.current = true
+        const hit = entries.find((entry) => entry.path === bootSession.path)
+        if (hit !== undefined) void openNote(hit.path)
+      }, [bootSession.path, entries, openNote])
+
+      // 位置变了就记下来。只记路径不记正文：正文可能已经被别处改过
+      // （同步、宿主编辑器、另一个窗口），恢复时重新读一遍才是当下真实的内容。
+      React.useEffect(() => {
+        writeSession({ tab, dir: activeDir, tag: activeTag })
+      }, [tab, activeDir, activeTag])
+      React.useEffect(() => {
+        // 还没恢复完就写会把上次的位置冲掉，所以等那一篇恢复过（或确认没有）再写
+        if (!restoredRef.current) return
+        writeSession({ path: current !== null ? String(current.path || '') : '' })
+      }, [current])
 
       /**
        * 打开 Obsidian 双链的目标。
@@ -7779,6 +7808,48 @@ async function saveFile(url, filename) {
       }
     }
 
+    // 上次看到哪儿了：哪个页签、哪个目录、哪个标签、开着哪一篇。
+    //
+    // Obsidian 关掉再开是很常见的事（重启、切库、关掉这个叶子又拉回来），
+    // 每次回来都从「笔记 / 全部 / 没打开任何一篇」开始，等于让人重新找一遍
+    // 刚才的位置。这跟栏宽是同一类东西——纯界面状态，存 localStorage 就够，
+    // 不必为它多一个设置接口。
+    //
+    // 只存路径不存正文：正文可能已经被别处改过（同步、宿主编辑器、另一个
+    // 窗口），恢复时重新走一遍 /read 才是当下真实的内容。
+    const SESSION_KEY = 'dshgn.session'
+    const SESSION_TABS = ['notes', 'cloud', 'settings', 'card', 'conflict', 'trash']
+
+    function readSession() {
+      const empty = { tab: '', dir: '', tag: '', path: '' }
+      try {
+        const raw = window.localStorage.getItem(SESSION_KEY)
+        if (raw === null) return empty
+        const parsed = JSON.parse(raw)
+        if (parsed === null || typeof parsed !== 'object') return empty
+        const str = (value) => (typeof value === 'string' ? value : '')
+        const tab = str(parsed.tab)
+        return {
+          tab: SESSION_TABS.includes(tab) ? tab : '',
+          dir: str(parsed.dir),
+          tag: str(parsed.tag),
+          path: str(parsed.path),
+        }
+      } catch {
+        // 隐私模式 / 存的是上一版的旧结构：当作没有，从默认位置开始
+        return empty
+      }
+    }
+
+    function writeSession(patch) {
+      try {
+        const prev = readSession()
+        window.localStorage.setItem(SESSION_KEY, JSON.stringify({ ...prev, ...patch }))
+      } catch {
+        // 存不了就这次先用着
+      }
+    }
+
     /**
      * 三栏之间的拖拽手柄。
      *
@@ -9556,7 +9627,7 @@ export const __internals = {
   renderBlocks, renderInline, stripLeadingHeading, LEX, ICONS, AudioPlayer, CloudPane,
   SyncPane, CloudCredCard, SettingsPane, GetnotePage, NotePane, TranscriptBlock,
   looksLikeTranscript, formatMoment, parseTranscript, stampToSeconds, activeTranscriptIndex,
-  TrashPane, renderEmbed, assetLabel, ThemeCard,
+  TrashPane, renderEmbed, assetLabel, ThemeCard, readSession, writeSession, SESSION_KEY,
   themeVars, parseHex, rgbToHsl, hslToHex, ConflictPane, ArchiveCard, CardPane,
   TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale,
   reportSync,
