@@ -469,6 +469,29 @@ note_url: https://www.biji.com/note/1200000000000000001
     JSON.stringify(blHit && blHit.snippets),
   )
 
+  // 提了几次也是排序依据：一篇里反复提到同一篇的，通常比只提一次的更值得先看。
+  // 同一行里写两遍不算两条上下文——那种情况下两行字完全一样，摆出来只是噪音。
+  await writeFile(
+    join(root, blDir, '反复提到.md'),
+    ['# 反复提到', '', '头一句 [[被引]]', '', '一行里两遍 [[被引]] 和 [[被引]]', ''].join('\n'),
+    'utf8',
+  )
+  const blResult2 = await findBacklinks(root, `${blDir}/被引.md`)
+  const repeatHit = blResult2.hits.find((h) => h.path === `${blDir}/反复提到.md`)
+  const onceHit = blResult2.hits.find((h) => h.path === `${blDir}/引用方.md`)
+  check('反链: 记下这一篇里提了几次', repeatHit !== undefined && repeatHit.count === 3, String(repeatHit && repeatHit.count))
+  check('反链: 两种写法各算一次', onceHit !== undefined && onceHit.count === 2, String(onceHit && onceHit.count))
+  check(
+    '反链: 同一行写两遍只留一条上下文',
+    repeatHit !== undefined && repeatHit.snippets.length === 2,
+    JSON.stringify(repeatHit && repeatHit.snippets),
+  )
+  check(
+    '反链: 提得多的排在前面',
+    blResult2.hits.length > 0 && blResult2.hits[0].path === `${blDir}/反复提到.md`,
+    JSON.stringify(blResult2.hits.map((h) => [h.path, h.count])),
+  )
+
   // ── 写作热力图（对齐移动端首页那张）────────────────────────────────────
   const fixedToday = new Date('2026-11-16T12:00:00')
   const hm = heatmapOf(

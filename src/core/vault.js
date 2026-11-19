@@ -992,26 +992,56 @@ export function extractWikiLinks(text) {
 }
 
 /**
- * 把一条双链周围那点文字抠出来，做反链里的一行上下文。
+ * 把引用那一行收拾成反链里的一行上下文。
  *
- * 只取这一行（双链在 Markdown 里基本不会跨行），把双链本身从两头削掉，
- * 再把多余空白压平。太长就两头留一点、中间省略——反链区一行就十几号字，
- * 整段正文塞进去反而看不清。
+ * 双链在 Markdown 里基本不会跨行，所以上下文就是它所在的那一行。双链本身
+ * 从行里削掉（留着的话一行上下文里全是 `[[`），行首的井号和列表符号也削掉，
+ * 多余空白压平。太长就两头留一点、中间省略——反链区一行就十几号字，整段
+ * 正文塞进去反而看不清。
  */
-function snippetAround(text, link, width = 60) {
+function snippetOfLine(line, width = 60) {
+  const text = String(line || '')
+    .replace(/\[\[[^\]\n]*\]\]/g, ' ')
+    .replace(/^\s*#+\s*/, '')
+    .replace(/^\s*[-*+]\s+/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (text.length <= width) return text
+  return `${text.slice(0, width - 1).trim()}…`
+}
+
+/**
+ * 数一遍正文里「指向目标」的双链各写了几次，顺带收下出现处的上下文。
+ *
+ * 两个用途：一是反链按次数排（一篇里提了五次的，比只提一次的更值得先看），
+ * 二是同一行只留一条上下文——同一行里 `[[甲]] 和 [[甲]]` 写两遍，收两条
+ * 一模一样的上下文只是噪音。判定口径与 findBacklinks 的匹配完全一致。
+ */
+function linkHitsInText(text, wantedLower) {
   const src = String(text || '')
-  const needle = `[[${link}`
-  const at = src.indexOf(needle)
-  if (at < 0) return ''
-  const lineStart = src.lastIndexOf('\n', at) + 1
-  const lineEndRaw = src.indexOf('\n', at)
-  const lineEnd = lineEndRaw < 0 ? src.length : lineEndRaw
-  let line = src.slice(lineStart, lineEnd)
-  // 去掉双链本身（含 `|别名` 与收尾的 `]]`），留下前后文
-  line = line.replace(/\[\[[^\]\n]*\]\]/g, ' ')
-  line = line.replace(/^\s*#+\s*/, '').replace(/\s+/g, ' ').trim()
-  if (line.length <= width) return line
-  return `${line.slice(0, width - 1).trim()}…`
+  const re = /\[\[([^\]\n|]+)(?:\|[^\]\n]*)?\]\]/g
+  const counts = new Map()
+  const snippets = []
+  const seenLines = new Set()
+  let m
+  while ((m = re.exec(src)) !== null) {
+    const target = m[1].trim()
+    if (target === '') continue
+    const noExt = target.replace(/\.md$/i, '')
+    const base = noExt.split('/').pop() || noExt
+    if (!wantedLower.has(target.toLowerCase()) && !wantedLower.has(noExt.toLowerCase()) && !wantedLower.has(base.toLowerCase())) continue
+    counts.set(target, (counts.get(target) || 0) + 1)
+    const lineStart = src.lastIndexOf('\n', m.index) + 1
+    if (seenLines.has(lineStart)) continue
+    seenLines.add(lineStart)
+    const lineEndRaw = src.indexOf('\n', m.index)
+    const lineEnd = lineEndRaw < 0 ? src.length : lineEndRaw
+    const line = snippetOfLine(src.slice(lineStart, lineEnd))
+    if (line !== '') snippets.push(line)
+  }
+  let count = 0
+  for (const times of counts.values()) count += times
+  return { links: [...counts.keys()], count, snippets }
 }
 
 /**
@@ -1065,26 +1095,25 @@ export async function findBacklinks(root, target, entries) {
     } catch {
       continue
     }
-    const links = extractWikiLinks(text)
-
-    const matched = links.filter((link) => {
-      const noExt = stripExt(link)
-      const base = stripExt(link.split('/').pop() || link)
-      return wantedLower.has(link.toLowerCase()) || wantedLower.has(noExt.toLowerCase()) || wantedLower.has(base.toLowerCase())
-    })
-    if (matched.length === 0) continue
+    const found = linkHitsInText(text, wantedLower)
+    if (found.links.length === 0) continue
     hits.push({
       path: entry.path,
       title: entry.title,
       date: entry.date,
-      links: matched,
-      // 每一条引用各自带上它所在的上下文：一篇笔记里可能三处都提到这一篇，
+      links: found.links,
+      // 这一篇里一共提了几次。反复提到同一篇的，通常比只提一次的更值得先看。
+      count: found.count,
+      // 每一处引用各自带上它所在的上下文：一篇笔记里可能三处都提到这一篇，
       // 只给「它引用了我」和路径的话，用户还得自己点进去、再在正文里搜一遍。
-      // 这一行不用额外读盘——正文本来就已经读进来了。
-      snippets: matched.map((link) => snippetAround(text, link)),
+      // 这一行不用额外读盘——正文本来就已经读进来了。最多三条，再多就成了
+      // 把对方正文抄过来。
+      snippets: found.snippets.slice(0, 3),
     })
   }
-  hits.sort((a, b) => a.title.localeCompare(b.title, 'zh'))
+  // 提得多的排前面，次数相同再按标题。宿主那边（metadataCache）给的次数是同一
+  // 个含义，两边排序口径必须一样，否则同一篇笔记接不接宿主会换个顺序。
+  hits.sort((a, b) => (Number(b.count) || 1) - (Number(a.count) || 1) || a.title.localeCompare(b.title, 'zh'))
   return { target: raw, hits }
 }
 

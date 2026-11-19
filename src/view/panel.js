@@ -10594,10 +10594,11 @@ async function saveFile(url, filename) {
                           ? h('span', { className: 'dshgn_outlineCount', style: { marginLeft: 6 } }, String(hit.count))
                           : null,
                         // 上下文：引用那一行剩下的字。没有（宿主索引那份不带）就不占行，
-                        // 免得每条反链底下都空一格。
+                        // 免得每条反链底下都空一格。最多三条——再多就是把人家的正文
+                        // 整段抄过来了。
                         (Array.isArray(hit.snippets) ? hit.snippets : [])
                           .filter((line) => typeof line === 'string' && line !== '')
-                          .slice(0, 2)
+                          .slice(0, 3)
                           .map((line, index) =>
                             h('span', { key: `${hit.path}-s${index}`, className: 'dshgn_backlinkSnip' }, line),
                           ),

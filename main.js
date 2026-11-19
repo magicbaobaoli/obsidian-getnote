@@ -989,19 +989,36 @@ function extractWikiLinks(text) {
   }
   return [...out];
 }
-function snippetAround(text, link, width = 60) {
+function snippetOfLine(line, width = 60) {
+  const text = String(line || "").replace(/\[\[[^\]\n]*\]\]/g, " ").replace(/^\s*#+\s*/, "").replace(/^\s*[-*+]\s+/, "").replace(/\s+/g, " ").trim();
+  if (text.length <= width) return text;
+  return `${text.slice(0, width - 1).trim()}\u2026`;
+}
+function linkHitsInText(text, wantedLower) {
   const src = String(text || "");
-  const needle = `[[${link}`;
-  const at = src.indexOf(needle);
-  if (at < 0) return "";
-  const lineStart = src.lastIndexOf("\n", at) + 1;
-  const lineEndRaw = src.indexOf("\n", at);
-  const lineEnd = lineEndRaw < 0 ? src.length : lineEndRaw;
-  let line = src.slice(lineStart, lineEnd);
-  line = line.replace(/\[\[[^\]\n]*\]\]/g, " ");
-  line = line.replace(/^\s*#+\s*/, "").replace(/\s+/g, " ").trim();
-  if (line.length <= width) return line;
-  return `${line.slice(0, width - 1).trim()}\u2026`;
+  const re = /\[\[([^\]\n|]+)(?:\|[^\]\n]*)?\]\]/g;
+  const counts = /* @__PURE__ */ new Map();
+  const snippets = [];
+  const seenLines = /* @__PURE__ */ new Set();
+  let m3;
+  while ((m3 = re.exec(src)) !== null) {
+    const target = m3[1].trim();
+    if (target === "") continue;
+    const noExt = target.replace(/\.md$/i, "");
+    const base = noExt.split("/").pop() || noExt;
+    if (!wantedLower.has(target.toLowerCase()) && !wantedLower.has(noExt.toLowerCase()) && !wantedLower.has(base.toLowerCase())) continue;
+    counts.set(target, (counts.get(target) || 0) + 1);
+    const lineStart = src.lastIndexOf("\n", m3.index) + 1;
+    if (seenLines.has(lineStart)) continue;
+    seenLines.add(lineStart);
+    const lineEndRaw = src.indexOf("\n", m3.index);
+    const lineEnd = lineEndRaw < 0 ? src.length : lineEndRaw;
+    const line = snippetOfLine(src.slice(lineStart, lineEnd));
+    if (line !== "") snippets.push(line);
+  }
+  let count = 0;
+  for (const times of counts.values()) count += times;
+  return { links: [...counts.keys()], count, snippets };
 }
 async function findBacklinks(root, target, entries) {
   const raw = String(target || "").trim().replace(/\\/g, "/");
@@ -1036,25 +1053,23 @@ async function findBacklinks(root, target, entries) {
     } catch {
       continue;
     }
-    const links = extractWikiLinks(text);
-    const matched = links.filter((link) => {
-      const noExt = stripExt(link);
-      const base = stripExt(link.split("/").pop() || link);
-      return wantedLower.has(link.toLowerCase()) || wantedLower.has(noExt.toLowerCase()) || wantedLower.has(base.toLowerCase());
-    });
-    if (matched.length === 0) continue;
+    const found = linkHitsInText(text, wantedLower);
+    if (found.links.length === 0) continue;
     hits.push({
       path: entry.path,
       title: entry.title,
       date: entry.date,
-      links: matched,
-      // 每一条引用各自带上它所在的上下文：一篇笔记里可能三处都提到这一篇，
+      links: found.links,
+      // 这一篇里一共提了几次。反复提到同一篇的，通常比只提一次的更值得先看。
+      count: found.count,
+      // 每一处引用各自带上它所在的上下文：一篇笔记里可能三处都提到这一篇，
       // 只给「它引用了我」和路径的话，用户还得自己点进去、再在正文里搜一遍。
-      // 这一行不用额外读盘——正文本来就已经读进来了。
-      snippets: matched.map((link) => snippetAround(text, link))
+      // 这一行不用额外读盘——正文本来就已经读进来了。最多三条，再多就成了
+      // 把对方正文抄过来。
+      snippets: found.snippets.slice(0, 3)
     });
   }
-  hits.sort((a3, b3) => a3.title.localeCompare(b3.title, "zh"));
+  hits.sort((a3, b3) => (Number(b3.count) || 1) - (Number(a3.count) || 1) || a3.title.localeCompare(b3.title, "zh"));
   return { target: raw, hits };
 }
 function knownLinkNames(entries) {
@@ -16671,8 +16686,9 @@ function NotePane(props) {
             // 的，通常比只提一次的更值得先看。
             Number(hit.count) > 1 ? h4("span", { className: "dshgn_outlineCount", style: { marginLeft: 6 } }, String(hit.count)) : null,
             // 上下文：引用那一行剩下的字。没有（宿主索引那份不带）就不占行，
-            // 免得每条反链底下都空一格。
-            (Array.isArray(hit.snippets) ? hit.snippets : []).filter((line) => typeof line === "string" && line !== "").slice(0, 2).map(
+            // 免得每条反链底下都空一格。最多三条——再多就是把人家的正文
+            // 整段抄过来了。
+            (Array.isArray(hit.snippets) ? hit.snippets : []).filter((line) => typeof line === "string" && line !== "").slice(0, 3).map(
               (line, index) => h4("span", { key: `${hit.path}-s${index}`, className: "dshgn_backlinkSnip" }, line)
             ),
             h4("span", { className: "dshgn_backlinkPath" }, hit.path)
@@ -18406,7 +18422,7 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
           const mtime = Number(file.stat && file.stat.mtime) || 0;
           if (mtime > 0 && Date.now() - mtime < FRESH_INDEX_MS) return null;
         }
-        hits.sort((a3, b3) => a3.title.localeCompare(b3.title, "zh"));
+        hits.sort((a3, b3) => (Number(b3.count) || 1) - (Number(a3.count) || 1) || a3.title.localeCompare(b3.title, "zh"));
         return { target: rel, hits, host: true };
       }
       if (kind === "links") {

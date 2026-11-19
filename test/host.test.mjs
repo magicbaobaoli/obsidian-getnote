@@ -676,6 +676,23 @@ try {
   const backJson = await jget('/backlinks?path=' + encodeURIComponent('随手记/大纲测试.md'))
   check('A2 /backlinks 找到引用者', backJson.hits.some((h) => h.path === '随手记/引用者.md'), JSON.stringify(backJson.hits.map((h) => h.path)))
 
+  // 一篇里反复提到同一篇的，比只提一次的更值得先看：/backlinks 带上次数并按它排序，
+  // 面板照着这个顺序摆，不用自己再排一遍。
+  await jpost('/save', { path: '随手记/反复引用者.md', content: '头一句 [[大纲测试]]\n\n又一句 [[大纲测试]]\n\n再一句 [[大纲测试]]\n' })
+  const backJson2 = await jget('/backlinks?path=' + encodeURIComponent('随手记/大纲测试.md'))
+  const repeatBack = backJson2.hits.find((h) => h.path === '随手记/反复引用者.md')
+  check('A2+ /backlinks 记下提了几次', repeatBack !== undefined && repeatBack.count === 3, String(repeatBack && repeatBack.count))
+  check(
+    'A2+ /backlinks 提得多的排前面',
+    backJson2.hits.length > 0 && backJson2.hits[0].path === '随手记/反复引用者.md',
+    JSON.stringify(backJson2.hits.map((h) => [h.path, h.count])),
+  )
+  check(
+    'A2+ /backlinks 每条都带上下文',
+    repeatBack !== undefined && Array.isArray(repeatBack.snippets) && repeatBack.snippets.length === 3,
+    JSON.stringify(repeatBack && repeatBack.snippets),
+  )
+
   // A2+ 断链体检：全库哪些双链指向了不存在的笔记
   await jpost('/save', { path: '随手记/断链体检.md', content: '好的 [[大纲测试]]，坏的 [[根本没有这一篇]]。\n' })
   const brokenJson = await jget('/broken')

@@ -2877,6 +2877,42 @@ test('反链底下带上引用那一行的上下文', async () => {
   )
   assert.ok((snip.textContent || '').includes('开会时记到'), '上下文是引用那一行剩下的字')
   assert.ok(!(snip.textContent || '').includes('[['), '双链本身不该出现在上下文里')
+
+  // 提了几次就标几：反链按次数排，提了三遍的那篇该排在只提一遍的前面。
+  await seed(
+    '反链上下文反复',
+    ['# 反链上下文反复', '', '第一处 [[反链上下文目标]]', '', '第二处 [[反链上下文目标]]', '', '第三处 [[反链上下文目标]]', ''].join('\n'),
+    'seed-bl-snip-repeat',
+  )
+  const backBtn2 = window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    backBtn2.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  const refreshBtn2 = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn2().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+  const card2 = await waitFor(
+    () => Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === target),
+    5000,
+    '目标笔记又出现在列表里',
+  )
+  card2.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+
+  const firstItem = await waitFor(() => {
+    const items = Array.from(window.document.querySelectorAll('.dshgn_backlinkItem'))
+    return items.find((el) => (el.textContent || '').includes('反链上下文反复')) || null
+  }, 8000, '反复提到的那篇应该出现在反链里')
+  const badge = Array.from(firstItem.querySelectorAll('.dshgn_outlineCount')).map((el) => el.textContent)
+  assert.deepEqual(badge, ['3'], '反链上标出这一篇里提了几次')
+  const order = Array.from(window.document.querySelectorAll('.dshgn_backlinkItem')).map((el) =>
+    (el.querySelector('.dshgn_backlinkTitle') || {}).textContent,
+  )
+  assert.equal(order[0], '反链上下文反复', '提得多的排在前面，实际顺序：' + JSON.stringify(order))
 })
 /**
  * 搜索结果卡片上的「它引用了谁」。

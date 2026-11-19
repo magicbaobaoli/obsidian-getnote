@@ -1367,7 +1367,9 @@ export default class GetnoteObsidianPlugin extends Plugin {
           const mtime = Number(file.stat && file.stat.mtime) || 0
           if (mtime > 0 && Date.now() - mtime < FRESH_INDEX_MS) return null
         }
-        hits.sort((a, b) => a.title.localeCompare(b.title, 'zh'))
+        // 提得多的排前面，次数相同再按标题。面板那份本地扫描是同一个口径——
+        // 两边排序不一致的话，同一篇笔记接不接宿主会换个顺序，用户会以为丢了东西。
+        hits.sort((a, b) => (Number(b.count) || 1) - (Number(a.count) || 1) || a.title.localeCompare(b.title, 'zh'))
         return { target: rel, hits, host: true }
       }
       if (kind === 'links') {
