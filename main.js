@@ -2577,6 +2577,81 @@ function error(...args) {
 // src/main.js
 init_vault();
 
+// src/core/integrations.js
+function basesTemplate({ subfolder = "\u5F97\u5230\u5927\u8111" } = {}) {
+  const dir = String(subfolder || "\u5F97\u5230\u5927\u8111").replace(/^\/+|\/+$/g, "") || "\u5F97\u5230\u5927\u8111";
+  return [
+    "filters:",
+    "  and:",
+    `    - file.inFolder("${dir}")`,
+    "views:",
+    "  - type: table",
+    "    name: \u5168\u90E8",
+    "    order:",
+    "      - file.name",
+    "      - note.date",
+    "      - note.tags",
+    "  - type: table",
+    "    name: \u6309\u6807\u7B7E",
+    "    groupBy:",
+    "      property: note.tags",
+    "      direction: ASC",
+    "    order:",
+    "      - file.name",
+    "      - note.date",
+    "  - type: table",
+    "    name: \u6309\u65E5\u671F",
+    "    sort:",
+    "      - property: note.date",
+    "        direction: DESC",
+    "    order:",
+    "      - file.name",
+    "      - note.date",
+    ""
+  ].join("\n");
+}
+function emptyCanvas() {
+  return { nodes: [], edges: [] };
+}
+function randomId() {
+  const bytes = new Uint8Array(8);
+  const cryptoObj = typeof globalThis !== "undefined" ? globalThis.crypto : null;
+  if (cryptoObj && typeof cryptoObj.getRandomValues === "function") cryptoObj.getRandomValues(bytes);
+  else for (let i3 = 0; i3 < bytes.length; i3 += 1) bytes[i3] = Math.floor(Math.random() * 256);
+  return Array.from(bytes, (b3) => b3.toString(16).padStart(2, "0")).join("");
+}
+function addFileNode(canvas, { file, x: x4 = 0, y: y3 = 0, width = 400, height = 400 } = {}) {
+  const source = canvas && typeof canvas === "object" ? canvas : emptyCanvas();
+  const nodes = Array.isArray(source.nodes) ? source.nodes.slice() : [];
+  const edges = Array.isArray(source.edges) ? source.edges.slice() : [];
+  const path = String(file || "").replace(/^\/+/, "");
+  if (path === "") throw Object.assign(new Error("\u753B\u5E03\u8282\u70B9\u9700\u8981\u4E00\u4E2A\u6587\u4EF6\u8DEF\u5F84"), { status: 400 });
+  const existing = nodes.find((node) => node && node.type === "file" && node.file === path);
+  if (existing) return { canvas: { nodes, edges }, added: false, id: existing.id };
+  const id = randomId();
+  nodes.push({ id, type: "file", file: path, x: x4, y: y3, width, height });
+  return { canvas: { nodes, edges }, added: true, id };
+}
+function parseCanvas(text) {
+  try {
+    const parsed = JSON.parse(String(text || ""));
+    if (!parsed || typeof parsed !== "object") return emptyCanvas();
+    return {
+      nodes: Array.isArray(parsed.nodes) ? parsed.nodes : [],
+      edges: Array.isArray(parsed.edges) ? parsed.edges : []
+    };
+  } catch {
+    return emptyCanvas();
+  }
+}
+function serializeCanvas(canvas) {
+  const source = canvas && typeof canvas === "object" ? canvas : emptyCanvas();
+  return JSON.stringify({
+    nodes: Array.isArray(source.nodes) ? source.nodes : [],
+    edges: Array.isArray(source.edges) ? source.edges : []
+  }, null, "	");
+}
+
 // src/core/service.js
 init_vfs();
 var import_node_path6 = require("node:path");
@@ -15532,6 +15607,25 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
         void this.activateView().then(() => requestIntent({ type: "capture", text, source }));
       }
     });
+    this.addCommand({
+      id: "create-bases-view",
+      name: "\u5728\u7B14\u8BB0\u76EE\u5F55\u91CC\u751F\u6210\u4E00\u4E2A Bases \u89C6\u56FE",
+      callback: () => {
+        void this.createBasesView();
+      }
+    });
+    this.addCommand({
+      id: "add-to-canvas",
+      name: "\u628A\u5F53\u524D\u7B14\u8BB0\u653E\u8FDB\u5F97\u5230\u5927\u8111\u753B\u5E03",
+      editorCallback: (editor, view) => {
+        const path = view && view.file && typeof view.file.path === "string" ? view.file.path : "";
+        if (path === "") {
+          new import_obsidian2.Notice("\u5F97\u5230\u5927\u8111\uFF1A\u5148\u6253\u5F00\u4E00\u7BC7\u7B14\u8BB0");
+          return;
+        }
+        void this.addNoteToCanvas(path);
+      }
+    });
     if (typeof this.registerObsidianProtocolHandler === "function") {
       this.registerObsidianProtocolHandler("getnote", (params) => {
         const action = params && typeof params.action === "string" ? params.action : "open";
@@ -15562,6 +15656,66 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     });
     this.stopAutoSync = startAutoSync();
     this.stopCardAutoImport = startCardAutoImport();
+  }
+  /**
+   * 在笔记目录里写一份 `.base`：Obsidian 1.9 的 Bases 视图能直接打开它。
+   *
+   * 有了它，用户可以在 Bases 里按标签/日期分组、写自己的公式，而不用回到我们
+   * 这个面板——同一个笔记库，两套视图各有各的顺手处。
+   */
+  async createBasesView() {
+    try {
+      const runtime2 = getRuntime();
+      const subfolder = String(runtime2.subfolder || DEFAULT_SUBFOLDER).replace(/^\/+|\/+$/g, "");
+      const target = subfolder === "" ? "\u5F97\u5230\u5927\u8111.base" : `${subfolder}/\u5F97\u5230\u5927\u8111.base`;
+      const abs = (0, import_node_path7.join)(runtime2.vaultBase, target);
+      let already = false;
+      try {
+        await access2(abs);
+        already = true;
+      } catch {
+        already = false;
+      }
+      if (already) {
+        new import_obsidian2.Notice("\u5F97\u5230\u5927\u8111\uFF1A\u8FD9\u4E2A Bases \u89C6\u56FE\u5DF2\u7ECF\u5B58\u5728\u4E86");
+        return;
+      }
+      await writeFile2(abs, basesTemplate({ subfolder: subfolder || DEFAULT_SUBFOLDER }));
+      invalidateScan();
+      new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A\u5DF2\u751F\u6210 ${target}`);
+    } catch (error2) {
+      new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A\u751F\u6210 Bases \u89C6\u56FE\u5931\u8D25 \u2014\u2014 ${error2 && error2.message ? error2.message : error2}`);
+    }
+  }
+  /**
+   * 把一篇笔记放进「得到大脑画布」：没有就建一张，有就加一个文件节点。
+   *
+   * 画布是 .canvas（JSON），节点只是 {type:'file', file: 相对路径}。这样用户在
+   * 画布里拖动、连线之后，我们的命令下次只负责补节点，不会重排他摆好的布局。
+   */
+  async addNoteToCanvas(notePath) {
+    try {
+      const runtime2 = getRuntime();
+      const subfolder = String(runtime2.subfolder || DEFAULT_SUBFOLDER).replace(/^\/+|\/+$/g, "");
+      const canvasRel = subfolder === "" ? "\u5F97\u5230\u5927\u8111\u753B\u5E03.canvas" : `${subfolder}/\u5F97\u5230\u5927\u8111\u753B\u5E03.canvas`;
+      const canvasAbs = (0, import_node_path7.join)(runtime2.vaultBase, canvasRel);
+      const fileRel = String(notePath).replace(/^\/+/, "");
+      let canvas = parseCanvas("");
+      try {
+        canvas = parseCanvas(await readFile2(canvasAbs, "utf8"));
+      } catch {
+      }
+      const { canvas: next, added } = addFileNode(canvas, { file: fileRel });
+      if (!added) {
+        new import_obsidian2.Notice("\u5F97\u5230\u5927\u8111\uFF1A\u8FD9\u7BC7\u5DF2\u7ECF\u5728\u753B\u5E03\u91CC\u4E86");
+        return;
+      }
+      await writeFile2(canvasAbs, serializeCanvas(next));
+      invalidateScan();
+      new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A\u5DF2\u653E\u8FDB ${canvasRel}`);
+    } catch (error2) {
+      new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A\u653E\u8FDB\u753B\u5E03\u5931\u8D25 \u2014\u2014 ${error2 && error2.message ? error2.message : error2}`);
+    }
   }
   onunload() {
     if (typeof this.stopCardAutoImport === "function") {

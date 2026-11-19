@@ -268,6 +268,8 @@ test('onload 能把插件拉起来', async () => {
     'sync-now',
     'scan-card',
     'capture-selection',
+    'create-bases-view',
+    'add-to-canvas',
   ])
   assert.equal(calls.settings.length, 1, '注册了设置页')
   assert.equal(calls.intervals.length >= 0, true)
@@ -633,6 +635,37 @@ test('想要的端口被占用时退回系统分配的端口，并如实报告',
   } finally {
     first.close()
   }
+})
+
+test('Bases 视图与画布都能真的落到库里，重复执行不覆盖', async () => {
+  // 这两条命令只写文件，所以验收标准就是「库里真的多了那份文件，内容认得出来」。
+  await plugin.createBasesView()
+  const baseFile = '得到大脑/得到大脑.base'
+  let text = null
+  try {
+    text = await adapter.read(baseFile)
+  } catch {
+    text = null
+  }
+  assert.ok(typeof text === 'string', '应该生成了 .base 文件')
+  assert.match(text, /file\.inFolder\("得到大脑"\)/)
+
+  // 用户可能已经在 Bases 里调过视图，第二次执行不许覆盖
+  const before = text
+  await plugin.createBasesView()
+  assert.equal(await adapter.read(baseFile), before, '已存在的 Bases 视图不该被覆盖')
+
+  // 画布：先建一篇笔记，再放进去，再放一次不重复
+  await adapter.write('得到大脑/随手记/画布验收.md', '---\ntitle: 画布验收\n---\n\n正文\n')
+  await plugin.addNoteToCanvas('得到大脑/随手记/画布验收.md')
+  const canvas = JSON.parse(await adapter.read('得到大脑/得到大脑画布.canvas'))
+  assert.equal(canvas.nodes.length, 1)
+  assert.equal(canvas.nodes[0].file, '得到大脑/随手记/画布验收.md')
+  assert.equal(canvas.nodes[0].type, 'file')
+
+  await plugin.addNoteToCanvas('得到大脑/随手记/画布验收.md')
+  const again = JSON.parse(await adapter.read('得到大脑/得到大脑画布.canvas'))
+  assert.equal(again.nodes.length, 1, '同一篇加两次不该变成两个节点')
 })
 
 test('onunload 会关掉本地服务', async () => {

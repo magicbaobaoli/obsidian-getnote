@@ -19,10 +19,17 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import * as settingsStore from './core/settings.js'
-import { configure as configureVfs, mkdir as vfsMkdir, readFile as vfsRead, writeFile as vfsWrite } from './core/vfs.js'
+import {
+  configure as configureVfs,
+  access as vfsAccess,
+  mkdir as vfsMkdir,
+  readFile as vfsRead,
+  writeFile as vfsWrite,
+} from './core/vfs.js'
 import { configureCardScripts } from './core/card.js'
 import { setDebugLogging } from './core/log.js'
 import { invalidateScan } from './core/vault.js'
+import { basesTemplate, parseCanvas, addFileNode, serializeCanvas } from './core/integrations.js'
 import { startAutoSync, startCardAutoImport, markPanelVisible } from './core/service.js'
 import { startLocalServer } from './host/server.js'
 import {
@@ -227,6 +234,25 @@ export default class GetnoteObsidianPlugin extends Plugin {
       },
     })
 
+    // 与 Bases / Canvas 的衔接：两者都只生成一份文件，不碰内部 API。
+    this.addCommand({
+      id: 'create-bases-view',
+      name: '在笔记目录里生成一个 Bases 视图',
+      callback: () => { void this.createBasesView() },
+    })
+    this.addCommand({
+      id: 'add-to-canvas',
+      name: '把当前笔记放进得到大脑画布',
+      editorCallback: (editor, view) => {
+        const path = view && view.file && typeof view.file.path === 'string' ? view.file.path : ''
+        if (path === '') {
+          new Notice('得到大脑：先打开一篇笔记')
+          return
+        }
+        void this.addNoteToCanvas(path)
+      },
+    })
+
     // obsidian://getnote?... 深链：从浏览器、其他应用、快捷指令直接唤起面板。
     // 只做导航不做写操作——一个能被任意网页触发的 URL 不该有删笔记的能力。
     if (typeof this.registerObsidianProtocolHandler === 'function') {
@@ -290,6 +316,73 @@ export default class GetnoteObsidianPlugin extends Plugin {
     // 录音卡插上就导。定时器一直转着，真正的开关在设置里（cardAutoImport），
     // 关着的时候每次 tick 只读一个 JSON 就返回，代价可以忽略。
     this.stopCardAutoImport = startCardAutoImport()
+  }
+
+  /**
+   * 在笔记目录里写一份 `.base`：Obsidian 1.9 的 Bases 视图能直接打开它。
+   *
+   * 有了它，用户可以在 Bases 里按标签/日期分组、写自己的公式，而不用回到我们
+   * 这个面板——同一个笔记库，两套视图各有各的顺手处。
+   */
+  async createBasesView() {
+    try {
+      const runtime = settingsStore.getRuntime()
+      const subfolder = String(runtime.subfolder || DEFAULT_SUBFOLDER).replace(/^\/+|\/+$/g, '')
+      const target = subfolder === '' ? '得到大脑.base' : `${subfolder}/得到大脑.base`
+      const abs = join(runtime.vaultBase, target)
+      // 已存在就不覆盖：用户可能已经在里面调过视图，覆盖等于删他的工作。
+      let already = false
+      try {
+        await vfsAccess(abs)
+        already = true
+      } catch {
+        already = false
+      }
+      if (already) {
+        new Notice('得到大脑：这个 Bases 视图已经存在了')
+        return
+      }
+      await vfsWrite(abs, basesTemplate({ subfolder: subfolder || DEFAULT_SUBFOLDER }))
+      invalidateScan()
+      new Notice(`得到大脑：已生成 ${target}`)
+    } catch (error) {
+      new Notice(`得到大脑：生成 Bases 视图失败 —— ${error && error.message ? error.message : error}`)
+    }
+  }
+
+  /**
+   * 把一篇笔记放进「得到大脑画布」：没有就建一张，有就加一个文件节点。
+   *
+   * 画布是 .canvas（JSON），节点只是 {type:'file', file: 相对路径}。这样用户在
+   * 画布里拖动、连线之后，我们的命令下次只负责补节点，不会重排他摆好的布局。
+   */
+  async addNoteToCanvas(notePath) {
+    try {
+      const runtime = settingsStore.getRuntime()
+      const subfolder = String(runtime.subfolder || DEFAULT_SUBFOLDER).replace(/^\/+|\/+$/g, '')
+      const canvasRel = subfolder === '' ? '得到大脑画布.canvas' : `${subfolder}/得到大脑画布.canvas`
+      const canvasAbs = join(runtime.vaultBase, canvasRel)
+      // 画布节点存的是**库内相对路径**（跟 Obsidian 的 file.path 同一套），
+      // 不是相对笔记目录——所以这里原样用，别再剥一层子目录前缀，
+      // 否则画布打开会指向一个不存在的文件。
+      const fileRel = String(notePath).replace(/^\/+/, '')
+      let canvas = parseCanvas('')
+      try {
+        canvas = parseCanvas(await vfsRead(canvasAbs, 'utf8'))
+      } catch {
+        // 画布还不存在：从空画布开始
+      }
+      const { canvas: next, added } = addFileNode(canvas, { file: fileRel })
+      if (!added) {
+        new Notice('得到大脑：这篇已经在画布里了')
+        return
+      }
+      await vfsWrite(canvasAbs, serializeCanvas(next))
+      invalidateScan()
+      new Notice(`得到大脑：已放进 ${canvasRel}`)
+    } catch (error) {
+      new Notice(`得到大脑：放进画布失败 —— ${error && error.message ? error.message : error}`)
+    }
   }
 
   onunload() {
