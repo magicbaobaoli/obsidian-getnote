@@ -26,6 +26,7 @@ import {
   rewriteTags,
   normalizeTags,
   normalizeAliases,
+  findBacklinks,
   renameTag,
   heatmapOf,
   toggleTodo,
@@ -410,6 +411,38 @@ note_url: https://www.biji.com/note/1200000000000000001
     renErr2 = error
   }
   check('改名: 空的新标签名报 400', renErr2 !== null && renErr2.status === 400, renErr2 && renErr2.message)
+
+  // ── 反链上下文 ──────────────────────────────────────────────────────────
+  // 一篇笔记里可能三处都提到同一篇。只给「它引用了我」和路径的话，用户还得
+  // 自己点进去再搜一遍；顺手把那一行剩下的字带出来，扫一眼就知道为什么被引。
+  const blDir = '反链测试'
+  await mkdir(join(root, blDir), { recursive: true })
+  await writeFile(join(root, blDir, '被引.md'), '# 被引\n\n正文\n', 'utf8')
+  await writeFile(
+    join(root, blDir, '引用方.md'),
+    // 两种写法：短名与带目录的路径。extractWikiLinks 会按「链接文字」去重，
+    // 同一个写法写两遍只会留一条，这里要的是两处不同的引用。
+    ['# 引用方', '', '开会时记到 [[被引]] 这一段', '', '后来又想到 [[反链测试/被引]] 也行', ''].join('\n'),
+    'utf8',
+  )
+  const blResult = await findBacklinks(root, `${blDir}/被引.md`)
+  const blHit = blResult.hits.find((h) => h.path === `${blDir}/引用方.md`)
+  check('反链: 两处引用都算一次命中', blHit !== undefined && blHit.links.length === 2, JSON.stringify(blHit && blHit.links))
+  check(
+    '反链: 每处引用各自带上下文',
+    blHit !== undefined && Array.isArray(blHit.snippets) && blHit.snippets.length === 2,
+    JSON.stringify(blHit && blHit.snippets),
+  )
+  check(
+    '反链: 上下文里是那一行剩下的字',
+    blHit !== undefined && blHit.snippets[0].indexOf('开会时记到') >= 0 && blHit.snippets[0].indexOf('[[') < 0,
+    JSON.stringify(blHit && blHit.snippets),
+  )
+  check(
+    '反链: 带路径的写法也取得到上下文',
+    blHit !== undefined && blHit.snippets[1].indexOf('后来又想到') >= 0,
+    JSON.stringify(blHit && blHit.snippets),
+  )
 
   // ── 写作热力图（对齐移动端首页那张）────────────────────────────────────
   const fixedToday = new Date('2026-11-16T12:00:00')

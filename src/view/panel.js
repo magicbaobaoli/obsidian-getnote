@@ -3045,6 +3045,8 @@ async function saveFile(url, filename) {
 .dshgn_backlinkItem:hover{background:var(--dsw-alias-interactive-bg-hover-accent)}
 .dshgn_backlinkTitle{font-size:12px;color:var(--dsw-alias-brand-primary);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dshgn_backlinkSnip{font-size:11px;line-height:1.5;color:var(--dsw-alias-label-secondary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_backlinkPath{font-size:10px;color:var(--dsw-alias-label-dimmed);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* 出链：这篇自己引用了谁。一条条竖排太占地方（出链常常十几条），排成一行胶囊。 */
@@ -10419,6 +10421,19 @@ async function saveFile(url, filename) {
                           onClick: () => onOpenWikiLink(hit.path),
                         },
                         h('span', { className: 'dshgn_backlinkTitle' }, hit.title || hit.path),
+                        // 一篇笔记里提到这一篇好几次时标个次数：三条反链里那条提了 5 次
+                        // 的，通常比只提一次的更值得先看。
+                        Number(hit.count) > 1
+                          ? h('span', { className: 'dshgn_outlineCount', style: { marginLeft: 6 } }, String(hit.count))
+                          : null,
+                        // 上下文：引用那一行剩下的字。没有（宿主索引那份不带）就不占行，
+                        // 免得每条反链底下都空一格。
+                        (Array.isArray(hit.snippets) ? hit.snippets : [])
+                          .filter((line) => typeof line === 'string' && line !== '')
+                          .slice(0, 2)
+                          .map((line, index) =>
+                            h('span', { key: `${hit.path}-s${index}`, className: 'dshgn_backlinkSnip' }, line),
+                          ),
                         h('span', { className: 'dshgn_backlinkPath' }, hit.path),
                       ),
                     ),

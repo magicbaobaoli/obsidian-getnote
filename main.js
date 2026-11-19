@@ -985,6 +985,20 @@ function extractWikiLinks(text) {
   }
   return [...out];
 }
+function snippetAround(text, link, width = 60) {
+  const src = String(text || "");
+  const needle = `[[${link}`;
+  const at = src.indexOf(needle);
+  if (at < 0) return "";
+  const lineStart = src.lastIndexOf("\n", at) + 1;
+  const lineEndRaw = src.indexOf("\n", at);
+  const lineEnd = lineEndRaw < 0 ? src.length : lineEndRaw;
+  let line = src.slice(lineStart, lineEnd);
+  line = line.replace(/\[\[[^\]\n]*\]\]/g, " ");
+  line = line.replace(/^\s*#+\s*/, "").replace(/\s+/g, " ").trim();
+  if (line.length <= width) return line;
+  return `${line.slice(0, width - 1).trim()}\u2026`;
+}
 async function findBacklinks(root, target, entries) {
   const raw = String(target || "").trim().replace(/\\/g, "/");
   if (raw === "") return { target: raw, hits: [] };
@@ -1029,7 +1043,11 @@ async function findBacklinks(root, target, entries) {
       path: entry.path,
       title: entry.title,
       date: entry.date,
-      links: matched
+      links: matched,
+      // 每一条引用各自带上它所在的上下文：一篇笔记里可能三处都提到这一篇，
+      // 只给「它引用了我」和路径的话，用户还得自己点进去、再在正文里搜一遍。
+      // 这一行不用额外读盘——正文本来就已经读进来了。
+      snippets: matched.map((link) => snippetAround(text, link))
     });
   }
   hits.sort((a3, b3) => a3.title.localeCompare(b3.title, "zh"));
@@ -10103,6 +10121,8 @@ var CSS = `
 .dshgn_backlinkItem:hover{background:var(--dsw-alias-interactive-bg-hover-accent)}
 .dshgn_backlinkTitle{font-size:12px;color:var(--dsw-alias-brand-primary);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dshgn_backlinkSnip{font-size:11px;line-height:1.5;color:var(--dsw-alias-label-secondary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_backlinkPath{font-size:10px;color:var(--dsw-alias-label-dimmed);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* \u51FA\u94FE\uFF1A\u8FD9\u7BC7\u81EA\u5DF1\u5F15\u7528\u4E86\u8C01\u3002\u4E00\u6761\u6761\u7AD6\u6392\u592A\u5360\u5730\u65B9\uFF08\u51FA\u94FE\u5E38\u5E38\u5341\u51E0\u6761\uFF09\uFF0C\u6392\u6210\u4E00\u884C\u80F6\u56CA\u3002 */
@@ -16410,6 +16430,14 @@ function NotePane(props) {
               onClick: () => onOpenWikiLink(hit.path)
             },
             h4("span", { className: "dshgn_backlinkTitle" }, hit.title || hit.path),
+            // 一篇笔记里提到这一篇好几次时标个次数：三条反链里那条提了 5 次
+            // 的，通常比只提一次的更值得先看。
+            Number(hit.count) > 1 ? h4("span", { className: "dshgn_outlineCount", style: { marginLeft: 6 } }, String(hit.count)) : null,
+            // 上下文：引用那一行剩下的字。没有（宿主索引那份不带）就不占行，
+            // 免得每条反链底下都空一格。
+            (Array.isArray(hit.snippets) ? hit.snippets : []).filter((line) => typeof line === "string" && line !== "").slice(0, 2).map(
+              (line, index) => h4("span", { key: `${hit.path}-s${index}`, className: "dshgn_backlinkSnip" }, line)
+            ),
             h4("span", { className: "dshgn_backlinkPath" }, hit.path)
           )
         )
@@ -18118,8 +18146,15 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
           const result = cache.getBacklinksForFile(file);
           const data = result && result.data ? result.data : null;
           if (data && typeof data.forEach === "function") {
-            data.forEach((_count, sourcePath) => {
-              hits.push({ path: sourcePath, title: titleOf2(sourcePath), date: "", links: [rel] });
+            data.forEach((count, sourcePath) => {
+              const times = Number(count);
+              hits.push({
+                path: sourcePath,
+                title: titleOf2(sourcePath),
+                date: "",
+                links: [rel],
+                count: Number.isFinite(times) && times > 0 ? times : 1
+              });
             });
           }
         } else if (cache.resolvedLinks && typeof cache.resolvedLinks === "object") {
@@ -18127,7 +18162,7 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
             if (sourcePath === rel) continue;
             const targets = cache.resolvedLinks[sourcePath];
             if (!targets || targets[rel] === void 0) continue;
-            hits.push({ path: sourcePath, title: titleOf2(sourcePath), date: "", links: [rel] });
+            hits.push({ path: sourcePath, title: titleOf2(sourcePath), date: "", links: [rel], count: 1 });
           }
         }
         if (hits.length === 0) {

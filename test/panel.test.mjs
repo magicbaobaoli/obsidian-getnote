@@ -2818,3 +2818,63 @@ test('有没保存的草稿时，返回列表先问一句', async () => {
     panel.setConfirmDialog(null)
   }
 })
+/**
+ * 反链底下那一行上下文。
+ *
+ * 一篇笔记里可能三处都提到同一篇。只给「它引用了我」和路径的话，用户还得
+ * 自己点进去、再在正文里搜一遍。这条守：/backlinks 给的 snippets 真的画出来。
+ */
+test('反链底下带上引用那一行的上下文', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const backBtn = window.document.querySelector('.dshgn_noteBack')
+  if (backBtn) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    try {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+  }
+
+  const seed = async (title, content, requestId) => {
+    const res = await realFetch(server.origin + '/getnote/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({ dir: '随手记', title, content, withDatePrefix: false, requestId }),
+    })
+    const json = await res.json()
+    assert.equal(json.path, '随手记/' + title + '.md')
+    return json.path
+  }
+
+  const target = await seed('反链上下文目标', '# 反链上下文目标\n\n正文\n', 'seed-bl-snip-target')
+  await seed(
+    '反链上下文来源',
+    ['# 反链上下文来源', '', '开会时记到 [[反链上下文目标]] 这一段', ''].join('\n'),
+    'seed-bl-snip-source',
+  )
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+  const card = await waitFor(
+    () => Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === target),
+    5000,
+    '目标笔记出现在列表里',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+
+  // 反链区是异步扫出来的，等它出现
+  const snip = await waitFor(
+    () => window.document.querySelector('.dshgn_backlinkSnip'),
+    8000,
+    '反链底下应该有上下文',
+  )
+  assert.ok((snip.textContent || '').includes('开会时记到'), '上下文是引用那一行剩下的字')
+  assert.ok(!(snip.textContent || '').includes('[['), '双链本身不该出现在上下文里')
+})

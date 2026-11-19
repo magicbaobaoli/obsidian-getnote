@@ -1339,8 +1339,17 @@ export default class GetnoteObsidianPlugin extends Plugin {
           const result = cache.getBacklinksForFile(file)
           const data = result && result.data ? result.data : null
           if (data && typeof data.forEach === 'function') {
-            data.forEach((_count, sourcePath) => {
-              hits.push({ path: sourcePath, title: titleOf(sourcePath), date: '', links: [rel] })
+            // 宿主顺手给了「这一篇里提了几次」。一篇笔记里反复提到同一篇时，
+            // 那条反链比只提一次的更值得先看——这个数字不额外读盘就能拿到。
+            data.forEach((count, sourcePath) => {
+              const times = Number(count)
+              hits.push({
+                path: sourcePath,
+                title: titleOf(sourcePath),
+                date: '',
+                links: [rel],
+                count: Number.isFinite(times) && times > 0 ? times : 1,
+              })
             })
           }
         } else if (cache.resolvedLinks && typeof cache.resolvedLinks === 'object') {
@@ -1348,7 +1357,7 @@ export default class GetnoteObsidianPlugin extends Plugin {
             if (sourcePath === rel) continue
             const targets = cache.resolvedLinks[sourcePath]
             if (!targets || targets[rel] === undefined) continue
-            hits.push({ path: sourcePath, title: titleOf(sourcePath), date: '', links: [rel] })
+            hits.push({ path: sourcePath, title: titleOf(sourcePath), date: '', links: [rel], count: 1 })
           }
         }
         // 一条反向链接都没有，但这篇刚写下来：宿主的索引可能还没跑到它身上，

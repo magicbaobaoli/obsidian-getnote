@@ -989,6 +989,29 @@ export function extractWikiLinks(text) {
 }
 
 /**
+ * 把一条双链周围那点文字抠出来，做反链里的一行上下文。
+ *
+ * 只取这一行（双链在 Markdown 里基本不会跨行），把双链本身从两头削掉，
+ * 再把多余空白压平。太长就两头留一点、中间省略——反链区一行就十几号字，
+ * 整段正文塞进去反而看不清。
+ */
+function snippetAround(text, link, width = 60) {
+  const src = String(text || '')
+  const needle = `[[${link}`
+  const at = src.indexOf(needle)
+  if (at < 0) return ''
+  const lineStart = src.lastIndexOf('\n', at) + 1
+  const lineEndRaw = src.indexOf('\n', at)
+  const lineEnd = lineEndRaw < 0 ? src.length : lineEndRaw
+  let line = src.slice(lineStart, lineEnd)
+  // 去掉双链本身（含 `|别名` 与收尾的 `]]`），留下前后文
+  line = line.replace(/\[\[[^\]\n]*\]\]/g, ' ')
+  line = line.replace(/^\s*#+\s*/, '').replace(/\s+/g, ' ').trim()
+  if (line.length <= width) return line
+  return `${line.slice(0, width - 1).trim()}…`
+}
+
+/**
  * 反查：哪些笔记引用了 `target`。
  *
  * 匹配刻意做得宽松——双链不像文件路径那样严格，Obsidian 里 `[[我的笔记]]`
@@ -1051,6 +1074,10 @@ export async function findBacklinks(root, target, entries) {
       title: entry.title,
       date: entry.date,
       links: matched,
+      // 每一条引用各自带上它所在的上下文：一篇笔记里可能三处都提到这一篇，
+      // 只给「它引用了我」和路径的话，用户还得自己点进去、再在正文里搜一遍。
+      // 这一行不用额外读盘——正文本来就已经读进来了。
+      snippets: matched.map((link) => snippetAround(text, link)),
     })
   }
   hits.sort((a, b) => a.title.localeCompare(b.title, 'zh'))
