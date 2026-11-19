@@ -3016,3 +3016,90 @@ test('断链页把全库指不到的双链摊出来，点一行就打开那一�
   assert.ok(noteText.includes('这一篇根本不存在'), '打开的是出问题的那一篇：' + noteText.slice(0, 120))
 })
 
+
+test('正文里写的 #标签 也进标签云，点一下就能筛', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const backBtn = window.document.querySelector('.dshgn_noteBack')
+  if (backBtn) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    try {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+  }
+
+  const seed = async (title, content, requestId) => {
+    const res = await realFetch(server.origin + '/getnote/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({ dir: '随手记', title, content, withDatePrefix: false, requestId }),
+    })
+    const json = await res.json()
+    assert.equal(json.path, '随手记/' + title + '.md')
+    return json.path
+  }
+
+  // 上一个用例在搜索框里留了词：留着的话列表走的是搜索结果，标签筛选看不出效果
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox) {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setter.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(400)
+  }
+
+  const target = await seed(
+    '正文标签验收',
+    ['# 正文标签验收', '', '今天出去走了走 #生活体验', '', '还看到一段 #读书/摘抄', ''].join('\n'),
+    'seed-inline-tag',
+  )
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  // 标签云里应该有正文里那个标签：只认头部 tags: 的话，它压根不出现
+  const row = await waitFor(
+    () => {
+      const all = Array.from(window.document.querySelectorAll('.dshgn_tagRow'))
+      return all.find((el) => (el.textContent || '').includes('生活体验')) || null
+    },
+    8000,
+    '正文里写的标签也该出现在标签云里',
+  )
+  assert.ok((row.textContent || '').includes('读书/摘抄') === false, '一行一个标签')
+
+  row.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_tagRow')).some(
+        (el) => el.getAttribute('data-on') === 'true' && (el.textContent || '').includes('生活体验'),
+      ),
+    5000,
+    '点正文标签也要能筛',
+  )
+  const cardTitles = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_card')).map((el) => el.getAttribute('title'))
+  await waitFor(() => cardTitles().includes(target), 5000, '筛出来应该有这一篇：' + JSON.stringify(cardTitles()))
+  assert.equal(cardTitles().length, 1, '只有这一篇带这个标签：' + JSON.stringify(cardTitles()))
+
+  // 收尾：把筛选清掉，别把状态留给后面的用例
+  const onRow = Array.from(window.document.querySelectorAll('.dshgn_tagRow')).find(
+    (el) => el.getAttribute('data-on') === 'true',
+  )
+  if (onRow) {
+    onRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(
+      () => Array.from(window.document.querySelectorAll('.dshgn_tagRow')).every((el) => el.getAttribute('data-on') !== 'true'),
+      5000,
+      '把标签筛选清掉',
+    )
+  }
+})
+

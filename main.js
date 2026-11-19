@@ -223,6 +223,7 @@ __export(vault_exports, {
   MAX_READ: () => MAX_READ,
   MAX_WRITE: () => MAX_WRITE,
   NOTE_EXT: () => NOTE_EXT,
+  applyInlineTagEdit: () => applyInlineTagEdit,
   buildTree: () => buildTree,
   conflictArchiveName: () => conflictArchiveName,
   createDir: () => createDir,
@@ -230,6 +231,7 @@ __export(vault_exports, {
   deriveDate: () => deriveDate,
   deriveTitle: () => deriveTitle,
   excerptOf: () => excerptOf,
+  extractInlineTags: () => extractInlineTags,
   extractWikiLinks: () => extractWikiLinks,
   findBacklinks: () => findBacklinks,
   findBrokenLinks: () => findBrokenLinks,
@@ -239,6 +241,7 @@ __export(vault_exports, {
   listConflicts: () => listConflicts,
   listDirs: () => listDirs,
   listTrash: () => listTrash,
+  mergeTags: () => mergeTags,
   normalizeAliases: () => normalizeAliases,
   normalizeRel: () => normalizeRel,
   normalizeTags: () => normalizeTags,
@@ -470,7 +473,9 @@ async function scanVault(root, options = {}) {
           dir: relDir,
           title: deriveTitle(body, rel),
           date: deriveDate(rel, data, st.mtimeMs),
-          tags: normalizeTags(data.tags),
+          // 头部标签 + 正文里的 `#标签`。宿主两个地方都认，面板只认头部的话，
+          // 同一个标签写在正文里就既进不了标签云、也筛不出这一篇。
+          tags: mergeTags(normalizeTags(data.tags), extractInlineTags(body)),
           // 别名也带出来：点双链时最后一级要比它（宿主按别名解析双链，
           // 面板只比标题的话，同一个链接一边点得开、一边报「找不到」）。
           aliases: normalizeAliases(data.aliases !== void 0 ? data.aliases : data.alias !== void 0 ? data.alias : data["\u522B\u540D"]),
@@ -565,7 +570,7 @@ async function readNote(root, rel) {
     body,
     frontmatter: data,
     title: deriveTitle(body, normalized),
-    tags: normalizeTags(data.tags),
+    tags: mergeTags(normalizeTags(data.tags), extractInlineTags(body)),
     aliases: normalizeAliases(data.aliases !== void 0 ? data.aliases : data.alias !== void 0 ? data.alias : data["\u522B\u540D"]),
     bytes: st.size,
     mtimeMs: st.mtimeMs,
@@ -914,7 +919,7 @@ async function searchNotes(root, query, { limit = 60, perFile = 3, sort = "relev
         continue;
       }
       const { data, body } = parseFrontmatter(text);
-      const fileTags = normalizeTags(data.tags).map((t3) => t3.toLowerCase());
+      const fileTags = mergeTags(normalizeTags(data.tags), extractInlineTags(body)).map((t3) => t3.toLowerCase());
       if (tagNeedles.length > 0) {
         let tagOk = true;
         for (const want of tagNeedles) {
@@ -956,7 +961,7 @@ async function searchNotes(root, query, { limit = 60, perFile = 3, sort = "relev
         path: rel,
         title,
         date: deriveDate(rel, data, null),
-        tags: normalizeTags(data.tags),
+        tags: mergeTags(normalizeTags(data.tags), extractInlineTags(body)),
         aliases: normalizeAliases(data.aliases !== void 0 ? data.aliases : data.alias !== void 0 ? data.alias : data["\u522B\u540D"]),
         matches,
         titleHit,
@@ -1454,11 +1459,12 @@ async function removeTag(root, tagInput, entries, options = {}) {
     if (!current.includes(tag)) continue;
     try {
       const note = await readNote(root, entry.path);
-      const next = current.filter((t3) => t3 !== tag);
       const text = note.content;
       const actual = readTags(text);
-      const base = actual.length > 0 ? actual : current;
-      const updated = rewriteTags(text, base.filter((t3) => t3 !== tag));
+      const inlineSet = new Set(extractInlineTags(note.body));
+      const base = (actual.length > 0 ? actual : current).filter((t3) => !inlineSet.has(t3));
+      const withHead = rewriteTags(text, base.filter((t3) => t3 !== tag));
+      const updated = applyInlineTagEdit(withHead, tag, "");
       if (updated === text) continue;
       if (snapshot) {
         try {
@@ -1490,13 +1496,14 @@ async function renameTag(root, fromInput, toInput, entries, options = {}) {
       const note = await readNote(root, entry.path);
       const text = note.content;
       const actual = readTags(text);
-      const base = actual.length > 0 ? actual : current;
+      const inlineSet = new Set(extractInlineTags(note.body));
+      const base = (actual.length > 0 ? actual : current).filter((t3) => !inlineSet.has(t3));
       const next = [];
       for (const tag of base) {
         const value = tag === from ? to : tag;
         if (!next.includes(value)) next.push(value);
       }
-      const updated = rewriteTags(text, next);
+      const updated = applyInlineTagEdit(rewriteTags(text, next), from, to);
       if (updated === text) continue;
       if (snapshot) {
         try {
@@ -1614,6 +1621,77 @@ async function toggleTodo(root, rel, index, options = {}) {
   await writeNote(root, rel, updated, { backup: snapshot === null });
   return { ok: true, path: note.path, index: position, done: !wasDone };
 }
+function isTagBody(value) {
+  const body = String(value || "");
+  if (body === "") return false;
+  if (!/^[\w\u4e00-\u9fa5/-]+$/.test(body)) return false;
+  if (/^[\d/]+$/.test(body)) return false;
+  if (body.endsWith("/")) return false;
+  return true;
+}
+function extractInlineTags(text) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  let inFence = false;
+  for (const rawLine of String(text == null ? "" : text).split(/\r?\n/)) {
+    if (/^\s*(```|~~~)/.test(rawLine)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    const line = rawLine.replace(/`[^`\n]*`/g, " ");
+    TAG_TOKEN_RE.lastIndex = 0;
+    let m3;
+    while ((m3 = TAG_TOKEN_RE.exec(line)) !== null) {
+      const body = m3[2];
+      if (!isTagBody(body)) continue;
+      if (seen.has(body)) continue;
+      seen.add(body);
+      out.push(body);
+    }
+  }
+  return out;
+}
+function splitFrontmatterText(text) {
+  const src = String(text == null ? "" : text);
+  if (!/^---\r?\n/.test(src)) return { head: "", body: src };
+  const end = src.indexOf("\n---", 4);
+  if (end === -1) return { head: "", body: src };
+  const close = src.indexOf("\n", end + 1);
+  if (close === -1) return { head: src, body: "" };
+  return { head: src.slice(0, close + 1), body: src.slice(close + 1) };
+}
+function applyInlineTagEdit(text, from, to) {
+  const fromTag = String(from || "").trim();
+  if (fromTag === "") return String(text == null ? "" : text);
+  const nextTag = String(to == null ? "" : to).trim();
+  const { head, body } = splitFrontmatterText(text);
+  let inFence = false;
+  const lines = body.split("\n").map((rawLine) => {
+    if (/^\s*(```|~~~)/.test(rawLine)) {
+      inFence = !inFence;
+      return rawLine;
+    }
+    if (inFence) return rawLine;
+    return rawLine.replace(TAG_TOKEN_RE, (whole, lead, bodyText) => {
+      if (!isTagBody(bodyText) || bodyText !== fromTag) return whole;
+      if (nextTag === "") return lead;
+      return `${lead}#${nextTag}`;
+    });
+  });
+  return head + lines.join("\n");
+}
+function mergeTags(head, inline) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const tag of [...Array.isArray(head) ? head : [], ...Array.isArray(inline) ? inline : []]) {
+    const value = String(tag || "").trim();
+    if (value === "" || seen.has(value)) continue;
+    seen.add(value);
+    out.push(value);
+  }
+  return out;
+}
 function normalizeTags(value) {
   if (Array.isArray(value)) return value.map((tag) => String(tag).trim()).filter((tag) => tag !== "");
   if (value === void 0 || value === null) return [];
@@ -1650,7 +1728,7 @@ function listDirs(entries) {
   }
   return [...dirs].sort((a3, b3) => a3.localeCompare(b3, "zh"));
 }
-var import_node_crypto2, import_node_path3, NOTE_EXT, MAX_READ, MAX_WRITE, MAX_SCAN, MAX_DEPTH, IGNORED_DIRS, scanCache, SCAN_CACHE_MAX, entryMemo, ENTRY_MEMO_MAX, TRASH_DIR, TRASH_NAME_RE, CONFLICT_DIR, CONFLICT_NAME_RE, CONFLICT_STATE_FILE;
+var import_node_crypto2, import_node_path3, NOTE_EXT, MAX_READ, MAX_WRITE, MAX_SCAN, MAX_DEPTH, IGNORED_DIRS, scanCache, SCAN_CACHE_MAX, entryMemo, ENTRY_MEMO_MAX, TRASH_DIR, TRASH_NAME_RE, CONFLICT_DIR, CONFLICT_NAME_RE, CONFLICT_STATE_FILE, TAG_TOKEN_RE;
 var init_vault = __esm({
   "src/core/vault.js"() {
     init_vfs();
@@ -1684,6 +1762,7 @@ var init_vault = __esm({
     CONFLICT_DIR = ".conflicts";
     CONFLICT_NAME_RE = /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})(?:-(\d{3}))?Z?__(?:([0-9a-f]{6})__)?(?:cloud-)?(.+)$/;
     CONFLICT_STATE_FILE = ".resolved.json";
+    TAG_TOKEN_RE = /(^|[\s([{>（【，、；：])#([^\s#`]+)/g;
   }
 });
 

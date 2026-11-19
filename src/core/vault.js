@@ -324,7 +324,9 @@ export async function scanVault(root, options = {}) {
           dir: relDir,
           title: deriveTitle(body, rel),
           date: deriveDate(rel, data, st.mtimeMs),
-          tags: normalizeTags(data.tags),
+          // 头部标签 + 正文里的 `#标签`。宿主两个地方都认，面板只认头部的话，
+          // 同一个标签写在正文里就既进不了标签云、也筛不出这一篇。
+          tags: mergeTags(normalizeTags(data.tags), extractInlineTags(body)),
           // 别名也带出来：点双链时最后一级要比它（宿主按别名解析双链，
           // 面板只比标题的话，同一个链接一边点得开、一边报「找不到」）。
           aliases: normalizeAliases(data.aliases !== undefined ? data.aliases : data.alias !== undefined ? data.alias : data['别名']),
@@ -429,7 +431,7 @@ export async function readNote(root, rel) {
     body,
     frontmatter: data,
     title: deriveTitle(body, normalized),
-    tags: normalizeTags(data.tags),
+    tags: mergeTags(normalizeTags(data.tags), extractInlineTags(body)),
     aliases: normalizeAliases(data.aliases !== undefined ? data.aliases : data.alias !== undefined ? data.alias : data['别名']),
     bytes: st.size,
     mtimeMs: st.mtimeMs,
@@ -903,7 +905,7 @@ export async function searchNotes(root, query, { limit = 60, perFile = 3, sort =
         continue
       }
       const { data, body } = parseFrontmatter(text)
-      const fileTags = normalizeTags(data.tags).map((t) => t.toLowerCase())
+      const fileTags = mergeTags(normalizeTags(data.tags), extractInlineTags(body)).map((t) => t.toLowerCase())
       if (tagNeedles.length > 0) {
         let tagOk = true
         for (const want of tagNeedles) {
@@ -949,7 +951,7 @@ export async function searchNotes(root, query, { limit = 60, perFile = 3, sort =
         path: rel,
         title,
         date: deriveDate(rel, data, null),
-        tags: normalizeTags(data.tags),
+        tags: mergeTags(normalizeTags(data.tags), extractInlineTags(body)),
         aliases: normalizeAliases(data.aliases !== undefined ? data.aliases : data.alias !== undefined ? data.alias : data['别名']),
         matches,
         titleHit,
@@ -1710,13 +1712,17 @@ export async function removeTag(root, tagInput, entries, options = {}) {
     if (!current.includes(tag)) continue
     try {
       const note = await readNote(root, entry.path)
-      const next = current.filter((t) => t !== tag)
       const text = note.content
       // 用 readTags 读真实标签而不是信 entry.tags：entry 是扫描时的快照，
       // 而块列表写法下两者可能不一致，按快照算会把残留项留在文件里。
       const actual = readTags(text)
-      const base = actual.length > 0 ? actual : current
-      const updated = rewriteTags(text, base.filter((t) => t !== tag))
+      // 正文标签只归正文管：混进 base 的话，删掉正文那个标签时它会被写回头部，
+      // 于是「删了」只是搬了个位置。
+      const inlineSet = new Set(extractInlineTags(note.body))
+      const base = (actual.length > 0 ? actual : current).filter((t) => !inlineSet.has(t))
+      // 正文里那个 `#标签` 也要抹掉，不然头部删了、正文还留着，下次扫描它又冒出来。
+      const withHead = rewriteTags(text, base.filter((t) => t !== tag))
+      const updated = applyInlineTagEdit(withHead, tag, '')
       if (updated === text) continue
       if (snapshot) {
         // 历史存不下不该阻塞改名本身：丢了撤销点比改不动更可接受
@@ -1763,14 +1769,18 @@ export async function renameTag(root, fromInput, toInput, entries, options = {})
       // 同 removeTag：信文件里的真实标签，不信扫描快照——块列表写法下两者可能不一致，
       // 按快照算会把改名后的残渣留在文件里。
       const actual = readTags(text)
-      const base = actual.length > 0 ? actual : current
+      // 同 removeTag：正文标签不混进头部那份，否则改个名会在头部多出一个副本。
+      const inlineSet = new Set(extractInlineTags(note.body))
+      const base = (actual.length > 0 ? actual : current).filter((t) => !inlineSet.has(t))
       const next = []
       for (const tag of base) {
         const value = tag === from ? to : tag
         // 目标标签本来就在这篇里时不要写两遍
         if (!next.includes(value)) next.push(value)
       }
-      const updated = rewriteTags(text, next)
+      // 正文里的 `#旧名` 一起改成新名：只改头部的话，标签云里会同时出现新旧两个，
+      // 而用户看到的「改名」应该是一处不落。
+      const updated = applyInlineTagEdit(rewriteTags(text, next), from, to)
       if (updated === text) continue
       if (snapshot) {
         try {
@@ -1940,6 +1950,93 @@ export async function toggleTodo(root, rel, index, options = {}) {
 }
 
 /**
+ * 正文里写的 `#标签` 也是标签。
+ *
+ * Obsidian 里标签有两个地方能写：frontmatter 的 `tags:`，以及正文里随手一个
+ * `#生活`。宿主两个都认，面板原来只认前一个——用户明明在正文里打了标签，
+ * 标签云里没有它、点它也筛不出这一篇，而同一个标签写在头部就一切正常。
+ * 这种「一处能用一处不能」最难自查，所以正文里的也要收。
+ *
+ * 不认的几种：围栏代码块里的（那是代码）、行内代码里的、行首的 `# 标题`
+ * （井号后面跟空格是标题）、`https://x/#section` 这种 URL 片段（井号前面
+ * 是斜杠）、纯数字的（Obsidian 也不把 `#123` 当标签）。
+ */
+function isTagBody(value) {
+  const body = String(value || '')
+  if (body === '') return false
+  if (!/^[\w\u4e00-\u9fa5/-]+$/.test(body)) return false
+  // 纯数字不是标签；结尾挂个斜杠也不是（那是路径，不是嵌套标签）
+  if (/^[\d/]+$/.test(body)) return false
+  if (body.endsWith('/')) return false
+  return true
+}
+
+const TAG_TOKEN_RE = /(^|[\s([{>（【，、；：])#([^\s#`]+)/g
+
+export function extractInlineTags(text) {
+  const out = []
+  const seen = new Set()
+  let inFence = false
+  for (const rawLine of String(text == null ? '' : text).split(/\r?\n/)) {
+    if (/^\s*(```|~~~)/.test(rawLine)) {
+      inFence = !inFence
+      continue
+    }
+    if (inFence) continue
+    // 行内代码里的井号是字面量，先整段抹掉再找
+    const line = rawLine.replace(/`[^`\n]*`/g, ' ')
+    TAG_TOKEN_RE.lastIndex = 0
+    let m
+    while ((m = TAG_TOKEN_RE.exec(line)) !== null) {
+      const body = m[2]
+      if (!isTagBody(body)) continue
+      if (seen.has(body)) continue
+      seen.add(body)
+      out.push(body)
+    }
+  }
+  return out
+}
+
+/** 把全文拆成「frontmatter 原文」与「正文」，用于只在正文里改东西。 */
+function splitFrontmatterText(text) {
+  const src = String(text == null ? '' : text)
+  if (!/^---\r?\n/.test(src)) return { head: '', body: src }
+  const end = src.indexOf('\n---', 4)
+  if (end === -1) return { head: '', body: src }
+  const close = src.indexOf('\n', end + 1)
+  if (close === -1) return { head: src, body: '' }
+  return { head: src.slice(0, close + 1), body: src.slice(close + 1) }
+}
+
+/**
+ * 在正文里改一个正文标签：`to` 为空串就是删掉。
+ *
+ * 只碰正文，不碰 frontmatter——头部那份由 rewriteTags 负责，两边分开改才不会
+ * 把用户手写的字段顺序和注释搅乱。围栏代码块与行内代码原样跳过。
+ */
+export function applyInlineTagEdit(text, from, to) {
+  const fromTag = String(from || '').trim()
+  if (fromTag === '') return String(text == null ? '' : text)
+  const nextTag = String(to == null ? '' : to).trim()
+  const { head, body } = splitFrontmatterText(text)
+  let inFence = false
+  const lines = body.split('\n').map((rawLine) => {
+    if (/^\s*(```|~~~)/.test(rawLine)) {
+      inFence = !inFence
+      return rawLine
+    }
+    if (inFence) return rawLine
+    return rawLine.replace(TAG_TOKEN_RE, (whole, lead, bodyText) => {
+      if (!isTagBody(bodyText) || bodyText !== fromTag) return whole
+      if (nextTag === '') return lead
+      return `${lead}#${nextTag}`
+    })
+  })
+  return head + lines.join('\n')
+}
+
+/**
  * 把 frontmatter 里读出来的 tags 统一成字符串数组。
  *
  * 为什么需要：`tags: 甲` 是合法的 YAML（单个标签不写方括号），而 `tags: [甲, 乙]`
@@ -1947,6 +2044,19 @@ export async function toggleTodo(root, rel, index, options = {}) {
  * 单值写法就会被当成「没有标签」——最典型的后果是 `tag:甲` 搜不到那篇笔记，
  * 用户明明看着标签在那儿却搜不出来。
  */
+/** 头部标签与正文标签合一份：保持头部顺序，正文里多出来的接在后面，去重。 */
+export function mergeTags(head, inline) {
+  const out = []
+  const seen = new Set()
+  for (const tag of [...(Array.isArray(head) ? head : []), ...(Array.isArray(inline) ? inline : [])]) {
+    const value = String(tag || '').trim()
+    if (value === '' || seen.has(value)) continue
+    seen.add(value)
+    out.push(value)
+  }
+  return out
+}
+
 export function normalizeTags(value) {
   if (Array.isArray(value)) return value.map((tag) => String(tag).trim()).filter((tag) => tag !== '')
   if (value === undefined || value === null) return []

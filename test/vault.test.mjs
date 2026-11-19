@@ -26,6 +26,9 @@ import {
   rewriteTags,
   normalizeTags,
   normalizeAliases,
+  mergeTags,
+  extractInlineTags,
+  applyInlineTagEdit,
   findBacklinks,
   findBrokenLinks,
   renameTag,
@@ -344,6 +347,84 @@ note_url: https://www.biji.com/note/1200000000000000001
   check('标签: normalizeTags 单值转数组', JSON.stringify(normalizeTags('独苗')) === JSON.stringify(['独苗']))
   check('标签: normalizeTags 数组原样', JSON.stringify(normalizeTags(['甲', '乙'])) === JSON.stringify(['甲', '乙']))
   check('标签: normalizeTags 空值回空数组', normalizeTags(undefined).length === 0 && normalizeTags('').length === 0 && normalizeTags([]).length === 0)
+
+  // ── 正文里的 #标签 ────────────────────────────────────────────────────────
+  // 宿主两个地方都认标签：头部的 tags: 和正文里随手一个 #生活。面板原来只认前一个，
+  // 同一个标签写在正文里就既进不了标签云、也筛不出这一篇。
+  check(
+    '正文标签: 认得出 #生活',
+    JSON.stringify(extractInlineTags('今天出去走走 #生活 挺好的')) === JSON.stringify(['生活']),
+    JSON.stringify(extractInlineTags('今天出去走走 #生活 挺好的')),
+  )
+  check(
+    '正文标签: 嵌套写法 #读书/摘抄 整段算一个',
+    JSON.stringify(extractInlineTags('看到一段 #读书/摘抄')) === JSON.stringify(['读书/摘抄']),
+  )
+  check(
+    '正文标签: 行首 # 标题不算标签',
+    extractInlineTags('# 这是标题\n\n正文').length === 0,
+    JSON.stringify(extractInlineTags('# 这是标题\n\n正文')),
+  )
+  check(
+    '正文标签: 围栏与行内代码里的不算',
+    extractInlineTags(['```', 'echo #不是标签', '```', '', '这段 `#也不是` 是代码'].join('\n')).length === 0,
+    JSON.stringify(extractInlineTags(['```', 'echo #不是标签', '```', '', '这段 `#也不是` 是代码'].join('\n'))),
+  )
+  check('正文标签: URL 片段不算', extractInlineTags('见 https://example.com/a#section 那里').length === 0)
+  check('正文标签: 纯数字不算', extractInlineTags('第 #123 条').length === 0)
+  check('正文标签: 同一个标签写两遍只算一个', JSON.stringify(extractInlineTags('#甲 和 #甲')) === JSON.stringify(['甲']))
+
+  const inlineDir = '正文标签'
+  await mkdir(join(root, inlineDir), { recursive: true })
+  const inlineTagRel = `${inlineDir}/正文带标签.md`
+  await writeFile(
+    join(root, inlineTagRel),
+    ['---', 'tags: [头部]', '---', '', '# 标题', '', '正文里写着 #生活 和 #读书/摘抄', ''].join('\n'),
+    'utf8',
+  )
+  const inlineEntry = (await scanVault(root)).entries.find((e) => e.path === inlineTagRel)
+  check(
+    '正文标签: 扫描把头部与正文的合起来',
+    inlineEntry !== undefined && JSON.stringify(inlineEntry.tags) === JSON.stringify(['头部', '生活', '读书/摘抄']),
+    JSON.stringify(inlineEntry && inlineEntry.tags),
+  )
+  const inlineNote = await readNote(root, inlineTagRel)
+  check(
+    '正文标签: 读一篇时也带上',
+    JSON.stringify(inlineNote.tags) === JSON.stringify(['头部', '生活', '读书/摘抄']),
+    JSON.stringify(inlineNote.tags),
+  )
+  const inlineSearch = await searchNotes(root, 'tag:生活')
+  check(
+    '正文标签: tag:生活 搜得到',
+    inlineSearch.hits.some((h) => h.path === inlineTagRel),
+    JSON.stringify(inlineSearch.hits.map((h) => h.path)),
+  )
+
+  // 删标签要连正文里那个一起抹掉，不然下次扫描它又冒出来
+  await removeTag(root, '生活', [{ path: inlineTagRel, tags: inlineEntry.tags }])
+  const afterRemove = await readFile(join(root, inlineTagRel), 'utf8')
+  check('正文标签: 删掉之后正文里也没有了', afterRemove.indexOf('#生活') < 0, afterRemove)
+  // 头部只剩它自己那一个：正文里的标签归正文管，删正文那个不该把它挪到头部去。
+  check('正文标签: 删掉之后头部没多出东西', /^tags: \[头部\]$/m.test(afterRemove), afterRemove)
+  check('正文标签: 删掉之后别的正文标签还在', afterRemove.indexOf('#读书/摘抄') >= 0, afterRemove)
+
+  // 改名同理：只改头部的话，标签云里会同时出现新旧两个
+  await writeFile(join(root, inlineTagRel), ['---', 'tags: [旧正文标签]', '---', '', '正文 #旧正文标签', ''].join('\n'), 'utf8')
+  await renameTag(root, '旧正文标签', '新正文标签', [{ path: inlineTagRel, tags: ['旧正文标签'] }])
+  const afterRename = await readFile(join(root, inlineTagRel), 'utf8')
+  check('正文标签: 改名后正文里也换了', afterRename.indexOf('#新正文标签') >= 0 && afterRename.indexOf('#旧正文标签') < 0, afterRename)
+
+  check('正文标签: mergeTags 去重且保持头部顺序', JSON.stringify(mergeTags(['甲', '乙'], ['乙', '丙'])) === JSON.stringify(['甲', '乙', '丙']))
+  check(
+    '正文标签: applyInlineTagEdit 空串就是删',
+    applyInlineTagEdit('前 #甲 后', '甲', '').trim() === '前  后'.trim(),
+    JSON.stringify(applyInlineTagEdit('前 #甲 后', '甲', '')),
+  )
+  check(
+    '正文标签: applyInlineTagEdit 不碰 frontmatter',
+    applyInlineTagEdit(['---', 'tags: [#甲]', '---', '', '正文 #甲'].join('\n'), '甲', '乙').indexOf('tags: [#甲]') >= 0,
+  )
   const singleRel = '标签测试/单值标签.md'
   await writeFile(join(root, singleRel), ['---', 'tags: 独苗', '---', '', '正文里有 关键词'].join('\n'), 'utf8')
   const singleScan = await scanVault(root)
