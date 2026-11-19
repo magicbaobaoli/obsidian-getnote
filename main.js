@@ -7845,6 +7845,15 @@ function backlinksViaHost(path) {
     return null;
   }
 }
+function linksViaHost(path) {
+  if (__graph === null) return null;
+  try {
+    const result = __graph(String(path || ""), "links");
+    return result === void 0 || result === null ? null : result;
+  } catch {
+    return null;
+  }
+}
 var h4 = _;
 var NS = "dsh-getnote";
 var STYLE_ID = "dshgn-style";
@@ -7988,6 +7997,7 @@ var LEX = {
     "note.outline": "\u672C\u6587\u5927\u7EB2",
     "note.openImage": "\u5728 Obsidian \u91CC\u6253\u5F00\u8FD9\u5F20\u56FE",
     "note.backlinks": "\u5F15\u7528\u4E86\u8FD9\u7BC7\u7684\u7B14\u8BB0",
+    "note.outlinks": "\u8FD9\u7BC7\u5F15\u7528\u4E86",
     "note.fontSize": "\u5B57\u53F7",
     "panel.loading": "\u6B63\u5728\u8BFB\u53D6\u7B14\u8BB0\u5E93\u2026",
     "sync.pushOne": "\u628A\u8FD9\u7BC7\u63A8\u5230\u4E91\u7AEF",
@@ -8371,6 +8381,7 @@ var LEX = {
     "note.outline": "Outline",
     "note.openImage": "Open this image in Obsidian",
     "note.backlinks": "Notes linking here",
+    "note.outlinks": "Links from this note",
     "note.fontSize": "Text size",
     "panel.loading": "Loading vault\u2026",
     "sync.pushOne": "Push this note",
@@ -8754,6 +8765,7 @@ var LEX = {
     "note.outline": "Overzicht",
     "note.openImage": "Open deze afbeelding in Obsidian",
     "note.backlinks": "Notities die hierheen linken",
+    "note.outlinks": "Links uit deze notitie",
     "note.fontSize": "Tekstgrootte",
     "panel.loading": "Notitiemap laden\u2026",
     "sync.pushOne": "Deze notitie pushen",
@@ -9804,6 +9816,15 @@ var CSS = `
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dshgn_backlinkPath{font-size:10px;color:var(--dsw-alias-label-dimmed);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* \u51FA\u94FE\uFF1A\u8FD9\u7BC7\u81EA\u5DF1\u5F15\u7528\u4E86\u8C01\u3002\u4E00\u6761\u6761\u7AD6\u6392\u592A\u5360\u5730\u65B9\uFF08\u51FA\u94FE\u5E38\u5E38\u5341\u51E0\u6761\uFF09\uFF0C\u6392\u6210\u4E00\u884C\u80F6\u56CA\u3002 */
+.dshgn_outlinks{margin-top:14px;padding-top:10px;border-top:0.5px solid var(--dsw-alias-border-l1)}
+.dshgn_outlinksHead{display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:11px;
+  color:var(--dsw-alias-label-tertiary)}
+.dshgn_outlinkRow{display:flex;flex-wrap:wrap;gap:4px}
+.dshgn_outlinkChip{appearance:none;border:0;border-radius:6px;padding:3px 8px;font:inherit;font-size:11px;
+  max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;
+  background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-brand-primary)}
+.dshgn_outlinkChip:hover{background:var(--dsw-alias-interactive-bg-hover-accent)}
 /* \u641C\u7D22\u589E\u5F3A\uFF1A\u547D\u4E2D\u6B21\u6570\u7528\u4E00\u4E2A\u5C0F\u80F6\u56CA\u6807\u5728\u6807\u9898\u53F3\u8FB9\uFF0C\u547D\u4E2D\u884C\u5E26\u884C\u53F7\u2014\u2014
    \u7528\u6237\u5224\u65AD\u300C\u8FD9\u7BC7\u662F\u4E0D\u662F\u6211\u8981\u7684\u300D\u9760\u7684\u5C31\u662F\u8FD9\u4E24\u6837\u4E1C\u897F\u3002 */
 .dshgn_pickBox{flex:none;width:14px;height:14px;border-radius:4px;display:flex;
@@ -15316,6 +15337,7 @@ function NotePane(props) {
   const [editing, setEditing] = h2(false);
   const [showOutline, setShowOutline] = h2(true);
   const [backlinks, setBacklinks] = h2(null);
+  const [outlinks, setOutlinks] = h2(null);
   const scrollRef = A2(null);
   const [textScale, setTextScale] = h2(() => {
     try {
@@ -15433,6 +15455,31 @@ function NotePane(props) {
       alive = false;
     };
   }, [currentPath]);
+  y2(() => {
+    if (currentPath === null) {
+      setOutlinks(null);
+      return void 0;
+    }
+    const hosted = linksViaHost(currentPath);
+    if (hosted !== null && Array.isArray(hosted.links)) {
+      setOutlinks(hosted.links);
+      return void 0;
+    }
+    setOutlinks(Array.isArray(current.links) ? current.links : []);
+    return void 0;
+  }, [current, currentPath]);
+  const outlinkChips = T2(() => {
+    const list = Array.isArray(outlinks) ? outlinks : [];
+    const seen = /* @__PURE__ */ new Set();
+    const out = [];
+    for (const raw of list) {
+      const text = String(raw === null || raw === void 0 ? "" : raw).trim();
+      if (text === "" || seen.has(text)) continue;
+      seen.add(text);
+      out.push(text);
+    }
+    return out;
+  }, [outlinks]);
   const jumpToHeading = q2((index) => {
     const host = scrollRef.current;
     if (!host) return;
@@ -15792,6 +15839,30 @@ function NotePane(props) {
             },
             h4("span", { className: "dshgn_backlinkTitle" }, hit.title || hit.path),
             h4("span", { className: "dshgn_backlinkPath" }, hit.path)
+          )
+        )
+      ) : null,
+      // 出链：这篇引用了谁。反链回答「谁提到我」，出链回答「我提到过谁」，
+      // 两个方向合起来才是用户脑子里的那张网。
+      outlinkChips.length > 0 ? h4(
+        "div",
+        { className: "dshgn_outlinks" },
+        h4("div", { className: "dshgn_outlinksHead" }, h4(Icon, { name: "link", size: 12 }), t3("note.outlinks"), h4("span", { className: "dshgn_outlineCount" }, String(outlinkChips.length))),
+        h4(
+          "div",
+          { className: "dshgn_outlinkRow" },
+          outlinkChips.map(
+            (link) => h4(
+              "button",
+              {
+                key: link,
+                type: "button",
+                className: "dshgn_outlinkChip",
+                title: link,
+                onClick: () => onOpenWikiLink(link)
+              },
+              link
+            )
           )
         )
       ) : null

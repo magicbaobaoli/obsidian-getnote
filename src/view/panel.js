@@ -656,6 +656,7 @@ async function saveFile(url, filename) {
         'note.outline': '本文大纲',
         'note.openImage': '在 Obsidian 里打开这张图',
         'note.backlinks': '引用了这篇的笔记',
+        'note.outlinks': '这篇引用了',
         'note.fontSize': '字号',
         'panel.loading': '正在读取笔记库…',
         'sync.pushOne': '把这篇推到云端',
@@ -1043,6 +1044,7 @@ async function saveFile(url, filename) {
         'note.outline': 'Outline',
         'note.openImage': 'Open this image in Obsidian',
         'note.backlinks': 'Notes linking here',
+        'note.outlinks': 'Links from this note',
         'note.fontSize': 'Text size',
         'panel.loading': 'Loading vault…',
         'sync.pushOne': 'Push this note',
@@ -1429,6 +1431,7 @@ async function saveFile(url, filename) {
         'note.outline': 'Overzicht',
         'note.openImage': 'Open deze afbeelding in Obsidian',
         'note.backlinks': 'Notities die hierheen linken',
+        'note.outlinks': 'Links uit deze notitie',
         'note.fontSize': 'Tekstgrootte',
         'panel.loading': 'Notitiemap laden…',
         'sync.pushOne': 'Deze notitie pushen',
@@ -2750,6 +2753,15 @@ async function saveFile(url, filename) {
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dshgn_backlinkPath{font-size:10px;color:var(--dsw-alias-label-dimmed);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 出链：这篇自己引用了谁。一条条竖排太占地方（出链常常十几条），排成一行胶囊。 */
+.dshgn_outlinks{margin-top:14px;padding-top:10px;border-top:0.5px solid var(--dsw-alias-border-l1)}
+.dshgn_outlinksHead{display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:11px;
+  color:var(--dsw-alias-label-tertiary)}
+.dshgn_outlinkRow{display:flex;flex-wrap:wrap;gap:4px}
+.dshgn_outlinkChip{appearance:none;border:0;border-radius:6px;padding:3px 8px;font:inherit;font-size:11px;
+  max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;
+  background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-brand-primary)}
+.dshgn_outlinkChip:hover{background:var(--dsw-alias-interactive-bg-hover-accent)}
 /* 搜索增强：命中次数用一个小胶囊标在标题右边，命中行带行号——
    用户判断「这篇是不是我要的」靠的就是这两样东西。 */
 .dshgn_pickBox{flex:none;width:14px;height:14px;border-radius:4px;display:flex;
@@ -9166,6 +9178,7 @@ async function saveFile(url, filename) {
       const [editing, setEditing] = React.useState(false)
       const [showOutline, setShowOutline] = React.useState(true)
       const [backlinks, setBacklinks] = React.useState(null)
+      const [outlinks, setOutlinks] = React.useState(null)
       const scrollRef = React.useRef(null)
       // 字号三档：阅读长文（尤其逐字稿）时 13.5px 偏小，但直接调大又会让
       // 习惯默认的人觉得挤。做成三档自己选，存在 localStorage 里——
@@ -9318,6 +9331,41 @@ async function saveFile(url, filename) {
           alive = false
         }
       }, [currentPath])
+
+      // 出链：这篇自己写了哪些 [[双链]]。
+      //
+      // 与反链相反，出链不用扫全库——它就在这一篇的正文里，/read 已经顺带算好
+      // 了（载荷里的 links）。但宿主的 metadataCache 认得别名、竖线前的那一段、
+      // 以及指向库外文件的情况，比我们的正则更准，所以接上宿主时先问它。
+      // 问不到（老版本没有 getFileCache、或者文件刚写下还没进索引）就用载荷里那份。
+      React.useEffect(() => {
+        if (currentPath === null) {
+          setOutlinks(null)
+          return undefined
+        }
+        const hosted = linksViaHost(currentPath)
+        if (hosted !== null && Array.isArray(hosted.links)) {
+          setOutlinks(hosted.links)
+          return undefined
+        }
+        setOutlinks(Array.isArray(current.links) ? current.links : [])
+        return undefined
+      }, [current, currentPath])
+
+      // 出链去重 + 去掉空串。宿主那边已经把 links 和 embeds 合过一遍，但同一篇
+      // 里写两遍 `[[甲]]` 很常见，排成一排胶囊时重复项只是噪音。
+      const outlinkChips = React.useMemo(() => {
+        const list = Array.isArray(outlinks) ? outlinks : []
+        const seen = new Set()
+        const out = []
+        for (const raw of list) {
+          const text = String(raw === null || raw === undefined ? '' : raw).trim()
+          if (text === '' || seen.has(text)) continue
+          seen.add(text)
+          out.push(text)
+        }
+        return out
+      }, [outlinks])
 
       // 大纲跳转按「第几个标题」定位而不是按行号：renderBlocks 和 outlineOf 都跳过
       // 代码围栏里的 #，两者的标题顺序完全一致，序号是稳的；行号在正文被重新渲染
@@ -9731,6 +9779,32 @@ async function saveFile(url, filename) {
                         },
                         h('span', { className: 'dshgn_backlinkTitle' }, hit.title || hit.path),
                         h('span', { className: 'dshgn_backlinkPath' }, hit.path),
+                      ),
+                    ),
+                  )
+                : null,
+              // 出链：这篇引用了谁。反链回答「谁提到我」，出链回答「我提到过谁」，
+              // 两个方向合起来才是用户脑子里的那张网。
+              outlinkChips.length > 0
+                ? h(
+                    'div',
+                    { className: 'dshgn_outlinks' },
+                    h('div', { className: 'dshgn_outlinksHead' }, h(Icon, { name: 'link', size: 12 }), t('note.outlinks'), h('span', { className: 'dshgn_outlineCount' }, String(outlinkChips.length))),
+                    h(
+                      'div',
+                      { className: 'dshgn_outlinkRow' },
+                      outlinkChips.map((link) =>
+                        h(
+                          'button',
+                          {
+                            key: link,
+                            type: 'button',
+                            className: 'dshgn_outlinkChip',
+                            title: link,
+                            onClick: () => onOpenWikiLink(link),
+                          },
+                          link,
+                        ),
                       ),
                     ),
                   )

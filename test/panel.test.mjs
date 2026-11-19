@@ -1974,3 +1974,126 @@ test('双链带小节时跳到那一节，找不到就明说', async () => {
     panel.setVaultGraph(null)
   }
 })
+
+/**
+ * 出链：这篇自己引用了谁。
+ *
+ * 反链区回答「谁提到我」，出链回答「我提到过谁」，两个方向合起来才是用户
+ * 脑子里的那张网。出链优先问宿主的 metadataCache（它认得别名和竖线前那段），
+ * 问不到就用 /read 载荷里那份本地正则的结果，重复项要合掉。
+ */
+test('这篇引用了谁也能看见，先问宿主的索引', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const backBtn = window.document.querySelector('.dshgn_noteBack')
+  if (backBtn) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    try {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+  }
+
+  const res = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '出链验收',
+      content: '见 [[甲]] 和 [[甲]] 还有 [[乙|别名]]\n',
+      withDatePrefix: false,
+      requestId: 'seed-outlinks',
+    }),
+  })
+  const json = await res.json()
+  const notePath = json.path
+  assert.equal(notePath, '随手记/出链验收.md', '这条要按真路径测，不能靠猜文件名')
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  const card = await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_card')).find(
+        (el) => el.getAttribute('title') === notePath,
+      ),
+    5000,
+    '出链笔记出现在列表里',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(
+    () => ((window.document.querySelector('.dshgn_note') || {}).textContent || '').includes('见'),
+    5000,
+    '出链笔记打开了',
+  )
+
+  const chipTexts = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_outlinkChip')).map((el) =>
+      (el.textContent || '').trim(),
+    )
+
+  try {
+    // ① 没接宿主：用 /read 载荷里那份本地正则的结果，重复项合掉
+    const local = await waitFor(() => (chipTexts().length > 0 ? chipTexts() : null), 5000, '出链胶囊出现')
+    assert.deepEqual(local, ['甲', '乙'], '同一篇写两遍要合掉，别名只留目标那一段，实际：' + local.join(','))
+    assert.ok(
+      (window.document.querySelector('.dshgn_outlinksHead') || {}).textContent.includes('2'),
+      '标题上要标出条数',
+    )
+
+    // ② 接上宿主：以 metadataCache 为准（它认得别名与竖线前那段）
+    const asked = []
+    panel.setVaultGraph((path, kind) => {
+      asked.push(kind + ':' + path)
+      if (kind !== 'links') return null
+      return { target: path, links: ['宿主说的这一篇'], host: true }
+    })
+    // 关掉再打开一次就够了：出链是在「打开一篇笔记」时算的，刷新按钮在列表
+    // 头上，开着笔记的时候根本不在 DOM 里。
+    const back = window.document.querySelector('.dshgn_noteBack')
+    assert.ok(back, '笔记头上应该有返回列表的按钮')
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    try {
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+    const again = await waitFor(
+      () =>
+        Array.from(window.document.querySelectorAll('.dshgn_card')).find(
+          (el) => el.getAttribute('title') === notePath,
+        ),
+      5000,
+      '重新打开出链笔记',
+    )
+    again.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    const hosted = await waitFor(
+      () => (chipTexts().includes('宿主说的这一篇') ? chipTexts() : null),
+      5000,
+      '出链以宿主给的为准',
+    )
+    assert.ok(hosted.includes('宿主说的这一篇'), '要显示宿主给的出链')
+    assert.ok(asked.some((entry) => entry.startsWith('links:')), '应该问过宿主的出链')
+
+    // ③ 点胶囊要能打开那一篇（这里让它解析失败，走的是同一套双链逻辑）
+    const opened = []
+    panel.setLinkResolve((linkpath) => {
+      opened.push(linkpath)
+      return ''
+    })
+    const chip = window.document.querySelector('.dshgn_outlinkChip')
+    chip.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => opened.length > 0, 3000, '点胶囊走双链解析')
+    assert.equal(opened[0], '宿主说的这一篇', '递过去的是链接原文')
+  } finally {
+    panel.setVaultGraph(null)
+    panel.setLinkResolve(null)
+  }
+})
