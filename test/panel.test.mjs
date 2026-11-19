@@ -2502,3 +2502,121 @@ test('设置页里的跟随开关真的写进设置', async () => {
   // 后面的用例默认停在笔记页
   await clickTab('笔记')
 })
+
+/**
+ * 阅读态的属性区。
+ *
+ * 面板以前完全不显示 frontmatter——用户在 Obsidian 里写的 tags、aliases、
+ * 自定义字段，回到面板里一眼都看不到，还以为没存上。这条守三件事：头部真的
+ * 摊出来、标签做成可点的胶囊（点了去左栏筛这个标签）、没有头部的笔记不出现
+ * 一个空框。
+ */
+test('笔记头部的属性摊在正文上方，标签点一下就去筛', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const backBtn = window.document.querySelector('.dshgn_noteBack')
+  if (backBtn) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    try {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+  }
+
+  const seed = async (title, content, requestId) => {
+    const res = await realFetch(server.origin + '/getnote/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({ dir: '随手记', title, content, withDatePrefix: false, requestId }),
+    })
+    const json = await res.json()
+    assert.equal(json.path, '随手记/' + title + '.md')
+    return json.path
+  }
+
+  // 有头部的一篇：tags 数组 + 自定义字段 + 空数组（空的那个不该占一行）
+  const withProps = await seed(
+    '属性验收',
+    ['---', 'tags: [甲, 乙]', 'aliases: [别名一]', '来源: 得到大脑', '空着: []', '---', '', '# 属性验收', '', '正文在这里', ''].join('\n'),
+    'seed-props',
+  )
+  // 没头部的一篇：整块属性区都不该出现
+  const noProps = await seed('无属性验收', '# 无属性验收\n\n只有正文\n', 'seed-props-none')
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  const openCard = async (path, marker) => {
+    const card = await waitFor(
+      () => Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === path),
+      5000,
+      '笔记出现在列表里：' + path,
+    )
+    card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(
+      () => ((window.document.querySelector('.dshgn_note') || {}).textContent || '').includes(marker),
+      5000,
+      '笔记打开了：' + path,
+    )
+  }
+
+  await openCard(withProps, '正文在这里')
+
+  // ① 属性区在，键值都摊出来了
+  const props = await waitFor(() => window.document.querySelector('.dshgn_props'), 5000, '属性区出现')
+  const keys = Array.from(props.querySelectorAll('.dshgn_propKey')).map((el) => (el.textContent || '').trim())
+  assert.deepEqual(keys, ['tags', 'aliases', '来源'], '空值的键不该占一行')
+  const propText = props.textContent || ''
+  assert.ok(propText.includes('来源'), '自定义字段也要列出来')
+  assert.ok(propText.includes('得到大脑'), '自定义字段的值要跟着列出来')
+  assert.ok(!propText.includes('空着'), '空数组写了等于没写，不该占一行')
+
+  // ② 标签是可点的胶囊，点一下就去左栏筛这个标签
+  const tagButtons = Array.from(props.querySelectorAll('.dshgn_propTag')).map((el) => (el.textContent || '').trim())
+  assert.deepEqual(tagButtons, ['甲', '乙'], '标签要拆成一颗颗胶囊')
+  tagButtons.length = 0
+  const firstTag = props.querySelector('.dshgn_propTag')
+  firstTag.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(
+    () => {
+      const rows = Array.from(window.document.querySelectorAll('.dshgn_tagRow'))
+      return rows.some((el) => el.getAttribute('data-on') === 'true' && (el.textContent || '').includes('甲'))
+    },
+    5000,
+    '点标签应该去左栏筛这个标签',
+  )
+
+  // ③ 先把这个标签筛掉，否则列表里只剩带「甲」的那篇
+  const tagRow = Array.from(window.document.querySelectorAll('.dshgn_tagRow')).find((el) =>
+    (el.textContent || '').includes('甲'),
+  )
+  tagRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(
+    () => Array.from(window.document.querySelectorAll('.dshgn_tagRow')).every((el) => el.getAttribute('data-on') !== 'true'),
+    5000,
+    '再点一下应该把标签筛掉',
+  )
+
+  // ④ 没有头部的笔记：不出现一个空框
+  await openCard(noProps, '只有正文')
+  assert.equal(window.document.querySelector('.dshgn_props'), null, '没有头部就不该出现空的属性区')
+
+  // ④ 渲染器层面：值的形状要认得全，别把数组渲染成 [object Object]
+  const { frontmatterText, isTagKey } = panel.__internals
+  assert.equal(frontmatterText(['甲', '乙']), '甲 · 乙', '数组用 · 连起来，和卡片摘要里标签的连法一致')
+  assert.equal(frontmatterText(''), '', '空串就是空串，不该变成一行空白')
+  assert.equal(frontmatterText(null), '')
+  assert.equal(frontmatterText(undefined), '')
+  assert.equal(frontmatterText(3), '3', '数字也要能显示')
+  assert.ok(frontmatterText({ a: 1 }).includes('a'), '对象退成 JSON，别显示 [object Object]')
+  assert.equal(isTagKey('tags'), true)
+  assert.equal(isTagKey('Tags'), true, '大小写不该影响判断')
+  assert.equal(isTagKey('来源'), false)
+})
+

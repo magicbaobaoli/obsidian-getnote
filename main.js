@@ -9595,6 +9595,24 @@ function headingNodes(host) {
   if (own.length > 0) return Array.from(own);
   return Array.from(host.querySelectorAll("h1, h2, h3, h4, h5, h6"));
 }
+function frontmatterText(value) {
+  if (value === null || value === void 0) return "";
+  if (Array.isArray(value)) {
+    return value.map((item) => frontmatterText(item)).filter((text) => text !== "").join(" \xB7 ");
+  }
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return "";
+    }
+  }
+  return String(value).trim();
+}
+function isTagKey(key) {
+  const name = String(key || "").trim().toLowerCase();
+  return name === "tags" || name === "tag" || name === "\u6807\u7B7E" || name === "\u6807\u7B7E\u9875";
+}
 function scrollToHeading(box, text) {
   if (!box) return false;
   const want = normalizeHeading(text);
@@ -10041,6 +10059,21 @@ var CSS = `
   color:var(--dsw-alias-label-secondary);cursor:pointer;text-align:left;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dshgn_outlineItem:hover{background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-brand-primary)}
+/* \u5C5E\u6027\u533A\uFF1A\u7B14\u8BB0\u5934\u90E8\u90A3\u4E9B\u952E\u503C\uFF08tags / aliases / \u81EA\u5B9A\u4E49\u5B57\u6BB5\uFF09\u3002
+   \u653E\u5728\u6B63\u6587\u4E0A\u65B9\u3001\u6BD4\u5927\u7EB2\u66F4\u6DE1\u2014\u2014\u5B83\u662F\u300C\u8FD9\u7BC7\u662F\u4EC0\u4E48\u300D\uFF0C\u4E0D\u662F\u300C\u8FD9\u7BC7\u5199\u4E86\u4EC0\u4E48\u300D\uFF0C
+   \u8BFB\u6B63\u6587\u65F6\u5B83\u5E94\u8BE5\u9000\u5230\u80CC\u666F\u91CC\uFF0C\u4F46\u8981\u4E00\u773C\u80FD\u626B\u5230\u3002 */
+.dshgn_props{margin:0 0 12px;border:0.5px solid var(--dsw-alias-border-l1);
+  border-radius:8px;background:var(--dsw-alias-interactive-bg-hover);overflow:hidden;font-size:11.5px}
+.dshgn_propsBody{padding:0 10px 7px}
+.dshgn_propRow{display:flex;align-items:flex-start;gap:8px;padding:2px 0;line-height:1.6}
+.dshgn_propKey{flex:0 0 auto;min-width:52px;max-width:110px;color:var(--dsw-alias-label-tertiary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_propVal{flex:1 1 auto;min-width:0;color:var(--dsw-alias-label-secondary);
+  word-break:break-word;white-space:pre-wrap}
+.dshgn_propTag{appearance:none;border:0;border-radius:9px;padding:1px 7px;margin:0 4px 4px 0;
+  background:rgba(var(--dshgn-tintRgb),.1);font:inherit;font-size:11px;
+  color:var(--dsw-alias-brand-primary);cursor:pointer}
+.dshgn_propTag:hover{background:var(--dsw-alias-interactive-bg-hover-accent)}
 /* \u5173\u8054\u7B14\u8BB0\uFF1A\u6B63\u6587\u8BFB\u5B8C\u624D\u51FA\u73B0\uFF0C\u6240\u4EE5\u6837\u5F0F\u6BD4\u5927\u7EB2\u66F4\u8F7B\u2014\u2014\u5B83\u662F\u4E00\u6761\u8865\u5145\u4FE1\u606F\uFF0C\u4E0D\u8BE5\u62A2\u6B63\u6587\u89C6\u7EBF\u3002 */
 .dshgn_backlinks{margin-top:18px;padding-top:12px;border-top:0.5px solid var(--dsw-alias-border-l1)}
 .dshgn_backlinksHead{display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:11px;
@@ -12457,6 +12490,12 @@ ${insert}
         onAnchorDone: () => setPendingAnchor(null),
         resolveNote: resolveNotePath,
         onAttach: attachFiles,
+        // 属性区里的标签胶囊：与左栏标签区同一个动作（筛这个标签）
+        onPickTag: (tag) => {
+          setActiveTag(tag);
+          setActiveDir("");
+          setTab("notes");
+        },
         onError: (message) => setError(message),
         // 勾待办直接落盘再重读：本地文件已经变了，只改前端状态的话
         // 下次保存草稿会把旧内容写回去，把刚勾的那一下冲掉。
@@ -15694,6 +15733,7 @@ function NotePane(props) {
   const anchorRequest = props.anchor;
   const onAnchorDone = props.onAnchorDone;
   const resolveNote = props.resolveNote;
+  const onPickTag = props.onPickTag;
   const subfolder = status !== null && typeof status.subfolder === "string" ? status.subfolder.replace(/^\/+|\/+$/g, "") : "";
   const vaultPathOf = (note) => {
     const rel = note !== null && typeof note.path === "string" ? note.path : "";
@@ -15702,6 +15742,7 @@ function NotePane(props) {
   };
   const [editing, setEditing] = h2(false);
   const [showOutline, setShowOutline] = h2(true);
+  const [showProps, setShowProps] = h2(true);
   const [backlinks, setBacklinks] = h2(null);
   const [outlinks, setOutlinks] = h2(null);
   const scrollRef = A2(null);
@@ -15848,6 +15889,23 @@ function NotePane(props) {
     }
     return out;
   }, [outlinks]);
+  const propRows = T2(() => {
+    const data = current !== null && current.frontmatter !== null && typeof current.frontmatter === "object" ? current.frontmatter : {};
+    const rows = [];
+    for (const key of Object.keys(data)) {
+      const raw = data[key];
+      const text = frontmatterText(raw);
+      if (text === "") continue;
+      let tags = null;
+      if (isTagKey(key)) {
+        const list = Array.isArray(raw) ? raw : String(raw === null || raw === void 0 ? "" : raw).split(/[,，\s]+/);
+        tags = list.map((item) => String(item === null || item === void 0 ? "" : item).trim()).filter((item) => item !== "");
+        if (tags.length === 0) tags = null;
+      }
+      rows.push({ key, text, tags });
+    }
+    return rows;
+  }, [current]);
   const jumpToHeading = q2((index) => {
     const host = scrollRef.current;
     if (!host) return;
@@ -16142,6 +16200,55 @@ function NotePane(props) {
     ) : h4(
       "div",
       { className: "dshgn_scroll", ref: scrollRef },
+      // 属性区：笔记头部那几行（tags / aliases / 自定义字段）。
+      // 放在正文上方、大纲之上——它回答「这篇是什么」，读正文之前先有个背景。
+      // 没有头部时 propRows 是空数组，这一整块不出现。
+      propRows.length > 0 ? h4(
+        "div",
+        { className: "dshgn_props" },
+        h4(
+          "button",
+          {
+            type: "button",
+            className: "dshgn_outlineToggle",
+            onClick: () => setShowProps((prev) => !prev),
+            title: t3("reader.frontmatter")
+          },
+          h4(Icon, { name: showProps ? "up" : "file", size: 12 }),
+          t3("reader.frontmatter"),
+          h4("span", { className: "dshgn_outlineCount" }, String(propRows.length))
+        ),
+        showProps ? h4(
+          "div",
+          { className: "dshgn_propsBody" },
+          propRows.map(
+            (row) => h4(
+              "div",
+              { key: row.key, className: "dshgn_propRow" },
+              h4("span", { className: "dshgn_propKey", title: row.key }, row.key),
+              h4(
+                "span",
+                { className: "dshgn_propVal" },
+                // 标签做成可点的胶囊：点一下等于在左栏筛这个标签。
+                // 其余的值原样列出来（数组在 frontmatterText 里已经用 · 连好）。
+                row.tags !== null && typeof onPickTag === "function" ? row.tags.map(
+                  (tag, index) => h4(
+                    "button",
+                    {
+                      key: `${index}-${tag}`,
+                      type: "button",
+                      className: "dshgn_propTag",
+                      title: tag,
+                      onClick: () => onPickTag(tag)
+                    },
+                    tag
+                  )
+                ) : row.text
+              )
+            )
+          )
+        ) : null
+      ) : null,
       // 大纲：长笔记（尤其逐字稿那种几千字）靠滚动找「金句在哪一节」非常费劲，
       // 给一排可点的标题省掉这个过程。默认展开，但可以收起——有些用户
       // 只想一口气读完，多一行都是干扰。
@@ -17870,7 +17977,8 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
    *   3. 开关关着 —— 默认就是关的，用户点头才跟。
    *
    * 开关现读一遍而不是信 onload 的快照：面板的设置页也能改它，改完不该等重启。
-   * 读不出来（设置文件被删、权限问题）就退回内存里那份，不至于让跟随静默失效。
+   * 设置文件读不出来时按「关」处理——跟随是「面板自己动」，出问题时宁可不跟，
+   * 也不要凭空把用户正在看的笔记顶掉。
    *
    * 返回一句话说明这次为什么跟/没跟，方便自测和排查；真正干活的是投递那条意图。
    */

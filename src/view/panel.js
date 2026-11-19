@@ -2401,6 +2401,38 @@ async function saveFile(url, filename) {
     }
 
     /**
+     * frontmatter 里的一个值 → 一行文字。
+     *
+     * 我们自己写出去的头部只有字符串和字符串数组两种形状（见 core/vault.js 的
+     * parseFrontmatter），但用户会手改，可能写成嵌套、数字、布尔。这里只负责
+     * 「别崩、别显示 [object Object]」：数组用 · 连起来（和卡片摘要里标签的
+     * 连法一致），对象退成 JSON 一行，其它交给 String。
+     */
+    function frontmatterText(value) {
+      if (value === null || value === undefined) return ''
+      if (Array.isArray(value)) {
+        return value
+          .map((item) => frontmatterText(item))
+          .filter((text) => text !== '')
+          .join(' · ')
+      }
+      if (typeof value === 'object') {
+        try {
+          return JSON.stringify(value)
+        } catch {
+          return ''
+        }
+      }
+      return String(value).trim()
+    }
+
+    /** 这个键是不是「标签」——宿主的约定是 tags，用户手写时常见 tag / 标签。 */
+    function isTagKey(key) {
+      const name = String(key || '').trim().toLowerCase()
+      return name === 'tags' || name === 'tag' || name === '标签' || name === '标签页'
+    }
+
+    /**
      * 把某个容器滚到它的某一节标题上。
      *
      * 嵌进来的那一篇自己不是滚动容器——滚动发生在外面那层 `.dshgn_scroll` 上，
@@ -2975,6 +3007,21 @@ async function saveFile(url, filename) {
   color:var(--dsw-alias-label-secondary);cursor:pointer;text-align:left;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dshgn_outlineItem:hover{background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-brand-primary)}
+/* 属性区：笔记头部那些键值（tags / aliases / 自定义字段）。
+   放在正文上方、比大纲更淡——它是「这篇是什么」，不是「这篇写了什么」，
+   读正文时它应该退到背景里，但要一眼能扫到。 */
+.dshgn_props{margin:0 0 12px;border:0.5px solid var(--dsw-alias-border-l1);
+  border-radius:8px;background:var(--dsw-alias-interactive-bg-hover);overflow:hidden;font-size:11.5px}
+.dshgn_propsBody{padding:0 10px 7px}
+.dshgn_propRow{display:flex;align-items:flex-start;gap:8px;padding:2px 0;line-height:1.6}
+.dshgn_propKey{flex:0 0 auto;min-width:52px;max-width:110px;color:var(--dsw-alias-label-tertiary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_propVal{flex:1 1 auto;min-width:0;color:var(--dsw-alias-label-secondary);
+  word-break:break-word;white-space:pre-wrap}
+.dshgn_propTag{appearance:none;border:0;border-radius:9px;padding:1px 7px;margin:0 4px 4px 0;
+  background:rgba(var(--dshgn-tintRgb),.1);font:inherit;font-size:11px;
+  color:var(--dsw-alias-brand-primary);cursor:pointer}
+.dshgn_propTag:hover{background:var(--dsw-alias-interactive-bg-hover-accent)}
 /* 关联笔记：正文读完才出现，所以样式比大纲更轻——它是一条补充信息，不该抢正文视线。 */
 .dshgn_backlinks{margin-top:18px;padding-top:12px;border-top:0.5px solid var(--dsw-alias-border-l1)}
 .dshgn_backlinksHead{display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:11px;
@@ -5745,6 +5792,12 @@ async function saveFile(url, filename) {
             onAnchorDone: () => setPendingAnchor(null),
             resolveNote: resolveNotePath,
             onAttach: attachFiles,
+            // 属性区里的标签胶囊：与左栏标签区同一个动作（筛这个标签）
+            onPickTag: (tag) => {
+              setActiveTag(tag)
+              setActiveDir('')
+              setTab('notes')
+            },
             onError: (message) => setError(message),
             // 勾待办直接落盘再重读：本地文件已经变了，只改前端状态的话
             // 下次保存草稿会把旧内容写回去，把刚勾的那一下冲掉。
@@ -9559,6 +9612,8 @@ async function saveFile(url, filename) {
       const onAnchorDone = props.onAnchorDone
       // 嵌入 ![[另一篇笔记]] 时用它把名字解析成路径（与点双链共用一套口径）
       const resolveNote = props.resolveNote
+      // 属性区里的标签胶囊点一下，等于在左栏筛这个标签（与左栏标签区同一个动作）
+      const onPickTag = props.onPickTag
       // 渲染器要的是「库内相对路径」：status.vaultRoot 是绝对路径，笔记在库里
       // 真正的位置是「<子目录>/<笔记相对路径>」。相对链接、图片、嵌入块都靠它解析。
       const subfolder = status !== null && typeof status.subfolder === 'string' ? status.subfolder.replace(/^\/+|\/+$/g, '') : ''
@@ -9569,6 +9624,8 @@ async function saveFile(url, filename) {
       }
       const [editing, setEditing] = React.useState(false)
       const [showOutline, setShowOutline] = React.useState(true)
+      // 属性区默认展开：头部就三五条，藏起来等于没有；笔记没有头部时整块不渲染。
+      const [showProps, setShowProps] = React.useState(true)
       const [backlinks, setBacklinks] = React.useState(null)
       const [outlinks, setOutlinks] = React.useState(null)
       const scrollRef = React.useRef(null)
@@ -9761,6 +9818,39 @@ async function saveFile(url, filename) {
         }
         return out
       }, [outlinks])
+
+      // 属性区：把 frontmatter 摊成「键 → 值」几行。
+      //
+      // 面板以前完全不显示头部——用户在 Obsidian 里写的 tags、aliases、自定义
+      // 字段，回到面板里一眼都看不到，还以为没存上。标签单独拎出来做成可点的
+      // 胶囊（点了就去左栏筛这个标签），其余按原样列出来。
+      //
+      // 空值整行跳过：`aliases: []` 这种写了等于没写的键，占一行只会让人以为
+      // 面板没渲染对。整篇没有头部时 propRows 是空数组，那块压根不出现。
+      const propRows = React.useMemo(() => {
+        const data =
+          current !== null && current.frontmatter !== null && typeof current.frontmatter === 'object'
+            ? current.frontmatter
+            : {}
+        const rows = []
+        for (const key of Object.keys(data)) {
+          const raw = data[key]
+          const text = frontmatterText(raw)
+          if (text === '') continue
+          let tags = null
+          if (isTagKey(key)) {
+            const list = Array.isArray(raw)
+              ? raw
+              : String(raw === null || raw === undefined ? '' : raw).split(/[,，\s]+/)
+            tags = list
+              .map((item) => String(item === null || item === undefined ? '' : item).trim())
+              .filter((item) => item !== '')
+            if (tags.length === 0) tags = null
+          }
+          rows.push({ key, text, tags })
+        }
+        return rows
+      }, [current])
 
       // 大纲跳转按「第几个标题」定位而不是按行号：renderBlocks 和 outlineOf 都跳过
       // 代码围栏里的 #，两者的标题顺序完全一致，序号是稳的；行号在正文被重新渲染
@@ -10096,6 +10186,61 @@ async function saveFile(url, filename) {
             : h(
               'div',
               { className: 'dshgn_scroll', ref: scrollRef },
+              // 属性区：笔记头部那几行（tags / aliases / 自定义字段）。
+              // 放在正文上方、大纲之上——它回答「这篇是什么」，读正文之前先有个背景。
+              // 没有头部时 propRows 是空数组，这一整块不出现。
+              propRows.length > 0
+                ? h(
+                    'div',
+                    { className: 'dshgn_props' },
+                    h(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'dshgn_outlineToggle',
+                        onClick: () => setShowProps((prev) => !prev),
+                        title: t('reader.frontmatter'),
+                      },
+                      h(Icon, { name: showProps ? 'up' : 'file', size: 12 }),
+                      t('reader.frontmatter'),
+                      h('span', { className: 'dshgn_outlineCount' }, String(propRows.length)),
+                    ),
+                    showProps
+                      ? h(
+                          'div',
+                          { className: 'dshgn_propsBody' },
+                          propRows.map((row) =>
+                            h(
+                              'div',
+                              { key: row.key, className: 'dshgn_propRow' },
+                              h('span', { className: 'dshgn_propKey', title: row.key }, row.key),
+                              h(
+                                'span',
+                                { className: 'dshgn_propVal' },
+                                // 标签做成可点的胶囊：点一下等于在左栏筛这个标签。
+                                // 其余的值原样列出来（数组在 frontmatterText 里已经用 · 连好）。
+                                row.tags !== null && typeof onPickTag === 'function'
+                                  ? row.tags.map((tag, index) =>
+                                      h(
+                                        'button',
+                                        {
+                                          key: `${index}-${tag}`,
+                                          type: 'button',
+                                          className: 'dshgn_propTag',
+                                          title: tag,
+                                          onClick: () => onPickTag(tag),
+                                        },
+                                        tag,
+                                      ),
+                                    )
+                                  : row.text,
+                              ),
+                            ),
+                          ),
+                        )
+                      : null,
+                  )
+                : null,
               // 大纲：长笔记（尤其逐字稿那种几千字）靠滚动找「金句在哪一节」非常费劲，
               // 给一排可点的标题省掉这个过程。默认展开，但可以收起——有些用户
               // 只想一口气读完，多一行都是干扰。
@@ -10982,5 +11127,5 @@ export const __internals = {
   TrashPane, renderEmbed, assetLabel, ThemeCard, readSession, writeSession, SESSION_KEY,
   themeVars, parseHex, rgbToHsl, hslToHex, ConflictPane, ArchiveCard, CardPane,
   TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale,
-  reportSync, dailyTemplateOf,
+  reportSync, dailyTemplateOf, frontmatterText, isTagKey, FollowCard,
 }
