@@ -443,6 +443,53 @@ test('笔记头上有「在 Obsidian 里打开」，点了把路径交给宿主'
 })
 
 /**
+ * 反链优先问宿主。
+ *
+ * Obsidian 的 metadataCache 一直在增量维护整库链接图，我们再读一遍全库正文去
+ * 正则匹配等于把同一件事干第二遍。这条验的是：注入了宿主图谱就真的不去打
+ * /backlinks，而且宿主给的命中能照常渲染成「关联笔记」。
+ */
+test('反链优先问宿主，注入了就不再扫全库', async () => {
+  await waitFor(() => window.document.querySelector('.dshgn_root') !== null, 5000, '根节点渲染')
+
+  const asked = []
+  panel.setVaultGraph((path, kind) => {
+    asked.push(kind + ':' + path)
+    if (kind !== 'backlinks') return null
+    return { target: path, hits: [{ path: '别处的笔记.md', title: '别处的笔记', links: [path] }] }
+  })
+  try {
+    const before = fetchCalls.filter((url) => url.includes('/backlinks')).length
+    await clickTab('云端')
+    await clickTab('笔记')
+    const card = await waitFor(
+      () =>
+        Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) =>
+          (el.textContent || '').includes('右键菜单验收'),
+        ),
+      5000,
+    )
+    card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+
+    const item = await waitFor(
+      () => window.document.querySelector('.dshgn_backlinkItem'),
+      5000,
+      '关联笔记区出现宿主给的命中',
+    )
+    assert.ok((item.textContent || '').includes('别处的笔记'), '要显示宿主的标题')
+    assert.ok(asked.length > 0, '应该问过宿主')
+    assert.ok(
+      asked.some((entry) => entry.startsWith('backlinks:')),
+      '应该问的是反链，实际：' + asked.join(','),
+    )
+    const after = fetchCalls.filter((url) => url.includes('/backlinks')).length
+    assert.equal(after, before, '注入了宿主图谱就不该再去打 /backlinks')
+  } finally {
+    panel.setVaultGraph(null)
+  }
+})
+
+/**
  * 命令面板投递的意图要真的落到面板上。
  *
  * 命令面板触发时面板可能刚被创建、还没渲染完，所以意图是「投递」而不是直接

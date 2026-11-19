@@ -223,6 +223,38 @@ async function saveFile(url, filename) {
       return () => __cssListeners.delete(listener)
     }
 
+    // 宿主的知识图谱。
+    //
+    // 反链、双链补全、出链这些东西 Obsidian 的 metadataCache 本来就一直在维护，
+    // 我们再扫一遍全库正文等于把它干过的活重干一次——库大了这个差别是「点一下
+    // 立刻出」和「等一秒」的差别。注入之后反查优先问宿主，问不到（链接还没被
+    // 索引、文件刚写下去）再退回自己扫；没注入时行为跟以前完全一样。
+    let __graph = null
+    export function setVaultGraph(fn) {
+      __graph = typeof fn === 'function' ? fn : null
+    }
+    function hasVaultGraph() {
+      return __graph !== null
+    }
+    function backlinksViaHost(path) {
+      if (__graph === null) return null
+      try {
+        const result = __graph(String(path || ''), 'backlinks')
+        return result === undefined || result === null ? null : result
+      } catch {
+        return null
+      }
+    }
+    function linksViaHost(path) {
+      if (__graph === null) return null
+      try {
+        const result = __graph(String(path || ''), 'links')
+        return result === undefined || result === null ? null : result
+      } catch {
+        return null
+      }
+    }
+
     const h = React.createElement
     const NS = 'dsh-getnote'
     const PANEL_ID = 'dsh-getnote'
@@ -8288,6 +8320,9 @@ async function saveFile(url, filename) {
 
       // 反查引用单独请求：一次反查要读全库正文，和打开一篇笔记不是一个量级，
       // 塞进 /read 会把「点开笔记」这个最常做的动作拖慢。
+      //
+      // 有宿主图谱时先问它：metadataCache 的反向链接是增量维护的，不用为了一次
+      // 点击把全库正文重读一遍。问不到（刚写下的文件还没进索引）再走本地扫描。
       const currentPath = current !== null ? current.path : null
       React.useEffect(() => {
         if (currentPath === null) {
@@ -8296,6 +8331,11 @@ async function saveFile(url, filename) {
         }
         let alive = true
         setBacklinks(null)
+        const hosted = backlinksViaHost(currentPath)
+        if (hosted !== null) {
+          setBacklinks(hosted)
+          return undefined
+        }
         void api(`/backlinks?path=${encodeURIComponent(currentPath)}`)
           .then((json) => {
             if (alive) setBacklinks(json)

@@ -301,6 +301,23 @@ const app = {
     }),
     openPopoutLeaf: () => ({ setViewState: async () => {} }),
   },
+  // 宿主的链接索引。插件拿它回答「谁引用了这篇」「这篇引用了谁」，
+  // 不必为了一次点击重扫全库正文——那正是 Obsidian 自己一直在维护的东西。
+  metadataCache: {
+    resolvedLinks: {},
+    fileCache: {},
+    getFileCache(file) {
+      return app.metadataCache.fileCache[file.path] || null
+    },
+    getBacklinksForFile(file) {
+      const data = new Map()
+      for (const source of Object.keys(app.metadataCache.resolvedLinks)) {
+        const targets = app.metadataCache.resolvedLinks[source]
+        if (targets && targets[file.path] !== undefined) data.set(source, targets[file.path])
+      }
+      return { data }
+    },
+  },
 }
 
 const plugin = new GetnotePlugin(app, { id: 'getnote-obsidian', version: '0.1.0' })
@@ -777,6 +794,45 @@ test('原生确认框、在宿主里打开、css-change 都接到宿主上了', 
   assert.doesNotThrow(() => {
     for (const fn of listeners) fn()
   }, 'css-change 回调不该抛')
+})
+
+test('反链与出链优先问宿主的链接索引，问不到才自己扫', async () => {
+  await adapter.write('得到大脑/随手记/甲.md', '---\ntitle: 甲\n---\n\n正文\n')
+  await adapter.write('得到大脑/随手记/乙.md', '---\ntitle: 乙\n---\n\n见 [[甲]] 和 ![[图.png]]\n')
+
+  // 宿主索引里：乙 → 甲 有一条链接
+  app.metadataCache.resolvedLinks = {
+    '得到大脑/随手记/乙.md': { '得到大脑/随手记/甲.md': 1 },
+  }
+  app.metadataCache.fileCache = {
+    '得到大脑/随手记/乙.md': { links: [{ link: '甲' }], embeds: [{ link: '图.png' }] },
+  }
+
+  const back = plugin.vaultGraphOf('得到大脑/随手记/甲.md', 'backlinks')
+  assert.ok(back !== null, '有宿主索引时不该退回 null')
+  assert.equal(back.host, true, '要标明这是宿主给的答案')
+  assert.equal(back.hits.length, 1, '应该只有乙引用了甲')
+  assert.equal(back.hits[0].path, '得到大脑/随手记/乙.md')
+  assert.equal(back.hits[0].title, '乙', '标题要跟本地扫描的形状一致，否则界面上会缺一半')
+
+  const out = plugin.vaultGraphOf('得到大脑/随手记/乙.md', 'links')
+  assert.deepEqual(out.links, ['甲', '图.png'], '出链要把嵌入也算上')
+
+  // 拿不准的一律返回 null，让面板自己扫
+  assert.equal(plugin.vaultGraphOf('得到大脑/随手记/根本没有.md', 'backlinks'), null)
+  assert.equal(plugin.vaultGraphOf('', 'backlinks'), null)
+  assert.equal(plugin.vaultGraphOf('得到大脑/随手记/甲.md', '什么鬼'), null)
+
+  // 宿主索引自己炸了也不能把面板带崩
+  const broken = app.metadataCache
+  app.metadataCache = {
+    getBacklinksForFile() { throw new Error('索引坏了') },
+    getFileCache() { throw new Error('索引坏了') },
+  }
+  assert.equal(plugin.vaultGraphOf('得到大脑/随手记/甲.md', 'backlinks'), null)
+  app.metadataCache = broken
+  app.metadataCache.resolvedLinks = {}
+  app.metadataCache.fileCache = {}
 })
 
 test('onunload 会关掉本地服务', async () => {

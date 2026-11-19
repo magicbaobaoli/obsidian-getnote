@@ -7641,6 +7641,19 @@ function subscribeCssChange(listener) {
   __cssListeners.add(listener);
   return () => __cssListeners.delete(listener);
 }
+var __graph = null;
+function setVaultGraph(fn2) {
+  __graph = typeof fn2 === "function" ? fn2 : null;
+}
+function backlinksViaHost(path) {
+  if (__graph === null) return null;
+  try {
+    const result = __graph(String(path || ""), "backlinks");
+    return result === void 0 || result === null ? null : result;
+  } catch {
+    return null;
+  }
+}
 var h4 = _;
 var NS = "dsh-getnote";
 var STYLE_ID = "dshgn-style";
@@ -14717,6 +14730,11 @@ function NotePane(props) {
     }
     let alive = true;
     setBacklinks(null);
+    const hosted = backlinksViaHost(currentPath);
+    if (hosted !== null) {
+      setBacklinks(hosted);
+      return void 0;
+    }
     void api(`/backlinks?path=${encodeURIComponent(currentPath)}`).then((json) => {
       if (alive) setBacklinks(json);
     }).catch(() => {
@@ -15726,6 +15744,7 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     });
     setConfirmDialog((message) => this.askConfirm(message));
     setOpenInEditor((path) => this.openInVaultEditor(path));
+    setVaultGraph((path, kind) => this.vaultGraphOf(path, kind));
     const stored = await readSettings();
     this.debugLogging = stored.debugLogging === true;
     setDebugLogging(this.debugLogging);
@@ -16089,6 +16108,61 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       return true;
     } catch {
       return false;
+    }
+  }
+  /**
+   * 用宿主的 metadataCache 回答「谁引用了这篇」与「这篇引用了谁」。
+   *
+   * 只读宿主的索引，不碰磁盘：resolvedLinks 是 Obsidian 维护的
+   * 「源文件 → 目标文件 → 次数」表，getFileCache 给的是单篇的 links/embeds。
+   * 两者都可能还没收录刚写下的文件，所以拿不到就返回 null，由面板退回自己的扫描。
+   *
+   * 返回形状要和面板里那份本地扫描一致（hits 里每项带 path/title/links），
+   * 否则界面上一半有标题一半没有，看着像坏了。
+   */
+  vaultGraphOf(path, kind) {
+    try {
+      const rel = String(path || "").replace(/^\/+/, "");
+      if (rel === "") return null;
+      const file = this.app.vault.getAbstractFileByPath(rel);
+      if (!file) return null;
+      const cache = this.app.metadataCache;
+      if (!cache) return null;
+      const titleOf2 = (p3) => String(p3).split("/").pop().replace(/\.md$/i, "");
+      if (kind === "backlinks") {
+        const hits = [];
+        if (typeof cache.getBacklinksForFile === "function") {
+          const result = cache.getBacklinksForFile(file);
+          const data = result && result.data ? result.data : null;
+          if (data && typeof data.forEach === "function") {
+            data.forEach((_count, sourcePath) => {
+              hits.push({ path: sourcePath, title: titleOf2(sourcePath), date: "", links: [rel] });
+            });
+          }
+        } else if (cache.resolvedLinks && typeof cache.resolvedLinks === "object") {
+          for (const sourcePath of Object.keys(cache.resolvedLinks)) {
+            if (sourcePath === rel) continue;
+            const targets = cache.resolvedLinks[sourcePath];
+            if (!targets || targets[rel] === void 0) continue;
+            hits.push({ path: sourcePath, title: titleOf2(sourcePath), date: "", links: [rel] });
+          }
+        }
+        hits.sort((a3, b3) => a3.title.localeCompare(b3.title, "zh"));
+        return { target: rel, hits, host: true };
+      }
+      if (kind === "links") {
+        const info = typeof cache.getFileCache === "function" ? cache.getFileCache(file) : null;
+        if (!info) return null;
+        const links = [];
+        for (const item of [...info.links || [], ...info.embeds || []]) {
+          const link = item && item.link ? String(item.link) : "";
+          if (link !== "" && !links.includes(link)) links.push(link);
+        }
+        return { target: rel, links, host: true };
+      }
+      return null;
+    } catch {
+      return null;
     }
   }
   async saveLocalPort(port) {

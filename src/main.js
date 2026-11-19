@@ -43,6 +43,7 @@ import {
   setSyncReport,
   setConfirmDialog,
   setOpenInEditor,
+  setVaultGraph,
   notifyCssChange,
 } from './view/panel.js'
 import { GetnoteView, VIEW_TYPE_GETNOTE, PanelIcon } from './view/view.js'
@@ -143,6 +144,14 @@ export default class GetnoteObsidianPlugin extends Plugin {
     // 「在 Obsidian 里打开」：面板的编辑器够用来看和改正文，但没有补全、没有
     // Vim、没有别的插件挂上来的命令。真要动结构的时候，得把用户送回宿主编辑器。
     setOpenInEditor((path) => this.openInVaultEditor(path))
+
+    // 反链、出链交给宿主的 metadataCache。
+    //
+    // Obsidian 本来就在增量维护整库的链接图（它就是靠这个画关系图谱、做双链补全的），
+    // 我们再读一遍全库正文去正则匹配 [[...]]，等于把同一件事干第二遍。库大了之后
+    // 这个差别是「点一下立刻出」和「等一秒」的差别。问不到（链接还没被索引、文件
+    // 刚写下去）时面板会自己退回本地扫描，所以这里拿不准就返回 null。
+    setVaultGraph((path, kind) => this.vaultGraphOf(path, kind))
 
     const stored = await settingsStore.readSettings()
     // 详细日志默认关。设置里打开过就在 onload 就生效，不必等用户进设置页。
@@ -597,6 +606,62 @@ export default class GetnoteObsidianPlugin extends Plugin {
       return true
     } catch {
       return false
+    }
+  }
+
+  /**
+   * 用宿主的 metadataCache 回答「谁引用了这篇」与「这篇引用了谁」。
+   *
+   * 只读宿主的索引，不碰磁盘：resolvedLinks 是 Obsidian 维护的
+   * 「源文件 → 目标文件 → 次数」表，getFileCache 给的是单篇的 links/embeds。
+   * 两者都可能还没收录刚写下的文件，所以拿不到就返回 null，由面板退回自己的扫描。
+   *
+   * 返回形状要和面板里那份本地扫描一致（hits 里每项带 path/title/links），
+   * 否则界面上一半有标题一半没有，看着像坏了。
+   */
+  vaultGraphOf(path, kind) {
+    try {
+      const rel = String(path || '').replace(/^\/+/, '')
+      if (rel === '') return null
+      const file = this.app.vault.getAbstractFileByPath(rel)
+      if (!file) return null
+      const cache = this.app.metadataCache
+      if (!cache) return null
+      const titleOf = (p) => String(p).split('/').pop().replace(/\.md$/i, '')
+      if (kind === 'backlinks') {
+        const hits = []
+        if (typeof cache.getBacklinksForFile === 'function') {
+          const result = cache.getBacklinksForFile(file)
+          const data = result && result.data ? result.data : null
+          if (data && typeof data.forEach === 'function') {
+            data.forEach((_count, sourcePath) => {
+              hits.push({ path: sourcePath, title: titleOf(sourcePath), date: '', links: [rel] })
+            })
+          }
+        } else if (cache.resolvedLinks && typeof cache.resolvedLinks === 'object') {
+          for (const sourcePath of Object.keys(cache.resolvedLinks)) {
+            if (sourcePath === rel) continue
+            const targets = cache.resolvedLinks[sourcePath]
+            if (!targets || targets[rel] === undefined) continue
+            hits.push({ path: sourcePath, title: titleOf(sourcePath), date: '', links: [rel] })
+          }
+        }
+        hits.sort((a, b) => a.title.localeCompare(b.title, 'zh'))
+        return { target: rel, hits, host: true }
+      }
+      if (kind === 'links') {
+        const info = typeof cache.getFileCache === 'function' ? cache.getFileCache(file) : null
+        if (!info) return null
+        const links = []
+        for (const item of [...(info.links || []), ...(info.embeds || [])]) {
+          const link = item && item.link ? String(item.link) : ''
+          if (link !== '' && !links.includes(link)) links.push(link)
+        }
+        return { target: rel, links, host: true }
+      }
+      return null
+    } catch {
+      return null
     }
   }
 
