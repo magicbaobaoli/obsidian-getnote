@@ -15470,6 +15470,12 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       setApiToken(this.server.token);
       this.localPort = this.server.port;
       this.portFallback = this.server.portFallback === true;
+      if (this.portFallback) {
+        new import_obsidian2.Notice(
+          `\u5F97\u5230\u5927\u8111\uFF1A\u7AEF\u53E3 ${preferredPort} \u88AB\u522B\u7684\u7A0B\u5E8F\u5360\u7740\uFF0C\u8FD9\u6B21\u6539\u7528 ${this.server.port}\u3002\u4E91\u7AEF\u6388\u6743\uFF08OAuth\uFF09\u7684\u56DE\u8C03\u5730\u5740\u8DDF\u7740\u53D8\u4E86\uFF0C\u53EF\u80FD\u9700\u8981\u91CD\u65B0\u767B\u5F55\u4E00\u6B21\u3002`,
+          8e3
+        );
+      }
       if (this.localPort !== preferredPort) {
         await this.saveLocalPort(this.localPort);
       }
@@ -15540,7 +15546,7 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       this.statusBarEl = this.addStatusBarItem();
       this.statusBarEl.addClass("dshgn_status");
       this.statusBarEl.setText("\u5F97\u5230\u5927\u8111");
-      this.statusBarEl.title = `\u672C\u5730\u670D\u52A1 http://127.0.0.1:${this.localPort}`;
+      this.statusBarEl.title = `\u672C\u5730\u670D\u52A1 http://127.0.0.1:${this.localPort}${this.portFallback ? "\uFF08\u60F3\u8981\u7684\u7AEF\u53E3\u88AB\u5360\u7528\uFF0C\u8FD9\u6B21\u662F\u7CFB\u7EDF\u5206\u914D\u7684\uFF09" : ""}`;
       this.registerDomEvent(this.statusBarEl, "click", () => {
         void this.activateView();
       });

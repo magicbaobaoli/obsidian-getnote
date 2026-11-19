@@ -616,6 +616,25 @@ test('录音卡自动导入：默认关、开关能存下来、巡检在没卡�
   })
 })
 
+test('想要的端口被占用时退回系统分配的端口，并如实报告', async () => {
+  // 端口稳定对 OAuth 很重要（服务端按 redirect_uri 注册 client），但被占用时
+  // 不能干等着——退回随机端口，并且把这件事报出来，好让用户知道要重新登录。
+  const { startLocalServer } = await import('../src/host/server.js')
+  const first = await startLocalServer({ preferredPort: 0 })
+  try {
+    const second = await startLocalServer({ preferredPort: first.port })
+    try {
+      assert.notEqual(second.port, first.port, '被占用的端口不该被抢回来')
+      assert.equal(second.portFallback, true, '要如实报告用了备用端口')
+      assert.match(second.origin, /^http:\/\/127\.0\.0\.1:\d+$/)
+    } finally {
+      second.close()
+    }
+  } finally {
+    first.close()
+  }
+})
+
 test('onunload 会关掉本地服务', async () => {
   const origin = plugin.server.origin
   plugin.onunload()

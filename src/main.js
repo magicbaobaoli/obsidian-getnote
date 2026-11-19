@@ -151,8 +151,16 @@ export default class GetnoteObsidianPlugin extends Plugin {
       setApiToken(this.server.token)
       this.localPort = this.server.port
       // 用户指定的端口没抢到：OAuth 的 redirect_uri 会跟着变，值得说一句。
-      // 不弹 Notice 打扰，写进设置页的状态行里更合适。
+      // 设置页的状态行里也写着，但用户不一定会去看设置页——第一次撞上时弹一次
+      // Notice，让他知道「为什么云端要我重新登录」。
       this.portFallback = this.server.portFallback === true
+      if (this.portFallback) {
+        new Notice(
+          `得到大脑：端口 ${preferredPort} 被别的程序占着，这次改用 ${this.server.port}。` +
+            '云端授权（OAuth）的回调地址跟着变了，可能需要重新登录一次。',
+          8000,
+        )
+      }
       // 记住这次真正用上的端口：下次启动优先复用它，OAuth 的 redirect_uri
       // 才能跨会话稳定（服务端是按 redirect_uri 注册的 client）。
       if (this.localPort !== preferredPort) {
@@ -247,7 +255,9 @@ export default class GetnoteObsidianPlugin extends Plugin {
       this.statusBarEl = this.addStatusBarItem()
       this.statusBarEl.addClass('dshgn_status')
       this.statusBarEl.setText('得到大脑')
-      this.statusBarEl.title = `本地服务 http://127.0.0.1:${this.localPort}`
+      this.statusBarEl.title = `本地服务 http://127.0.0.1:${this.localPort}${
+        this.portFallback ? '（想要的端口被占用，这次是系统分配的）' : ''
+      }`
       this.registerDomEvent(this.statusBarEl, 'click', () => { void this.activateView() })
     }
 
