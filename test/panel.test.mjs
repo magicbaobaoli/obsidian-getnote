@@ -2450,3 +2450,55 @@ test('嵌进来的笔记能停在小节上，本节的小节直接滚过去', as
   }
 })
 
+
+/**
+ * 设置页里的「面板跟着我翻」。
+ *
+ * 这个开关默认是关的：面板自己动，得用户点头。所以这条守三件事——卡片真的
+ * 在设置页里、勾上之后设置真的落盘（/settings 读回来是 true）、再点一下能关掉。
+ * 光有卡片不写设置，等于给用户一个假开关。
+ */
+test('设置页里的跟随开关真的写进设置', async () => {
+  await clickTab('设置')
+
+  const followBox = await waitFor(
+    () => {
+      const labels = Array.from(window.document.querySelectorAll('label'))
+      const row = labels.find((el) => (el.textContent || '').includes('面板跟着我翻'))
+      return row ? row.querySelector('input[type="checkbox"]') : null
+    },
+    5000,
+    '设置页里应该有跟随开关',
+  )
+  assert.equal(followBox.checked, false, '默认是关的，面板不该自己跟着动')
+
+  followBox.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => followBox.checked === true, 5000, '点一下应该勾上')
+
+  const readSettings = async () => {
+    const res = await fetch(server.origin + '/getnote/settings', {
+      headers: { 'x-getnote-token': server.token },
+    })
+    assert.equal(res.status, 200)
+    return res.json()
+  }
+  let saved = null
+  for (let i = 0; i < 60; i += 1) {
+    saved = await readSettings()
+    if (saved.followActive === true) break
+    await sleep(50)
+  }
+  assert.equal(saved.followActive, true, '勾上之后设置里应该是 true')
+
+  // 再点一下关掉：开关不能是单向的
+  followBox.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  for (let i = 0; i < 60; i += 1) {
+    saved = await readSettings()
+    if (saved.followActive === false) break
+    await sleep(50)
+  }
+  assert.equal(saved.followActive, false, '再点一下应该关掉')
+
+  // 后面的用例默认停在笔记页
+  await clickTab('笔记')
+})

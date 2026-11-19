@@ -202,6 +202,10 @@ export async function readSettings() {
     // 录音卡插上就导：默认关。它要定期用蓝牙连一次卡片看有没有新录音，
     // 占着适配器、也耗电，得用户自己说「我要」才开。
     cardAutoImport: data.cardAutoImport === true,
+    // 跟着宿主切换笔记：默认关。开着时用户在 Obsidian 里翻到哪一篇，面板就跟着
+    // 打开同一篇。默认关是因为「面板自己动」这件事得用户点头——他可能正开着
+    // 一篇对照着看，不希望一切换标签页就被顶掉。
+    followActive: data.followActive === true,
   }
 }
 
@@ -223,6 +227,7 @@ export async function updateSettings(patch = {}) {
     localPort: patch.localPort !== undefined ? patch.localPort : cur.localPort,
     debugLogging: patch.debugLogging !== undefined ? patch.debugLogging === true : cur.debugLogging,
     cardAutoImport: patch.cardAutoImport !== undefined ? patch.cardAutoImport === true : cur.cardAutoImport,
+    followActive: patch.followActive !== undefined ? patch.followActive === true : cur.followActive,
   }
   await writeJsonAtomic(settingsPath(), next)
   return readSettings()

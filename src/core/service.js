@@ -613,6 +613,9 @@ export function createHandler(config) {
       // 库内相对路径。面板首屏就要拿它拼 wiki 链接的跳转目标（库里是
       // 「得到大脑/随手记/a.md」，而 status.vaultRoot 是绝对路径）。
       subfolder: getRuntime().subfolder,
+      // 跟着宿主切换笔记：面板首屏就要知道这个开关是开是关——设置页那张卡的
+      // 勾选状态来自这里，晚一拍拿到会让勾选框先空着再自己勾上。
+      followActive: settings.followActive === true,
       // 自定义笔记模板。跟 status 一起发：点「+」时菜单要立刻列出模板，
       // 再多一次请求会让菜单先空着再长出几项。
       templates: settings.templates,
@@ -1539,6 +1542,9 @@ export function createHandler(config) {
     if ('uiLocale' in body) patch.uiLocale = body.uiLocale
     // 自定义模板：整组替换（空数组＝清空），不是逐项合并
     if ('templates' in body) patch.templates = body.templates
+    // 跟着宿主切换笔记：只认布尔值，传别的（字符串 'true'）当没传，
+    // 免得一个手写请求把开关悄悄打开。
+    if (typeof body.followActive === 'boolean') patch.followActive = body.followActive
     if (Object.keys(patch).length > 0) await updateSettings(patch)
     const settings = await readSettings()
     const { root } = await resolveVaultRoot(settings.vaultRoot || config.vaultPath || null)

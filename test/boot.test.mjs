@@ -1557,6 +1557,72 @@ test('改名交给宿主的对话框，改完把新路径交回面板', async ()
   app.vault.getAbstractFileByPath = realGet
 })
 
+test('跟着宿主切换笔记：面板开着才跟、开关关着不跟', async () => {
+  await adapter.write('得到大脑/随手记/跟随验收.md', '# 跟随验收\n')
+
+  // 用真的 HTTP 接口写设置，别绕过 service 那一层——那边少一行解析就白搭
+  const origin = plugin.server.origin
+  const auth = { 'x-getnote-token': plugin.server.token }
+  const setFollow = async (on) => {
+    const response = await fetch(origin + '/getnote/settings', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...auth },
+      body: JSON.stringify({ followActive: on }),
+    })
+    assert.equal(response.status, 200)
+    const json = await response.json()
+    assert.equal(json.followActive, on, '设置写进去要能读回来')
+  }
+
+  // 面板开着：宿主里翻到笔记目录里的某一篇，就投递一条「打开这篇」的意图
+  const realLeaves = app.workspace.getLeavesOfType
+  app.workspace.getLeavesOfType = (type) => (type === 'getnote-obsidian-view' ? [{}, {}] : [])
+
+  await setFollow(false)
+  assert.equal(
+    await plugin.followActiveNote({ path: '得到大脑/随手记/跟随验收.md' }),
+    'off',
+    '开关关着就不该跟',
+  )
+
+  await setFollow(true)
+  assert.equal(
+    await plugin.followActiveNote({ path: '得到大脑/随手记/跟随验收.md' }),
+    'followed',
+    '开着的时候应该跟上去',
+  )
+
+  // 面板没开着：不替用户把面板拉起来
+  app.workspace.getLeavesOfType = () => []
+  assert.equal(
+    await plugin.followActiveNote({ path: '得到大脑/随手记/跟随验收.md' }),
+    'closed',
+    '面板没开着时不该跟',
+  )
+
+  // 不在笔记目录里的文件：连面板路径都算不出来，直接不跟
+  app.workspace.getLeavesOfType = (type) => (type === 'getnote-obsidian-view' ? [{}, {}] : [])
+  assert.equal(await plugin.followActiveNote({ path: '别处的目录/甲.md' }), 'outside')
+  assert.equal(await plugin.followActiveNote(null), 'outside')
+  assert.equal(await plugin.followActiveNote({ path: '得到大脑/随手记/图.png' }), 'outside')
+
+  app.workspace.getLeavesOfType = realLeaves
+
+  // 宿主切笔记时会发 file-open，插件得挂上去（没挂上就永远不跟）
+  const openedBefore = app.workspace.openedFiles.length
+  const listeners = app.workspace.wsHandlers['file-open'] || []
+  assert.equal(listeners.length, 1, '应该注册了一个 file-open 监听')
+  assert.doesNotThrow(() => {
+    for (const fn of listeners) fn({ path: '得到大脑/随手记/跟随验收.md' })
+  }, 'file-open 回调不该抛')
+  assert.doesNotThrow(() => listeners[0](null), 'file 为 null 也不该抛')
+
+  // 跟着走这件事只动面板，不该把宿主里正在看的那篇换掉
+  assert.equal(app.workspace.openedFiles.length, openedBefore, '跟随不该去动宿主的活动文件')
+
+  await setFollow(false)
+})
+
 test('onunload 会关掉本地服务', async () => {
   const origin = plugin.server.origin
   plugin.onunload()

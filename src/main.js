@@ -201,6 +201,9 @@ export default class GetnoteObsidianPlugin extends Plugin {
     this.debugLogging = stored.debugLogging === true
     setDebugLogging(this.debugLogging)
     this.cardAutoImport = stored.cardAutoImport === true
+    // 跟着宿主切换笔记：默认关。开着时用户在 Obsidian 里翻到哪一篇，面板就
+    // 跟着打开同一篇（面板没开着就不去开它，免得用户只是翻笔记却被弹一个面板）。
+    this.followActive = stored.followActive === true
     if (stored.subfolder && stored.subfolder !== DEFAULT_SUBFOLDER) {
       settingsStore.configure({ subfolder: stored.subfolder })
     }
@@ -398,6 +401,17 @@ export default class GetnoteObsidianPlugin extends Plugin {
     // 宿主的 CSS 变量现场推导的，收到就得重算一遍——比 MutationObserver 盯
     // body 的 class 更准：换字体、调字号这些不改 class 的情况也能收到。
     this.registerEvent(this.app.workspace.on('css-change', () => notifyCssChange()))
+
+    // 跟着宿主切换笔记。
+    //
+    // 用 'file-open' 而不是 'active-leaf-change'：后者在切到一个空叶子、点开
+    // 侧边栏、拖分栏时也会发，那些时刻根本没有「哪一篇」可跟，还得再判一次。
+    // file-open 只在真的有一篇笔记成为当前笔记时发。
+    this.registerEvent(
+      this.app.workspace.on('file-open', (file) => {
+        void this.followActiveNote(file)
+      }),
+    )
 
     // 宿主右键菜单里的入口。
     //
@@ -1212,6 +1226,40 @@ export default class GetnoteObsidianPlugin extends Plugin {
   }
 
   /**
+   * 跟着宿主切换：当前笔记变了就把面板切到同一篇。
+   *
+   * 三件事按这个顺序挡在前面，每一件都是「不做」比「做了」好：
+   *   1. 这篇不在笔记目录里 —— 用户在库根翻 README 时不该被拽进「得到大脑」；
+   *   2. 面板没开着 —— 只是翻笔记却被弹出一个面板，是最烦人的那种「贴心」；
+   *   3. 开关关着 —— 默认就是关的，用户点头才跟。
+   *
+   * 开关现读一遍而不是信 onload 的快照：面板的设置页也能改它，改完不该等重启。
+   * 设置文件读不出来时按「关」处理——跟随是「面板自己动」，出问题时宁可不跟，
+   * 也不要凭空把用户正在看的笔记顶掉。
+   *
+   * 返回一句话说明这次为什么跟/没跟，方便自测和排查；真正干活的是投递那条意图。
+   */
+  async followActiveNote(file) {
+    const rel = this.notePathInVault(file)
+    if (rel === '') return 'outside'
+    const leaves = this.app.workspace.getLeavesOfType
+      ? this.app.workspace.getLeavesOfType(VIEW_TYPE_GETNOTE)
+      : []
+    if (!Array.isArray(leaves) || leaves.length === 0) return 'closed'
+    let on = this.followActive === true
+    try {
+      const settings = await settingsStore.readSettings()
+      on = settings.followActive === true
+      this.followActive = on
+    } catch {
+      // 读不到就沿用内存里的值
+    }
+    if (!on) return 'off'
+    requestIntent({ type: 'open', path: rel })
+    return 'followed'
+  }
+
+  /**
    * 生成一条指向这篇笔记的链接，格式按用户的 Obsidian 设置来。
    *
    * `app.fileManager.generateMarkdownLink` 会读「使用 Wiki 链接」与「新链接格式」
@@ -1392,6 +1440,19 @@ class GetnoteSettingTab extends PluginSettingTab {
         toggle.setValue(this.plugin.cardAutoImport === true).onChange(async (value) => {
           this.plugin.cardAutoImport = value === true
           await settingsStore.updateSettings({ cardAutoImport: this.plugin.cardAutoImport })
+        })
+      })
+
+    new Setting(containerEl)
+      .setName('跟着宿主切换笔记')
+      .setDesc(
+        '你在 Obsidian 里翻到哪一篇，开着的面板就跟着打开同一篇（反链、同步状态、历史版本立刻跟上）。' +
+          '面板没开着时不会替你打开它；不在「得到大脑」目录里的笔记也不会跟。',
+      )
+      .addToggle((toggle) => {
+        toggle.setValue(this.plugin.followActive === true).onChange(async (value) => {
+          this.plugin.followActive = value === true
+          await settingsStore.updateSettings({ followActive: this.plugin.followActive })
         })
       })
 

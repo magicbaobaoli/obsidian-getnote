@@ -2078,7 +2078,11 @@ async function readSettings() {
     debugLogging: data.debugLogging === true,
     // 录音卡插上就导：默认关。它要定期用蓝牙连一次卡片看有没有新录音，
     // 占着适配器、也耗电，得用户自己说「我要」才开。
-    cardAutoImport: data.cardAutoImport === true
+    cardAutoImport: data.cardAutoImport === true,
+    // 跟着宿主切换笔记：默认关。开着时用户在 Obsidian 里翻到哪一篇，面板就跟着
+    // 打开同一篇。默认关是因为「面板自己动」这件事得用户点头——他可能正开着
+    // 一篇对照着看，不希望一切换标签页就被顶掉。
+    followActive: data.followActive === true
   };
 }
 async function updateSettings(patch = {}) {
@@ -2097,7 +2101,8 @@ async function updateSettings(patch = {}) {
     subfolder: patch.subfolder !== void 0 ? toSubfolder(patch.subfolder) : cur.subfolder,
     localPort: patch.localPort !== void 0 ? patch.localPort : cur.localPort,
     debugLogging: patch.debugLogging !== void 0 ? patch.debugLogging === true : cur.debugLogging,
-    cardAutoImport: patch.cardAutoImport !== void 0 ? patch.cardAutoImport === true : cur.cardAutoImport
+    cardAutoImport: patch.cardAutoImport !== void 0 ? patch.cardAutoImport === true : cur.cardAutoImport,
+    followActive: patch.followActive !== void 0 ? patch.followActive === true : cur.followActive
   };
   await writeJsonAtomic(settingsPath(), next);
   return readSettings();
@@ -4998,6 +5003,9 @@ function createHandler(config) {
       // 库内相对路径。面板首屏就要拿它拼 wiki 链接的跳转目标（库里是
       // 「得到大脑/随手记/a.md」，而 status.vaultRoot 是绝对路径）。
       subfolder: getRuntime().subfolder,
+      // 跟着宿主切换笔记：面板首屏就要知道这个开关是开是关——设置页那张卡的
+      // 勾选状态来自这里，晚一拍拿到会让勾选框先空着再自己勾上。
+      followActive: settings.followActive === true,
       // 自定义笔记模板。跟 status 一起发：点「+」时菜单要立刻列出模板，
       // 再多一次请求会让菜单先空着再长出几项。
       templates: settings.templates,
@@ -5674,6 +5682,7 @@ function createHandler(config) {
     if ("themeColor" in body) patch.themeColor = body.themeColor;
     if ("uiLocale" in body) patch.uiLocale = body.uiLocale;
     if ("templates" in body) patch.templates = body.templates;
+    if (typeof body.followActive === "boolean") patch.followActive = body.followActive;
     if (Object.keys(patch).length > 0) await updateSettings(patch);
     const settings = await readSettings();
     const { root } = await resolveVaultRoot(settings.vaultRoot || config.vaultPath || null);
@@ -8088,6 +8097,10 @@ var LEX = {
     "settings.templateEmpty": "\u8FD8\u6CA1\u6709\u81EA\u5B9A\u4E49\u6A21\u677F",
     "settings.templateLimit": "\u6700\u591A 12 \u4E2A",
     "settings.templateRemove": "\u5220\u6389",
+    "settings.followTitle": "\u8DDF\u7740\u5BBF\u4E3B\u5207\u6362\u7B14\u8BB0",
+    "settings.followDesc": "\u4F60\u5728 Obsidian \u91CC\u7FFB\u5230\u54EA\u4E00\u7BC7\uFF0C\u5F00\u7740\u7684\u9762\u677F\u5C31\u8DDF\u7740\u6253\u5F00\u540C\u4E00\u7BC7\uFF0C\u53CD\u94FE\u548C\u540C\u6B65\u72B6\u6001\u7ACB\u523B\u8DDF\u4E0A\u3002\u9762\u677F\u6CA1\u5F00\u7740\u65F6\u4E0D\u4F1A\u66FF\u4F60\u6253\u5F00\u5B83\uFF1B\u4E0D\u5728\u300C\u5F97\u5230\u5927\u8111\u300D\u76EE\u5F55\u91CC\u7684\u7B14\u8BB0\u4E5F\u4E0D\u4F1A\u8DDF\u3002",
+    "settings.followToggle": "\u9762\u677F\u8DDF\u7740\u6211\u7FFB",
+    "settings.followSaved": "\u8DDF\u968F\u8BBE\u7F6E\u5DF2\u4FDD\u5B58",
     "new.bookTitle": "\u8BFB\u4E66\u7B14\u8BB0",
     "new.meetingTitle": "\u4F1A\u8BAE\u8BB0\u5F55",
     "note.fontSize.s": "\u5C0F\u5B57",
@@ -8478,6 +8491,10 @@ var LEX = {
     "settings.templateEmpty": "No custom templates yet",
     "settings.templateLimit": "up to 12",
     "settings.templateRemove": "Remove",
+    "settings.followTitle": "Follow what you open in Obsidian",
+    "settings.followDesc": "Open a note in Obsidian and the panel switches to the same one, with its backlinks and sync state right behind it. The panel will not open itself for you, and notes outside the Get\u7B14\u8BB0 folder are ignored.",
+    "settings.followToggle": "Keep the panel on the note I open",
+    "settings.followSaved": "Follow setting saved",
     "new.bookTitle": "Book notes",
     "new.meetingTitle": "Meeting",
     "note.fontSize.s": "Small",
@@ -8868,6 +8885,10 @@ var LEX = {
     "settings.templateEmpty": "Nog geen eigen sjablonen",
     "settings.templateLimit": "maximaal 12",
     "settings.templateRemove": "Verwijderen",
+    "settings.followTitle": "Volg wat je in Obsidian opent",
+    "settings.followDesc": "Open je een notitie in Obsidian, dan springt het paneel naar dezelfde, met de verwijzingen en de synchronisatiestatus erachteraan. Het paneel opent zichzelf niet en notities buiten de map Get\u7B14\u8BB0 worden genegeerd.",
+    "settings.followToggle": "Laat het paneel mijn notitie volgen",
+    "settings.followSaved": "Volginstelling opgeslagen",
     "new.bookTitle": "Boeknotities",
     "new.meetingTitle": "Vergadering",
     "note.fontSize.s": "Klein",
@@ -13567,6 +13588,47 @@ function LanguageCard(props) {
     )
   );
 }
+function FollowCard(props) {
+  const { t: t3, status, onSaved, onError } = props;
+  const [busy, setBusy] = h2(false);
+  const on2 = status !== null && status.followActive === true;
+  const flip = q2(
+    async (next) => {
+      if (busy) return;
+      setBusy(true);
+      try {
+        await api("/settings", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ followActive: next })
+        });
+        await onSaved(t3("settings.followSaved"));
+      } catch (err) {
+        onError(err && err.message ? err.message : String(err));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, onError, onSaved, t3]
+  );
+  return h4(
+    "div",
+    { className: "dshgn_section" },
+    h4("div", { className: "dshgn_sectionHead" }, h4("span", null, t3("settings.followTitle"))),
+    h4("div", { className: "dshgn_sectionDesc" }, t3("settings.followDesc")),
+    h4(
+      "label",
+      { className: "dshgn_rowLine", style: { fontSize: 11.5, color: "var(--dsw-alias-label-secondary)" } },
+      h4("input", {
+        type: "checkbox",
+        checked: on2,
+        disabled: busy || status === null,
+        onChange: (event) => void flip(event.target.checked === true)
+      }),
+      t3("settings.followToggle")
+    )
+  );
+}
 function TemplateCard(props) {
   const { t: t3, status, onSaved, onError } = props;
   const [draft, setDraft] = h2(null);
@@ -16487,6 +16549,9 @@ function SettingsPane(props) {
       h4(SyncPane, { t: t3, status, onChanged: onSyncChanged, onError, showToast }),
       h4(ThemeCard, { t: t3, themeColor: status !== null ? status.themeColor : null, onSaved, onError, onPreview: onThemePreview }),
       h4(LanguageCard, { t: t3, locale, onSaved, onError, onLocaleChange }),
+      // 跟随卡片紧跟在语言之后：它和「面板长什么样」属于同一类设置（怎么跟
+      // 宿主配合），而不是「库里有什么」。
+      h4(FollowCard, { t: t3, status, onSaved, onError }),
       // 模板卡放在语言之后、备份之前：它属于「写作习惯」这一类，跟主题色/语言
       // 挨着；备份是整库操作，应该留在最后。
       h4(TemplateCard, { t: t3, status, onSaved, onError }),
@@ -16937,6 +17002,7 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     this.debugLogging = stored.debugLogging === true;
     setDebugLogging(this.debugLogging);
     this.cardAutoImport = stored.cardAutoImport === true;
+    this.followActive = stored.followActive === true;
     if (stored.subfolder && stored.subfolder !== DEFAULT_SUBFOLDER) {
       configure2({ subfolder: stored.subfolder });
     }
@@ -17078,6 +17144,11 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     this.registerEvent(this.app.vault.on("delete", tellPanel("delete")));
     this.registerEvent(this.app.vault.on("rename", tellPanel("rename")));
     this.registerEvent(this.app.workspace.on("css-change", () => notifyCssChange()));
+    this.registerEvent(
+      this.app.workspace.on("file-open", (file) => {
+        void this.followActiveNote(file);
+      })
+    );
     this.registerEvent(
       this.app.workspace.on("file-menu", (menu, file) => {
         if (!menu || typeof menu.addItem !== "function") return;
@@ -17791,6 +17862,35 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     requestIntent({ type: "open", path: rel });
   }
   /**
+   * 跟着宿主切换：当前笔记变了就把面板切到同一篇。
+   *
+   * 三件事按这个顺序挡在前面，每一件都是「不做」比「做了」好：
+   *   1. 这篇不在笔记目录里 —— 用户在库根翻 README 时不该被拽进「得到大脑」；
+   *   2. 面板没开着 —— 只是翻笔记却被弹出一个面板，是最烦人的那种「贴心」；
+   *   3. 开关关着 —— 默认就是关的，用户点头才跟。
+   *
+   * 开关现读一遍而不是信 onload 的快照：面板的设置页也能改它，改完不该等重启。
+   * 读不出来（设置文件被删、权限问题）就退回内存里那份，不至于让跟随静默失效。
+   *
+   * 返回一句话说明这次为什么跟/没跟，方便自测和排查；真正干活的是投递那条意图。
+   */
+  async followActiveNote(file) {
+    const rel = this.notePathInVault(file);
+    if (rel === "") return "outside";
+    const leaves = this.app.workspace.getLeavesOfType ? this.app.workspace.getLeavesOfType(VIEW_TYPE_GETNOTE) : [];
+    if (!Array.isArray(leaves) || leaves.length === 0) return "closed";
+    let on2 = this.followActive === true;
+    try {
+      const settings = await readSettings();
+      on2 = settings.followActive === true;
+      this.followActive = on2;
+    } catch {
+    }
+    if (!on2) return "off";
+    requestIntent({ type: "open", path: rel });
+    return "followed";
+  }
+  /**
    * 生成一条指向这篇笔记的链接，格式按用户的 Obsidian 设置来。
    *
    * `app.fileManager.generateMarkdownLink` 会读「使用 Wiki 链接」与「新链接格式」
@@ -17940,6 +18040,14 @@ var GetnoteSettingTab = class extends import_obsidian2.PluginSettingTab {
       toggle.setValue(this.plugin.cardAutoImport === true).onChange(async (value) => {
         this.plugin.cardAutoImport = value === true;
         await updateSettings({ cardAutoImport: this.plugin.cardAutoImport });
+      });
+    });
+    new import_obsidian2.Setting(containerEl).setName("\u8DDF\u7740\u5BBF\u4E3B\u5207\u6362\u7B14\u8BB0").setDesc(
+      "\u4F60\u5728 Obsidian \u91CC\u7FFB\u5230\u54EA\u4E00\u7BC7\uFF0C\u5F00\u7740\u7684\u9762\u677F\u5C31\u8DDF\u7740\u6253\u5F00\u540C\u4E00\u7BC7\uFF08\u53CD\u94FE\u3001\u540C\u6B65\u72B6\u6001\u3001\u5386\u53F2\u7248\u672C\u7ACB\u523B\u8DDF\u4E0A\uFF09\u3002\u9762\u677F\u6CA1\u5F00\u7740\u65F6\u4E0D\u4F1A\u66FF\u4F60\u6253\u5F00\u5B83\uFF1B\u4E0D\u5728\u300C\u5F97\u5230\u5927\u8111\u300D\u76EE\u5F55\u91CC\u7684\u7B14\u8BB0\u4E5F\u4E0D\u4F1A\u8DDF\u3002"
+    ).addToggle((toggle) => {
+      toggle.setValue(this.plugin.followActive === true).onChange(async (value) => {
+        this.plugin.followActive = value === true;
+        await updateSettings({ followActive: this.plugin.followActive });
       });
     });
     new import_obsidian2.Setting(containerEl).setName("\u8BE6\u7EC6\u65E5\u5FD7").setDesc("\u628A\u9762\u677F\u4E0E\u540C\u6B65\u7684\u6BCF\u4E00\u6B65\u6253\u8FDB\u5F00\u53D1\u8005\u63A7\u5236\u53F0\uFF08Ctrl+Shift+I\uFF09\u3002\u6392\u67E5\u95EE\u9898\u65F6\u6253\u5F00\uFF0C\u5E73\u65F6\u5173\u7740\u2014\u2014\u63A7\u5236\u53F0\u91CC\u6324\u7740\u51E0\u5341\u4E2A\u63D2\u4EF6\uFF0C\u5237\u5C4F\u7684\u8F93\u51FA\u53CD\u800C\u6CA1\u4EBA\u770B\u3002").addToggle((toggle) => {

@@ -689,6 +689,10 @@ async function saveFile(url, filename) {
         'settings.templateEmpty': '还没有自定义模板',
         'settings.templateLimit': '最多 12 个',
         'settings.templateRemove': '删掉',
+        'settings.followTitle': '跟着宿主切换笔记',
+        'settings.followDesc': '你在 Obsidian 里翻到哪一篇，开着的面板就跟着打开同一篇，反链和同步状态立刻跟上。面板没开着时不会替你打开它；不在「得到大脑」目录里的笔记也不会跟。',
+        'settings.followToggle': '面板跟着我翻',
+        'settings.followSaved': '跟随设置已保存',
         'new.bookTitle': '读书笔记',
         'new.meetingTitle': '会议记录',
         'note.fontSize.s': '小字',
@@ -1083,6 +1087,10 @@ async function saveFile(url, filename) {
         'settings.templateEmpty': 'No custom templates yet',
         'settings.templateLimit': 'up to 12',
         'settings.templateRemove': 'Remove',
+        'settings.followTitle': 'Follow what you open in Obsidian',
+        'settings.followDesc': 'Open a note in Obsidian and the panel switches to the same one, with its backlinks and sync state right behind it. The panel will not open itself for you, and notes outside the Get笔记 folder are ignored.',
+        'settings.followToggle': 'Keep the panel on the note I open',
+        'settings.followSaved': 'Follow setting saved',
         'new.bookTitle': 'Book notes',
         'new.meetingTitle': 'Meeting',
         'note.fontSize.s': 'Small',
@@ -1476,6 +1484,10 @@ async function saveFile(url, filename) {
         'settings.templateEmpty': 'Nog geen eigen sjablonen',
         'settings.templateLimit': 'maximaal 12',
         'settings.templateRemove': 'Verwijderen',
+        'settings.followTitle': 'Volg wat je in Obsidian opent',
+        'settings.followDesc': 'Open je een notitie in Obsidian, dan springt het paneel naar dezelfde, met de verwijzingen en de synchronisatiestatus erachteraan. Het paneel opent zichzelf niet en notities buiten de map Get笔记 worden genegeerd.',
+        'settings.followToggle': 'Laat het paneel mijn notitie volgen',
+        'settings.followSaved': 'Volginstelling opgeslagen',
         'new.bookTitle': 'Boeknotities',
         'new.meetingTitle': 'Vergadering',
         'note.fontSize.s': 'Klein',
@@ -7105,6 +7117,60 @@ async function saveFile(url, filename) {
     }
 
     /**
+     * 跟着宿主切换笔记。
+     *
+     * 关着的时候面板只看自己那一篇——这是默认。开着之后用户在 Obsidian 里翻到
+     * 哪一篇，面板就跟着打开同一篇：反链、同步状态、历史版本立刻跟上，不必再
+     * 回命令面板按一次「在得到大脑里打开当前笔记」。
+     *
+     * 做成一个开关而不是默认行为，是因为面板自己动起来这件事得用户点头：他可能
+     * 正拿面板里的一篇跟宿主里的另一篇对照着看，一切换标签页就被顶掉很恼人。
+     */
+    function FollowCard(props) {
+      const { t, status, onSaved, onError } = props
+      const [busy, setBusy] = React.useState(false)
+      const on = status !== null && status.followActive === true
+
+      const flip = React.useCallback(
+        async (next) => {
+          if (busy) return
+          setBusy(true)
+          try {
+            await api('/settings', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ followActive: next }),
+            })
+            await onSaved(t('settings.followSaved'))
+          } catch (err) {
+            onError(err && err.message ? err.message : String(err))
+          } finally {
+            setBusy(false)
+          }
+        },
+        [busy, onError, onSaved, t],
+      )
+
+      return h(
+        'div',
+        { className: 'dshgn_section' },
+        h('div', { className: 'dshgn_sectionHead' }, h('span', null, t('settings.followTitle'))),
+        h('div', { className: 'dshgn_sectionDesc' }, t('settings.followDesc')),
+        h(
+          'label',
+          { className: 'dshgn_rowLine', style: { fontSize: 11.5, color: 'var(--dsw-alias-label-secondary)' } },
+          h('input', {
+            type: 'checkbox',
+            checked: on,
+            disabled: busy || status === null,
+            onChange: (event) => void flip(event.target.checked === true),
+          }),
+          t('settings.followToggle'),
+        ),
+      )
+    }
+
+    /**
      * 自定义笔记模板。
      *
      * 内置的日记/读书/会议/随手记是写死的，覆盖最常见的四类；但「周报」「复盘」
@@ -10503,6 +10569,9 @@ async function saveFile(url, filename) {
           h(SyncPane, { t, status, onChanged: onSyncChanged, onError, showToast }),
           h(ThemeCard, { t, themeColor: status !== null ? status.themeColor : null, onSaved, onError, onPreview: onThemePreview }),
           h(LanguageCard, { t, locale, onSaved, onError, onLocaleChange }),
+          // 跟随卡片紧跟在语言之后：它和「面板长什么样」属于同一类设置（怎么跟
+          // 宿主配合），而不是「库里有什么」。
+          h(FollowCard, { t, status, onSaved, onError }),
           // 模板卡放在语言之后、备份之前：它属于「写作习惯」这一类，跟主题色/语言
           // 挨着；备份是整库操作，应该留在最后。
           h(TemplateCard, { t, status, onSaved, onError }),
