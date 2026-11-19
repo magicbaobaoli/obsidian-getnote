@@ -706,22 +706,82 @@ test('整库导出能拿到真 zip（面板「导出」按钮打的就是这个�
 /**
  * 深链：obsidian://getnote?action=... 要真的接住。
  *
- * 这条只验「注册了、认得出四种动作、乱传不炸」——它最终调的是面板的意图总线，
- * 那根线在 panel.test 里验过。深链本身不该有写操作能力，所以这里也不测写。
+ * 验三件事：认得五种动作、乱传不炸、action=open&path= 能落到「打开这一篇」。
+ * 深链本身不该有写操作能力——它能被任意网页触发，所以这里也顺手钉住
+ * 「认不出的动作只把面板打开，不猜着做点什么」。
  */
 test('深链 obsidian://getnote 注册上了，动作能认出来，乱传不炸', () => {
   const entry = calls.protocols.find((item) => item.action === 'getnote')
   assert.ok(entry, '应该注册了 getnote 协议处理器')
-  // 四种已知动作 + 一个乱传的：都不该抛
+  // 五种已知动作 + 一个乱传的：都不该抛
   for (const params of [
     { action: 'search', q: '关键词' },
     { action: 'new' },
     { action: 'today' },
     { action: 'sync' },
+    { action: 'open', path: '随手记/深链验收.md' },
     { action: '什么鬼' },
     {},
   ]) {
     assert.doesNotThrow(() => entry.handler(params), '深链处理器不该抛：' + JSON.stringify(params))
+  }
+
+  // 参数翻译成意图：认得的动作各有各的意图，认不出的返回 null（等于只开面板）
+  assert.deepEqual(plugin.deepLinkIntent({ action: 'search', q: '关键词' }), { type: 'search', q: '关键词' })
+  assert.deepEqual(plugin.deepLinkIntent({ action: 'new' }), { type: 'new' })
+  assert.deepEqual(plugin.deepLinkIntent({ action: 'today' }), { type: 'today' })
+  assert.deepEqual(plugin.deepLinkIntent({ action: 'sync' }), { type: 'sync' })
+  assert.equal(plugin.deepLinkIntent({ action: '什么鬼' }), null)
+  assert.equal(plugin.deepLinkIntent(null), null)
+
+  // action=open&path=：库内相对路径与面板口径都要落到同一条意图上
+  assert.deepEqual(plugin.deepLinkIntent({ action: 'open', path: '得到大脑/随手记/深链验收.md' }), {
+    type: 'open',
+    path: '随手记/深链验收.md',
+  })
+  assert.deepEqual(plugin.deepLinkIntent({ action: 'open', path: '/得到大脑/深链验收.md' }), {
+    type: 'open',
+    path: '深链验收.md',
+  })
+  assert.deepEqual(plugin.deepLinkIntent({ action: 'open', path: '随手记/深链验收.md' }), {
+    type: 'open',
+    path: '随手记/深链验收.md',
+  })
+  // 不带 action 时默认就是 open
+  assert.deepEqual(plugin.deepLinkIntent({ path: '深链验收.md' }), { type: 'open', path: '深链验收.md' })
+  // 不认识的路径一律不开：空、非 md、只有目录、类型不对
+  for (const bad of ['', '得到大脑', '得到大脑/图.png', null, 123, {}]) {
+    assert.equal(
+      plugin.deepLinkIntent({ action: 'open', path: bad }),
+      null,
+      '不该把这种东西当成要打开的笔记：' + String(bad),
+    )
+  }
+
+})
+
+test('深链接住之后会去把面板叫起来，面板开不出来也不抛', async () => {
+  // main.js 是打包产物，里面那份意图总线不在这个模块实例上，所以这里验的是
+  // 「面板确实被叫起来了」——意图投递本身由 panel.test 里的 requestIntent 用例守着。
+  const opened = []
+  const realGetLeaf = app.workspace.getLeaf
+  app.workspace.getLeaf = () => ({
+    setViewState: async (state) => { opened.push(state && state.type) },
+  })
+  try {
+    await plugin.handleDeepLink({ action: 'open', path: '得到大脑/随手记/深链验收.md' })
+    assert.deepEqual(opened, ['getnote-obsidian-view'], '深链应该把面板开出来')
+
+    // 认不出的动作：面板照开（只是不投意图）
+    opened.length = 0
+    await plugin.handleDeepLink({ action: '什么鬼' })
+    assert.deepEqual(opened, ['getnote-obsidian-view'])
+
+    // activateView 抛错时也不能把深链这条线弄断
+    app.workspace.getLeaf = () => { throw new Error('宿主不给叶子') }
+    await assert.doesNotReject(() => plugin.handleDeepLink({ action: 'open', path: '随手记/深链验收.md' }))
+  } finally {
+    app.workspace.getLeaf = realGetLeaf
   }
 })
 

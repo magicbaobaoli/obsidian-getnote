@@ -288,21 +288,7 @@ export default class GetnoteObsidianPlugin extends Plugin {
     // 只做导航不做写操作——一个能被任意网页触发的 URL 不该有删笔记的能力。
     if (typeof this.registerObsidianProtocolHandler === 'function') {
       this.registerObsidianProtocolHandler('getnote', (params) => {
-        const action = params && typeof params.action === 'string' ? params.action : 'open'
-        const query = params && typeof params.q === 'string' ? params.q : ''
-        const intent =
-          action === 'search'
-            ? { type: 'search', q: query }
-            : action === 'new'
-              ? { type: 'new' }
-              : action === 'today'
-                ? { type: 'today' }
-                : action === 'sync'
-                  ? { type: 'sync' }
-                  : null
-        void this.activateView().then(() => {
-          if (intent !== null) requestIntent(intent)
-        })
+        void this.handleDeepLink(params)
       })
     }
 
@@ -405,6 +391,51 @@ export default class GetnoteObsidianPlugin extends Plugin {
     // 录音卡插上就导。定时器一直转着，真正的开关在设置里（cardAutoImport），
     // 关着的时候每次 tick 只读一个 JSON 就返回，代价可以忽略。
     this.stopCardAutoImport = startCardAutoImport()
+  }
+
+  /**
+   * 把 obsidian://getnote?... 的参数翻成一条面板意图。
+   *
+   * 认得的只有「导航」，没有「写」：深链可以被任意网页、聊天窗口里的链接触发，
+   * 一个能被别人一点就删笔记的 URL 是不能接受的。所以这里只有 open / search /
+   * new / today / sync 五种，其余一律返回 null（等于「只把面板打开」）。
+   *
+   * path 两种写法都收：库内相对路径（`得到大脑/随手记/甲.md`，从别的笔记里复制
+   * 出来的就是这种）和面板口径（`随手记/甲.md`）。后者本来就不以笔记目录开头，
+   * 剥前缀那一步碰不到它，所以不用先判断是哪一种。
+   */
+  deepLinkIntent(params) {
+    const action = params && typeof params.action === 'string' ? params.action : 'open'
+    const query = params && typeof params.q === 'string' ? params.q : ''
+    if (action === 'search') return { type: 'search', q: query }
+    if (action === 'new') return { type: 'new' }
+    if (action === 'today') return { type: 'today' }
+    if (action === 'sync') return { type: 'sync' }
+    if (action !== 'open') return null
+    const raw = params && typeof params.path === 'string' ? params.path.replace(/\\/g, '/').replace(/^\/+/, '') : ''
+    if (raw === '' || !raw.toLowerCase().endsWith('.md')) return null
+    const runtime = settingsStore.getRuntime()
+    const sub = String(runtime.subfolder || DEFAULT_SUBFOLDER).replace(/^\/+|\/+$/g, '')
+    const path = sub !== '' && raw.startsWith(sub + '/') ? raw.slice(sub.length + 1) : raw
+    if (path === '') return null
+    return { type: 'open', path }
+  }
+
+  /**
+   * 接住一条深链：先把面板叫起来，再把意图投过去。
+   *
+   * 顺序不能反：意图总线在没有监听者时会暂存，但面板挂载时取走的那一份只有一条，
+   * 而 activateView 期间用户可能已经点了别的动作——先开面板再投递，投递的这份
+   * 一定落在活着的监听者手里。
+   */
+  async handleDeepLink(params) {
+    const intent = this.deepLinkIntent(params)
+    try {
+      await this.activateView()
+    } catch {
+      // 面板开不出来也要把意图留住：下次面板挂载时会取走
+    }
+    if (intent !== null) requestIntent(intent)
   }
 
   /**
