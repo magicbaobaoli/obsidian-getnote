@@ -16611,7 +16611,8 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       const base = String(runtime2.vaultBase || "").replace(/\\/g, "/").replace(/\/+$/, "");
       const sub = String(runtime2.subfolder || DEFAULT_SUBFOLDER).replace(/^\/+|\/+$/g, "");
       let rel = raw.replace(/^\/+/, "");
-      if (base !== "" && rel.startsWith(base + "/")) rel = rel.slice(base.length + 1);
+      const baseBare = base.replace(/^\/+/, "");
+      if (baseBare !== "" && rel.startsWith(baseBare + "/")) rel = rel.slice(baseBare.length + 1);
       const candidates = [rel];
       if (sub !== "" && !rel.startsWith(sub + "/")) candidates.push(`${sub}/${rel}`);
       for (const candidate of candidates) {
