@@ -19,6 +19,7 @@ const h = React.createElement
 let hostApp = null
 let hostComponent = null
 let hostRenderer = null
+let hoverSource = ''
 
 /**
  * 注入 Obsidian 的渲染能力。
@@ -37,6 +38,41 @@ export function clearMarkdownHost() {
   hostApp = null
   hostComponent = null
   hostRenderer = null
+}
+
+/**
+ * 告诉这一层「我们是谁」，页面预览（hover-link）要用这个名字认来源。
+ *
+ * Obsidian 的页面预览靠 `workspace.trigger('hover-link', {...})` 触发，其中的
+ * `source` 必须是宿主登记过的 id（见插件里的 `registerHoverLinkSource`）。
+ * 不登记的话，宿主不知道该用哪套规则来预览，鼠标停在 `[[双链]]` 上什么都不会发生。
+ */
+export function setHoverSource(id) {
+  hoverSource = typeof id === 'string' ? id : ''
+}
+
+/**
+ * 鼠标停在一条内链上时，请宿主弹它的页面预览。
+ *
+ * 返回 true 表示已经交给宿主；false 说明没注入宿主（离线测试），调用方什么都不用做。
+ * 这里只做转发：预览怎么画、多大、要不要锁定，都是宿主自己的事。
+ */
+export function hoverLink(event, targetEl, href, sourcePath) {
+  if (hostApp === null || !hostApp.workspace || typeof hostApp.workspace.trigger !== 'function') return false
+  if (hoverSource === '') return false
+  try {
+    hostApp.workspace.trigger('hover-link', {
+      event,
+      source: hoverSource,
+      hoverParent: hostComponent,
+      targetEl,
+      linktext: String(href || ''),
+      sourcePath: String(sourcePath || ''),
+    })
+    return true
+  } catch {
+    return false
+  }
 }
 
 export function hasMarkdownHost() {
@@ -164,6 +200,19 @@ export function MarkdownView(props) {
     [onOpenLink, sourcePath],
   )
 
+  // 鼠标停在 [[双链]] 上：请宿主弹页面预览。这是 Obsidian 里最常用的一个手势，
+  // 少了它用户得先点进去再点回来才能确认「这是不是我要的那篇」。
+  const onMouseOver = React.useCallback(
+    (event) => {
+      const anchor = closestOf(event.target, 'a.internal-link')
+      if (!anchor) return
+      const href = anchor.getAttribute('data-href') || anchor.getAttribute('href') || ''
+      if (href === '') return
+      hoverLink(event, anchor, href, sourcePath)
+    },
+    [sourcePath],
+  )
+
   const onCheckbox = React.useCallback(
     (event) => {
       if (typeof onToggleTodo !== 'function') return
@@ -184,5 +233,5 @@ export function MarkdownView(props) {
     [onToggleTodo],
   )
 
-  return h('div', { ref, className, onClick, onMouseDown: onCheckbox })
+  return h('div', { ref, className, onClick, onMouseDown: onCheckbox, onMouseOver })
 }

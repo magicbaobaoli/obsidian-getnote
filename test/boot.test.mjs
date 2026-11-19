@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 // ── 假 obsidian 模块 ────────────────────────────────────────────────────────
-const calls = { views: [], ribbons: [], commands: [], settings: [], intervals: [], statusBar: [], protocols: [], suggest: [] }
+const calls = { views: [], ribbons: [], commands: [], settings: [], intervals: [], statusBar: [], protocols: [], suggest: [], hoverSources: [] }
 
 class Plugin {
   constructor(app, manifest) {
@@ -43,6 +43,11 @@ class Plugin {
   registerObsidianProtocolHandler(action, handler) {
     calls.protocols.push({ action, handler })
     return { action, handler }
+  }
+  // 页面预览（hover-link）：宿主要求先登记来源 id，否则事件会被静默丢掉。
+  registerHoverLinkSource(id, info) {
+    calls.hoverSources.push({ id, info })
+    return { id, info }
   }
   // 状态栏：真宿主返回一个带 setText/addClass/title 的 HTMLElement，
   // 这里给个够用的假元素，测试还能顺手断言文字。
@@ -1072,6 +1077,12 @@ test('反链与出链优先问宿主的链接索引，问不到才自己扫', as
   app.metadataCache = broken
   app.metadataCache.resolvedLinks = {}
   app.metadataCache.fileCache = {}
+})
+
+test('页面预览的来源登记给宿主了，鼠标停在内链上才弹得出来', async () => {
+  assert.equal(calls.hoverSources.length, 1, '应该登记了一个预览来源')
+  assert.equal(calls.hoverSources[0].id, 'getnote-obsidian')
+  assert.equal(calls.hoverSources[0].info.display, '得到大脑')
 })
 
 test('「在得到大脑里打开当前笔记」把宿主正在看的那篇交给面板，目录外就明说', async () => {

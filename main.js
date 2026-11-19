@@ -7379,6 +7379,7 @@ var h3 = _;
 var hostApp = null;
 var hostComponent = null;
 var hostRenderer = null;
+var hoverSource = "";
 function setMarkdownHost(host) {
   const value = host && typeof host === "object" ? host : null;
   hostApp = value && value.app ? value.app : null;
@@ -7389,6 +7390,26 @@ function clearMarkdownHost() {
   hostApp = null;
   hostComponent = null;
   hostRenderer = null;
+}
+function setHoverSource(id) {
+  hoverSource = typeof id === "string" ? id : "";
+}
+function hoverLink(event, targetEl, href, sourcePath) {
+  if (hostApp === null || !hostApp.workspace || typeof hostApp.workspace.trigger !== "function") return false;
+  if (hoverSource === "") return false;
+  try {
+    hostApp.workspace.trigger("hover-link", {
+      event,
+      source: hoverSource,
+      hoverParent: hostComponent,
+      targetEl,
+      linktext: String(href || ""),
+      sourcePath: String(sourcePath || "")
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 function hasMarkdownHost() {
   return hostApp !== null && hostRenderer !== null;
@@ -7475,6 +7496,16 @@ function MarkdownView(props) {
     },
     [onOpenLink, sourcePath]
   );
+  const onMouseOver = q2(
+    (event) => {
+      const anchor = closestOf(event.target, "a.internal-link");
+      if (!anchor) return;
+      const href = anchor.getAttribute("data-href") || anchor.getAttribute("href") || "";
+      if (href === "") return;
+      hoverLink(event, anchor, href, sourcePath);
+    },
+    [sourcePath]
+  );
   const onCheckbox = q2(
     (event) => {
       if (typeof onToggleTodo !== "function") return;
@@ -7492,7 +7523,7 @@ function MarkdownView(props) {
     },
     [onToggleTodo]
   );
-  return h3("div", { ref, className, onClick, onMouseDown: onCheckbox });
+  return h3("div", { ref, className, onClick, onMouseDown: onCheckbox, onMouseOver });
 }
 
 // src/view/panel.js
@@ -16097,6 +16128,13 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       this.registerObsidianProtocolHandler("getnote", (params) => {
         void this.handleDeepLink(params);
       });
+    }
+    if (typeof this.registerHoverLinkSource === "function") {
+      try {
+        this.registerHoverLinkSource("getnote-obsidian", { display: "\u5F97\u5230\u5927\u8111", defaultMod: false });
+        setHoverSource("getnote-obsidian");
+      } catch {
+      }
     }
     if (this.server) {
       this.statusBarEl = this.addStatusBarItem();

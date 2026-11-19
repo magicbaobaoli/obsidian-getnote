@@ -24,7 +24,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = false
 
 const React = await import('preact/compat')
 const { createRoot } = await import('preact/compat/client')
-const { MarkdownView, setMarkdownHost, clearMarkdownHost, hasMarkdownHost, openLinkInVault } = await import('../src/view/markdown.js')
+const { MarkdownView, setMarkdownHost, clearMarkdownHost, hasMarkdownHost, openLinkInVault, setHoverSource } = await import('../src/view/markdown.js')
 
 /**
  * 挂一个组件到全新的 div 上，等到内容真的出现。
@@ -253,4 +253,55 @@ test('没注入宿主时 openLinkInVault 返回 false，注入后才接管', () 
   assert.equal(openLinkInVault('另一篇', '得到大脑/a.md'), true)
   assert.deepEqual(opened, [{ href: '另一篇', source: '得到大脑/a.md' }])
   clearMarkdownHost()
+})
+
+test('鼠标停在内链上请宿主弹页面预览，没登记来源就不乱触发', async () => {
+  const triggered = []
+  setMarkdownHost({
+    app: { workspace: { trigger: (name, payload) => triggered.push({ name, payload }) } },
+    component: { id: 'panel' },
+    MarkdownRenderer: fakeRenderer({ after: (el) => {
+      const a = el.ownerDocument.createElement('a')
+      a.className = 'internal-link'
+      a.setAttribute('data-href', '另一篇')
+      a.textContent = '另一篇'
+      el.appendChild(a)
+    } }),
+  })
+
+  const view = await mount(
+    { markdown: '[[另一篇]]', sourcePath: '得到大脑/a.md' },
+    (host) => host.querySelector('a.internal-link') !== null,
+  )
+  try {
+    const anchor = view.host.querySelector('a.internal-link')
+    // 还没登记来源：宿主不知道用哪套规则预览，宁可不触发
+    anchor.dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true }))
+    assert.equal(triggered.length, 0, '没登记来源时不该触发')
+
+    setHoverSource('getnote-obsidian')
+    anchor.dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true }))
+    assert.equal(triggered.length, 1, '登记之后应该请宿主弹预览')
+    assert.equal(triggered[0].name, 'hover-link')
+    const payload = triggered[0].payload
+    assert.equal(payload.source, 'getnote-obsidian')
+    assert.equal(payload.linktext, '另一篇')
+    assert.equal(payload.sourcePath, '得到大脑/a.md')
+    assert.equal(payload.targetEl, anchor, '预览要贴着被悬停的那个链接')
+    assert.equal(payload.hoverParent.id, 'panel')
+
+    // 悬停在外层容器（不是链接）上不该触发
+    view.host.dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true }))
+    assert.equal(triggered.length, 1, '不是链接就不触发')
+
+    // 宿主 trigger 自己炸了也不能把面板带崩
+    setMarkdownHost({ app: { workspace: { trigger() { throw new Error('宿主炸了') } } }, component: {}, MarkdownRenderer: fakeRenderer() })
+    assert.doesNotThrow(() => {
+      anchor.dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true }))
+    })
+  } finally {
+    view.unmount()
+    setHoverSource('')
+    clearMarkdownHost()
+  }
 })

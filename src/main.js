@@ -50,6 +50,7 @@ import {
   notifyVaultChange,
 } from './view/panel.js'
 import { GetnoteView, VIEW_TYPE_GETNOTE, PanelIcon } from './view/view.js'
+import { setHoverSource } from './view/markdown.js'
 
 const DEFAULT_SUBFOLDER = '得到大脑'
 
@@ -303,6 +304,18 @@ export default class GetnoteObsidianPlugin extends Plugin {
       this.registerObsidianProtocolHandler('getnote', (params) => {
         void this.handleDeepLink(params)
       })
+    }
+
+    // 页面预览（hover-link）：鼠标停在面板正文里的 [[双链]] 上，让宿主弹预览卡片。
+    // 宿主要求先登记一个来源 id，否则它不知道用哪套规则预览，事件会被静默丢掉。
+    // 老版本宿主没有这个方法，跳过即可——面板照常能用，只是没有预览。
+    if (typeof this.registerHoverLinkSource === 'function') {
+      try {
+        this.registerHoverLinkSource('getnote-obsidian', { display: '得到大脑', defaultMod: false })
+        setHoverSource('getnote-obsidian')
+      } catch {
+        // 登记失败就当作没有预览
+      }
     }
 
     // 状态栏：一个能看见「插件在跑、服务在哪个端口」的小字，点一下打开面板。
