@@ -44,6 +44,7 @@ import {
   setConfirmDialog,
   setOpenInEditor,
   setVaultGraph,
+  setStatusReport,
   notifyCssChange,
 } from './view/panel.js'
 import { GetnoteView, VIEW_TYPE_GETNOTE, PanelIcon } from './view/view.js'
@@ -152,6 +153,10 @@ export default class GetnoteObsidianPlugin extends Plugin {
     // 这个差别是「点一下立刻出」和「等一秒」的差别。问不到（链接还没被索引、文件
     // 刚写下去）时面板会自己退回本地扫描，所以这里拿不准就返回 null。
     setVaultGraph((path, kind) => this.vaultGraphOf(path, kind))
+
+    // 状态栏文案跟着面板里的实际情况走：只有「得到大脑」四个字，用户既不知道
+    // 库有多大，也不知道面板里开着哪一篇。状态栏是他唯一一直看得见我们的地方。
+    setStatusReport((info) => this.updateStatusBar(info))
 
     const stored = await settingsStore.readSettings()
     // 详细日志默认关。设置里打开过就在 onload 就生效，不必等用户进设置页。
@@ -304,6 +309,8 @@ export default class GetnoteObsidianPlugin extends Plugin {
       this.statusBarEl = this.addStatusBarItem()
       this.statusBarEl.addClass('dshgn_status')
       this.statusBarEl.setText('得到大脑')
+      // 文案与 tooltip 分开：文案随面板里的库大小变化（见 updateStatusBar），
+      // tooltip 说明服务在哪个端口，两件事互不覆盖。
       this.statusBarEl.title = `本地服务 http://127.0.0.1:${this.localPort}${
         this.portFallback ? '（想要的端口被占用，这次是系统分配的）' : ''
       }`
@@ -540,6 +547,26 @@ export default class GetnoteObsidianPlugin extends Plugin {
       : this.app.workspace.getLeaf(true)
     await leaf.setViewState({ type: VIEW_TYPE_GETNOTE, active: true })
     this.app.workspace.revealLeaf(leaf)
+  }
+
+  /**
+   * 状态栏文案跟着面板里的实际情况走。
+   *
+   * 只写「得到大脑」四个字太浪费：状态栏是用户唯一一直看得见我们的地方，
+   * 库里有几篇、当前开着哪一篇，写在这里用户扫一眼就知道。面板每次
+   * 库或当前笔记变化都会调过来，这里只做字符串拼接，不做任何 IO。
+   */
+  updateStatusBar(info) {
+    const el = this.statusBarEl
+    if (!el || typeof el.setText !== 'function') return
+    const count = info && Number.isFinite(info.count) ? Math.max(0, info.count) : 0
+    const note = info && typeof info.note === 'string' ? info.note.trim() : ''
+    if (note !== '') {
+      const short = note.length > 18 ? `${note.slice(0, 18)}…` : note
+      el.setText(`得到大脑 · ${short}`)
+      return
+    }
+    el.setText(count > 0 ? `得到大脑 · ${count} 篇` : '得到大脑')
   }
 
   /**

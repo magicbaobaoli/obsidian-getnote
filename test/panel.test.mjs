@@ -568,6 +568,52 @@ test('同步结束后把结果交给宿主（宿主据此写日记摘要）', as
 })
 
 /**
+ * 面板要把「库有多大、开着哪一篇」报给宿主，状态栏才有东西可写。
+ *
+ * 只验这条契约：注入之后立刻收到一次（首屏就有数量），打开笔记之后又收到
+ * 一次且带着标题。宿主怎么拼文案在 boot 测试里验。
+ */
+test('面板把库大小与当前笔记报给宿主，状态栏才有东西可写', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  // 前面的用例可能留着打开状态的笔记，先退回列表，才能验「没开笔记时不报标题」
+  const backFirst = window.document.querySelector('.dshgn_noteBack')
+  if (backFirst) backFirst.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(60)
+
+  const reports = []
+  panel.setStatusReport((info) => reports.push(info))
+  try {
+    // 真宿主是在挂载前就注入的；测试里注入得晚，得让面板重新拉一次数据
+    // （entries 换了新数组）才会再报一次。
+    await clickTab('笔记')
+    const refreshBtn = Array.from(window.document.querySelectorAll('.dshgn_iconBtn'))
+      .find((el) => el.title === '刷新')
+    assert.ok(refreshBtn, '应该有一个刷新按钮')
+    refreshBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => reports.length > 0, 5000, '注入后应该收到一次库大小')
+    const base = reports[reports.length - 1]
+    assert.ok(Number.isFinite(base.count) && base.count > 0, '首屏就该报出库里有多少篇')
+    assert.equal(base.note, '', '还没打开笔记时不该报标题')
+
+    await waitFor(() => window.document.querySelector('.dshgn_card') !== null, 8000, '列表有卡片')
+    window.document.querySelector('.dshgn_card').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(
+      () => reports.some((info) => typeof info.note === 'string' && info.note !== ''),
+      8000,
+      '打开笔记后要报出标题',
+    )
+  } finally {
+    panel.setStatusReport(null)
+    // 这条用例打开了笔记，后面的用例要从列表态开始
+    const back = window.document.querySelector('.dshgn_noteBack')
+    if (back) back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(60)
+  }
+})
+
+/**
  * 「把本地改动推上去」这个按钮得真的在设置页里，且没配云端时是灰的。
  *
  * 批量反向同步是这次新加的能力，最怕的是后端做好了、面板上却没有入口——用户

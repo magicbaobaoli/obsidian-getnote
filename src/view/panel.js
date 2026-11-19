@@ -223,6 +223,23 @@ async function saveFile(url, filename) {
       return () => __cssListeners.delete(listener)
     }
 
+    // 面板把「现在有几篇笔记、打开的是哪一篇」报给宿主。
+    //
+    // 状态栏是用户唯一一直看得见我们的地方：只写「得到大脑」四个字，用户既不知道
+    // 库有多大，也不知道面板里开着什么。宿主拿这条信息去更新状态栏文案。
+    let __statusReport = null
+    export function setStatusReport(fn) {
+      __statusReport = typeof fn === 'function' ? fn : null
+    }
+    function reportStatus(info) {
+      if (__statusReport === null) return
+      try {
+        __statusReport(info)
+      } catch {
+        // 状态栏更新失败不能影响面板本身
+      }
+    }
+
     // 宿主的知识图谱。
     //
     // 反链、双链补全、出链这些东西 Obsidian 的 metadataCache 本来就一直在维护，
@@ -3299,6 +3316,16 @@ async function saveFile(url, filename) {
           unsubscribe()
         }
       }, [])
+
+      // 把库的大小与当前打开的笔记报给宿主（状态栏用它写文案）。
+      // 用 entries.length 而不是再打一次接口：这个数面板本来就有。
+      React.useEffect(() => {
+        reportStatus({
+          count: Array.isArray(entries) ? entries.length : 0,
+          note: current !== null ? String(current.title || current.path || '') : '',
+        })
+      }, [entries, current])
+
       // 新建模板菜单的开关。点「+」不再直接建空笔记，而是先让用户选一类——
       // 日记/读书/会议/随手记的日期与结构都是固定的，每次手写是重复劳动。
       const [templatesOpen, setTemplatesOpen] = React.useState(false)

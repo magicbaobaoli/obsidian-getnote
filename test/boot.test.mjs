@@ -350,6 +350,40 @@ test('onload 能把插件拉起来', async () => {
   assert.match(calls.statusBar[0].title, /127\.0\.0\.1:\d+/, '状态栏要显示服务端口')
 })
 
+test('状态栏文案跟着面板走：库大小、当前笔记、超长截断', async () => {
+  const el = calls.statusBar[0]
+  assert.ok(el, '前面的用例应该已经加过状态栏项')
+
+  // 什么都没打开、库是空的：只写名字，不写「0 篇」这种噪音
+  plugin.updateStatusBar({ count: 0, note: '' })
+  assert.equal(el.text, '得到大脑')
+
+  // 库里有笔记、但没打开任何一篇：报数量
+  plugin.updateStatusBar({ count: 12, note: '' })
+  assert.equal(el.text, '得到大脑 · 12 篇')
+
+  // 打开了某篇：报标题，比数量有用
+  plugin.updateStatusBar({ count: 12, note: '今天的会议记录' })
+  assert.equal(el.text, '得到大脑 · 今天的会议记录')
+
+  // 标题很长时截断，否则状态栏会被顶掉半屏
+  const long = '一'.repeat(40)
+  plugin.updateStatusBar({ count: 12, note: long })
+  assert.equal(el.text, '得到大脑 · ' + '一'.repeat(18) + '…')
+
+  // 参数乱传（面板还没拉到数据、字段缺失）时不能炸
+  assert.doesNotThrow(() => plugin.updateStatusBar({}))
+  assert.doesNotThrow(() => plugin.updateStatusBar(null))
+  assert.doesNotThrow(() => plugin.updateStatusBar({ count: Number.NaN, note: 123 }))
+  assert.equal(el.text, '得到大脑', '认不出的 count 当成 0，非字符串的 note 当成空')
+
+  // 状态栏元素被宿主拿掉（重载插件、切工作区）时静默跳过
+  const saved = plugin.statusBarEl
+  plugin.statusBarEl = null
+  assert.doesNotThrow(() => plugin.updateStatusBar({ count: 3, note: '' }))
+  plugin.statusBarEl = saved
+})
+
 test('面板能打到本地服务，并且走的是 adapter 后端', async () => {
   const origin = plugin.server.origin
   // 本地服务要令牌：CORS 是 *，没有令牌任何本机网页都能读走整个笔记库。

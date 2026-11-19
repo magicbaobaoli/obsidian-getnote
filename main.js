@@ -7641,6 +7641,17 @@ function subscribeCssChange(listener) {
   __cssListeners.add(listener);
   return () => __cssListeners.delete(listener);
 }
+var __statusReport = null;
+function setStatusReport(fn2) {
+  __statusReport = typeof fn2 === "function" ? fn2 : null;
+}
+function reportStatus(info) {
+  if (__statusReport === null) return;
+  try {
+    __statusReport(info);
+  } catch {
+  }
+}
 var __graph = null;
 function setVaultGraph(fn2) {
   __graph = typeof fn2 === "function" ? fn2 : null;
@@ -10422,6 +10433,12 @@ function GetnotePage() {
       unsubscribe();
     };
   }, []);
+  y2(() => {
+    reportStatus({
+      count: Array.isArray(entries) ? entries.length : 0,
+      note: current !== null ? String(current.title || current.path || "") : ""
+    });
+  }, [entries, current]);
   const [templatesOpen, setTemplatesOpen] = h2(false);
   const showToast = q2((text) => {
     setToast(text);
@@ -15845,6 +15862,7 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     setConfirmDialog((message) => this.askConfirm(message));
     setOpenInEditor((path) => this.openInVaultEditor(path));
     setVaultGraph((path, kind) => this.vaultGraphOf(path, kind));
+    setStatusReport((info) => this.updateStatusBar(info));
     const stored = await readSettings();
     this.debugLogging = stored.debugLogging === true;
     setDebugLogging(this.debugLogging);
@@ -16148,6 +16166,25 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     const leaf = newWindow ? this.app.workspace.openPopoutLeaf({ size: { width: 1100, height: 780 } }) : this.app.workspace.getLeaf(true);
     await leaf.setViewState({ type: VIEW_TYPE_GETNOTE, active: true });
     this.app.workspace.revealLeaf(leaf);
+  }
+  /**
+   * 状态栏文案跟着面板里的实际情况走。
+   *
+   * 只写「得到大脑」四个字太浪费：状态栏是用户唯一一直看得见我们的地方，
+   * 库里有几篇、当前开着哪一篇，写在这里用户扫一眼就知道。面板每次
+   * 库或当前笔记变化都会调过来，这里只做字符串拼接，不做任何 IO。
+   */
+  updateStatusBar(info) {
+    const el = this.statusBarEl;
+    if (!el || typeof el.setText !== "function") return;
+    const count = info && Number.isFinite(info.count) ? Math.max(0, info.count) : 0;
+    const note = info && typeof info.note === "string" ? info.note.trim() : "";
+    if (note !== "") {
+      const short = note.length > 18 ? `${note.slice(0, 18)}\u2026` : note;
+      el.setText(`\u5F97\u5230\u5927\u8111 \xB7 ${short}`);
+      return;
+    }
+    el.setText(count > 0 ? `\u5F97\u5230\u5927\u8111 \xB7 ${count} \u7BC7` : "\u5F97\u5230\u5927\u8111");
   }
   /**
    * 面板里的确认框。
