@@ -2426,6 +2426,19 @@ async function saveFile(url, filename) {
       return String(value).trim()
     }
 
+    /**
+     * 这篇笔记的别名列表（宿主的 aliases 约定；手写时常见 alias / 别名）。
+     *
+     * 别名就是「这篇笔记的另一个名字」：写了 `aliases: [读书笔记]` 之后，
+     * `[[读书笔记]]` 应该指到这一篇。宿主按别名解析双链，面板以前只比标题和
+     * 文件名，于是同一个链接在两边一个点得开、一个报「库里找不到」。
+     */
+    function aliasesOf(entry) {
+      const data = entry !== null && entry !== undefined && typeof entry === 'object' ? entry.aliases : null
+      if (!Array.isArray(data)) return []
+      return data.map((item) => String(item === null || item === undefined ? '' : item).trim()).filter((item) => item !== '')
+    }
+
     /** 这个键是不是「标签」——宿主的约定是 tags，用户手写时常见 tag / 标签。 */
     function isTagKey(key) {
       const name = String(key || '').trim().toLowerCase()
@@ -4433,6 +4446,17 @@ async function saveFile(url, filename) {
             void openNote(byTitle.path)
             return
           }
+          // 别名：`aliases: [读书笔记]` 之后 [[读书笔记]] 也该指到这一篇。
+          // 放在最后一级——别名是「我自己起的另一个名字」，撞上真实文件名或
+          // 标题时，真实的那一个更该赢。
+          const byAlias = list.find((entry) =>
+            aliasesOf(entry).some((alias) => alias.toLowerCase() === lowered),
+          )
+          if (byAlias !== undefined) {
+            if (section !== '') requestAnchor(section, byAlias.path)
+            void openNote(byAlias.path)
+            return
+          }
           setError(t('note.wikilinkMissing').replace('{name}', wanted))
         },
         [current, entries, openNote, requestAnchor, status, t],
@@ -4463,6 +4487,11 @@ async function saveFile(url, filename) {
           const lowered = wanted.toLowerCase()
           const byTitle = list.find((entry) => String(entry.title || '').toLowerCase() === lowered)
           if (byTitle !== undefined) return byTitle.path
+          // 别名与点双链同一套口径：两边不一致会出现「点得过去、嵌不进来」
+          const byAlias = list.find((entry) =>
+            aliasesOf(entry).some((alias) => alias.toLowerCase() === lowered),
+          )
+          if (byAlias !== undefined) return byAlias.path
           return ''
         },
         [current, entries, status],
@@ -5771,8 +5800,19 @@ async function saveFile(url, filename) {
             setDraft,
             dirty,
             busy,
-            // 窄窗口里「返回列表」用：把当前笔记收起，中栏就回来了
+            // 窄窗口里「返回列表」用：把当前笔记收起，中栏就回来了。
+            // 有没保存的草稿时先问一句——收起来之后草稿就没了，而用户往往
+            // 只是想看一眼列表，不是想丢掉刚写的半句。
             onClose: () => {
+              if (dirty) {
+                void confirmDialog(t('note.unsaved')).then((ok) => {
+                  if (!ok) return
+                  openSeq.current += 1
+                  setCurrent(null)
+                  setDraft(null)
+                })
+                return
+              }
               openSeq.current += 1
               setCurrent(null)
               setDraft(null)

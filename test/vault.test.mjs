@@ -25,6 +25,7 @@ import {
   readTags,
   rewriteTags,
   normalizeTags,
+  normalizeAliases,
   renameTag,
   heatmapOf,
   toggleTodo,
@@ -324,6 +325,24 @@ note_url: https://www.biji.com/note/1200000000000000001
   check('标签: 扫描把单值写法读成数组', Array.isArray(singleEntry.tags) && singleEntry.tags[0] === '独苗', JSON.stringify(singleEntry && singleEntry.tags))
   const singleHits = await searchNotes(root, 'tag:独苗', {})
   check('标签: tag:单值 能搜到', Array.isArray(singleHits.hits) && singleHits.hits.some((h) => h.path === singleRel), JSON.stringify((singleHits.hits || []).map((h) => h.path)))
+
+  // 别名：`aliases: [读书笔记]` 之后 [[读书笔记]] 该指到这一篇。宿主按别名解析
+  // 双链，面板只比标题的话，同一个链接一边点得开、一边报「找不到」。
+  check('别名: normalizeAliases 单值转数组', JSON.stringify(normalizeAliases('读书笔记')) === JSON.stringify(['读书笔记']))
+  check('别名: normalizeAliases 数组原样', JSON.stringify(normalizeAliases(['甲', '乙'])) === JSON.stringify(['甲', '乙']))
+  check('别名: normalizeAliases 空值回空数组', normalizeAliases(undefined).length === 0 && normalizeAliases('').length === 0 && normalizeAliases([]).length === 0)
+  const aliasRel = '标签测试/带别名.md'
+  await writeFile(join(root, aliasRel), ['---', 'aliases: [读书笔记, 会议备忘]', 'tags: [读书]', '---', '', '正文'].join('\n'), 'utf8')
+  const aliasScan = await scanVault(root)
+  const aliasEntry = aliasScan.entries.find((e) => e.path === aliasRel)
+  check('别名: 扫描把别名读成数组', Array.isArray(aliasEntry.aliases) && aliasEntry.aliases.length === 2 && aliasEntry.aliases[0] === '读书笔记', JSON.stringify(aliasEntry && aliasEntry.aliases))
+  const aliasNote = await readNote(root, aliasRel)
+  check('别名: /read 载荷里也带着别名', Array.isArray(aliasNote.aliases) && aliasNote.aliases.indexOf('会议备忘') >= 0, JSON.stringify(aliasNote.aliases))
+  const singleAliasRel = '标签测试/单值别名.md'
+  await writeFile(join(root, singleAliasRel), ['---', 'alias: 独苗别名', '---', '', '正文'].join('\n'), 'utf8')
+  const singleAliasScan = await scanVault(root)
+  const singleAliasEntry = singleAliasScan.entries.find((e) => e.path === singleAliasRel)
+  check('别名: 单值写法也认', Array.isArray(singleAliasEntry.aliases) && singleAliasEntry.aliases[0] === '独苗别名', JSON.stringify(singleAliasEntry && singleAliasEntry.aliases))
 
   // 批量改标签不能每篇留一个 .bak：用户库里会堆出几十个看不见的副本。
   // 给了 snapshot 回调时走 history，一个 .bak 都不该产生。

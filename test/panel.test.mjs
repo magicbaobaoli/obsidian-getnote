@@ -2490,9 +2490,14 @@ test('设置页里的跟随开关真的写进设置', async () => {
   }
   assert.equal(saved.followActive, true, '勾上之后设置里应该是 true')
 
-  // 再点一下关掉：开关不能是单向的
-  followBox.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  // 再点一下关掉：开关不能是单向的。
+  // 等第一笔写完再点——保存途中 input 是 disabled 的，点下去等于没点。
   for (let i = 0; i < 60; i += 1) {
+    if (followBox.disabled === false) break
+    await sleep(50)
+  }
+  followBox.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  for (let i = 0; i < 120; i += 1) {
     saved = await readSettings()
     if (saved.followActive === false) break
     await sleep(50)
@@ -2620,3 +2625,196 @@ test('笔记头部的属性摊在正文上方，标签点一下就去筛', async
   assert.equal(isTagKey('来源'), false)
 })
 
+/**
+ * 别名（`aliases: [读书笔记]`）。
+ *
+ * 宿主按别名解析双链：写了别名之后 `[[读书笔记]]` 就指到这一篇。面板以前只比
+ * 文件名和标题，于是同一个链接在宿主里点得开、在面板里报「库里找不到」。
+ * 这条守两件事：正文里 `![[别名]]` 嵌得进来、点双链跳得过去。
+ */
+test('双链写的是别名时也指得到那一篇', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const backBtn = window.document.querySelector('.dshgn_noteBack')
+  if (backBtn) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    try {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+  }
+
+  const seed = async (title, content, requestId) => {
+    const res = await realFetch(server.origin + '/getnote/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({ dir: '随手记', title, content, withDatePrefix: false, requestId }),
+    })
+    const json = await res.json()
+    assert.equal(json.path, '随手记/' + title + '.md')
+    return json.path
+  }
+
+  // 目标那篇：标题和文件名都不是「读书笔记」，只有别名是
+  const target = await seed(
+    '别名目标',
+    ['---', 'aliases: [读书笔记]', '---', '', '# 别名目标', '', '别名指向的正文', ''].join('\n'),
+    'seed-alias-target',
+  )
+  const source = await seed(
+    '别名来源',
+    ['# 别名来源', '', '见 [[读书笔记]]', '', '还有 ![[读书笔记]]', ''].join('\n'),
+    'seed-alias-source',
+  )
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  const card = await waitFor(
+    () => Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === source),
+    5000,
+    '来源笔记出现在列表里',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(
+    () => ((window.document.querySelector('.dshgn_note') || {}).textContent || '').includes('别名来源'),
+    5000,
+    '来源笔记打开了',
+  )
+
+  // ① 别名也嵌得进来
+  await waitFor(
+    () => {
+      const box = window.document.querySelector('.dshgn_noteEmbed')
+      return box !== null && ((box.querySelector('.dshgn_embedBody') || {}).textContent || '').includes('别名指向的正文')
+    },
+    5000,
+    '别名也要能嵌进来',
+  )
+
+  // ② 点 [[读书笔记]] 跳到目标那篇
+  const link = await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_wikilink')).find(
+        (el) => (el.textContent || '').trim() === '读书笔记',
+      ),
+    5000,
+    '正文里的别名双链',
+  )
+  link.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  // 认「换没换到那一篇」要看笔记头上的路径：嵌入框里本来就有目标那篇的正文，
+  // 拿正文当证据的话，链接没跳也会被嵌进来的那段文字骗过去。
+  await waitFor(
+    () => ((window.document.querySelector('.dshgn_notePath') || {}).textContent || '') === target,
+    5000,
+    '点别名应该打开目标那篇',
+  )
+  // 笔记头上写的就是当前打开的那一篇：嵌入框里本来就有目标那篇的正文，
+  // 光看正文会被嵌进来的那段文字骗过去，得看笔记头。
+  assert.equal(
+    (window.document.querySelector('.dshgn_notePath') || {}).textContent,
+    target,
+    '打开的是别名指向的那一篇，不是别的同名笔记',
+  )
+})
+
+/**
+ * 「返回列表」不该悄悄扔掉草稿。
+ *
+ * 收起来之后草稿就没了，而用户往往只是想看一眼列表。这条守：有未保存改动时
+ * 先问一句、说「不要」就一步都不走。
+ */
+test('有没保存的草稿时，返回列表先问一句', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const backBtn = window.document.querySelector('.dshgn_noteBack')
+  if (backBtn) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    try {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+  }
+
+  const createRes = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '草稿拦截验收',
+      content: '# 草稿拦截验收\n\n正文\n',
+      withDatePrefix: false,
+      requestId: 'seed-draft-guard',
+    }),
+  })
+  const created = await createRes.json()
+  assert.equal(created.path, '随手记/草稿拦截验收.md')
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+  const card = await waitFor(
+    () => Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === created.path),
+    5000,
+    '笔记出现在列表里',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(
+    () => rootNode().getAttribute('data-has-note') === 'true',
+    5000,
+    '笔记打开了',
+  )
+
+  // 进编辑态改一个字，制造草稿。按钮要按所在的笔记头找——
+  // 页面上别的地方也可能有一个 title 叫「编辑」的图标按钮。
+  const editBtn = await waitFor(
+    () => {
+      const head = window.document.querySelector('.dshgn_noteHead')
+      if (head === null) return null
+      return Array.from(head.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '编辑') || null
+    },
+    5000,
+    '笔记头上有编辑按钮',
+  )
+  editBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const editor = await waitFor(() => window.document.querySelector('.dshgn_editor'), 5000, '编辑区出现')
+  const proto = window.HTMLTextAreaElement.prototype
+  const setter = Object.getOwnPropertyDescriptor(proto, 'value').set
+  setter.call(editor, editor.value + '\n改了一笔')
+  editor.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await waitFor(
+    () => ((window.document.querySelector('.dshgn_note') || {}).textContent || '').includes('有未保存的修改'),
+    5000,
+    '草稿被认出来了',
+  )
+
+  // 问框说「不要」：笔记不该被收起来
+  const asked = []
+  panel.setConfirmDialog((message) => {
+    asked.push(message)
+    return Promise.resolve(false)
+  })
+  try {
+    const back = await waitFor(() => window.document.querySelector('.dshgn_noteBack'), 5000, '返回列表按钮')
+    back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => asked.length > 0, 5000, '有草稿时应该先问一句')
+    assert.equal(rootNode().getAttribute('data-has-note'), 'true', '说了「不要」就不该收起来')
+    // 说「要」才收起来
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '说了「要」就收起来')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+})

@@ -325,6 +325,9 @@ export async function scanVault(root, options = {}) {
           title: deriveTitle(body, rel),
           date: deriveDate(rel, data, st.mtimeMs),
           tags: normalizeTags(data.tags),
+          // 别名也带出来：点双链时最后一级要比它（宿主按别名解析双链，
+          // 面板只比标题的话，同一个链接一边点得开、一边报「找不到」）。
+          aliases: normalizeAliases(data.aliases !== undefined ? data.aliases : data.alias !== undefined ? data.alias : data['别名']),
           noteId: data.note_id ? String(data.note_id) : null,
           noteUrl: data.note_url ? String(data.note_url) : null,
           bytes: st.size,
@@ -427,6 +430,7 @@ export async function readNote(root, rel) {
     frontmatter: data,
     title: deriveTitle(body, normalized),
     tags: normalizeTags(data.tags),
+    aliases: normalizeAliases(data.aliases !== undefined ? data.aliases : data.alias !== undefined ? data.alias : data['别名']),
     bytes: st.size,
     mtimeMs: st.mtimeMs,
     readOnly: false,
@@ -946,6 +950,7 @@ export async function searchNotes(root, query, { limit = 60, perFile = 3, sort =
         title,
         date: deriveDate(rel, data, null),
         tags: normalizeTags(data.tags),
+        aliases: normalizeAliases(data.aliases !== undefined ? data.aliases : data.alias !== undefined ? data.alias : data['别名']),
         matches,
         titleHit,
         matchCount,
@@ -1778,6 +1783,24 @@ export async function toggleTodo(root, rel, index, options = {}) {
 export function normalizeTags(value) {
   if (Array.isArray(value)) return value.map((tag) => String(tag).trim()).filter((tag) => tag !== '')
   if (value === undefined || value === null) return []
+  const single = String(value).trim()
+  return single === '' ? [] : [single]
+}
+
+/**
+ * 把 frontmatter 里的别名统一成字符串数组。
+ *
+ * 宿主的约定是 `aliases`（手写笔记里也常见 `alias`、`别名`）。别名是「这篇
+ * 笔记的另一个名字」：写了之后 `[[那个名字]]` 就该指到这一篇。这里只做归并，
+ * 不判断谁优先——撞名时真实文件名/标题更该赢，那一步交给调用方。
+ */
+export function normalizeAliases(value) {
+  if (value === undefined || value === null) return []
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => String(item === null || item === undefined ? '' : item).trim())
+      .filter((item) => item !== '')
+  }
   const single = String(value).trim()
   return single === '' ? [] : [single]
 }

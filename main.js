@@ -238,6 +238,7 @@ __export(vault_exports, {
   listConflicts: () => listConflicts,
   listDirs: () => listDirs,
   listTrash: () => listTrash,
+  normalizeAliases: () => normalizeAliases,
   normalizeRel: () => normalizeRel,
   normalizeTags: () => normalizeTags,
   outlineOf: () => outlineOf,
@@ -469,6 +470,9 @@ async function scanVault(root, options = {}) {
           title: deriveTitle(body, rel),
           date: deriveDate(rel, data, st.mtimeMs),
           tags: normalizeTags(data.tags),
+          // 别名也带出来：点双链时最后一级要比它（宿主按别名解析双链，
+          // 面板只比标题的话，同一个链接一边点得开、一边报「找不到」）。
+          aliases: normalizeAliases(data.aliases !== void 0 ? data.aliases : data.alias !== void 0 ? data.alias : data["\u522B\u540D"]),
           noteId: data.note_id ? String(data.note_id) : null,
           noteUrl: data.note_url ? String(data.note_url) : null,
           bytes: st.size,
@@ -561,6 +565,7 @@ async function readNote(root, rel) {
     frontmatter: data,
     title: deriveTitle(body, normalized),
     tags: normalizeTags(data.tags),
+    aliases: normalizeAliases(data.aliases !== void 0 ? data.aliases : data.alias !== void 0 ? data.alias : data["\u522B\u540D"]),
     bytes: st.size,
     mtimeMs: st.mtimeMs,
     readOnly: false
@@ -951,6 +956,7 @@ async function searchNotes(root, query, { limit = 60, perFile = 3, sort = "relev
         title,
         date: deriveDate(rel, data, null),
         tags: normalizeTags(data.tags),
+        aliases: normalizeAliases(data.aliases !== void 0 ? data.aliases : data.alias !== void 0 ? data.alias : data["\u522B\u540D"]),
         matches,
         titleHit,
         matchCount
@@ -1495,6 +1501,14 @@ async function toggleTodo(root, rel, index, options = {}) {
 function normalizeTags(value) {
   if (Array.isArray(value)) return value.map((tag) => String(tag).trim()).filter((tag) => tag !== "");
   if (value === void 0 || value === null) return [];
+  const single = String(value).trim();
+  return single === "" ? [] : [single];
+}
+function normalizeAliases(value) {
+  if (value === void 0 || value === null) return [];
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item === null || item === void 0 ? "" : item).trim()).filter((item) => item !== "");
+  }
   const single = String(value).trim();
   return single === "" ? [] : [single];
 }
@@ -9609,6 +9623,11 @@ function frontmatterText(value) {
   }
   return String(value).trim();
 }
+function aliasesOf(entry) {
+  const data = entry !== null && entry !== void 0 && typeof entry === "object" ? entry.aliases : null;
+  if (!Array.isArray(data)) return [];
+  return data.map((item) => String(item === null || item === void 0 ? "" : item).trim()).filter((item) => item !== "");
+}
 function isTagKey(key) {
   const name = String(key || "").trim().toLowerCase();
   return name === "tags" || name === "tag" || name === "\u6807\u7B7E" || name === "\u6807\u7B7E\u9875";
@@ -11308,6 +11327,14 @@ function GetnotePage() {
         void openNote(byTitle.path);
         return;
       }
+      const byAlias = list.find(
+        (entry) => aliasesOf(entry).some((alias) => alias.toLowerCase() === lowered)
+      );
+      if (byAlias !== void 0) {
+        if (section !== "") requestAnchor(section, byAlias.path);
+        void openNote(byAlias.path);
+        return;
+      }
       setError(t3("note.wikilinkMissing").replace("{name}", wanted));
     },
     [current, entries, openNote, requestAnchor, status, t3]
@@ -11330,6 +11357,10 @@ function GetnotePage() {
       const lowered = wanted.toLowerCase();
       const byTitle = list.find((entry) => String(entry.title || "").toLowerCase() === lowered);
       if (byTitle !== void 0) return byTitle.path;
+      const byAlias = list.find(
+        (entry) => aliasesOf(entry).some((alias) => alias.toLowerCase() === lowered)
+      );
+      if (byAlias !== void 0) return byAlias.path;
       return "";
     },
     [current, entries, status]
@@ -12471,8 +12502,19 @@ ${insert}
         setDraft,
         dirty,
         busy,
-        // 窄窗口里「返回列表」用：把当前笔记收起，中栏就回来了
+        // 窄窗口里「返回列表」用：把当前笔记收起，中栏就回来了。
+        // 有没保存的草稿时先问一句——收起来之后草稿就没了，而用户往往
+        // 只是想看一眼列表，不是想丢掉刚写的半句。
         onClose: () => {
+          if (dirty) {
+            void confirmDialog(t3("note.unsaved")).then((ok) => {
+              if (!ok) return;
+              openSeq.current += 1;
+              setCurrent(null);
+              setDraft(null);
+            });
+            return;
+          }
           openSeq.current += 1;
           setCurrent(null);
           setDraft(null);
