@@ -335,6 +335,11 @@ const app = {
       openFile: async (file) => { app.workspace.openedFiles.push(file && file.path) },
     }),
     openPopoutLeaf: () => ({ setViewState: async () => {} }),
+    // 宿主正在看的那篇（「在得到大脑里打开当前笔记」用它）。
+    activeFile: null,
+    getActiveFile() {
+      return app.workspace.activeFile
+    },
   },
   // 宿主生成链接的能力。「复制引用」得按用户的「使用 Wiki 链接 / 新链接格式」
   // 两项设置来，那只有 fileManager 知道。这里返回一个能看出路径的假链接。
@@ -382,6 +387,7 @@ test('onload 能把插件拉起来', async () => {
     'scan-card',
     'capture-selection',
     'quick-switch-note',
+    'open-active-note',
     'create-bases-view',
     'add-to-canvas',
   ])
@@ -1066,6 +1072,42 @@ test('反链与出链优先问宿主的链接索引，问不到才自己扫', as
   app.metadataCache = broken
   app.metadataCache.resolvedLinks = {}
   app.metadataCache.fileCache = {}
+})
+
+test('「在得到大脑里打开当前笔记」把宿主正在看的那篇交给面板，目录外就明说', async () => {
+  await adapter.mkdir('得到大脑')
+  await adapter.mkdir('得到大脑/随手记')
+  await adapter.write('得到大脑/随手记/跟随验收.md', '# 跟随验收')
+  await adapter.mkdir('别处的目录')
+  await adapter.write('别处的目录/外头.md', '# 外头')
+
+  // 面板被叫起来（说明真的去开视图了，不是静默不动）
+  const opened = []
+  const leaf = app.workspace.getLeaf
+  app.workspace.getLeaf = () => ({
+    setViewState: async (state) => { opened.push(state && state.type) },
+    openFile: async () => {},
+  })
+
+  app.workspace.activeFile = { path: '得到大脑/随手记/跟随验收.md' }
+  await plugin.openActiveNote()
+  assert.deepEqual(opened, ['getnote-obsidian-view'], '应该把面板叫起来')
+
+  // 目录外的文件、没开笔记：都不该炸，也不该把面板叫起来
+  const notices = calls.notices.length
+  app.workspace.activeFile = { path: '别处的目录/外头.md' }
+  await plugin.openActiveNote()
+  assert.ok(calls.notices.length > notices, '目录外应该明确说一句')
+  assert.match(String(calls.notices[calls.notices.length - 1]), /不在/, '提示要说清楚为什么')
+
+  app.workspace.activeFile = null
+  assert.doesNotThrow(() => plugin.openActiveNote())
+  await plugin.openActiveNote()
+  app.workspace.activeFile = {}
+  await plugin.openActiveNote()
+
+  app.workspace.getLeaf = leaf
+  app.workspace.activeFile = null
 })
 
 test('复制引用用的是宿主自己的链接格式，找不到文件就交回面板自己拼', async () => {

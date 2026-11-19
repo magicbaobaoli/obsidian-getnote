@@ -16068,6 +16068,13 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       }
     });
     this.addCommand({
+      id: "open-active-note",
+      name: "\u5728\u5F97\u5230\u5927\u8111\u91CC\u6253\u5F00\u5F53\u524D\u7B14\u8BB0",
+      callback: () => {
+        void this.openActiveNote();
+      }
+    });
+    this.addCommand({
       id: "create-bases-view",
       name: "\u5728\u7B14\u8BB0\u76EE\u5F55\u91CC\u751F\u6210\u4E00\u4E2A Bases \u89C6\u56FE",
       callback: () => {
@@ -16518,6 +16525,31 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     } catch {
       return false;
     }
+  }
+  /**
+   * 把面板切到「当前正在看的这篇」。
+   *
+   * 用户在 Obsidian 里读或改一篇笔记时，最想要的是「它在得到大脑里长什么样」：
+   * 谁引用了它、同步过没有、有没有历史版本、附件齐不齐。这些都在面板里，
+   * 但面板不会自己跟着宿主的活动笔记走（那会让面板在用户切来切去时乱跳）。
+   * 所以给一条命令，用户想跟的时候按一下。
+   *
+   * 当前笔记不在笔记目录里（或者没开笔记）时给出明确提示，而不是静默不动——
+   * 静默不动会被当成命令坏了。
+   */
+  async openActiveNote() {
+    const file = this.app.workspace.getActiveFile ? this.app.workspace.getActiveFile() : null;
+    const rel = this.notePathInVault(file);
+    if (rel === "") {
+      const sub = String(getRuntime().subfolder || DEFAULT_SUBFOLDER);
+      new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A\u5F53\u524D\u7B14\u8BB0\u4E0D\u5728\u300C${sub}\u300D\u76EE\u5F55\u91CC`);
+      return;
+    }
+    try {
+      await this.activateView();
+    } catch {
+    }
+    requestIntent({ type: "open", path: rel });
   }
   /**
    * 生成一条指向这篇笔记的链接，格式按用户的 Obsidian 设置来。

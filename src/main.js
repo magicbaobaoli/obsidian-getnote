@@ -269,6 +269,15 @@ export default class GetnoteObsidianPlugin extends Plugin {
       callback: () => { void this.quickSwitchNote() },
     })
 
+    // 「跟随当前笔记」：正在 Obsidian 里读或改一篇，想看看它在得到大脑里的样子
+    // （反链、同步状态、历史版本、附件），按一下就把面板切到同一篇。
+    // 没有这条命令时，用户得自己回面板、翻目录、找到同名的那篇——笔记一多就找不着。
+    this.addCommand({
+      id: 'open-active-note',
+      name: '在得到大脑里打开当前笔记',
+      callback: () => { void this.openActiveNote() },
+    })
+
     // 与 Bases / Canvas 的衔接：两者都只生成一份文件，不碰内部 API。
     this.addCommand({
       id: 'create-bases-view',
@@ -815,6 +824,33 @@ export default class GetnoteObsidianPlugin extends Plugin {
     } catch {
       return false
     }
+  }
+
+  /**
+   * 把面板切到「当前正在看的这篇」。
+   *
+   * 用户在 Obsidian 里读或改一篇笔记时，最想要的是「它在得到大脑里长什么样」：
+   * 谁引用了它、同步过没有、有没有历史版本、附件齐不齐。这些都在面板里，
+   * 但面板不会自己跟着宿主的活动笔记走（那会让面板在用户切来切去时乱跳）。
+   * 所以给一条命令，用户想跟的时候按一下。
+   *
+   * 当前笔记不在笔记目录里（或者没开笔记）时给出明确提示，而不是静默不动——
+   * 静默不动会被当成命令坏了。
+   */
+  async openActiveNote() {
+    const file = this.app.workspace.getActiveFile ? this.app.workspace.getActiveFile() : null
+    const rel = this.notePathInVault(file)
+    if (rel === '') {
+      const sub = String(settingsStore.getRuntime().subfolder || DEFAULT_SUBFOLDER)
+      new Notice(`得到大脑：当前笔记不在「${sub}」目录里`)
+      return
+    }
+    try {
+      await this.activateView()
+    } catch {
+      // 面板开不出来也照样投递，意图总线会暂存一条
+    }
+    requestIntent({ type: 'open', path: rel })
   }
 
   /**
