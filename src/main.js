@@ -44,6 +44,7 @@ import {
   setConfirmDialog,
   setOpenInEditor,
   setMarkdownLink,
+  setAssetUrl,
   setVaultGraph,
   setStatusReport,
   notifyCssChange,
@@ -151,6 +152,9 @@ export default class GetnoteObsidianPlugin extends Plugin {
     // 「复制引用」用宿主自己的链接格式：用户偏好 Wiki 链接还是 Markdown 链接、
     // 路径写全还是写短，只有 app.fileManager 知道。
     setMarkdownLink((path) => this.markdownLinkFor(path))
+    // 图片、录音的地址交给宿主：adapter.getResourcePath() 给的是宿主资源协议下的
+    // 地址，浏览器直接能加载，还吃宿主的缓存与 Range 处理。
+    setAssetUrl((path) => this.assetUrlFor(path))
 
     // 反链、出链交给宿主的 metadataCache。
     //
@@ -938,6 +942,33 @@ export default class GetnoteObsidianPlugin extends Plugin {
       if (!manager || typeof manager.generateMarkdownLink !== 'function') return ''
       const link = manager.generateMarkdownLink(file, '')
       return typeof link === 'string' ? link : ''
+    } catch {
+      return ''
+    }
+  }
+
+  /**
+   * 附件的地址交给宿主。
+   *
+   * 面板里 `<img>` / `<audio>` 的 src 原来是本地服务的
+   * `/getnote/asset?path=...&t=令牌`：端口会变、令牌每次启动都换，而且每张图都要
+   * 绕一圈本机 HTTP。`adapter.getResourcePath()` 给的是宿主资源协议下的地址，
+   * 浏览器直接能加载，也能吃到宿主的缓存与 Range 处理（录音拖进度条要靠它）。
+   *
+   * 面板传进来的是「相对笔记目录」的路径，宿主只认库内相对路径，这里补子目录。
+   * 拿不到（旧版宿主没这个方法、文件还没进索引）返回空串，面板退回本地服务地址。
+   */
+  assetUrlFor(path) {
+    try {
+      const raw = String(path || '').replace(/\\/g, '/').replace(/^\/+/, '')
+      if (raw === '') return ''
+      const runtime = settingsStore.getRuntime()
+      const sub = String(runtime.subfolder || DEFAULT_SUBFOLDER).replace(/^\/+|\/+$/g, '')
+      const inVault = sub === '' || raw.startsWith(sub + '/') ? raw : `${sub}/${raw}`
+      const adapter = this.app.vault.adapter
+      if (!adapter || typeof adapter.getResourcePath !== 'function') return ''
+      const url = adapter.getResourcePath(inVault)
+      return typeof url === 'string' ? url : ''
     } catch {
       return ''
     }

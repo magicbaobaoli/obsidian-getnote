@@ -226,6 +226,27 @@ async function saveFile(url, filename) {
       }
     }
 
+    // 附件（图片、录音）该走宿主自己的资源协议。
+    //
+    // 面板原来把附件地址拼成本地服务的 `/getnote/asset?path=...&t=令牌`：端口会变、
+    // 令牌每次启动都换，而且每张图都要绕一圈本机 HTTP 服务。Obsidian 自己有
+    // `adapter.getResourcePath()`，给出的是它内部资源协议下的地址，浏览器能直接加载，
+    // 还能吃到宿主的缓存与 Range 处理。注入之后优先用它，没注入（离线测试、早期
+    // 加载）退回本地服务地址——两条路都得能走。
+    let __assetUrl = null
+    export function setAssetUrl(fn) {
+      __assetUrl = typeof fn === 'function' ? fn : null
+    }
+    function assetUrlOf(path) {
+      if (__assetUrl === null) return ''
+      try {
+        const url = __assetUrl(String(path || ''))
+        return typeof url === 'string' ? url : ''
+      } catch {
+        return ''
+      }
+    }
+
     // 宿主换主题时 Obsidian 会发 'css-change' 事件，比 MutationObserver 盯 body
     // 的 class 更准（用户改了字体、字号、界面缩放也能收到）。没有宿主时靠
     // MutationObserver 兜底，两者最终都只是让面板重新算一次配色。
@@ -1996,10 +2017,11 @@ async function saveFile(url, filename) {
       const hit = assets.find((a) => a.name === clean || a.name === base)
       const path = (hit && hit.path) || clean
       if (IMAGE_EXT_RE.test(path)) {
+        const hosted = assetUrlOf(path)
         return h('img', {
           key,
           className: 'dshgn_img',
-          src: withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(path)}`),
+          src: hosted !== '' ? hosted : withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(path)}`),
           alt: base,
           loading: 'lazy',
         })
@@ -8978,7 +9000,11 @@ async function saveFile(url, filename) {
                     key: `${asset.path}-${index}`,
                     t,
                     track: {
-                      url: withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(asset.path)}`),
+                      // 宿主给了资源地址就用它（Range、缓存都归宿主管），否则退回本地服务
+                      url:
+                        assetUrlOf(asset.path) !== ''
+                          ? assetUrlOf(asset.path)
+                          : withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(asset.path)}`),
                       duration: 0,
                       kind: 'local',
                       title: assetLabel(asset.name),
@@ -8997,7 +9023,10 @@ async function saveFile(url, filename) {
                         h('img', {
                           key: `${asset.path}-${index}`,
                           className: 'dshgn_img',
-                          src: withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(asset.path)}`),
+                          src:
+                            assetUrlOf(asset.path) !== ''
+                              ? assetUrlOf(asset.path)
+                              : withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(asset.path)}`),
                           alt: asset.name,
                           title: asset.name,
                           loading: 'lazy',

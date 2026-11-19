@@ -228,6 +228,8 @@ function makeAdapter() {
   }
   return {
     getBasePath: () => BASE,
+    // 宿主把库内相对路径翻成它自己资源协议下的地址（真机上类似 app://<id>/<path>）。
+    getResourcePath: (p) => `app://fake-vault/${norm(p)}`,
     async exists(p) { return nodes.has(norm(p)) },
     async list(p) {
       const rel = norm(p)
@@ -1169,6 +1171,31 @@ test('复制引用用的是宿主自己的链接格式，找不到文件就交�
   app.fileManager = { generateMarkdownLink() { throw new Error('生成不了') } }
   assert.equal(plugin.markdownLinkFor('随手记/链接验收.md'), '')
   app.fileManager = manager
+})
+
+test('附件地址走宿主自己的资源协议，宿主没给才退回本地服务', async () => {
+  await adapter.mkdir('得到大脑')
+  await adapter.mkdir('得到大脑/随手记')
+
+  // 面板给的是「相对笔记目录」的路径，宿主要的是库内相对路径
+  assert.equal(plugin.assetUrlFor('随手记/图.png'), 'app://fake-vault/得到大脑/随手记/图.png')
+  // 已经是库内相对路径的照样认（不重复拼子目录）
+  assert.equal(plugin.assetUrlFor('得到大脑/随手记/图.png'), 'app://fake-vault/得到大脑/随手记/图.png')
+  // 反斜杠与前导斜杠都容忍
+  assert.equal(plugin.assetUrlFor('/随手记/图.png'), 'app://fake-vault/得到大脑/随手记/图.png')
+  assert.equal(plugin.assetUrlFor('随手记\\图.png'), 'app://fake-vault/得到大脑/随手记/图.png')
+
+  // 空路径 → 空串，面板退回本地服务地址
+  assert.equal(plugin.assetUrlFor(''), '')
+  assert.equal(plugin.assetUrlFor(null), '')
+
+  // 宿主没提供 getResourcePath，或它自己炸了，都不抛（面板退回本地服务）
+  const realAdapter = app.vault.adapter
+  app.vault.adapter = { getBasePath: () => BASE }
+  assert.equal(plugin.assetUrlFor('随手记/图.png'), '')
+  app.vault.adapter = { getResourcePath() { throw new Error('拿不到') } }
+  assert.equal(plugin.assetUrlFor('随手记/图.png'), '')
+  app.vault.adapter = realAdapter
 })
 
 test('onunload 会关掉本地服务', async () => {

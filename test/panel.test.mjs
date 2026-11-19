@@ -1127,3 +1127,43 @@ test('复制引用先问宿主的链接格式，没注入才退回绝对路径',
   panel.setMarkdownLink(null)
 })
 
+
+/**
+ * 图片、录音的地址要优先走宿主自己的资源协议。
+ *
+ * 面板原来把附件地址拼成本地服务的 `/getnote/asset?path=...&t=令牌`：端口会变、
+ * 令牌每次启动都换，每张图还要绕一圈本机 HTTP。宿主给了 `getResourcePath`
+ * 就用它的地址；没给或给不出来，才退回本地服务。
+ */
+test('附件地址先问宿主的资源协议，问不到才退回本地服务', async () => {
+  const { renderEmbed } = panel.__internals
+  const embed = () => renderEmbed('图.png', 'k', { assets: [{ name: '图.png', path: '随手记/asset/图.png' }] })
+
+  // 没注入宿主：还是本地服务地址
+  const plain = embed()
+  assert.ok(String(plain.props.src).includes('/getnote/asset?path='), '应该退回本地服务，实际 ' + plain.props.src)
+
+  const asked = []
+  panel.setAssetUrl((path) => {
+    asked.push(String(path))
+    return 'app://vault/' + path
+  })
+  const hosted = embed()
+  assert.equal(hosted.props.src, 'app://vault/随手记/asset/图.png')
+  assert.deepEqual(asked, ['随手记/asset/图.png'], '递给宿主的应该是附件的库内相对路径')
+
+  // 宿主给不出（空串 / 非字符串）时退回本地服务，不能渲染出没有 src 的图
+  panel.setAssetUrl(() => '')
+  assert.ok(String(embed().props.src).includes('/getnote/asset?path='), '空串要退回本地服务')
+  panel.setAssetUrl(() => 42)
+  assert.ok(String(embed().props.src).includes('/getnote/asset?path='), '非字符串要退回本地服务')
+
+  // 宿主实现炸了也不能把图弄没
+  panel.setAssetUrl(() => { throw new Error('宿主炸了') })
+  assert.ok(String(embed().props.src).includes('/getnote/asset?path='), '宿主炸了也要退回本地服务')
+
+  // 认不出来的附件仍然只给文件名，不假装能预览
+  assert.equal(renderEmbed('说明.pdf', 'k', {}).props.className, 'dshgn_embedFile')
+
+  panel.setAssetUrl(null)
+})

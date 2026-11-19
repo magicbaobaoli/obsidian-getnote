@@ -7672,6 +7672,19 @@ function markdownLinkOf(path) {
     return "";
   }
 }
+var __assetUrl = null;
+function setAssetUrl(fn2) {
+  __assetUrl = typeof fn2 === "function" ? fn2 : null;
+}
+function assetUrlOf(path) {
+  if (__assetUrl === null) return "";
+  try {
+    const url = __assetUrl(String(path || ""));
+    return typeof url === "string" ? url : "";
+  } catch {
+    return "";
+  }
+}
 var __cssListeners = /* @__PURE__ */ new Set();
 function notifyCssChange() {
   for (const listener of Array.from(__cssListeners)) {
@@ -9238,10 +9251,11 @@ function renderEmbed(target, key, options) {
   const hit = assets.find((a3) => a3.name === clean || a3.name === base);
   const path = hit && hit.path || clean;
   if (IMAGE_EXT_RE.test(path)) {
+    const hosted = assetUrlOf(path);
     return h4("img", {
       key,
       className: "dshgn_img",
-      src: withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(path)}`),
+      src: hosted !== "" ? hosted : withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(path)}`),
       alt: base,
       loading: "lazy"
     });
@@ -15275,7 +15289,8 @@ function NotePane(props) {
           key: `${asset.path}-${index}`,
           t: t3,
           track: {
-            url: withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(asset.path)}`),
+            // 宿主给了资源地址就用它（Range、缓存都归宿主管），否则退回本地服务
+            url: assetUrlOf(asset.path) !== "" ? assetUrlOf(asset.path) : withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(asset.path)}`),
             duration: 0,
             kind: "local",
             title: assetLabel(asset.name)
@@ -15291,7 +15306,7 @@ function NotePane(props) {
           (asset, index) => h4("img", {
             key: `${asset.path}-${index}`,
             className: "dshgn_img",
-            src: withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(asset.path)}`),
+            src: assetUrlOf(asset.path) !== "" ? assetUrlOf(asset.path) : withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(asset.path)}`),
             alt: asset.name,
             title: asset.name,
             loading: "lazy"
@@ -16038,6 +16053,7 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     setConfirmDialog((message) => this.askConfirm(message));
     setOpenInEditor((path) => this.openInVaultEditor(path));
     setMarkdownLink((path) => this.markdownLinkFor(path));
+    setAssetUrl((path) => this.assetUrlFor(path));
     setVaultGraph((path, kind) => this.vaultGraphOf(path, kind));
     setStatusReport((info) => this.updateStatusBar(info));
     const stored = await readSettings();
@@ -16674,6 +16690,32 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       if (!manager || typeof manager.generateMarkdownLink !== "function") return "";
       const link = manager.generateMarkdownLink(file, "");
       return typeof link === "string" ? link : "";
+    } catch {
+      return "";
+    }
+  }
+  /**
+   * 附件的地址交给宿主。
+   *
+   * 面板里 `<img>` / `<audio>` 的 src 原来是本地服务的
+   * `/getnote/asset?path=...&t=令牌`：端口会变、令牌每次启动都换，而且每张图都要
+   * 绕一圈本机 HTTP。`adapter.getResourcePath()` 给的是宿主资源协议下的地址，
+   * 浏览器直接能加载，也能吃到宿主的缓存与 Range 处理（录音拖进度条要靠它）。
+   *
+   * 面板传进来的是「相对笔记目录」的路径，宿主只认库内相对路径，这里补子目录。
+   * 拿不到（旧版宿主没这个方法、文件还没进索引）返回空串，面板退回本地服务地址。
+   */
+  assetUrlFor(path) {
+    try {
+      const raw = String(path || "").replace(/\\/g, "/").replace(/^\/+/, "");
+      if (raw === "") return "";
+      const runtime2 = getRuntime();
+      const sub = String(runtime2.subfolder || DEFAULT_SUBFOLDER).replace(/^\/+|\/+$/g, "");
+      const inVault = sub === "" || raw.startsWith(sub + "/") ? raw : `${sub}/${raw}`;
+      const adapter2 = this.app.vault.adapter;
+      if (!adapter2 || typeof adapter2.getResourcePath !== "function") return "";
+      const url = adapter2.getResourcePath(inVault);
+      return typeof url === "string" ? url : "";
     } catch {
       return "";
     }
