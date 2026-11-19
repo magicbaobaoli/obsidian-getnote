@@ -457,3 +457,64 @@ test('三栏之间的手柄能拖动，宽度落在根节点的 CSS 变量上', 
   const clamped = parseInt(rootNode().style.getPropertyValue('--dshgn-treeW'), 10)
   assert.ok(clamped >= 150, '左栏宽度有下限，实际 ' + clamped)
 })
+/**
+ * 列表增量渲染。
+ *
+ * 库大了以后把几千张卡片一次性塞进 DOM，滚动会明显发涩。这里造出比一屏
+ * 多得多的笔记，确认：① 一次只渲染一屏的量；② 剩下的由「显示更多」接手，
+ * 点一下真的多渲染一批。只测这两件会真坏的事，不测滚动性能本身。
+ */
+test('列表一次只渲染一屏，其余交给「显示更多」', async () => {
+  const total = 130
+  for (let i = 0; i < total; i += 1) {
+    await fetch(server.origin + '/getnote/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({
+        dir: '增量渲染验收',
+        title: '批量 ' + String(i).padStart(3, '0'),
+        content: '正文 ' + i,
+        requestId: 'seed-bulk-' + i,
+      }),
+    })
+  }
+
+  // 刷新一次，让左栏里出现这个新目录（点当前所在的页签不会触发重渲染）
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  assert.ok(refreshBtn(), '应该有一个刷新按钮')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_tree') !== null, 5000, '左栏渲染')
+  await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_treeName')).some(
+        (el) => (el.textContent || '').trim() === '增量渲染验收',
+      ),
+    8000,
+    '刷新后左栏出现新目录',
+  )
+  const rows = Array.from(window.document.querySelectorAll('.dshgn_treeRow'))
+  const dirRow = rows.find((el) => {
+    const name = el.querySelector('.dshgn_treeName')
+    return name !== null && (name.textContent || '').trim() === '增量渲染验收'
+  })
+  assert.ok(dirRow, '左栏里应该有「增量渲染验收」这个目录')
+  dirRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+
+  const cards = () => Array.from(window.document.querySelectorAll('.dshgn_listBody .dshgn_card'))
+  await waitFor(() => cards().length > 0, 8000, '列表渲染出卡片')
+  const first = cards().length
+  assert.ok(first < total, '不该一次把 ' + total + ' 张卡片全渲染出来，实际 ' + first)
+  assert.equal(first, 60, '第一屏应该是 60 张，实际 ' + first)
+
+  const moreBtn = () => window.document.querySelector('.dshgn_moreBtn')
+  assert.ok(moreBtn(), '还有没渲染的笔记时应该有「显示更多」按钮')
+  moreBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => cards().length > first, 5000, '点「显示更多」后多渲染一批')
+  assert.equal(cards().length, 120, '再点一次应该到 120 张，实际 ' + cards().length)
+
+  // 最后一批点完，按钮就该消失——留着它按了没反应更让人困惑
+  moreBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => cards().length === total + 0 || cards().length === total, 5000, '渲染完全部笔记')
+  assert.equal(moreBtn(), null, '全部渲染完之后不该还留着「显示更多」')
+})

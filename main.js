@@ -7476,6 +7476,7 @@ var LEX = {
     "empty.noVault": "\u8FD8\u6CA1\u6709\u672C\u5730\u7B14\u8BB0\u5E93",
     "empty.noVaultDesc": "\u5148\u5728\u300C\u8BBE\u7F6E\u300D\u91CC\u6307\u5B9A\u4E00\u4E2A\u76EE\u5F55\uFF0C\u6216\u8005\u70B9\u300C\u5BFC\u5165\u300D\u628A\u5F97\u5230\u5927\u8111\u7684\u7B14\u8BB0\u6293\u4E0B\u6765\u3002",
     "empty.noNotes": "\u8FD9\u4E2A\u76EE\u5F55\u8FD8\u6CA1\u6709\u7B14\u8BB0",
+    "list.more": "\u663E\u793A\u66F4\u591A",
     "empty.select": "\u9009\u4E00\u7BC7\u7B14\u8BB0\u5F00\u59CB\u9605\u8BFB",
     "empty.selectDesc": "\u5DE6\u680F\u662F\u76EE\u5F55\uFF0C\u4E2D\u95F4\u662F\u7B14\u8BB0\u5217\u8868\u3002\u4E5F\u53EF\u4EE5\u70B9\u300C\u65B0\u5EFA\u300D\u5199\u4E00\u7BC7\u3002",
     "empty.search": "\u6CA1\u6709\u5339\u914D\u7684\u7B14\u8BB0",
@@ -7841,6 +7842,7 @@ var LEX = {
     "empty.noVault": "No local vault yet",
     "empty.noVaultDesc": "Pick a folder in Settings, or press Import to pull your notes down.",
     "empty.noNotes": "No notes in this folder",
+    "list.more": "Show more",
     "empty.select": "Pick a note to read",
     "empty.selectDesc": "Folders on the left, notes in the middle. Or press New.",
     "empty.search": "No matching notes",
@@ -8206,6 +8208,7 @@ var LEX = {
     "empty.noVault": "Nog geen lokale map",
     "empty.noVaultDesc": "Kies een map bij Instellingen, of druk op Importeren om je notities op te halen.",
     "empty.noNotes": "Geen notities in deze map",
+    "list.more": "Meer tonen",
     "empty.select": "Kies een notitie om te lezen",
     "empty.selectDesc": "Mappen links, notities in het midden. Of druk op Nieuw.",
     "empty.search": "Geen passende notities",
@@ -9431,6 +9434,7 @@ var CSS = `
 /* \u4FA7\u680F\u5165\u53E3\u56FE\u6807\uFF08ownerProps.size \u51B3\u5B9A\u5C3A\u5BF8\uFF0C\u8FD9\u91CC\u53EA\u4FDD\u8BC1\u5757\u7EA7\u5BF9\u9F50\uFF09 */
 .dshgn_sideIcon{display:block;flex:none}
 .dshgn_listBody{flex:1;overflow-y:auto;padding:6px}
+.dshgn_moreBtn{display:block;width:100%;margin:6px 0 2px;justify-content:center}
 .dshgn_card{display:flex;flex-direction:column;gap:2px;padding:7px 8px;border-radius:8px;cursor:pointer;
   border-left:2px solid transparent;user-select:none}
 .dshgn_card:hover{background:var(--dsw-alias-interactive-bg-hover)}
@@ -10083,6 +10087,7 @@ function GetnotePage() {
   const [dirSort, setDirSort] = h2(() => makeSortPref("dshgn.sortDir").read());
   const [tagSort, setTagSort] = h2(() => makeSortPref("dshgn.sortTag").read());
   const [colWidths, setColWidths] = h2(() => readColWidths());
+  const [listLimit, setListLimit] = h2(LIST_PAGE_SIZE);
   const [current, setCurrent] = h2(null);
   const [draft, setDraft] = h2(null);
   const [busy, setBusy] = h2(false);
@@ -10215,6 +10220,22 @@ function GetnotePage() {
   }, [query]);
   const searchMode = query.trim() !== "" && hits !== null;
   const shown = searchMode ? hits : visible;
+  const filterKey = `${query}\0${activeDir}\0${activeTag}`;
+  const [lastFilterKey, setLastFilterKey] = h2(filterKey);
+  if (lastFilterKey !== filterKey) {
+    setLastFilterKey(filterKey);
+    setListLimit(LIST_PAGE_SIZE);
+  }
+  const shownSlice = shown.length > listLimit ? shown.slice(0, listLimit) : shown;
+  const onListScroll = q2(
+    (event) => {
+      const el = event && event.currentTarget;
+      if (!el) return;
+      if (el.scrollTop + el.clientHeight < el.scrollHeight - 120) return;
+      setListLimit((prev) => prev >= shown.length ? prev : prev + LIST_PAGE_SIZE);
+    },
+    [shown.length]
+  );
   const openNote = q2(
     async (path, toggle = false) => {
       if (toggle && current !== null && current.path === path) {
@@ -11021,7 +11042,7 @@ function GetnotePage() {
         ) : null,
         h4(
           "div",
-          { className: "dshgn_listBody" },
+          { className: "dshgn_listBody", onScroll: onListScroll },
           visible.length === 0 && !searchMode ? h4(
             "div",
             { className: "dshgn_empty", style: { padding: "24px 12px" } },
@@ -11033,121 +11054,135 @@ function GetnotePage() {
               h4(Icon, { name: "plus", size: 13 }),
               t3("action.new")
             ) : null
-          ) : shown.map(
-            (entry) => h4(
-              "div",
-              {
-                key: entry.path,
-                className: "dshgn_card",
-                "data-on": current !== null && current.path === entry.path ? "true" : "false",
-                // 勾选框需要左侧留白停靠（见 .dshgn_card[data-pick]），
-                // 其他列表（云端/冲突/回收站）没有勾选框就不用留这个空
-                "data-pick": "true",
-                onClick: () => {
-                  if (dirty && !window.confirm(t3("note.unsaved"))) return;
-                  void openNote(entry.path, true);
-                },
-                // 右键：把这一篇能做的事一次列出来。先把它设为当前笔记，
-                // 因为下面的动作（复制引用、单篇同步、删除）都作用在 current 上。
-                onContextMenu: (event) => {
-                  event.preventDefault();
-                  const items = [
-                    {
-                      id: "open",
-                      label: t3("note.menuOpen"),
-                      run: () => {
-                        if (dirty && !window.confirm(t3("note.unsaved"))) return;
-                        void openNote(entry.path, true);
-                      }
-                    },
-                    {
-                      id: "copy-ref",
-                      label: t3("action.copyRef"),
-                      run: () => {
-                        void openNote(entry.path, true).then(() => copyReference());
-                      }
-                    },
-                    {
-                      id: "push-one",
-                      label: t3("sync.pushOne"),
-                      run: () => {
-                        void openNote(entry.path, true).then(() => syncCurrent("push"));
-                      }
-                    },
-                    {
-                      id: "pull-one",
-                      label: t3("sync.pullOne"),
-                      run: () => {
-                        void openNote(entry.path, true).then(() => syncCurrent("pull"));
-                      }
-                    },
-                    {
-                      id: "delete",
-                      label: t3("action.delete"),
-                      danger: true,
-                      // 不二次确认：删除是进回收站，可还原，和面板里的删除按钮一致
-                      run: () => {
-                        void openNote(entry.path, true).then(() => deleteNote());
-                      }
-                    }
-                  ];
-                  showNoteMenu(event, items);
-                },
-                title: entry.path
-              },
-              h4(
+          ) : [
+            shownSlice.map(
+              (entry) => h4(
                 "div",
-                { className: "dshgn_cardTitleRow" },
-                // 勾选框只在「已有选中」或「鼠标悬停」时可见：常态下列表
-                // 干净，一旦开始多选就全部显形，不用先去某个按钮开多选模式。
+                {
+                  key: entry.path,
+                  className: "dshgn_card",
+                  "data-on": current !== null && current.path === entry.path ? "true" : "false",
+                  // 勾选框需要左侧留白停靠（见 .dshgn_card[data-pick]），
+                  // 其他列表（云端/冲突/回收站）没有勾选框就不用留这个空
+                  "data-pick": "true",
+                  onClick: () => {
+                    if (dirty && !window.confirm(t3("note.unsaved"))) return;
+                    void openNote(entry.path, true);
+                  },
+                  // 右键：把这一篇能做的事一次列出来。先把它设为当前笔记，
+                  // 因为下面的动作（复制引用、单篇同步、删除）都作用在 current 上。
+                  onContextMenu: (event) => {
+                    event.preventDefault();
+                    const items = [
+                      {
+                        id: "open",
+                        label: t3("note.menuOpen"),
+                        run: () => {
+                          if (dirty && !window.confirm(t3("note.unsaved"))) return;
+                          void openNote(entry.path, true);
+                        }
+                      },
+                      {
+                        id: "copy-ref",
+                        label: t3("action.copyRef"),
+                        run: () => {
+                          void openNote(entry.path, true).then(() => copyReference());
+                        }
+                      },
+                      {
+                        id: "push-one",
+                        label: t3("sync.pushOne"),
+                        run: () => {
+                          void openNote(entry.path, true).then(() => syncCurrent("push"));
+                        }
+                      },
+                      {
+                        id: "pull-one",
+                        label: t3("sync.pullOne"),
+                        run: () => {
+                          void openNote(entry.path, true).then(() => syncCurrent("pull"));
+                        }
+                      },
+                      {
+                        id: "delete",
+                        label: t3("action.delete"),
+                        danger: true,
+                        // 不二次确认：删除是进回收站，可还原，和面板里的删除按钮一致
+                        run: () => {
+                          void openNote(entry.path, true).then(() => deleteNote());
+                        }
+                      }
+                    ];
+                    showNoteMenu(event, items);
+                  },
+                  title: entry.path
+                },
                 h4(
-                  "span",
-                  {
-                    className: "dshgn_pickBox" + (picked.has(entry.path) ? " dshgn_pickBoxOn" : ""),
-                    role: "checkbox",
-                    "aria-checked": picked.has(entry.path) ? "true" : "false",
-                    "aria-label": t3("batch.pick"),
-                    onClick: (event) => {
-                      event.stopPropagation();
-                      togglePick(entry.path);
-                    },
-                    onKeyDown: (event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
+                  "div",
+                  { className: "dshgn_cardTitleRow" },
+                  // 勾选框只在「已有选中」或「鼠标悬停」时可见：常态下列表
+                  // 干净，一旦开始多选就全部显形，不用先去某个按钮开多选模式。
+                  h4(
+                    "span",
+                    {
+                      className: "dshgn_pickBox" + (picked.has(entry.path) ? " dshgn_pickBoxOn" : ""),
+                      role: "checkbox",
+                      "aria-checked": picked.has(entry.path) ? "true" : "false",
+                      "aria-label": t3("batch.pick"),
+                      onClick: (event) => {
                         event.stopPropagation();
                         togglePick(entry.path);
-                      }
+                      },
+                      onKeyDown: (event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          togglePick(entry.path);
+                        }
+                      },
+                      tabIndex: 0
                     },
-                    tabIndex: 0
-                  },
-                  picked.has(entry.path) ? h4(Icon, { name: "check", size: 11 }) : null
+                    picked.has(entry.path) ? h4(Icon, { name: "check", size: 11 }) : null
+                  ),
+                  h4("div", { className: "dshgn_cardTitle" }, entry.title),
+                  // 正文命中次数：用户能一眼看出哪篇是「真在讲这个」，
+                  // 哪篇只是顺口提了一句。
+                  searchMode && entry.matchCount > 0 ? h4("span", { className: "dshgn_hitCount" }, `${entry.matchCount}`) : null
                 ),
-                h4("div", { className: "dshgn_cardTitle" }, entry.title),
-                // 正文命中次数：用户能一眼看出哪篇是「真在讲这个」，
-                // 哪篇只是顺口提了一句。
-                searchMode && entry.matchCount > 0 ? h4("span", { className: "dshgn_hitCount" }, `${entry.matchCount}`) : null
-              ),
-              h4(
-                "div",
-                { className: "dshgn_cardMeta" },
-                entry.date ? h4("span", null, entry.date) : null,
-                entry.dir ? h4("span", null, entry.dir) : null
-              ),
-              // 搜索态优先显示正文命中行（带行号），比摘要更能说明为什么它被搜出来
-              searchMode && Array.isArray(entry.matches) && entry.matches.length > 0 ? h4(
-                "div",
-                { className: "dshgn_cardMatches" },
-                entry.matches.slice(0, 2).map(
-                  (match, index) => h4(
-                    "div",
-                    { key: `${index}-${match.line}`, className: "dshgn_matchLine" },
-                    h4("span", { className: "dshgn_matchNo" }, String(match.line)),
-                    h4("span", { className: "dshgn_matchText" }, match.text)
+                h4(
+                  "div",
+                  { className: "dshgn_cardMeta" },
+                  entry.date ? h4("span", null, entry.date) : null,
+                  entry.dir ? h4("span", null, entry.dir) : null
+                ),
+                // 搜索态优先显示正文命中行（带行号），比摘要更能说明为什么它被搜出来
+                searchMode && Array.isArray(entry.matches) && entry.matches.length > 0 ? h4(
+                  "div",
+                  { className: "dshgn_cardMatches" },
+                  entry.matches.slice(0, 2).map(
+                    (match, index) => h4(
+                      "div",
+                      { key: `${index}-${match.line}`, className: "dshgn_matchLine" },
+                      h4("span", { className: "dshgn_matchNo" }, String(match.line)),
+                      h4("span", { className: "dshgn_matchText" }, match.text)
+                    )
                   )
-                )
-              ) : entry.excerpt ? h4("div", { className: "dshgn_cardExcerpt" }, entry.excerpt) : null
-            )
-          )
+                ) : entry.excerpt ? h4("div", { className: "dshgn_cardExcerpt" }, entry.excerpt) : null
+              )
+            ),
+            // 还没渲染完就放一个按钮：滚动续载之外再给个明确出口，
+            // 用户知道下面确实还有东西，而不是以为列表就到这儿了。
+            shown.length > shownSlice.length ? h4(
+              "button",
+              {
+                key: "__more",
+                type: "button",
+                className: "dshgn_btn dshgn_moreBtn",
+                onClick: () => setListLimit((prev) => prev + LIST_PAGE_SIZE)
+              },
+              `${t3("list.more")}\uFF08${shown.length - shownSlice.length}\uFF09`
+            ) : null
+          ]
         )
       ),
       h4(ColSplitter, {
@@ -13786,6 +13821,7 @@ function HeatmapStrip(props) {
     )
   );
 }
+var LIST_PAGE_SIZE = 60;
 var TREE_MIN_W = 150;
 var TREE_MAX_W = 360;
 var LIST_MIN_W = 200;

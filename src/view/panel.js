@@ -236,6 +236,7 @@ async function saveFile(url, filename) {
         'empty.noVault': '还没有本地笔记库',
         'empty.noVaultDesc': '先在「设置」里指定一个目录，或者点「导入」把得到大脑的笔记抓下来。',
         'empty.noNotes': '这个目录还没有笔记',
+        'list.more': '显示更多',
         'empty.select': '选一篇笔记开始阅读',
         'empty.selectDesc': '左栏是目录，中间是笔记列表。也可以点「新建」写一篇。',
         'empty.search': '没有匹配的笔记',
@@ -605,6 +606,7 @@ async function saveFile(url, filename) {
         'empty.noVault': 'No local vault yet',
         'empty.noVaultDesc': 'Pick a folder in Settings, or press Import to pull your notes down.',
         'empty.noNotes': 'No notes in this folder',
+        'list.more': 'Show more',
         'empty.select': 'Pick a note to read',
         'empty.selectDesc': 'Folders on the left, notes in the middle. Or press New.',
         'empty.search': 'No matching notes',
@@ -974,6 +976,7 @@ async function saveFile(url, filename) {
         'empty.noVault': 'Nog geen lokale map',
         'empty.noVaultDesc': 'Kies een map bij Instellingen, of druk op Importeren om je notities op te halen.',
         'empty.noNotes': 'Geen notities in deze map',
+        'list.more': 'Meer tonen',
         'empty.select': 'Kies een notitie om te lezen',
         'empty.selectDesc': 'Mappen links, notities in het midden. Of druk op Nieuw.',
         'empty.search': 'Geen passende notities',
@@ -2416,6 +2419,7 @@ async function saveFile(url, filename) {
 /* 侧栏入口图标（ownerProps.size 决定尺寸，这里只保证块级对齐） */
 .dshgn_sideIcon{display:block;flex:none}
 .dshgn_listBody{flex:1;overflow-y:auto;padding:6px}
+.dshgn_moreBtn{display:block;width:100%;margin:6px 0 2px;justify-content:center}
 .dshgn_card{display:flex;flex-direction:column;gap:2px;padding:7px 8px;border-radius:8px;cursor:pointer;
   border-left:2px solid transparent;user-select:none}
 .dshgn_card:hover{background:var(--dsw-alias-interactive-bg-hover)}
@@ -3091,6 +3095,9 @@ async function saveFile(url, filename) {
       // 三栏宽度。拖动过程中只改内存状态（每帧都写 localStorage 会卡），
       // 松手后由下面那个 effect 落盘。
       const [colWidths, setColWidths] = React.useState(() => readColWidths())
+      // 列表一次渲染多少条。库大了以后把几千个卡片全塞进 DOM，滚动会明显发涩，
+      // 所以先渲染一屏多一点，滚到底再续。搜索、切目录、切标签都会重置回初始值。
+      const [listLimit, setListLimit] = React.useState(LIST_PAGE_SIZE)
       const [current, setCurrent] = React.useState(null)
       const [draft, setDraft] = React.useState(null)
       const [busy, setBusy] = React.useState(false)
@@ -3278,6 +3285,30 @@ async function saveFile(url, filename) {
       // 只有在 /search 还没回来（或失败）时才退回本地过滤，避免输入时列表闪空。
       const searchMode = query.trim() !== '' && hits !== null
       const shown = searchMode ? hits : visible
+      // 只渲染前 listLimit 条。切查询/目录/标签时回到初始窗口，否则在新目录里
+      // 还留着一个巨大的窗口，等于没省。
+      //
+      // 这里在渲染期直接比较「上一次的筛选条件」而不是用 useEffect：effect 是
+      // 异步排队的，用户刚点完目录立刻点「显示更多」时，effect 可能后到，把刚
+      // 加大的窗口又按回初始值，点了没反应。渲染期比较是同步的，顺序永远正确。
+      const filterKey = `${query}\u0000${activeDir}\u0000${activeTag}`
+      const [lastFilterKey, setLastFilterKey] = React.useState(filterKey)
+      if (lastFilterKey !== filterKey) {
+        setLastFilterKey(filterKey)
+        setListLimit(LIST_PAGE_SIZE)
+      }
+      const shownSlice = shown.length > listLimit ? shown.slice(0, listLimit) : shown
+      // 滚到底附近就续一屏。用 scrollTop 而不是 IntersectionObserver：
+      // 面板可能被放在 popout 窗口里，观察器在隐藏容器中拿不到交叉信息。
+      const onListScroll = React.useCallback(
+        (event) => {
+          const el = event && event.currentTarget
+          if (!el) return
+          if (el.scrollTop + el.clientHeight < el.scrollHeight - 120) return
+          setListLimit((prev) => (prev >= shown.length ? prev : prev + LIST_PAGE_SIZE))
+        },
+        [shown.length],
+      )
 
       /**
        * 打开笔记。
@@ -4180,7 +4211,7 @@ async function saveFile(url, filename) {
               : null,
             h(
               'div',
-              { className: 'dshgn_listBody' },
+              { className: 'dshgn_listBody', onScroll: onListScroll },
               visible.length === 0 && !searchMode
                 ? h(
                     'div',
@@ -4196,7 +4227,8 @@ async function saveFile(url, filename) {
                         )
                       : null,
                   )
-                : shown.map((entry) =>
+                : [
+                    shownSlice.map((entry) =>
                     h(
                       'div',
                       {
@@ -4316,6 +4348,21 @@ async function saveFile(url, filename) {
                           : null,
                     ),
                   ),
+                    // 还没渲染完就放一个按钮：滚动续载之外再给个明确出口，
+                    // 用户知道下面确实还有东西，而不是以为列表就到这儿了。
+                    shown.length > shownSlice.length
+                      ? h(
+                          'button',
+                          {
+                            key: '__more',
+                            type: 'button',
+                            className: 'dshgn_btn dshgn_moreBtn',
+                            onClick: () => setListLimit((prev) => prev + LIST_PAGE_SIZE),
+                          },
+                          `${t('list.more')}（${shown.length - shownSlice.length}）`,
+                        )
+                      : null,
+                  ],
             ),
           ),
           h(ColSplitter, {
@@ -7409,6 +7456,9 @@ async function saveFile(url, filename) {
 
     // 三栏宽度的上下限。左栏放「目录 / 标签」两段，再窄就挤得只剩省略号；
     // 中栏要放标题 + 日期 + 摘要三行，200 是能读的下限。
+    // 列表一次渲染多少条。一屏大约 8~10 张卡片，60 条足够滚两三屏，
+    // 又不至于把几千个 DOM 节点一次性建出来。
+    const LIST_PAGE_SIZE = 60
     const TREE_MIN_W = 150
     const TREE_MAX_W = 360
     const LIST_MIN_W = 200
