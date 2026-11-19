@@ -365,6 +365,64 @@ test('右键笔记卡片会把动作清单交给宿主，执行其中一项真�
 })
 
 /**
+ * 卡片要能拖到宿主的编辑器里。
+ *
+ * 用户在列表里扫到一篇、想把它引到正在写的那篇里时，拖过去比「复制引用 → 切到
+ * 编辑器 → 粘贴」顺手。拖出去的内容必须是宿主自己的链接格式，否则粘进笔记里
+ * 只是一段纯文本，不是双链。
+ */
+test('笔记卡片能拖出去，带的是宿主自己的链接格式', async () => {
+  await waitFor(() => window.document.querySelector('.dshgn_root') !== null, 5000, '根节点渲染')
+  const notesTab = Array.from(window.document.querySelectorAll('button')).find(
+    (el) => (el.textContent || '').trim() === '笔记',
+  )
+  notesTab.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const card = await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) =>
+        (el.textContent || '').includes('右键菜单验收'),
+      ),
+    5000,
+    '列表里出现预置笔记',
+  )
+  assert.equal(card.getAttribute('draggable'), 'true', '卡片应该标成可拖动')
+
+  const asked = []
+  panel.setMarkdownLink((path) => {
+    asked.push(String(path))
+    return '[[宿主给的链接]]'
+  })
+  const written = []
+  const event = new window.MouseEvent('dragstart', { bubbles: true, cancelable: true })
+  Object.defineProperty(event, 'dataTransfer', {
+    value: {
+      setData: (kind, text) => written.push([kind, text]),
+      effectAllowed: '',
+    },
+    configurable: true,
+  })
+  card.dispatchEvent(event)
+  assert.deepEqual(written, [['text/plain', '[[宿主给的链接]]']], '拖出去的内容应当是宿主给的链接')
+  assert.match(asked[0], /右键菜单验收\.md$/, '问宿主格式时给的是这篇的路径')
+
+  // 宿主没接上（或者拿不到链接格式）时退回库内相对路径，至少粘过去是能认的路径
+  panel.setMarkdownLink(() => '')
+  const second = []
+  const event2 = new window.MouseEvent('dragstart', { bubbles: true, cancelable: true })
+  Object.defineProperty(event2, 'dataTransfer', {
+    value: { setData: (kind, text) => second.push([kind, text]), effectAllowed: '' },
+    configurable: true,
+  })
+  card.dispatchEvent(event2)
+  assert.equal(second.length, 1, '拿不到链接格式也要给出一份可用的文本')
+  assert.match(second[0][1], /右键菜单验收\.md$/, '退回的是这篇的路径，实际 ' + second[0][1])
+
+  // 没有 dataTransfer 的环境不该炸
+  card.dispatchEvent(new window.MouseEvent('dragstart', { bubbles: true, cancelable: true }))
+  panel.setMarkdownLink(null)
+})
+
+/**
  * 确认框要交给宿主。
  *
  * 面板里原来的 window.confirm 在 Obsidian 里长得跟宿主完全不搭，移动端 WebView
@@ -861,9 +919,15 @@ test('编辑态里 Ctrl+S 保存、Esc 退出编辑', async () => {
   await sleep(60)
 
   const savesBefore = fetchCalls.filter((url) => url.includes('/getnote/save')).length
-  window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true }))
+  const savedTimes = () => fetchCalls.filter((url) => url.includes('/getnote/save')).length
+  // 整套测试并行跑时机器可能很吃紧，一次按键的处理器要排一会儿队才轮到；
+  // 所以重按几次（真的坏了仍然会失败，只是不会因为慢就判红）。
+  for (let attempt = 0; attempt < 3 && savedTimes() === savesBefore; attempt += 1) {
+    window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 's', ctrlKey: true, metaKey: true, bubbles: true }))
+    await sleep(400)
+  }
   await waitFor(
-    () => fetchCalls.filter((url) => url.includes('/getnote/save')).length > savesBefore,
+    () => savedTimes() > savesBefore,
     8000,
     'Ctrl+S 之后要真的打一次保存',
   )

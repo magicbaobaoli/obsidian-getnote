@@ -4597,6 +4597,22 @@ async function saveFile(url, filename) {
                         // 勾选框需要左侧留白停靠（见 .dshgn_card[data-pick]），
                         // 其他列表（云端/冲突/回收站）没有勾选框就不用留这个空
                         'data-pick': 'true',
+                        // 拖到宿主的编辑器里就是一条链接。用户在列表里扫到一篇、
+                        // 想把它引到正在写的那篇里时，拖过去比复制引用再粘更顺手；
+                        // 拖出去的内容用宿主自己的链接格式（跟「复制引用」同一套），
+                        // 粘进笔记里才认得出是双链。
+                        draggable: true,
+                        onDragStart: (event) => {
+                          const link = markdownLinkOf(entry.path)
+                          const text = link !== '' ? link : entry.path
+                          if (event.dataTransfer === null || event.dataTransfer === undefined) return
+                          try {
+                            event.dataTransfer.setData('text/plain', text)
+                            event.dataTransfer.effectAllowed = 'copy'
+                          } catch {
+                            // 某些环境不让写 dataTransfer，拖动就退化成没反应，不该炸
+                          }
+                        },
                         onClick: (event) => {
 
                           // 有未保存的草稿才拦一下；没改动时不该弹框
