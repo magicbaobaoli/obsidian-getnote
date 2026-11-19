@@ -1167,3 +1167,61 @@ test('附件地址先问宿主的资源协议，问不到才退回本地服务',
 
   panel.setAssetUrl(null)
 })
+
+/**
+ * 在 popout 窗口里开面板时，样式与快捷键都要跟过去。
+ *
+ * 「在新窗口中打开」的窗口有**自己的 document**：样式表、Ctrl+K 聚焦、
+ * 点空白关菜单如果都只在主窗口的 document/window 上做，新窗口里的面板就是
+ * 一堆没有样式的裸元素，快捷键也按不动。这里造第二个 document 挂一个面板，
+ * 断言那边也有样式、快捷键也在那边生效。
+ */
+test('popout 窗口里的面板有自己的一份样式，快捷键也跟着窗口走', async () => {
+  const { JSDOM: JSDOM2 } = await import('jsdom')
+  const popout = new JSDOM2('<!doctype html><html><body><div id="popout-root"></div></body></html>', {
+    url: 'app://obsidian.md/',
+    pretendToBeVisual: true,
+  })
+  const popWindow = popout.window
+  popWindow.fetch = window.fetch
+  popWindow.HTMLElement.prototype.scrollTo = function scrollTo() {}
+  popWindow.HTMLElement.prototype.isShown = function isShown() { return true }
+  Object.defineProperty(popWindow.navigator, 'clipboard', { value: clipboard, configurable: true })
+
+  const mount = popWindow.document.getElementById('popout-root')
+  const popRoot = createRoot(mount)
+  try {
+    popRoot.render(React.createElement(panel.PanelRoot, {}))
+    await waitFor(
+      () => mount.querySelector('.dshgn_root') !== null,
+      8000,
+      'popout 窗口里也把面板渲染出来了',
+    )
+
+    // 样式表要各注一份：主窗口那份在新窗口里不生效
+    const style = popWindow.document.getElementById('dshgn-style')
+    assert.ok(style !== null, 'popout 窗口里应该有自己的一份样式表')
+    assert.ok((style.textContent || '').includes('.dshgn_root'), '样式表内容应该是面板那套 CSS')
+
+    // Ctrl+K 聚焦的应该是**这个窗口**的搜索框（搜索框要等库数据回来才渲染）
+    const ownSearch = await waitFor(
+      () => mount.querySelector('.dshgn_search'),
+      8000,
+      'popout 窗口里出现搜索框',
+    )
+    assert.notEqual(ownSearch, window.document.querySelector('.dshgn_search'), '不该拿到主窗口那个')
+    ownSearch.blur()
+    popWindow.dispatchEvent(
+      new popWindow.KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }),
+    )
+    await waitFor(
+      () => popWindow.document.activeElement === ownSearch,
+      5000,
+      'popout 窗口里按 Ctrl+K 应该聚焦它自己的搜索框',
+    )
+  } finally {
+    popRoot.unmount()
+    popWindow.close()
+  }
+})
+

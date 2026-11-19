@@ -1774,9 +1774,81 @@ async function saveFile(url, filename) {
      *
      * 拿不到 document（测试环境）时按浅色处理：那套配色是默认值。
      */
+    // 面板可能活在一个 popout 窗口里（「在新窗口中打开」），那里的
+    // `document` 是另一个 document，不是主窗口那个。所有「找 DOM」的动作
+    // 都得从面板自己的根节点出发，否则会在主窗口里找不到东西——
+    // 表现为 popout 里快捷键聚焦不了搜索框、点空白处菜单不关、主题不跟着变。
+    // 同一个插件可以同时开多个面板（主窗口一个、popout 窗口一个），
+    // 所以是「一组根节点」而不是一个。每个根节点各自的 document 里
+    // 都要有自己的样式表——popout 窗口的 document 是独立的。
+    const panelRoots = new Set()
+    function rootsOf(doc) {
+      const list = []
+      for (const el of panelRoots) {
+        if (!el || el.isConnected === false) continue
+        if (doc === undefined || el.ownerDocument === doc) list.push(el)
+      }
+      return list
+    }
+    function panelDocuments() {
+      const docs = []
+      for (const el of rootsOf()) {
+        const doc = el.ownerDocument
+        if (doc && docs.indexOf(doc) === -1) docs.push(doc)
+      }
+      if (docs.length === 0 && typeof document !== 'undefined') docs.push(document)
+      return docs
+    }
+    function panelDocument() {
+      const docs = panelDocuments()
+      return docs.length === 0 ? null : docs[0]
+    }
+    function panelWindows() {
+      const wins = []
+      for (const doc of panelDocuments()) {
+        const win = doc.defaultView
+        if (win && wins.indexOf(win) === -1) wins.push(win)
+      }
+      return wins
+    }
+    function panelWindow() {
+      const wins = panelWindows()
+      return wins.length === 0 ? null : wins[0]
+    }
+    /** 记住一个面板根节点，之后所有 DOM 查找都从它所在的 document 出发。 */
+    export function setPanelRootEl(el) {
+      if (el) panelRoots.add(el)
+      else panelRoots.clear()
+    }
+    /**
+     * 只在面板自己的子树里找元素（popout 窗口里 document 不是主窗口那个）。
+     *
+     * 传了 doc 就先在那个 document 的面板里找——在 popout 窗口里按 Ctrl+K，
+     * 焦点该落在**这个窗口**的搜索框上，而不是把主窗口的抢过来。
+     */
+    /** 事件是从哪个 document 里来的（在 window 上派发时 target 是 window 本身）。 */
+    function docOfEvent(event) {
+      const target = event ? event.target : null
+      if (!target) return undefined
+      if (target.ownerDocument) return target.ownerDocument
+      if (target.document) return target.document
+      return undefined
+    }
+    function findInPanel(selector, doc) {
+      const groups = doc ? [rootsOf(doc), rootsOf()] : [rootsOf()]
+      for (const group of groups) {
+        for (const el of group) {
+          if (typeof el.querySelector !== 'function') continue
+          const hit = el.querySelector(selector)
+          if (hit) return hit
+        }
+      }
+      return null
+    }
     function isDarkTheme() {
-      if (typeof document === 'undefined' || document.body === null) return false
-      return document.body.classList.contains('theme-dark')
+      const doc = panelDocument()
+      if (doc === null || !doc.body) return false
+      return doc.body.classList.contains('theme-dark')
     }
     function themeVars(input, dark = false) {
       // 没选主题色时：浅色返回 null 让 CSS 默认值生效（那是手调过的浅色板）；
@@ -3254,20 +3326,53 @@ async function saveFile(url, filename) {
 .dshgn_note .dshgn_scroll::-webkit-scrollbar-track,.dshgn_pane::-webkit-scrollbar-track{background:transparent}
 `
 
-    function injectCss() {
-      if (typeof document === 'undefined') return () => {}
-      if (document.getElementById(STYLE_ID) !== null) return () => {}
-      const style = document.createElement('style')
+    /** 往一个 document 里注一份样式表（已经注过就跳过）。 */
+    function injectCssInto(doc) {
+      if (!doc || doc.getElementById(STYLE_ID) !== null) return
+      const style = doc.createElement('style')
       style.id = STYLE_ID
       style.textContent = CSS
-      ;(document.head || document.documentElement).appendChild(style)
-      return () => {
-        try {
-          style.remove()
-        } catch {
-          // 卸载顺序不可控时忽略
+      ;(doc.head || doc.documentElement).appendChild(style)
+    }
+    function injectCss() {
+      for (const doc of panelDocuments()) injectCssInto(doc)
+      return () => {}
+    }
+    // 事件监听与主题同步都是「挂在每个面板窗口上」的，但窗口可能比监听
+    // 建立得晚（先开面板、再「在新窗口中打开」）。所以登记一批「窗口变了
+    // 就补一遍」的回调，新根节点出现时重放。
+    const pendingAttach = new Set()
+    const pendingSync = new Set()
+    function attachOnPanelWindows(type, fn, capture) {
+      const done = new Set()
+      const apply = () => {
+        for (const win of panelWindows()) {
+          if (done.has(win)) continue
+          done.add(win)
+          win.addEventListener(type, fn, capture)
         }
       }
+      apply()
+      pendingAttach.add(apply)
+      return () => {
+        pendingAttach.delete(apply)
+        for (const win of done) win.removeEventListener(type, fn, capture)
+        done.clear()
+      }
+    }
+    /**
+     * 面板根节点挂上来时调一次：记进根节点集合，给**它所在的** document
+     * 补一份样式，并让之前登记的监听/主题同步补到新窗口上。
+     *
+     * popout 窗口有自己的 document，样式得各注一份，否则新窗口里的面板
+     * 是一堆没有样式的裸元素。
+     */
+    function registerPanelRoot(el) {
+      if (!el) return
+      panelRoots.add(el)
+      injectCssInto(el.ownerDocument)
+      for (const apply of Array.from(pendingAttach)) apply()
+      for (const sync of Array.from(pendingSync)) sync()
     }
 
     // ── 侧栏入口 ──────────────────────────────────────────────────────────────
@@ -3365,7 +3470,6 @@ async function saveFile(url, filename) {
       // 否则面板会一直停在打开那一刻的配色上。
       const [darkTheme, setDarkTheme] = React.useState(() => isDarkTheme())
       React.useEffect(() => {
-        if (typeof document === 'undefined') return undefined
         // 有的环境（测试里的 jsdom）把 MutationObserver 挂在 window 上而不是全局，
         // 两处都找一遍。
         const Observer =
@@ -3376,13 +3480,25 @@ async function saveFile(url, filename) {
               : undefined
         if (typeof Observer !== 'function') return undefined
         const sync = () => setDarkTheme(isDarkTheme())
-        sync()
         const observer = new Observer(sync)
-        observer.observe(document.body, { attributes: true, attributeFilter: ['class'] })
+        // popout 窗口是另一个 document，各盯一份；窗口是后开的，所以
+        // 「盯上它」这一步要能在新根节点出现时重放。
+        const observed = new Set()
+        const attach = () => {
+          for (const doc of panelDocuments()) {
+            if (!doc || !doc.body || observed.has(doc.body)) continue
+            observed.add(doc.body)
+            observer.observe(doc.body, { attributes: true, attributeFilter: ['class'] })
+          }
+          sync()
+        }
+        attach()
+        pendingSync.add(attach)
         // 宿主发 'css-change' 时（改主题、改字体字号、改界面缩放）也重算一次。
         // 光盯 body 的 class 会漏掉「同一套深浅、但换了主题片段」的情况。
         const unsubscribe = subscribeCssChange(sync)
         return () => {
+          pendingSync.delete(attach)
           observer.disconnect()
           unsubscribe()
         }
@@ -3876,7 +3992,7 @@ async function saveFile(url, filename) {
               if (typeof intent.q === 'string' && intent.q !== '') setQuery(intent.q)
               // 等一帧再找输入框：切页签的渲染是异步的，立刻 querySelector 拿不到
               window.setTimeout(() => {
-                const input = document.querySelector('.dshgn_search')
+                const input = findInPanel('.dshgn_search')
                 if (input) {
                   input.focus()
                   input.select()
@@ -4142,7 +4258,7 @@ async function saveFile(url, filename) {
           if (meta && event.key.toLowerCase() === 'k') {
             event.preventDefault()
             // 搜到搜索框，而不是另开一个搜索面板：用户已经熟悉那一个入口
-            const input = document.querySelector('.dshgn_search')
+            const input = findInPanel('.dshgn_search', docOfEvent(event))
             if (input) {
               input.focus()
               input.select()
@@ -4167,8 +4283,8 @@ async function saveFile(url, filename) {
             }
           }
         }
-        window.addEventListener('keydown', onKey)
-        return () => window.removeEventListener('keydown', onKey)
+        // 每个面板窗口各挂一份：popout 里按 Ctrl+K 也得能聚焦搜索框。
+        return attachOnPanelWindows('keydown', onKey)
       }, [current, newNote, openNote, shown, tab, vaultReady])
 
       // badge 是文字右边的小胶囊（像邮件未读那种），不是骑在页签右上角的角标——
@@ -4867,7 +4983,7 @@ async function saveFile(url, filename) {
 
       return h(
         'div',
-        { className: 'dshgn_rel' },
+        { className: 'dshgn_rel', ref: registerPanelRoot },
         h(
           'div',
           {
@@ -6920,12 +7036,14 @@ async function saveFile(url, filename) {
             showToast(t('archive.exported'))
             return
           }
-          const anchor = document.createElement('a')
+          const doc = panelDocument()
+          if (doc === null || !doc.body) return
+          const anchor = doc.createElement('a')
           anchor.href = url
           anchor.download = name
-          document.body.appendChild(anchor)
+          doc.body.appendChild(anchor)
           anchor.click()
-          document.body.removeChild(anchor)
+          doc.body.removeChild(anchor)
           showToast(t('archive.exporting'))
         } finally {
           // 下载是浏览器接管的，这边没法知道何时完成，给一个短延迟就恢复
@@ -8116,11 +8234,11 @@ async function saveFile(url, filename) {
       React.useEffect(() => {
         if (menu === null) return undefined
         const close = () => setMenu(null)
-        window.addEventListener('click', close)
-        window.addEventListener('scroll', close, true)
+        const offClick = attachOnPanelWindows('click', close)
+        const offScroll = attachOnPanelWindows('scroll', close, true)
         return () => {
-          window.removeEventListener('click', close)
-          window.removeEventListener('scroll', close, true)
+          offClick()
+          offScroll()
         }
       }, [menu])
 
@@ -8668,8 +8786,7 @@ async function saveFile(url, filename) {
             setEditing(false)
           }
         }
-        window.addEventListener('keydown', onKey)
-        return () => window.removeEventListener('keydown', onKey)
+        return attachOnPanelWindows('keydown', onKey)
       }, [busy, current, dirty, editing, onSave, setDraft])
 
       // 换笔记时退出编辑态与历史面板：留着编辑态会让用户以为新笔记也是可编辑草稿，

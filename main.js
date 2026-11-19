@@ -9042,9 +9042,58 @@ function hslToHex(h5, s3, l3) {
   return `#${channel(hue + 1 / 3)}${channel(hue)}${channel(hue - 1 / 3)}`;
 }
 var DEFAULT_THEME_COLOR = "#0a2a52";
+var panelRoots = /* @__PURE__ */ new Set();
+function rootsOf(doc) {
+  const list = [];
+  for (const el of panelRoots) {
+    if (!el || el.isConnected === false) continue;
+    if (doc === void 0 || el.ownerDocument === doc) list.push(el);
+  }
+  return list;
+}
+function panelDocuments() {
+  const docs = [];
+  for (const el of rootsOf()) {
+    const doc = el.ownerDocument;
+    if (doc && docs.indexOf(doc) === -1) docs.push(doc);
+  }
+  if (docs.length === 0 && typeof document !== "undefined") docs.push(document);
+  return docs;
+}
+function panelDocument() {
+  const docs = panelDocuments();
+  return docs.length === 0 ? null : docs[0];
+}
+function panelWindows() {
+  const wins = [];
+  for (const doc of panelDocuments()) {
+    const win = doc.defaultView;
+    if (win && wins.indexOf(win) === -1) wins.push(win);
+  }
+  return wins;
+}
+function docOfEvent(event) {
+  const target = event ? event.target : null;
+  if (!target) return void 0;
+  if (target.ownerDocument) return target.ownerDocument;
+  if (target.document) return target.document;
+  return void 0;
+}
+function findInPanel(selector, doc) {
+  const groups = doc ? [rootsOf(doc), rootsOf()] : [rootsOf()];
+  for (const group of groups) {
+    for (const el of group) {
+      if (typeof el.querySelector !== "function") continue;
+      const hit = el.querySelector(selector);
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
 function isDarkTheme() {
-  if (typeof document === "undefined" || document.body === null) return false;
-  return document.body.classList.contains("theme-dark");
+  const doc = panelDocument();
+  if (doc === null || !doc.body) return false;
+  return doc.body.classList.contains("theme-dark");
 }
 function themeVars(input, dark = false) {
   const rgb = parseHex(input) || (dark === true ? parseHex(DEFAULT_THEME_COLOR) : null);
@@ -10424,21 +10473,43 @@ var CSS = `
 .dshgn_tree::-webkit-scrollbar-track,.dshgn_list::-webkit-scrollbar-track,
 .dshgn_note .dshgn_scroll::-webkit-scrollbar-track,.dshgn_pane::-webkit-scrollbar-track{background:transparent}
 `;
-function injectCss() {
-  if (typeof document === "undefined") return () => {
-  };
-  if (document.getElementById(STYLE_ID) !== null) return () => {
-  };
-  const style = document.createElement("style");
+function injectCssInto(doc) {
+  if (!doc || doc.getElementById(STYLE_ID) !== null) return;
+  const style = doc.createElement("style");
   style.id = STYLE_ID;
   style.textContent = CSS;
-  (document.head || document.documentElement).appendChild(style);
+  (doc.head || doc.documentElement).appendChild(style);
+}
+function injectCss() {
+  for (const doc of panelDocuments()) injectCssInto(doc);
   return () => {
-    try {
-      style.remove();
-    } catch {
+  };
+}
+var pendingAttach = /* @__PURE__ */ new Set();
+var pendingSync = /* @__PURE__ */ new Set();
+function attachOnPanelWindows(type, fn2, capture) {
+  const done = /* @__PURE__ */ new Set();
+  const apply = () => {
+    for (const win of panelWindows()) {
+      if (done.has(win)) continue;
+      done.add(win);
+      win.addEventListener(type, fn2, capture);
     }
   };
+  apply();
+  pendingAttach.add(apply);
+  return () => {
+    pendingAttach.delete(apply);
+    for (const win of done) win.removeEventListener(type, fn2, capture);
+    done.clear();
+  };
+}
+function registerPanelRoot(el) {
+  if (!el) return;
+  panelRoots.add(el);
+  injectCssInto(el.ownerDocument);
+  for (const apply of Array.from(pendingAttach)) apply();
+  for (const sync of Array.from(pendingSync)) sync();
 }
 function PanelIcon(props) {
   const size = props && typeof props.size === "number" ? props.size : 18;
@@ -10495,15 +10566,24 @@ function GetnotePage() {
   const [themePreview, setThemePreview] = h2(null);
   const [darkTheme, setDarkTheme] = h2(() => isDarkTheme());
   y2(() => {
-    if (typeof document === "undefined") return void 0;
     const Observer = typeof MutationObserver !== "undefined" ? MutationObserver : typeof window !== "undefined" ? window.MutationObserver : void 0;
     if (typeof Observer !== "function") return void 0;
     const sync = () => setDarkTheme(isDarkTheme());
-    sync();
     const observer = new Observer(sync);
-    observer.observe(document.body, { attributes: true, attributeFilter: ["class"] });
+    const observed = /* @__PURE__ */ new Set();
+    const attach = () => {
+      for (const doc of panelDocuments()) {
+        if (!doc || !doc.body || observed.has(doc.body)) continue;
+        observed.add(doc.body);
+        observer.observe(doc.body, { attributes: true, attributeFilter: ["class"] });
+      }
+      sync();
+    };
+    attach();
+    pendingSync.add(attach);
     const unsubscribe = subscribeCssChange(sync);
     return () => {
+      pendingSync.delete(attach);
       observer.disconnect();
       unsubscribe();
     };
@@ -10894,7 +10974,7 @@ function GetnotePage() {
         setTab("notes");
         if (typeof intent.q === "string" && intent.q !== "") setQuery(intent.q);
         window.setTimeout(() => {
-          const input = document.querySelector(".dshgn_search");
+          const input = findInPanel(".dshgn_search");
           if (input) {
             input.focus();
             input.select();
@@ -11107,7 +11187,7 @@ function GetnotePage() {
       const meta = event.ctrlKey || event.metaKey;
       if (meta && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        const input = document.querySelector(".dshgn_search");
+        const input = findInPanel(".dshgn_search", docOfEvent(event));
         if (input) {
           input.focus();
           input.select();
@@ -11131,8 +11211,7 @@ function GetnotePage() {
         }
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return attachOnPanelWindows("keydown", onKey);
   }, [current, newNote, openNote, shown, tab, vaultReady]);
   const tabButton = (id, label, badge) => h4(
     "button",
@@ -11769,7 +11848,7 @@ function GetnotePage() {
   };
   return h4(
     "div",
-    { className: "dshgn_rel" },
+    { className: "dshgn_rel", ref: registerPanelRoot },
     h4(
       "div",
       {
@@ -13500,12 +13579,14 @@ function ArchiveCard(props) {
         showToast(t3("archive.exported"));
         return;
       }
-      const anchor = document.createElement("a");
+      const doc = panelDocument();
+      if (doc === null || !doc.body) return;
+      const anchor = doc.createElement("a");
       anchor.href = url;
       anchor.download = name;
-      document.body.appendChild(anchor);
+      doc.body.appendChild(anchor);
       anchor.click();
-      document.body.removeChild(anchor);
+      doc.body.removeChild(anchor);
       showToast(t3("archive.exporting"));
     } finally {
       window.setTimeout(() => setBusy(false), 1200);
@@ -14524,11 +14605,11 @@ function TreePane(props) {
   y2(() => {
     if (menu === null) return void 0;
     const close = () => setMenu(null);
-    window.addEventListener("click", close);
-    window.addEventListener("scroll", close, true);
+    const offClick = attachOnPanelWindows("click", close);
+    const offScroll = attachOnPanelWindows("scroll", close, true);
     return () => {
-      window.removeEventListener("click", close);
-      window.removeEventListener("scroll", close, true);
+      offClick();
+      offScroll();
     };
   }, [menu]);
   const openMenu = (event, kind, name) => {
@@ -15002,8 +15083,7 @@ function NotePane(props) {
         setEditing(false);
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return attachOnPanelWindows("keydown", onKey);
   }, [busy, current, dirty, editing, onSave, setDraft]);
   const pathKey = current !== null ? current.path : null;
   const [lastPathKey, setLastPathKey] = h2(pathKey);
