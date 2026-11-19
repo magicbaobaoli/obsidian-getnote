@@ -3095,6 +3095,12 @@ async function saveFile(url, filename) {
 .dshgn_matchNo{flex:none;min-width:18px;text-align:right;font-variant-numeric:tabular-nums;
   color:var(--dsw-alias-label-dimmed);font-size:10px;padding-top:1px}
 .dshgn_matchText{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_cardLinks{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.dshgn_cardLinkChip{appearance:none;border:0;background:rgba(var(--dshgn-tintRgb),.08);
+  color:var(--dsw-alias-brand-primary);border-radius:6px;padding:1px 6px;font-size:10px;
+  cursor:pointer;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_cardLinkChip:hover{background:var(--dsw-alias-interactive-bg-hover-accent)}
+.dshgn_cardLinkMore{font-size:10px;color:var(--dsw-alias-label-dimmed);align-self:center}
 .dshgn_searchHint{padding:0 10px 7px;font-size:10px;line-height:1.5;
   color:var(--dsw-alias-label-dimmed)}
 .dshgn_searching{flex:none;font-size:10px;color:var(--dsw-alias-label-tertiary)}
@@ -5768,6 +5774,33 @@ async function saveFile(url, filename) {
                         : entry.excerpt
                           ? h('div', { className: 'dshgn_cardExcerpt' }, entry.excerpt)
                           : null,
+                      // 搜索态再补一行「它引用了谁」：只给命中次数的话，用户还得点进去
+                      // 才知道这篇讲的是哪几篇。点胶囊直接跳过去。
+                      searchMode && Array.isArray(entry.links) && entry.links.length > 0
+                        ? h(
+                            'div',
+                            { className: 'dshgn_cardLinks' },
+                            entry.links.slice(0, 4).map((link) =>
+                              h(
+                                'button',
+                                {
+                                  key: `l-${link}`,
+                                  type: 'button',
+                                  className: 'dshgn_cardLinkChip',
+                                  title: link,
+                                  onClick: (event) => {
+                                    event.stopPropagation()
+                                    onOpenWikiLink(link)
+                                  },
+                                },
+                                link,
+                              ),
+                            ),
+                            entry.links.length > 4
+                              ? h('span', { className: 'dshgn_cardLinkMore' }, `+${entry.links.length - 4}`)
+                              : null,
+                          )
+                        : null,
                     ),
                   ),
                     // 还没渲染完就放一个按钮：滚动续载之外再给个明确出口，

@@ -954,6 +954,9 @@ export async function searchNotes(root, query, { limit = 60, perFile = 3, sort =
         matches,
         titleHit,
         matchCount,
+        // 这一篇引用了谁。搜索结果原来只给命中次数，用户还得点进去才知道它提到
+        // 的是哪几篇；正文本来就已经读进来了，顺手抽一下不额外读盘。
+        links: extractWikiLinks(body),
       })
     }
   }
@@ -1063,6 +1066,7 @@ export async function findBacklinks(root, target, entries) {
       continue
     }
     const links = extractWikiLinks(text)
+
     const matched = links.filter((link) => {
       const noExt = stripExt(link)
       const base = stripExt(link.split('/').pop() || link)

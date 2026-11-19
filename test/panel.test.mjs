@@ -2878,3 +2878,61 @@ test('反链底下带上引用那一行的上下文', async () => {
   assert.ok((snip.textContent || '').includes('开会时记到'), '上下文是引用那一行剩下的字')
   assert.ok(!(snip.textContent || '').includes('[['), '双链本身不该出现在上下文里')
 })
+/**
+ * 搜索结果卡片上的「它引用了谁」。
+ *
+ * 以前搜索只给命中次数：用户知道这篇提到了关键词，却不知道它讲的是哪几篇，
+ * 还得点进去翻。这一条守：/search 给的 links 真的画成胶囊，点了能跳过去。
+ */
+test('搜索结果卡片上列出这一篇引用了谁', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const backBtn = window.document.querySelector('.dshgn_noteBack')
+  if (backBtn) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    try {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+  }
+
+  const res = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '搜索出链验收',
+      content: '# 搜索出链验收\n\n龙眼 记到 [[搜索出链甲]] 和 [[搜索出链乙]]\n',
+      withDatePrefix: false,
+      requestId: 'seed-search-links',
+    }),
+  })
+  const created = await res.json()
+  assert.equal(created.path, '随手记/搜索出链验收.md')
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  const box = await waitFor(() => window.document.querySelector('.dshgn_search'), 5000, '搜索框')
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  setter.call(box, '龙眼')
+  box.dispatchEvent(new window.Event('input', { bubbles: true }))
+
+  const chips = await waitFor(
+    () => {
+      const all = Array.from(window.document.querySelectorAll('.dshgn_cardLinkChip'))
+      return all.length >= 2 ? all : null
+    },
+    8000,
+    '搜索结果卡片上应该列出引用了谁',
+  )
+  const texts = chips.map((el) => el.textContent)
+  assert.ok(texts.includes('搜索出链甲'), '胶囊上是链接原文：' + texts.join(','))
+  assert.ok(texts.includes('搜索出链乙'), '两条都要有：' + texts.join(','))
+})

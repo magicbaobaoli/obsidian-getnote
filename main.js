@@ -959,7 +959,10 @@ async function searchNotes(root, query, { limit = 60, perFile = 3, sort = "relev
         aliases: normalizeAliases(data.aliases !== void 0 ? data.aliases : data.alias !== void 0 ? data.alias : data["\u522B\u540D"]),
         matches,
         titleHit,
-        matchCount
+        matchCount,
+        // 这一篇引用了谁。搜索结果原来只给命中次数，用户还得点进去才知道它提到
+        // 的是哪几篇；正文本来就已经读进来了，顺手抽一下不额外读盘。
+        links: extractWikiLinks(body)
       });
     }
   }
@@ -10171,6 +10174,12 @@ var CSS = `
 .dshgn_matchNo{flex:none;min-width:18px;text-align:right;font-variant-numeric:tabular-nums;
   color:var(--dsw-alias-label-dimmed);font-size:10px;padding-top:1px}
 .dshgn_matchText{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_cardLinks{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.dshgn_cardLinkChip{appearance:none;border:0;background:rgba(var(--dshgn-tintRgb),.08);
+  color:var(--dsw-alias-brand-primary);border-radius:6px;padding:1px 6px;font-size:10px;
+  cursor:pointer;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_cardLinkChip:hover{background:var(--dsw-alias-interactive-bg-hover-accent)}
+.dshgn_cardLinkMore{font-size:10px;color:var(--dsw-alias-label-dimmed);align-self:center}
 .dshgn_searchHint{padding:0 10px 7px;font-size:10px;line-height:1.5;
   color:var(--dsw-alias-label-dimmed)}
 .dshgn_searching{flex:none;font-size:10px;color:var(--dsw-alias-label-tertiary)}
@@ -12489,7 +12498,30 @@ ${insert}
                       h4("span", { className: "dshgn_matchText" }, match.text)
                     )
                   )
-                ) : entry.excerpt ? h4("div", { className: "dshgn_cardExcerpt" }, entry.excerpt) : null
+                ) : entry.excerpt ? h4("div", { className: "dshgn_cardExcerpt" }, entry.excerpt) : null,
+                // 搜索态再补一行「它引用了谁」：只给命中次数的话，用户还得点进去
+                // 才知道这篇讲的是哪几篇。点胶囊直接跳过去。
+                searchMode && Array.isArray(entry.links) && entry.links.length > 0 ? h4(
+                  "div",
+                  { className: "dshgn_cardLinks" },
+                  entry.links.slice(0, 4).map(
+                    (link) => h4(
+                      "button",
+                      {
+                        key: `l-${link}`,
+                        type: "button",
+                        className: "dshgn_cardLinkChip",
+                        title: link,
+                        onClick: (event) => {
+                          event.stopPropagation();
+                          onOpenWikiLink(link);
+                        }
+                      },
+                      link
+                    )
+                  ),
+                  entry.links.length > 4 ? h4("span", { className: "dshgn_cardLinkMore" }, `+${entry.links.length - 4}`) : null
+                ) : null
               )
             ),
             // 还没渲染完就放一个按钮：滚动续载之外再给个明确出口，
@@ -15791,7 +15823,7 @@ ${t3("tree.menuDelete")}\uFF1A\u53F3\u952E`
   );
 }
 function NotePane(props) {
-  const { t: t3, status, current, draft, setDraft, dirty, busy, onSave, onRename, onDelete, onCopyReference, onOpenWikiLink, onSyncOne, onRestored, onError, onToggleTodo, onClose, onAttach } = props;
+  const { t: t3, status, current, draft, setDraft, dirty, busy, onSave, onRename, onDelete, onCopyReference, onOpenWikiLink: onOpenWikiLink2, onSyncOne, onRestored, onError, onToggleTodo, onClose, onAttach } = props;
   const anchorRequest = props.anchor;
   const onAnchorDone = props.onAnchorDone;
   const resolveNote = props.resolveNote;
@@ -16401,9 +16433,9 @@ function NotePane(props) {
             // 用户的直觉），没注入宿主时退回面板自己的「在面板里打开」。
             onOpenLink: (target) => {
               if (openLinkInVault(target, vaultPathOf(current))) return;
-              onOpenWikiLink(target);
+              onOpenWikiLink2(target);
             },
-            onOpenWikiLink,
+            onOpenWikiLink: onOpenWikiLink2,
             onToggleTodo: editing ? void 0 : onToggleTodo,
             // ![[另一篇笔记]]：把那一篇的正文嵌进来。解析口径与点双链
             // 共用一套，否则会出现「点得过去、嵌不进来」。
@@ -16427,7 +16459,7 @@ function NotePane(props) {
               type: "button",
               className: "dshgn_backlinkItem",
               title: hit.path,
-              onClick: () => onOpenWikiLink(hit.path)
+              onClick: () => onOpenWikiLink2(hit.path)
             },
             h4("span", { className: "dshgn_backlinkTitle" }, hit.title || hit.path),
             // 一篇笔记里提到这一篇好几次时标个次数：三条反链里那条提了 5 次
@@ -16459,7 +16491,7 @@ function NotePane(props) {
                 type: "button",
                 className: "dshgn_outlinkChip",
                 title: link,
-                onClick: () => onOpenWikiLink(link)
+                onClick: () => onOpenWikiLink2(link)
               },
               link
             )

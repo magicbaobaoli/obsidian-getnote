@@ -123,6 +123,30 @@ note_url: https://www.biji.com/note/1200000000000000001
   check('searchNotes: 命中正文', found.hits.length === 1 && found.hits[0].matches.length === 1, JSON.stringify(found.hits.map((x) => x.path)))
   const foundTitle = await searchNotes(root, '同名')
   check('searchNotes: 命中标题', foundTitle.hits.some((x) => x.titleHit === true))
+  // 搜索结果要带上「这一篇引用了谁」：只给命中次数的话，用户还得点进去才知道
+  // 它讲的是哪几篇。正文本来就已经读进来了，顺手抽一下不额外读盘。
+  await writeFile(
+    join(root, '随手记', '搜索出链.md'),
+    ['# 搜索出链', '', '菠萝蜜 记到 [[甲篇]] 与 [[乙篇|别名]]', ''].join('\n'),
+    'utf8',
+  )
+  const foundLinks = await searchNotes(root, '菠萝蜜')
+  const linkHit = foundLinks.hits.find((h) => h.path === '随手记/搜索出链.md')
+  check(
+    'searchNotes: 命中项带上它引用了谁',
+    linkHit !== undefined && Array.isArray(linkHit.links) && linkHit.links.length === 2,
+    JSON.stringify(linkHit && linkHit.links),
+  )
+  check(
+    'searchNotes: 别名写法只留目标',
+    linkHit !== undefined && linkHit.links.indexOf('乙篇') >= 0 && linkHit.links.indexOf('甲篇') >= 0,
+    JSON.stringify(linkHit && linkHit.links),
+  )
+  check(
+    'searchNotes: 没有双链的笔记给空数组',
+    found.hits.every((h) => Array.isArray(h.links)),
+    JSON.stringify(found.hits.map((h) => h.links)),
+  )
 
   // 10. 统计与目录
   const stats = await vaultStats(root, scan2.entries)
