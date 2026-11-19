@@ -1491,6 +1491,72 @@ test('图片交给宿主打开，路径口径与别处一致', async () => {
   app.vault.getAbstractFileByPath = realGet
 })
 
+test('改名交给宿主的对话框，改完把新路径交回面板', async () => {
+  await adapter.mkdir('得到大脑/随手记')
+  await adapter.write('得到大脑/随手记/改名前.md', '# 改名前\n')
+
+  const asked = []
+  const realManager = app.fileManager
+  app.fileManager = {
+    generateMarkdownLink: realManager.generateMarkdownLink,
+    async promptForFileRename(file) {
+      asked.push(String(file.path))
+      await adapter.rename(file.path, '得到大脑/随手记/改名后.md')
+      file.path = '得到大脑/随手记/改名后.md'
+    },
+  }
+  // 相对笔记目录的口径：补上笔记子目录再交给宿主
+  assert.equal(await plugin.renameNoteInVault('随手记/改名前.md'), '随手记/改名后.md')
+  assert.deepEqual(asked, ['得到大脑/随手记/改名前.md'], '交给宿主对话框的应该是库内相对路径')
+
+  // 库内相对路径的口径也认，且不该重复补前缀
+  await adapter.write('得到大脑/随手记/甲.md', '# 甲\n')
+  asked.length = 0
+  app.fileManager.promptForFileRename = async (file) => {
+    await adapter.rename(file.path, '得到大脑/随手记/乙.md')
+    file.path = '得到大脑/随手记/乙.md'
+  }
+  assert.equal(await plugin.renameNoteInVault('得到大脑/随手记/甲.md'), '随手记/乙.md')
+  assert.deepEqual(asked, [], '库内相对路径的口径不该再问一次')
+
+  // 用户在对话框里按了取消：路径没变，交回空串，面板什么都不做
+  app.fileManager.promptForFileRename = async (file) => {
+    asked.push(String(file.path))
+  }
+  await adapter.write('得到大脑/随手记/不动.md', '# 不动\n')
+  assert.equal(await plugin.renameNoteInVault('随手记/不动.md'), '')
+  assert.deepEqual(asked, ['得到大脑/随手记/不动.md'])
+
+  // 改到笔记目录之外：面板里打不开，交回空串让面板只刷新列表
+  await adapter.write('得到大脑/随手记/搬出去.md', '# 搬出去\n')
+  app.fileManager.promptForFileRename = async (file) => {
+    await adapter.rename(file.path, '别处的目录/搬出去.md')
+    file.path = '别处的目录/搬出去.md'
+  }
+  assert.equal(await plugin.renameNoteInVault('随手记/搬出去.md'), '')
+
+  // 库里没有这一篇：不弹对话框
+  assert.equal(await plugin.renameNoteInVault('随手记/根本没有.md'), '')
+  assert.equal(await plugin.renameNoteInVault(''), '')
+  assert.equal(await plugin.renameNoteInVault(null), '')
+
+  // 宿主没有这个接口：明说一句，别静默
+  app.fileManager = { generateMarkdownLink: realManager.generateMarkdownLink }
+  const before = calls.notices.length
+  assert.equal(await plugin.renameNoteInVault('随手记/改名后.md'), '')
+  assert.equal(calls.notices.length, before + 1)
+  assert.match(String(calls.notices[calls.notices.length - 1]), /改名/)
+
+  // 宿主查文件时抛错：返回空串，不能把面板带崩
+  app.fileManager = realManager
+  const realGet = app.vault.getAbstractFileByPath
+  app.vault.getAbstractFileByPath = () => {
+    throw new Error('索引还没建好')
+  }
+  assert.equal(await plugin.renameNoteInVault('随手记/改名后.md'), '')
+  app.vault.getAbstractFileByPath = realGet
+})
+
 test('onunload 会关掉本地服务', async () => {
   const origin = plugin.server.origin
   plugin.onunload()

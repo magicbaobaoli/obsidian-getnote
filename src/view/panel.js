@@ -393,6 +393,31 @@ async function saveFile(url, filename) {
       }
     }
 
+    // 重命名交给宿主做。它改名的时候会顺手把全库的双链、Markdown 链接一起改掉；
+    // 我们自己去 rename 文件的话，别的笔记里的 [[旧名字]] 会静默变成死链——
+    // 那种断裂往往几个月后才被发现。宿主还自带一个跟文件列表里一模一样的
+    // 改名对话框（预填原名、Enter 确认），比自己再造一个更像 Obsidian。
+    let __renameNote = null
+    export function setRenameNote(fn) {
+      __renameNote = typeof fn === 'function' ? fn : null
+    }
+    function hasRenameNote() {
+      return __renameNote !== null
+    }
+    /**
+     * 请宿主弹改名对话框。返回改完之后相对笔记目录的新路径；
+     * 没接上宿主、用户取消、改到笔记目录之外，都返回空串。
+     */
+    async function renameNoteInHost(path) {
+      if (__renameNote === null) return ''
+      try {
+        const answer = await __renameNote(String(path || ''))
+        return typeof answer === 'string' ? answer : ''
+      } catch {
+        return ''
+      }
+    }
+
     // 宿主换主题时 Obsidian 会发 'css-change' 事件，比 MutationObserver 盯 body
     // 的 class 更准（用户改了字体、字号、界面缩放也能收到）。没有宿主时靠
     // MutationObserver 兜底，两者最终都只是让面板重新算一次配色。
@@ -506,6 +531,9 @@ async function saveFile(url, filename) {
         'action.openInEditor': '在 Obsidian 里打开',
         'action.delete': '删除',
         'action.copyRef': '复制引用',
+        'action.rename': '重命名',
+        'action.renamed': '改好了',
+        'note.renameUnsaved': '先保存再改名，别把刚写的丢了',
         'action.copied': '已复制',
         'action.retry': '重试',
         'search.placeholder': '搜索标题、正文、标签…',
@@ -892,6 +920,9 @@ async function saveFile(url, filename) {
         'action.openInEditor': 'Open in Obsidian',
         'action.delete': 'Delete',
         'action.copyRef': 'Copy reference',
+        'action.rename': 'Rename',
+        'action.renamed': 'Renamed',
+        'note.renameUnsaved': 'Save first, then rename',
         'action.copied': 'Copied',
         'action.retry': 'Retry',
         'search.placeholder': 'Search title, body, tags…',
@@ -1275,6 +1306,9 @@ async function saveFile(url, filename) {
         'action.openInEditor': 'Openen in Obsidian',
         'action.delete': 'Verwijderen',
         'action.copyRef': 'Referentie kopiëren',
+        'action.rename': 'Naam wijzigen',
+        'action.renamed': 'Naam gewijzigd',
+        'note.renameUnsaved': 'Sla eerst op en wijzig dan de naam',
         'action.copied': 'Gekopieerd',
         'action.retry': 'Opnieuw',
         'search.placeholder': 'Zoek titel, tekst, tags…',
@@ -2135,6 +2169,7 @@ async function saveFile(url, filename) {
       calendar: 'M4 7h16v13H4Z M4 11h16 M8 4v5 M16 4v5',
       note: 'M5 4h9l5 5v11H5Z M14 4v5h5 M8 13h8 M8 17h5',
       'external-link': 'M14 4h6v6 M20 4l-9 9 M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5',
+      rename: 'M9 4h6 M12 4v16 M9 20h6',
     }
 
     function Icon(props) {
@@ -4343,6 +4378,39 @@ async function saveFile(url, filename) {
         [activeDir, entries, newNote, openNote, refresh, showToast, status, t],
       )
 
+      /**
+       * 重命名一篇笔记。
+       *
+       * 这件事必须交给宿主：它改名的时候会顺手把全库的双链、Markdown 链接一起
+       * 改掉。我们自己去 rename 文件的话，别的笔记里的 [[旧名字]] 会静默变成
+       * 死链——那种断裂往往几个月后才被发现，而且很难查是哪一次改名造成的。
+       *
+       * 改完之后重读一遍正文：宿主的链接重写可能连这篇自己内部的引用也改了。
+       */
+      const renameNote = React.useCallback(
+        async (path) => {
+          const target = String(path || '')
+          if (target === '') return
+          // 有没保存的改动就先拦住：宿主的改名对话框挡在中间，改完面板会重新读
+          // 一遍，草稿没落盘的话，用户刚敲的那几句就跟着旧文件一起没了。
+          if (
+            current !== null &&
+            current.path === target &&
+            draft !== null &&
+            draft !== current.content
+          ) {
+            showToast(t('note.renameUnsaved'))
+            return
+          }
+          const next = await renameNoteInHost(target)
+          if (next === '') return
+          showToast(t('action.renamed'))
+          await refresh()
+          await openNote(next)
+        },
+        [current, draft, openNote, refresh, showToast, t],
+      )
+
       const deleteNote = React.useCallback(async () => {
         if (current === null) return
         setBusy(true)
@@ -5101,6 +5169,15 @@ async function saveFile(url, filename) {
                                   },
                                 }
                               : null,
+                            hasRenameNote()
+                              ? {
+                                  id: 'rename',
+                                  label: t('action.rename'),
+                                  run: () => {
+                                    void renameNote(entry.path)
+                                  },
+                                }
+                              : null,
                             {
                               id: 'copy-ref',
                               label: t('action.copyRef'),
@@ -5237,6 +5314,7 @@ async function saveFile(url, filename) {
             },
             onSave: saveNote,
             onDelete: deleteNote,
+            onRename: renameNote,
             onCopyReference: copyReference,
             onOpenWikiLink: openWikiLink,
             onSyncOne: syncCurrent,
@@ -9000,7 +9078,7 @@ async function saveFile(url, filename) {
     // ── 阅读 / 编辑 ───────────────────────────────────────────────────────────
 
     function NotePane(props) {
-      const { t, status, current, draft, setDraft, dirty, busy, onSave, onDelete, onCopyReference, onOpenWikiLink, onSyncOne, onRestored, onError, onToggleTodo, onClose } = props
+      const { t, status, current, draft, setDraft, dirty, busy, onSave, onRename, onDelete, onCopyReference, onOpenWikiLink, onSyncOne, onRestored, onError, onToggleTodo, onClose } = props
       // 渲染器要的是「库内相对路径」：status.vaultRoot 是绝对路径，笔记在库里
       // 真正的位置是「<子目录>/<笔记相对路径>」。相对链接、图片、嵌入块都靠它解析。
       const subfolder = status !== null && typeof status.subfolder === 'string' ? status.subfolder.replace(/^\/+|\/+$/g, '') : ''
@@ -9265,6 +9343,21 @@ async function saveFile(url, filename) {
                   { type: 'button', className: 'dshgn_iconBtn', title: t('action.edit'), onClick: () => setEditing(true) },
                   h(Icon, { name: 'edit', size: 15 }),
                 ),
+                // 改名走宿主的对话框：它会把全库双链一起改掉，自己改文件就会留死链。
+                hasRenameNote()
+                  ? h(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'dshgn_iconBtn',
+                        title: t('action.rename'),
+                        onClick: () => {
+                          if (typeof onRename === 'function') onRename(current.path)
+                        },
+                      },
+                      h(Icon, { name: 'rename', size: 15 }),
+                    )
+                  : null,
                 h(
                   'button',
                   { type: 'button', className: 'dshgn_iconBtn', title: t('action.copyRef'), onClick: onCopyReference },

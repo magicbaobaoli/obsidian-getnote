@@ -378,6 +378,25 @@ test('右键笔记卡片会把动作清单交给宿主，执行其中一项真�
   assert.equal(revealed.length, 1, '执行这一项应该把路径交给宿主一次')
   assert.match(revealed[0], /右键菜单验收\.md$/, '交出去的是这篇的路径，实际 ' + revealed[0])
 
+  // 接上「重命名」之后，清单里多一项：改名必须走宿主的对话框，它会把全库的
+  // [[双链]] 一起改掉。我们自己 rename 文件的话，别的笔记里的引用会静默变成死链。
+  const renamed = []
+  panel.setRenameNote(async (path) => {
+    renamed.push(String(path))
+    return ''
+  })
+  panel.setNoteMenu((event, items) => {
+    const item = items.find((one) => one.id === 'rename')
+    assert.ok(item, '接上改名之后，清单里应该有「重命名」，实际 ' + items.map((one) => one.id).join(','))
+    item.run()
+    return true
+  })
+  card.dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+  await sleep(120)
+  assert.equal(renamed.length, 1, '执行这一项应该把路径交给宿主一次')
+  assert.match(renamed[0], /右键菜单验收\.md$/, '交出去的是这篇的路径，实际 ' + renamed[0])
+
+  panel.setRenameNote(null)
   panel.setRevealInVault(null)
   panel.setOpenInEditor(null)
   panel.setNoteMenu(null)
@@ -1069,6 +1088,94 @@ test('编辑态里 Ctrl+S 保存、Esc 退出编辑', async () => {
   // Esc：退出编辑态（保存后可能已经退出，也接受再进一次）
   window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
   await waitFor(() => window.document.querySelector('.dshgn_editor') === null, 5000, 'Esc 之后要退出编辑态')
+})
+
+/**
+ * 改名必须走宿主的对话框。
+ *
+ * 宿主改名时会顺手把全库的 [[双链]] 一起改掉；我们自己 rename 文件的话，
+ * 别的笔记里的引用会静默变成死链，几个月后才有人发现。所以这里守两件事：
+ * 笔记头那个按钮真的把路径交给宿主；有没保存的改动时先拦住，别让刚敲的
+ * 那几句跟着旧文件一起没了。
+ */
+test('改名交给宿主的对话框，有没保存的改动就先拦住', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const toastText = () => (window.document.querySelector('.dshgn_toast') || { textContent: '' }).textContent
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+  await clickTab('笔记')
+  await waitFor(() => window.document.querySelector('.dshgn_card') !== null, 8000, '列表有卡片')
+
+  // 上一条用例可能还开着笔记：先退回空态，再从卡片打开，路径才确定
+  const back = window.document.querySelector('.dshgn_noteBack')
+  if (back) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    try {
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+  }
+
+  window.document.querySelector('.dshgn_card').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 8000, '笔记打开')
+  // 卡片顺序会随排序变，所以不写死名字：改的就是当前开着的那一篇
+  const { readSession } = panel.__internals
+  await waitFor(() => readSession().path !== '', 5000, '打开之后要记下是哪一篇')
+  const openPath = readSession().path
+
+  const renamed = []
+  // 笔记头那个按钮是渲染时按「有没有接上宿主」决定挂不挂的，所以要先接上、
+  // 再让它重画一遍（切到别的页签再切回来）。真实插件里这一步在 onload 就做完了。
+  panel.setRenameNote(async (path) => {
+    renamed.push(String(path))
+    // 返回空串：宿主那边取消了（或没接上），面板不该继续动
+    return ''
+  })
+  try {
+    await clickTab('设置')
+    await sleep(120)
+    await clickTab('笔记')
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 8000, '切回笔记后还是开着那篇')
+
+    const renameBtn = () =>
+      Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '重命名')
+    assert.ok(renameBtn(), '接上宿主之后笔记头上应该有改名按钮')
+    renameBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => renamed.length === 1, 5000, '改名按钮把路径交给宿主')
+    assert.equal(renamed[0], openPath, '交出去的是当前开着那一篇的路径，实际 ' + renamed[0])
+
+    // 有没保存的改动：先拦住，不再往宿主那边走。
+    // 编辑态下笔记头只留保存/取消，所以这一下走列表里那张卡片的右键菜单。
+    const editBtn = () =>
+      Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '编辑')
+    editBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    const area = await waitFor(() => window.document.querySelector('.dshgn_editor'), 5000, '进入编辑态')
+    area.value = '改名验收：这段还没保存'
+    area.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(80)
+
+    const card = Array.from(window.document.querySelectorAll('.dshgn_card')).find(
+      (el) => el.getAttribute('title') === openPath,
+    )
+    assert.ok(card, '列表里应该有当前开着那一篇的卡片，实际 ' + openPath)
+    panel.setNoteMenu((event, items) => {
+      const item = items.find((one) => one.id === 'rename')
+      assert.ok(item, '接上改名之后清单里应该有「重命名」')
+      item.run()
+      return true
+    })
+    card.dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+    await waitFor(() => /先保存/.test(toastText()), 5000, '有草稿时先提示保存')
+    assert.equal(renamed.length, 1, '有没保存的改动时不该把路径交给宿主')
+    panel.setNoteMenu(null)
+
+    // 退出编辑态，别把草稿留给后面的用例
+    window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await waitFor(() => window.document.querySelector('.dshgn_editor') === null, 5000, 'Esc 退出编辑态')
+  } finally {
+    panel.setRenameNote(null)
+  }
 })
 
 /**

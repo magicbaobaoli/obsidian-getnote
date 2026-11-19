@@ -7777,6 +7777,22 @@ function openAssetInHost(path) {
     return false;
   }
 }
+var __renameNote = null;
+function setRenameNote(fn2) {
+  __renameNote = typeof fn2 === "function" ? fn2 : null;
+}
+function hasRenameNote() {
+  return __renameNote !== null;
+}
+async function renameNoteInHost(path) {
+  if (__renameNote === null) return "";
+  try {
+    const answer = await __renameNote(String(path || ""));
+    return typeof answer === "string" ? answer : "";
+  } catch {
+    return "";
+  }
+}
 var __cssListeners = /* @__PURE__ */ new Set();
 function notifyCssChange() {
   for (const listener of Array.from(__cssListeners)) {
@@ -7848,6 +7864,9 @@ var LEX = {
     "action.openInEditor": "\u5728 Obsidian \u91CC\u6253\u5F00",
     "action.delete": "\u5220\u9664",
     "action.copyRef": "\u590D\u5236\u5F15\u7528",
+    "action.rename": "\u91CD\u547D\u540D",
+    "action.renamed": "\u6539\u597D\u4E86",
+    "note.renameUnsaved": "\u5148\u4FDD\u5B58\u518D\u6539\u540D\uFF0C\u522B\u628A\u521A\u5199\u7684\u4E22\u4E86",
     "action.copied": "\u5DF2\u590D\u5236",
     "action.retry": "\u91CD\u8BD5",
     "search.placeholder": "\u641C\u7D22\u6807\u9898\u3001\u6B63\u6587\u3001\u6807\u7B7E\u2026",
@@ -8230,6 +8249,9 @@ var LEX = {
     "action.openInEditor": "Open in Obsidian",
     "action.delete": "Delete",
     "action.copyRef": "Copy reference",
+    "action.rename": "Rename",
+    "action.renamed": "Renamed",
+    "note.renameUnsaved": "Save first, then rename",
     "action.copied": "Copied",
     "action.retry": "Retry",
     "search.placeholder": "Search title, body, tags\u2026",
@@ -8609,6 +8631,9 @@ var LEX = {
     "action.openInEditor": "Openen in Obsidian",
     "action.delete": "Verwijderen",
     "action.copyRef": "Referentie kopi\xEBren",
+    "action.rename": "Naam wijzigen",
+    "action.renamed": "Naam gewijzigd",
+    "note.renameUnsaved": "Sla eerst op en wijzig dan de naam",
     "action.copied": "Gekopieerd",
     "action.retry": "Opnieuw",
     "search.placeholder": "Zoek titel, tekst, tags\u2026",
@@ -9313,7 +9338,8 @@ var ICONS = {
   chevron: "M9 6l6 6-6 6",
   calendar: "M4 7h16v13H4Z M4 11h16 M8 4v5 M16 4v5",
   note: "M5 4h9l5 5v11H5Z M14 4v5h5 M8 13h8 M8 17h5",
-  "external-link": "M14 4h6v6 M20 4l-9 9 M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"
+  "external-link": "M14 4h6v6 M20 4l-9 9 M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5",
+  rename: "M9 4h6 M12 4v16 M9 20h6"
 };
 function Icon(props) {
   const size = props && typeof props.size === "number" ? props.size : 16;
@@ -11214,6 +11240,22 @@ function GetnotePage() {
     }),
     [activeDir, entries, newNote, openNote, refresh, showToast, status, t3]
   );
+  const renameNote = q2(
+    async (path) => {
+      const target = String(path || "");
+      if (target === "") return;
+      if (current !== null && current.path === target && draft !== null && draft !== current.content) {
+        showToast(t3("note.renameUnsaved"));
+        return;
+      }
+      const next = await renameNoteInHost(target);
+      if (next === "") return;
+      showToast(t3("action.renamed"));
+      await refresh();
+      await openNote(next);
+    },
+    [current, draft, openNote, refresh, showToast, t3]
+  );
   const deleteNote = q2(async () => {
     if (current === null) return;
     setBusy(true);
@@ -11895,6 +11937,13 @@ function GetnotePage() {
                           revealInVault(entry.path);
                         }
                       } : null,
+                      hasRenameNote() ? {
+                        id: "rename",
+                        label: t3("action.rename"),
+                        run: () => {
+                          void renameNote(entry.path);
+                        }
+                      } : null,
                       {
                         id: "copy-ref",
                         label: t3("action.copyRef"),
@@ -12021,6 +12070,7 @@ function GetnotePage() {
         },
         onSave: saveNote,
         onDelete: deleteNote,
+        onRename: renameNote,
         onCopyReference: copyReference,
         onOpenWikiLink: openWikiLink,
         onSyncOne: syncCurrent,
@@ -15219,7 +15269,7 @@ ${t3("tree.menuDelete")}\uFF1A\u53F3\u952E`
   );
 }
 function NotePane(props) {
-  const { t: t3, status, current, draft, setDraft, dirty, busy, onSave, onDelete, onCopyReference, onOpenWikiLink, onSyncOne, onRestored, onError, onToggleTodo, onClose } = props;
+  const { t: t3, status, current, draft, setDraft, dirty, busy, onSave, onRename, onDelete, onCopyReference, onOpenWikiLink, onSyncOne, onRestored, onError, onToggleTodo, onClose } = props;
   const subfolder = status !== null && typeof status.subfolder === "string" ? status.subfolder.replace(/^\/+|\/+$/g, "") : "";
   const vaultPathOf = (note) => {
     const rel = note !== null && typeof note.path === "string" ? note.path : "";
@@ -15437,6 +15487,19 @@ function NotePane(props) {
           { type: "button", className: "dshgn_iconBtn", title: t3("action.edit"), onClick: () => setEditing(true) },
           h4(Icon, { name: "edit", size: 15 })
         ),
+        // 改名走宿主的对话框：它会把全库双链一起改掉，自己改文件就会留死链。
+        hasRenameNote() ? h4(
+          "button",
+          {
+            type: "button",
+            className: "dshgn_iconBtn",
+            title: t3("action.rename"),
+            onClick: () => {
+              if (typeof onRename === "function") onRename(current.path);
+            }
+          },
+          h4(Icon, { name: "rename", size: 15 })
+        ) : null,
         h4(
           "button",
           { type: "button", className: "dshgn_iconBtn", title: t3("action.copyRef"), onClick: onCopyReference },
@@ -16375,6 +16438,7 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     setNewNotePlacement(() => this.newNoteDir());
     setOpenAsset((path) => this.openAssetInVault(path));
     setDailyTemplate(() => this.dailyTemplateContent());
+    setRenameNote((path) => this.renameNoteInVault(path));
     setVaultGraph((path, kind) => this.vaultGraphOf(path, kind));
     setStatusReport((info) => this.updateStatusBar(info));
     const stored = await readSettings();
@@ -17160,6 +17224,53 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       return false;
     } catch {
       return false;
+    }
+  }
+  /**
+   * 让宿主弹它自己的改名对话框，改完把新路径交回面板。
+   *
+   * 为什么不自己 rename 文件：宿主改名时会同步重写全库的 [[双链]] 与 Markdown
+   * 链接。我们绕过它直接改文件名，别的笔记里的引用就成了死链，而且没有任何
+   * 提示——用户往往几个月后才在某篇笔记里发现一串点不开的链接。
+   *
+   * 用 promptForFileRename 而不是 renameFile：前者是用户熟悉的那个对话框，
+   * 预填原名、回车确认、自动避开重名；后者要我们自己做输入界面，还得自己
+   * 处理「名字里有斜杠」「已存在」这些边界。用户取消（对话框关掉）时路径
+   * 没变，返回空串，面板据此什么都不做。
+   */
+  async renameNoteInVault(path) {
+    try {
+      const raw = String(path || "").replace(/\\/g, "/");
+      if (raw === "") return "";
+      const runtime2 = getRuntime();
+      const base = String(runtime2.vaultBase || "").replace(/\\/g, "/").replace(/\/+$/, "");
+      const sub = String(runtime2.subfolder || DEFAULT_SUBFOLDER).replace(/^\/+|\/+$/g, "");
+      let rel = raw.replace(/^\/+/, "");
+      const baseBare = base.replace(/^\/+/, "");
+      if (baseBare !== "" && rel.startsWith(baseBare + "/")) rel = rel.slice(baseBare.length + 1);
+      const candidates = [rel];
+      if (sub !== "" && !rel.startsWith(sub + "/")) candidates.push(`${sub}/${rel}`);
+      let file = null;
+      for (const candidate of candidates) {
+        const hit = this.app.vault.getAbstractFileByPath(candidate);
+        if (hit) {
+          file = hit;
+          break;
+        }
+      }
+      if (!file) return "";
+      const manager = this.app.fileManager;
+      if (!manager || typeof manager.promptForFileRename !== "function") {
+        new import_obsidian2.Notice("\u5F97\u5230\u5927\u8111\uFF1A\u8FD9\u4E2A\u7248\u672C\u7684 Obsidian \u6CA1\u6709\u6539\u540D\u5BF9\u8BDD\u6846\uFF0C\u6539\u4E0D\u4E86");
+        return "";
+      }
+      const before = String(file.path || "");
+      await manager.promptForFileRename(file);
+      const after = String(file.path || "");
+      if (after === "" || after === before) return "";
+      return this.notePathInVault(file);
+    } catch {
+      return "";
     }
   }
   /**

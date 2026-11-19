@@ -51,6 +51,7 @@ import {
   setNewNotePlacement,
   setOpenAsset,
   setDailyTemplate,
+  setRenameNote,
   setVaultGraph,
   setStatusReport,
   notifyCssChange,
@@ -179,6 +180,9 @@ export default class GetnoteObsidianPlugin extends Plugin {
     // 「今天」新建时填宿主配好的日记模板：那边已经有骨架了，再让用户在我们这儿
     // 配一遍，同一个库里就会出现两种「今天的日记」。
     setDailyTemplate(() => this.dailyTemplateContent())
+    // 改名交给宿主：它改的时候会顺手把全库的双链、Markdown 链接一起改掉。
+    // 我们自己 rename 文件的话，别的笔记里的 [[旧名字]] 会静默变成死链。
+    setRenameNote((path) => this.renameNoteInVault(path))
 
     // 反链、出链交给宿主的 metadataCache。
     //
@@ -1126,6 +1130,57 @@ export default class GetnoteObsidianPlugin extends Plugin {
       return false
     } catch {
       return false
+    }
+  }
+
+  /**
+   * 让宿主弹它自己的改名对话框，改完把新路径交回面板。
+   *
+   * 为什么不自己 rename 文件：宿主改名时会同步重写全库的 [[双链]] 与 Markdown
+   * 链接。我们绕过它直接改文件名，别的笔记里的引用就成了死链，而且没有任何
+   * 提示——用户往往几个月后才在某篇笔记里发现一串点不开的链接。
+   *
+   * 用 promptForFileRename 而不是 renameFile：前者是用户熟悉的那个对话框，
+   * 预填原名、回车确认、自动避开重名；后者要我们自己做输入界面，还得自己
+   * 处理「名字里有斜杠」「已存在」这些边界。用户取消（对话框关掉）时路径
+   * 没变，返回空串，面板据此什么都不做。
+   */
+  async renameNoteInVault(path) {
+    try {
+      const raw = String(path || '').replace(/\\/g, '/')
+      if (raw === '') return ''
+      const runtime = settingsStore.getRuntime()
+      const base = String(runtime.vaultBase || '').replace(/\\/g, '/').replace(/\/+$/, '')
+      const sub = String(runtime.subfolder || DEFAULT_SUBFOLDER).replace(/^\/+|\/+$/g, '')
+      // 面板传三种口径（库内相对 / 相对笔记目录 / 绝对），宿主只认第一种。
+      let rel = raw.replace(/^\/+/, '')
+      const baseBare = base.replace(/^\/+/, '')
+      if (baseBare !== '' && rel.startsWith(baseBare + '/')) rel = rel.slice(baseBare.length + 1)
+      const candidates = [rel]
+      if (sub !== '' && !rel.startsWith(sub + '/')) candidates.push(`${sub}/${rel}`)
+      let file = null
+      for (const candidate of candidates) {
+        const hit = this.app.vault.getAbstractFileByPath(candidate)
+        if (hit) {
+          file = hit
+          break
+        }
+      }
+      if (!file) return ''
+      const manager = this.app.fileManager
+      if (!manager || typeof manager.promptForFileRename !== 'function') {
+        // 静默不动会被当成按钮坏了，明说一句。
+        new Notice('得到大脑：这个版本的 Obsidian 没有改名对话框，改不了')
+        return ''
+      }
+      const before = String(file.path || '')
+      await manager.promptForFileRename(file)
+      const after = String(file.path || '')
+      if (after === '' || after === before) return ''
+      // 改到笔记目录之外就没法在面板里打开了，交回空串让面板只刷新列表。
+      return this.notePathInVault(file)
+    } catch {
+      return ''
     }
   }
 
