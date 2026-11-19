@@ -920,6 +920,19 @@ test('Bases 视图与画布都能真的落到库里，重复执行不覆盖', as
   await plugin.addNoteToCanvas('得到大脑/随手记/画布验收.md')
   const again = JSON.parse(await adapter.read('得到大脑/得到大脑画布.canvas'))
   assert.equal(again.nodes.length, 1, '同一篇加两次不该变成两个节点')
+
+  // 生成完顺手打开：只写文件什么都不发生，用户会以为命令没生效。
+  // （openVaultFile 会重试几次等宿主的索引跟上，这里直接看它把路径交出去了没有）
+  const opened = []
+  const leaf = app.workspace.getLeaf
+  app.workspace.getLeaf = () => ({
+    setViewState: async () => {},
+    openFile: async (file) => { opened.push(file && file.path) },
+  })
+  await plugin.createBasesView()
+  assert.ok(opened.includes('得到大脑/得到大脑.base'), '已有的 Bases 视图也该顺手打开')
+  await plugin.addNoteToCanvas('得到大脑/随手记/另一篇.md')
+  app.workspace.getLeaf = leaf
 })
 
 /**

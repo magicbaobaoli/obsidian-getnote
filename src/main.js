@@ -557,6 +557,32 @@ export default class GetnoteObsidianPlugin extends Plugin {
   }
 
   /**
+   * 在宿主里打开库内的某个文件（不只是 .md）。
+   *
+   * `openInVaultEditor` 走的是同一套入口，但它被设计成同步返回布尔值，用在
+   * 面板的按钮回调里。刚写完的文件在宿主的文件表里可能还没登记（写入与索引
+   * 是两条路），所以这里带几次重试：写完立刻打开，失败就等一会儿再试。
+   */
+  async openVaultFile(relPath, attempts = 4) {
+    const rel = String(relPath || '').replace(/^\/+/, '')
+    if (rel === '') return false
+    for (let i = 0; i < attempts; i += 1) {
+      const file = this.app.vault.getAbstractFileByPath ? this.app.vault.getAbstractFileByPath(rel) : null
+      if (file) {
+        try {
+          await this.app.workspace.getLeaf('tab').openFile(file)
+          return true
+        } catch {
+          return false
+        }
+      }
+      // 宿主的索引一般几十毫秒内就跟上，等一小会儿再查
+      await new Promise((resolve) => setTimeout(resolve, 80))
+    }
+    return false
+  }
+
+  /**
    * 在笔记目录里写一份 `.base`：Obsidian 1.9 的 Bases 视图能直接打开它。
    *
    * 有了它，用户可以在 Bases 里按标签/日期分组、写自己的公式，而不用回到我们
@@ -578,11 +604,16 @@ export default class GetnoteObsidianPlugin extends Plugin {
       }
       if (already) {
         new Notice('得到大脑：这个 Bases 视图已经存在了')
+        // 已经存在就别重写（用户可能在里面调过视图），但顺手打开它——
+        // 他要的就是「看一眼我的库按标签长什么样」。
+        await this.openVaultFile(target)
         return
       }
       await vfsWrite(abs, basesTemplate({ subfolder: subfolder || DEFAULT_SUBFOLDER }))
       invalidateScan()
-      new Notice(`得到大脑：已生成 ${target}`)
+      // 生成完直接打开：只写一个文件、什么都不发生，用户会以为命令没生效。
+      if (await this.openVaultFile(target)) new Notice(`得到大脑：已生成并打开 ${target}`)
+      else new Notice(`得到大脑：已生成 ${target}`)
     } catch (error) {
       new Notice(`得到大脑：生成 Bases 视图失败 —— ${error && error.message ? error.message : error}`)
     }
@@ -617,7 +648,9 @@ export default class GetnoteObsidianPlugin extends Plugin {
       }
       await vfsWrite(canvasAbs, serializeCanvas(next))
       invalidateScan()
-      new Notice(`得到大脑：已放进 ${canvasRel}`)
+      // 画布是拿来「摆」的：写完直接打开，用户才能接着拖、接着连。
+      if (await this.openVaultFile(canvasRel)) new Notice(`得到大脑：已放进 ${canvasRel}`)
+      else new Notice(`得到大脑：已放进 ${canvasRel}（打开画布就能看到）`)
     } catch (error) {
       new Notice(`得到大脑：放进画布失败 —— ${error && error.message ? error.message : error}`)
     }

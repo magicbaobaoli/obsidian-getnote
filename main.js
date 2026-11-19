@@ -16314,6 +16314,30 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     modal.open();
   }
   /**
+   * 在宿主里打开库内的某个文件（不只是 .md）。
+   *
+   * `openInVaultEditor` 走的是同一套入口，但它被设计成同步返回布尔值，用在
+   * 面板的按钮回调里。刚写完的文件在宿主的文件表里可能还没登记（写入与索引
+   * 是两条路），所以这里带几次重试：写完立刻打开，失败就等一会儿再试。
+   */
+  async openVaultFile(relPath, attempts = 4) {
+    const rel = String(relPath || "").replace(/^\/+/, "");
+    if (rel === "") return false;
+    for (let i3 = 0; i3 < attempts; i3 += 1) {
+      const file = this.app.vault.getAbstractFileByPath ? this.app.vault.getAbstractFileByPath(rel) : null;
+      if (file) {
+        try {
+          await this.app.workspace.getLeaf("tab").openFile(file);
+          return true;
+        } catch {
+          return false;
+        }
+      }
+      await new Promise((resolve5) => setTimeout(resolve5, 80));
+    }
+    return false;
+  }
+  /**
    * 在笔记目录里写一份 `.base`：Obsidian 1.9 的 Bases 视图能直接打开它。
    *
    * 有了它，用户可以在 Bases 里按标签/日期分组、写自己的公式，而不用回到我们
@@ -16334,11 +16358,13 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       }
       if (already) {
         new import_obsidian2.Notice("\u5F97\u5230\u5927\u8111\uFF1A\u8FD9\u4E2A Bases \u89C6\u56FE\u5DF2\u7ECF\u5B58\u5728\u4E86");
+        await this.openVaultFile(target);
         return;
       }
       await writeFile2(abs, basesTemplate({ subfolder: subfolder || DEFAULT_SUBFOLDER }));
       invalidateScan();
-      new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A\u5DF2\u751F\u6210 ${target}`);
+      if (await this.openVaultFile(target)) new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A\u5DF2\u751F\u6210\u5E76\u6253\u5F00 ${target}`);
+      else new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A\u5DF2\u751F\u6210 ${target}`);
     } catch (error2) {
       new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A\u751F\u6210 Bases \u89C6\u56FE\u5931\u8D25 \u2014\u2014 ${error2 && error2.message ? error2.message : error2}`);
     }
@@ -16368,7 +16394,8 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       }
       await writeFile2(canvasAbs, serializeCanvas(next));
       invalidateScan();
-      new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A\u5DF2\u653E\u8FDB ${canvasRel}`);
+      if (await this.openVaultFile(canvasRel)) new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A\u5DF2\u653E\u8FDB ${canvasRel}`);
+      else new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A\u5DF2\u653E\u8FDB ${canvasRel}\uFF08\u6253\u5F00\u753B\u5E03\u5C31\u80FD\u770B\u5230\uFF09`);
     } catch (error2) {
       new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A\u653E\u8FDB\u753B\u5E03\u5931\u8D25 \u2014\u2014 ${error2 && error2.message ? error2.message : error2}`);
     }
