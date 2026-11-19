@@ -13,7 +13,7 @@
  *   ctx.effect 清理                     onunload
  */
 
-import { Menu, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian'
+import { FuzzySuggestModal, Menu, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -28,7 +28,7 @@ import {
 } from './core/vfs.js'
 import { configureCardScripts } from './core/card.js'
 import { setDebugLogging } from './core/log.js'
-import { invalidateScan } from './core/vault.js'
+import { invalidateScan, scanVault } from './core/vault.js'
 import { basesTemplate, parseCanvas, addFileNode, serializeCanvas } from './core/integrations.js'
 import { startAutoSync, startCardAutoImport, markPanelVisible } from './core/service.js'
 import { startLocalServer } from './host/server.js'
@@ -262,6 +262,17 @@ export default class GetnoteObsidianPlugin extends Plugin {
       },
     })
 
+    // 快速切换器（Ctrl/Cmd+O）里的「打开得到大脑笔记」。
+    //
+    // 这一条是这个插件在 Obsidian 里最容易被忽略的入口：用户找笔记的第一反应
+    // 是快速切换器，而不是 ribbon 或者命令面板。把它接上，库里的笔记就跟宿主
+    // 自己的笔记一样能被搜到、能一键跳进来。
+    this.addCommand({
+      id: 'quick-switch-note',
+      name: '快速切换：打开得到大脑笔记',
+      callback: () => { void this.quickSwitchNote() },
+    })
+
     // 与 Bases / Canvas 的衔接：两者都只生成一份文件，不碰内部 API。
     this.addCommand({
       id: 'create-bases-view',
@@ -351,6 +362,54 @@ export default class GetnoteObsidianPlugin extends Plugin {
     // 录音卡插上就导。定时器一直转着，真正的开关在设置里（cardAutoImport），
     // 关着的时候每次 tick 只读一个 JSON 就返回，代价可以忽略。
     this.stopCardAutoImport = startCardAutoImport()
+  }
+
+  /**
+   * 快速切换器里挑一篇得到大脑的笔记。
+   *
+   * 用宿主自己的 SuggestModal 而不是我们面板里的搜索框：用户按 Ctrl/Cmd+O 是
+   * 想「去那一篇」，不是「打开面板再搜一次」。搜索本身交给面板已有的
+   * /search（它认得 tag:/dir:/裸标签这些写法），这里只负责把候选列出来。
+   */
+  async quickSwitchNote() {
+    const plugin = this
+    const Suggest = typeof FuzzySuggestModal === 'function' ? FuzzySuggestModal : null
+    if (Suggest === null) {
+      // 宿主版本太老（没有 FuzzySuggestModal）：退回「打开面板 + 聚焦搜索框」，
+      // 至少不会什么都不发生。
+      void this.activateView().then(() => requestIntent({ type: 'search' }))
+      return
+    }
+    let items = []
+    try {
+      // resolveVaultRoot 是 async 的：少一个 await 拿到的是 Promise，
+      // scanVault 会拿着 "[object Promise]" 当目录名去遍历。
+      const root = (await settingsStore.resolveVaultRoot()).root
+      const result = await scanVault(root)
+      items = result.entries
+    } catch {
+      new Notice('得到大脑：库还没准备好，先打开面板看一眼')
+      return
+    }
+    // 先把候选准备好再弹窗：宿主第一次 getItems 拿到空数组就会显示「没有结果」，
+    // 而扫描是异步的——先扫完再开，用户看到的第一帧就是完整的列表。
+    const modal = new (class extends Suggest {
+      getItems() {
+        return items
+      }
+
+      getItemText(item) {
+        const dir = item.dir === '' ? '' : `${item.dir} / `
+        return `${dir}${item.title || item.path}`
+      }
+
+      onChooseItem(item) {
+        if (!item || typeof item.path !== 'string') return
+        void plugin.activateView().then(() => requestIntent({ type: 'open', path: item.path }))
+      }
+    })(this.app)
+    modal.setPlaceholder('搜索得到大脑里的笔记')
+    modal.open()
   }
 
   /**

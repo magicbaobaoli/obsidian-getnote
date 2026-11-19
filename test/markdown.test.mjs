@@ -26,13 +26,24 @@ const React = await import('preact/compat')
 const { createRoot } = await import('preact/compat/client')
 const { MarkdownView, setMarkdownHost, clearMarkdownHost, hasMarkdownHost, openLinkInVault } = await import('../src/view/markdown.js')
 
-/** 挂一个组件到全新的 div 上，等两帧让它提交。 */
-async function mount(props) {
+/**
+ * 挂一个组件到全新的 div 上，等到内容真的出现。
+ *
+ * 原来固定等 60ms，单跑这个文件时够用；整套测试一起跑（每个文件一个进程、
+ * 机器被占满）时 effect 还没轮到执行，断言就先跑了，于是报「应该只渲染一次」
+ * 这种假失败。改成轮询到内容出现为止，上限 3 秒。
+ */
+async function mount(props, ready) {
   const host = window.document.createElement('div')
   window.document.body.appendChild(host)
   const root = createRoot(host)
   root.render(React.createElement(MarkdownView, props))
-  await new Promise((resolve) => window.setTimeout(resolve, 60))
+  const done = typeof ready === 'function' ? ready : () => (host.textContent || '').trim() !== ''
+  const deadline = Date.now() + 3000
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => window.setTimeout(resolve, 20))
+    if (done(host)) break
+  }
   return {
     host,
     unmount() {
@@ -78,7 +89,7 @@ test('注入宿主渲染器后走它，并把 app / sourcePath / component 一�
   const component = { name: 'plugin' }
   setMarkdownHost({ app, component, MarkdownRenderer: renderer })
 
-  const view = await mount({ markdown: '**加粗**', sourcePath: '得到大脑/随手记/a.md' })
+  const view = await mount({ markdown: '**加粗**', sourcePath: '得到大脑/随手记/a.md' }, (host) => host.querySelector('.fake-rendered') !== null)
   try {
     assert.equal(renderer.seen.length, 1, '应该只渲染一次')
     const call = renderer.seen[0]
@@ -162,7 +173,10 @@ test('点内链交给 onOpenLink；按着 Ctrl 时交给 Obsidian 新开一页',
     MarkdownRenderer: renderer,
   })
 
-  const view = await mount({ markdown: '见 [[另一篇笔记]]', sourcePath: '得到大脑/a.md', onOpenLink: (href) => opened.push(href) })
+  const view = await mount(
+    { markdown: '见 [[另一篇笔记]]', sourcePath: '得到大脑/a.md', onOpenLink: (href) => opened.push(href) },
+    (host) => host.querySelector('a.internal-link') !== null,
+  )
   try {
     const anchor = view.host.querySelector('a.internal-link')
     assert.ok(anchor, '应该渲染出内链')
@@ -206,7 +220,10 @@ test('点待办方框按序号回调，引用块里的不算', async () => {
   })
   setMarkdownHost({ app: { workspace: {} }, component: {}, MarkdownRenderer: renderer })
 
-  const view = await mount({ markdown: '- [ ] 一\n- [ ] 二', sourcePath: '得到大脑/a.md', onToggleTodo: (index) => toggled.push(index) })
+  const view = await mount(
+    { markdown: '- [ ] 一\n- [ ] 二', sourcePath: '得到大脑/a.md', onToggleTodo: (index) => toggled.push(index) },
+    (host) => host.querySelectorAll('input.task-list-item-checkbox').length === 3,
+  )
   try {
     const boxes = view.host.querySelectorAll('input.task-list-item-checkbox')
     assert.equal(boxes.length, 3)

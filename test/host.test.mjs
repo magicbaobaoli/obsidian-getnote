@@ -958,9 +958,19 @@ try {
 
     // 退出热点必须永远能调：它就是「把网络还回去」的兜底，任何情况下都不能因为
     // 参数缺失而拒绝。
-    const leave = await call('/card/wifi-leave', postJson('/card/wifi-leave', {}))
-    check('POST /card/wifi-leave 不需要参数', leave.status === 200, `status=${leave.status}`)
-    check('POST /card/wifi-leave 回 ok', leave.json.ok === true, JSON.stringify(leave.json))
+    // wifi-leave 会真的执行 netsh wlan disconnect，把电脑当前正常 Wi-Fi 断掉。
+    // 测试里绝不真跑：用假解释器把路由钉在「缺运行环境」分支，只要求它给出可读响应。
+    const previousPythonLeave = process.env.DSH_GETNOTE_PYTHON
+    process.env.DSH_GETNOTE_PYTHON = 'definitely-not-a-python-binary-xyz'
+    let leave
+    try {
+      leave = await call('/card/wifi-leave', postJson('/card/wifi-leave', {}))
+    } finally {
+      if (previousPythonLeave === undefined) delete process.env.DSH_GETNOTE_PYTHON
+      else process.env.DSH_GETNOTE_PYTHON = previousPythonLeave
+    }
+    check('POST /card/wifi-leave 不需要参数也不 500', leave.status !== 500, `status=${leave.status}`)
+    check('POST /card/wifi-leave 给可读响应', leave.status === 200 ? leave.json.ok === true : typeof (leave.json && leave.json.error) === 'string', String(leave.text || '').slice(0, 200))
   }
 
   // ── 批量反向同步（本地 → 云端）──────────────────────────────────────────

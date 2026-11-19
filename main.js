@@ -10775,6 +10775,13 @@ function GetnotePage() {
         }, 30);
         return;
       }
+      if (kind === "open") {
+        const path = typeof intent.path === "string" ? intent.path : "";
+        if (path === "") return;
+        setTab("notes");
+        void openNote(path);
+        return;
+      }
       if (kind === "new") {
         setTab("notes");
         if (status !== null && !status.vaultMissing) void newNote();
@@ -15946,6 +15953,13 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       }
     });
     this.addCommand({
+      id: "quick-switch-note",
+      name: "\u5FEB\u901F\u5207\u6362\uFF1A\u6253\u5F00\u5F97\u5230\u5927\u8111\u7B14\u8BB0",
+      callback: () => {
+        void this.quickSwitchNote();
+      }
+    });
+    this.addCommand({
       id: "create-bases-view",
       name: "\u5728\u7B14\u8BB0\u76EE\u5F55\u91CC\u751F\u6210\u4E00\u4E2A Bases \u89C6\u56FE",
       callback: () => {
@@ -15995,6 +16009,45 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     });
     this.stopAutoSync = startAutoSync();
     this.stopCardAutoImport = startCardAutoImport();
+  }
+  /**
+   * 快速切换器里挑一篇得到大脑的笔记。
+   *
+   * 用宿主自己的 SuggestModal 而不是我们面板里的搜索框：用户按 Ctrl/Cmd+O 是
+   * 想「去那一篇」，不是「打开面板再搜一次」。搜索本身交给面板已有的
+   * /search（它认得 tag:/dir:/裸标签这些写法），这里只负责把候选列出来。
+   */
+  async quickSwitchNote() {
+    const plugin = this;
+    const Suggest = typeof import_obsidian2.FuzzySuggestModal === "function" ? import_obsidian2.FuzzySuggestModal : null;
+    if (Suggest === null) {
+      void this.activateView().then(() => requestIntent({ type: "search" }));
+      return;
+    }
+    let items = [];
+    try {
+      const root = (await resolveVaultRoot()).root;
+      const result = await scanVault(root);
+      items = result.entries;
+    } catch {
+      new import_obsidian2.Notice("\u5F97\u5230\u5927\u8111\uFF1A\u5E93\u8FD8\u6CA1\u51C6\u5907\u597D\uFF0C\u5148\u6253\u5F00\u9762\u677F\u770B\u4E00\u773C");
+      return;
+    }
+    const modal = new class extends Suggest {
+      getItems() {
+        return items;
+      }
+      getItemText(item) {
+        const dir = item.dir === "" ? "" : `${item.dir} / `;
+        return `${dir}${item.title || item.path}`;
+      }
+      onChooseItem(item) {
+        if (!item || typeof item.path !== "string") return;
+        void plugin.activateView().then(() => requestIntent({ type: "open", path: item.path }));
+      }
+    }(this.app);
+    modal.setPlaceholder("\u641C\u7D22\u5F97\u5230\u5927\u8111\u91CC\u7684\u7B14\u8BB0");
+    modal.open();
   }
   /**
    * 在笔记目录里写一份 `.base`：Obsidian 1.9 的 Bases 视图能直接打开它。

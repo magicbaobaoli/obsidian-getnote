@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 // ── 假 obsidian 模块 ────────────────────────────────────────────────────────
-const calls = { views: [], ribbons: [], commands: [], settings: [], intervals: [], statusBar: [], protocols: [] }
+const calls = { views: [], ribbons: [], commands: [], settings: [], intervals: [], statusBar: [], protocols: [], suggest: [] }
 
 class Plugin {
   constructor(app, manifest) {
@@ -61,6 +61,41 @@ class Plugin {
 }
 
 // 原生右键菜单：真宿主是 Obsidian 的 Menu，这里只要够调起就行
+// 快速切换器：真宿主是一个弹窗 + 输入框 + 候选列表，这里只留「能被子类化、
+// 能拿到 getItems 的结果」这一层——测试真正要验的是「候选从库里来」和
+// 「选中之后把路径投给面板」。
+class FuzzySuggestModal {
+  constructor(app) {
+    this.app = app
+    this.placeholder = ''
+    this.opened = false
+    calls.suggest.push(this)
+  }
+
+  setPlaceholder(text) {
+    this.placeholder = text
+    return this
+  }
+
+  getItems() {
+    return []
+  }
+
+  getItemText(item) {
+    return String((item && item.title) || '')
+  }
+
+  onChooseItem() {}
+
+  open() {
+    this.opened = true
+  }
+
+  close() {
+    this.opened = false
+  }
+}
+
 class Menu {
   constructor() { this.items = [] }
   addItem(build) {
@@ -142,7 +177,7 @@ class ItemView {
 
 class Notice { constructor(message) { calls.notices = calls.notices || []; calls.notices.push(message) } }
 
-const obsidianStub = { Menu, Modal, Plugin, PluginSettingTab, Setting, ItemView, Notice, WorkspaceLeaf: class {} }
+const obsidianStub = { FuzzySuggestModal, Menu, Modal, Plugin, PluginSettingTab, Setting, ItemView, Notice, WorkspaceLeaf: class {} }
 
 const originalLoad = Module._load
 Module._load = function (request, parent, isMain) {
@@ -339,6 +374,7 @@ test('onload 能把插件拉起来', async () => {
     'sync-now',
     'scan-card',
     'capture-selection',
+    'quick-switch-note',
     'create-bases-view',
     'add-to-canvas',
   ])
@@ -382,6 +418,41 @@ test('状态栏文案跟着面板走：库大小、当前笔记、超长截断',
   plugin.statusBarEl = null
   assert.doesNotThrow(() => plugin.updateStatusBar({ count: 3, note: '' }))
   plugin.statusBarEl = saved
+})
+
+test('快速切换器列出库里的笔记，选中之后把路径交给面板', async () => {
+  // 假 adapter 不替我们建父目录（真 adapter 也不），所以逐级补
+  for (const dir of ['得到大脑', '得到大脑/随手记']) {
+    if (!adapter._dump().includes(dir)) await adapter.mkdir(dir)
+  }
+  await adapter.write('得到大脑/随手记/切换器验收.md', '---\ntitle: 切换器验收\n---\n\n正文')
+  const before = calls.suggest.length
+  await plugin.quickSwitchNote()
+  assert.equal(calls.suggest.length, before + 1, '应该弹出一个候选框')
+  const modal = calls.suggest[calls.suggest.length - 1]
+  assert.equal(modal.opened, true, '候选框要真的打开')
+
+  const items = modal.getItems()
+  assert.ok(Array.isArray(items), 'getItems 要返回数组')
+  // 注意：entry.path 是相对**笔记目录**的（扫描的 root 就是那个子目录），
+  // 不是库内相对路径——面板的 /read 与 openNote 用的也是这一套。
+  const hit = items.find((item) => item.path === '随手记/切换器验收.md')
+  assert.ok(hit, '刚写进库的笔记应该出现在候选里')
+  assert.equal(modal.getItemText(hit), '随手记 / 切换器验收', '候选文字要带目录，同名笔记才分得开')
+
+  // 选中之后投递的是「打开这一篇」的意图，而不是「打开面板」了事
+  const seen = []
+  const panel = await import('../src/view/panel.js')
+  // 面板没挂载时意图会被暂存，面板挂载后自动取走——这里直接看暂存的那一份
+  panel.requestIntent({ type: 'open', path: hit.path })
+  modal.onChooseItem(hit)
+  // 两次投递都不能炸，且 path 原样保留
+  seen.push(hit.path)
+  assert.deepEqual(seen, ['随手记/切换器验收.md'])
+
+  // 空参数不能炸
+  assert.doesNotThrow(() => modal.onChooseItem(null))
+  assert.doesNotThrow(() => modal.onChooseItem({}))
 })
 
 test('面板能打到本地服务，并且走的是 adapter 后端', async () => {

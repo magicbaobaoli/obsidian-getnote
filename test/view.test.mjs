@@ -112,6 +112,40 @@ class Modal {
   }
 }
 
+// 快速切换器：真宿主是一个弹窗 + 输入框 + 候选列表，这里只留「能被子类化、
+// 能拿到 getItems 的结果」这一层——测试真正要验的是「候选从库里来」和
+// 「选中之后把路径投给面板」。
+class FuzzySuggestModal {
+  constructor(app) {
+    this.app = app
+    this.placeholder = ''
+    this.opened = false
+  }
+
+  setPlaceholder(text) {
+    this.placeholder = text
+    return this
+  }
+
+  getItems() {
+    return []
+  }
+
+  getItemText(item) {
+    return String((item && item.title) || '')
+  }
+
+  onChooseItem() {}
+
+  open() {
+    this.opened = true
+  }
+
+  close() {
+    this.opened = false
+  }
+}
+
 class Menu {
   constructor() { this.items = [] }
   addItem(build) {
@@ -130,7 +164,7 @@ class Menu {
   showAtMouseEvent() {}
 }
 
-const obsidianStub = { Menu, Modal, Plugin, PluginSettingTab, Setting, ItemView, Notice, WorkspaceLeaf: class {} }
+const obsidianStub = { FuzzySuggestModal, Menu, Modal, Plugin, PluginSettingTab, Setting, ItemView, Notice, WorkspaceLeaf: class {} }
 
 const originalLoad = Module._load
 Module._load = function (request, parent, isMain) {

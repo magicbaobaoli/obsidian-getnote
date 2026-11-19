@@ -3732,6 +3732,15 @@ async function saveFile(url, filename) {
               }, 30)
               return
             }
+            if (kind === 'open') {
+              // 从宿主的快速切换器挑了一篇。面板可能还停在别的页签上，
+              // 先切回笔记页再打开，否则用户点完看到的是「什么都没发生」。
+              const path = typeof intent.path === 'string' ? intent.path : ''
+              if (path === '') return
+              setTab('notes')
+              void openNote(path)
+              return
+            }
             if (kind === 'new') {
               setTab('notes')
               if (status !== null && !status.vaultMissing) void newNote()
