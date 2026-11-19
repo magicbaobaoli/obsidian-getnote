@@ -23,7 +23,7 @@ import { configure as configureVfs, mkdir as vfsMkdir, readFile as vfsRead, writ
 import { configureCardScripts } from './core/card.js'
 import { setDebugLogging } from './core/log.js'
 import { invalidateScan } from './core/vault.js'
-import { startAutoSync, markPanelVisible } from './core/service.js'
+import { startAutoSync, startCardAutoImport, markPanelVisible } from './core/service.js'
 import { startLocalServer } from './host/server.js'
 import {
   setApiOrigin,
@@ -127,6 +127,7 @@ export default class GetnoteObsidianPlugin extends Plugin {
     // 详细日志默认关。设置里打开过就在 onload 就生效，不必等用户进设置页。
     this.debugLogging = stored.debugLogging === true
     setDebugLogging(this.debugLogging)
+    this.cardAutoImport = stored.cardAutoImport === true
     if (stored.subfolder && stored.subfolder !== DEFAULT_SUBFOLDER) {
       settingsStore.configure({ subfolder: stored.subfolder })
     }
@@ -276,9 +277,16 @@ export default class GetnoteObsidianPlugin extends Plugin {
 
     // 自动同步：DSH 版由 ctx.effect 托管，这里由 onunload 托管
     this.stopAutoSync = startAutoSync()
+    // 录音卡插上就导。定时器一直转着，真正的开关在设置里（cardAutoImport），
+    // 关着的时候每次 tick 只读一个 JSON 就返回，代价可以忽略。
+    this.stopCardAutoImport = startCardAutoImport()
   }
 
   onunload() {
+    if (typeof this.stopCardAutoImport === 'function') {
+      this.stopCardAutoImport()
+      this.stopCardAutoImport = null
+    }
     if (typeof this.stopAutoSync === 'function') {
       this.stopAutoSync()
       this.stopAutoSync = null
@@ -454,6 +462,20 @@ class GetnoteSettingTab extends PluginSettingTab {
             }`
           : '未运行。重启 Obsidian 或看控制台里的报错。',
       )
+
+    new Setting(containerEl)
+      .setName('录音卡插上就导')
+      .setDesc(
+        '每 5 分钟连一次录音卡，发现还没导过的录音就自动导进「录音卡」目录。' +
+          '卡片不在附近时这次尝试会安静失败，不影响别的事；永远不删卡上的文件。' +
+          '需要 Python 3.10+ 和 bleak。',
+      )
+      .addToggle((toggle) => {
+        toggle.setValue(this.plugin.cardAutoImport === true).onChange(async (value) => {
+          this.plugin.cardAutoImport = value === true
+          await settingsStore.updateSettings({ cardAutoImport: this.plugin.cardAutoImport })
+        })
+      })
 
     new Setting(containerEl)
       .setName('详细日志')

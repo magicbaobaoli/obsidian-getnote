@@ -596,6 +596,26 @@ test('同步摘要写进当天日记，路径与格式跟着日记核心插件�
   assert.equal(adapter._dump().length, before, '日记插件关掉时不该写任何东西')
 })
 
+test('录音卡自动导入：默认关、开关能存下来、巡检在没卡时安静退出', async () => {
+  const settings = await import('../src/core/settings.js')
+  // 默认必须是关的：它会定期占蓝牙适配器，不能替用户做主
+  assert.equal(settings.readSettings ? (await settings.readSettings()).cardAutoImport : false, false)
+
+  // 打开后能落盘、能读回
+  await settings.updateSettings({ cardAutoImport: true })
+  assert.equal((await settings.readSettings()).cardAutoImport, true)
+  await settings.updateSettings({ cardAutoImport: false })
+  assert.equal((await settings.readSettings()).cardAutoImport, false)
+
+  // 巡检本身：卡不在附近时（这里根本没有蓝牙）必须安静返回，不能抛
+  const service = await import('../src/core/service.js')
+  assert.doesNotThrow(() => {
+    const stop = service.startCardAutoImport()
+    assert.equal(typeof stop, 'function')
+    stop()
+  })
+})
+
 test('onunload 会关掉本地服务', async () => {
   const origin = plugin.server.origin
   plugin.onunload()

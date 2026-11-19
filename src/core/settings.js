@@ -199,6 +199,9 @@ export async function readSettings() {
     localPort: Number.isInteger(data.localPort) && data.localPort > 0 && data.localPort < 65536 ? data.localPort : null,
     // 详细日志默认关：控制台里挤着几十个插件，刷屏的输出用户反而不看。
     debugLogging: data.debugLogging === true,
+    // 录音卡插上就导：默认关。它要定期用蓝牙连一次卡片看有没有新录音，
+    // 占着适配器、也耗电，得用户自己说「我要」才开。
+    cardAutoImport: data.cardAutoImport === true,
   }
 }
 
@@ -219,6 +222,7 @@ export async function updateSettings(patch = {}) {
     subfolder: patch.subfolder !== undefined ? toSubfolder(patch.subfolder) : cur.subfolder,
     localPort: patch.localPort !== undefined ? patch.localPort : cur.localPort,
     debugLogging: patch.debugLogging !== undefined ? patch.debugLogging === true : cur.debugLogging,
+    cardAutoImport: patch.cardAutoImport !== undefined ? patch.cardAutoImport === true : cur.cardAutoImport,
   }
   await writeJsonAtomic(settingsPath(), next)
   return readSettings()

@@ -151,6 +151,45 @@ const cardState = {
 const CARD_MAX_LINES = 300
 
 /**
+ * 真正跑一次录音卡导入：置状态、开后台任务、立刻返回。
+ *
+ * 抽出来是因为有两个入口——面板上的「导入」按钮，和「插上卡就自动导」的
+ * 后台巡检。两条路必须共用同一套状态机，否则用户点按钮时巡检可能也在跑，
+ * 两个进程抢同一张 BLE 卡，两边都读不全。
+ */
+function startCardImport(root, options) {
+  cardState.running = true
+  cardState.startedAt = new Date().toISOString()
+  cardState.finishedAt = null
+  cardState.lines = []
+  cardState.result = null
+  cardState.error = null
+
+  const push = (line) => {
+    cardState.lines.push(String(line))
+    if (cardState.lines.length > CARD_MAX_LINES) cardState.lines.shift()
+  }
+
+  void (async () => {
+    try {
+      const result = await importCardRecordings(root, options)
+      cardState.result = result
+      if (result.failed > 0) {
+        cardState.error = `${result.failed} 个文件导入失败，详情看日志`
+      }
+    } catch (error) {
+      cardState.error = error && error.message ? error.message : String(error)
+      push(`出错：${cardState.error}`)
+    } finally {
+      cardState.running = false
+      cardState.finishedAt = new Date().toISOString()
+    }
+  })()
+
+  return cardState.startedAt
+}
+
+/**
  * 自动同步的运行期状态（进程内单例）。
  *
  * 为什么和 importState 分开：import 是「一次性把历史搬过来」，只会跑一次；
@@ -1980,43 +2019,15 @@ export function createHandler(config) {
       )
     }
 
-    cardState.running = true
-    cardState.startedAt = new Date().toISOString()
-    cardState.finishedAt = null
-    cardState.lines = []
-    cardState.result = null
-    cardState.error = null
-
-    const push = (line) => {
-      cardState.lines.push(String(line))
-      if (cardState.lines.length > CARD_MAX_LINES) cardState.lines.shift()
-    }
-
     const options = {
       all: body.all !== false,
       names: typeof body.names === 'string' ? body.names : '',
       deleteAfter: body.deleteAfter === true,
       dir: typeof body.dir === 'string' && body.dir.trim() !== '' ? body.dir.trim() : '录音卡',
-      log: push,
     }
 
-    void (async () => {
-      try {
-        const result = await importCardRecordings(root, options)
-        cardState.result = result
-        if (result.failed > 0) {
-          cardState.error = `${result.failed} 个文件导入失败，详情看日志`
-        }
-      } catch (error) {
-        cardState.error = error && error.message ? error.message : String(error)
-        push(`出错：${cardState.error}`)
-      } finally {
-        cardState.running = false
-        cardState.finishedAt = new Date().toISOString()
-      }
-    })()
-
-    return send(res, 200, { ok: true, running: true, startedAt: cardState.startedAt })
+    const startedAt = startCardImport(root, options)
+    return send(res, 200, { ok: true, running: true, startedAt })
   }
 
   /** 删掉卡片上的指定文件。不可恢复，必须显式传 names。 */
@@ -2472,6 +2483,54 @@ export function startAutoSync() {
     clearTimeout(kickoff)
     if (autoTimer) clearInterval(autoTimer)
     autoTimer = null
+  }
+}
+
+/**
+ * 录音卡插上就导：定期看一眼卡上有没有还没导过的录音，有就自己开导。
+ *
+ * 为什么是「定期看」而不是监听 USB / 蓝牙事件：卡片是 BLE 设备，系统不会
+ * 广播「有新的音频文件」，只能连上去问。所以这里每 5 分钟试一次，卡不在
+ * 附近时这次尝试会直接失败——失败是常态，必须静默。
+ *
+ * 三个前提都满足才动手：用户在设置里开了这个开关、当前没有别的导入在跑、
+ * 卡上确实有没导过的文件。删除永远关着（options.deleteAfter 恒为 false），
+ * 自动跑的东西不许动用户的卡。
+ */
+export function startCardAutoImport() {
+  let timer = null
+  let checking = false
+
+  const tick = async () => {
+    if (checking) return
+    checking = true
+    try {
+      const settings = await readSettings()
+      if (settings.cardAutoImport !== true) return
+      if (cardState.running) return
+      const pending = await cardPendingCount()
+      // 卡不在附近、没装 Python、蓝牙关了——这些都表现为 error 或 count 0，
+      // 一律安静跳过。这里每 5 分钟跑一次，不能刷提示。
+      if (!pending || pending.error || !(pending.count > 0)) return
+      const { root, missing } = await resolveVaultRoot(settings.vaultRoot || null)
+      if (missing || root === null) return
+      startCardImport(root, { all: true, names: '', deleteAfter: false, dir: '录音卡' })
+    } catch {
+      // 同上：自动巡检失败不打扰用户
+    } finally {
+      checking = false
+    }
+  }
+
+  // 启动后等 45 秒：Obsidian 刚起来时蓝牙栈往往还没就绪，这时候连一定失败
+  const kickoff = setTimeout(() => { void tick() }, 45000)
+  timer = setInterval(() => { void tick() }, 5 * 60 * 1000)
+  if (timer && typeof timer.unref === 'function') timer.unref()
+  if (kickoff && typeof kickoff.unref === 'function') kickoff.unref()
+  return () => {
+    clearTimeout(kickoff)
+    if (timer) clearInterval(timer)
+    timer = null
   }
 }
 

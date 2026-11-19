@@ -2034,7 +2034,10 @@ async function readSettings() {
     // redirect_uri 跨会话稳定，不必每次登录都重新动态注册一个 client。
     localPort: Number.isInteger(data.localPort) && data.localPort > 0 && data.localPort < 65536 ? data.localPort : null,
     // 详细日志默认关：控制台里挤着几十个插件，刷屏的输出用户反而不看。
-    debugLogging: data.debugLogging === true
+    debugLogging: data.debugLogging === true,
+    // 录音卡插上就导：默认关。它要定期用蓝牙连一次卡片看有没有新录音，
+    // 占着适配器、也耗电，得用户自己说「我要」才开。
+    cardAutoImport: data.cardAutoImport === true
   };
 }
 async function updateSettings(patch = {}) {
@@ -2052,7 +2055,8 @@ async function updateSettings(patch = {}) {
     templates: "templates" in patch ? normalizeTemplates(patch.templates) : cur.templates,
     subfolder: patch.subfolder !== void 0 ? toSubfolder(patch.subfolder) : cur.subfolder,
     localPort: patch.localPort !== void 0 ? patch.localPort : cur.localPort,
-    debugLogging: patch.debugLogging !== void 0 ? patch.debugLogging === true : cur.debugLogging
+    debugLogging: patch.debugLogging !== void 0 ? patch.debugLogging === true : cur.debugLogging,
+    cardAutoImport: patch.cardAutoImport !== void 0 ? patch.cardAutoImport === true : cur.cardAutoImport
   };
   await writeJsonAtomic(settingsPath(), next);
   return readSettings();
@@ -2518,6 +2522,14 @@ async function deleteCardFiles(names) {
   }
   const payload = await runBridge(["pull", "--out", (0, import_node_path2.join)(process.cwd(), ".card-trash"), "--names", list.join(","), "--all", "--force", "--delete-after"]);
   return { deleted: (payload.downloaded || []).map((item) => item.name) };
+}
+async function cardPendingCount() {
+  try {
+    const files = await listCardFiles();
+    return { count: files.length, files: files.map((f3) => ({ name: f3.name, time: f3.time, size: f3.size })) };
+  } catch (error2) {
+    return { count: 0, files: [], error: error2 && error2.message ? error2.message : String(error2) };
+  }
 }
 async function wifiScan() {
   return runBridge(["scan"], { script: WIFI(), timeoutMs: 60 * 1e3 });
@@ -4545,6 +4557,34 @@ var cardState = {
   error: null
 };
 var CARD_MAX_LINES = 300;
+function startCardImport(root, options) {
+  cardState.running = true;
+  cardState.startedAt = (/* @__PURE__ */ new Date()).toISOString();
+  cardState.finishedAt = null;
+  cardState.lines = [];
+  cardState.result = null;
+  cardState.error = null;
+  const push = (line) => {
+    cardState.lines.push(String(line));
+    if (cardState.lines.length > CARD_MAX_LINES) cardState.lines.shift();
+  };
+  void (async () => {
+    try {
+      const result = await importCardRecordings(root, options);
+      cardState.result = result;
+      if (result.failed > 0) {
+        cardState.error = `${result.failed} \u4E2A\u6587\u4EF6\u5BFC\u5165\u5931\u8D25\uFF0C\u8BE6\u60C5\u770B\u65E5\u5FD7`;
+      }
+    } catch (error2) {
+      cardState.error = error2 && error2.message ? error2.message : String(error2);
+      push(`\u51FA\u9519\uFF1A${cardState.error}`);
+    } finally {
+      cardState.running = false;
+      cardState.finishedAt = (/* @__PURE__ */ new Date()).toISOString();
+    }
+  })();
+  return cardState.startedAt;
+}
 var syncState = {
   running: false,
   startedAt: null,
@@ -5891,39 +5931,14 @@ function createHandler(config) {
         { status: 503, reason: "no-python" }
       );
     }
-    cardState.running = true;
-    cardState.startedAt = (/* @__PURE__ */ new Date()).toISOString();
-    cardState.finishedAt = null;
-    cardState.lines = [];
-    cardState.result = null;
-    cardState.error = null;
-    const push = (line) => {
-      cardState.lines.push(String(line));
-      if (cardState.lines.length > CARD_MAX_LINES) cardState.lines.shift();
-    };
     const options = {
       all: body.all !== false,
       names: typeof body.names === "string" ? body.names : "",
       deleteAfter: body.deleteAfter === true,
-      dir: typeof body.dir === "string" && body.dir.trim() !== "" ? body.dir.trim() : "\u5F55\u97F3\u5361",
-      log: push
+      dir: typeof body.dir === "string" && body.dir.trim() !== "" ? body.dir.trim() : "\u5F55\u97F3\u5361"
     };
-    void (async () => {
-      try {
-        const result = await importCardRecordings(root, options);
-        cardState.result = result;
-        if (result.failed > 0) {
-          cardState.error = `${result.failed} \u4E2A\u6587\u4EF6\u5BFC\u5165\u5931\u8D25\uFF0C\u8BE6\u60C5\u770B\u65E5\u5FD7`;
-        }
-      } catch (error2) {
-        cardState.error = error2 && error2.message ? error2.message : String(error2);
-        push(`\u51FA\u9519\uFF1A${cardState.error}`);
-      } finally {
-        cardState.running = false;
-        cardState.finishedAt = (/* @__PURE__ */ new Date()).toISOString();
-      }
-    })();
-    return send(res, 200, { ok: true, running: true, startedAt: cardState.startedAt });
+    const startedAt = startCardImport(root, options);
+    return send(res, 200, { ok: true, running: true, startedAt });
   }
   async function handleCardDelete(req, res) {
     const body = await readJsonBody(req);
@@ -6235,6 +6250,40 @@ function startAutoSync() {
     clearTimeout(kickoff);
     if (autoTimer) clearInterval(autoTimer);
     autoTimer = null;
+  };
+}
+function startCardAutoImport() {
+  let timer = null;
+  let checking = false;
+  const tick = async () => {
+    if (checking) return;
+    checking = true;
+    try {
+      const settings = await readSettings();
+      if (settings.cardAutoImport !== true) return;
+      if (cardState.running) return;
+      const pending = await cardPendingCount();
+      if (!pending || pending.error || !(pending.count > 0)) return;
+      const { root, missing } = await resolveVaultRoot(settings.vaultRoot || null);
+      if (missing || root === null) return;
+      startCardImport(root, { all: true, names: "", deleteAfter: false, dir: "\u5F55\u97F3\u5361" });
+    } catch {
+    } finally {
+      checking = false;
+    }
+  };
+  const kickoff = setTimeout(() => {
+    void tick();
+  }, 45e3);
+  timer = setInterval(() => {
+    void tick();
+  }, 5 * 60 * 1e3);
+  if (timer && typeof timer.unref === "function") timer.unref();
+  if (kickoff && typeof kickoff.unref === "function") kickoff.unref();
+  return () => {
+    clearTimeout(kickoff);
+    if (timer) clearInterval(timer);
+    timer = null;
   };
 }
 function markPanelVisible() {
@@ -15404,6 +15453,7 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     const stored = await readSettings();
     this.debugLogging = stored.debugLogging === true;
     setDebugLogging(this.debugLogging);
+    this.cardAutoImport = stored.cardAutoImport === true;
     if (stored.subfolder && stored.subfolder !== DEFAULT_SUBFOLDER) {
       configure2({ subfolder: stored.subfolder });
     }
@@ -15505,8 +15555,13 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       void this.appendSyncReport(result);
     });
     this.stopAutoSync = startAutoSync();
+    this.stopCardAutoImport = startCardAutoImport();
   }
   onunload() {
+    if (typeof this.stopCardAutoImport === "function") {
+      this.stopCardAutoImport();
+      this.stopCardAutoImport = null;
+    }
     if (typeof this.stopAutoSync === "function") {
       this.stopAutoSync();
       this.stopAutoSync = null;
@@ -15645,6 +15700,14 @@ var GetnoteSettingTab = class extends import_obsidian2.PluginSettingTab {
     new import_obsidian2.Setting(containerEl).setName("\u672C\u5730\u670D\u52A1").setDesc(
       this.plugin.localPort ? `\u8FD0\u884C\u4E2D\uFF1Ahttp://127.0.0.1:${this.plugin.localPort}${this.plugin.portFallback ? "\uFF08\u4F60\u6307\u5B9A\u7684\u7AEF\u53E3\u88AB\u5360\u7528\uFF0C\u8FD9\u6B21\u7528\u4E86\u7CFB\u7EDF\u5206\u914D\u7684\uFF1B\u4E91\u7AEF\u6388\u6743\u53EF\u80FD\u9700\u8981\u91CD\u65B0\u767B\u5F55\u4E00\u6B21\uFF09" : ""}` : "\u672A\u8FD0\u884C\u3002\u91CD\u542F Obsidian \u6216\u770B\u63A7\u5236\u53F0\u91CC\u7684\u62A5\u9519\u3002"
     );
+    new import_obsidian2.Setting(containerEl).setName("\u5F55\u97F3\u5361\u63D2\u4E0A\u5C31\u5BFC").setDesc(
+      "\u6BCF 5 \u5206\u949F\u8FDE\u4E00\u6B21\u5F55\u97F3\u5361\uFF0C\u53D1\u73B0\u8FD8\u6CA1\u5BFC\u8FC7\u7684\u5F55\u97F3\u5C31\u81EA\u52A8\u5BFC\u8FDB\u300C\u5F55\u97F3\u5361\u300D\u76EE\u5F55\u3002\u5361\u7247\u4E0D\u5728\u9644\u8FD1\u65F6\u8FD9\u6B21\u5C1D\u8BD5\u4F1A\u5B89\u9759\u5931\u8D25\uFF0C\u4E0D\u5F71\u54CD\u522B\u7684\u4E8B\uFF1B\u6C38\u8FDC\u4E0D\u5220\u5361\u4E0A\u7684\u6587\u4EF6\u3002\u9700\u8981 Python 3.10+ \u548C bleak\u3002"
+    ).addToggle((toggle) => {
+      toggle.setValue(this.plugin.cardAutoImport === true).onChange(async (value) => {
+        this.plugin.cardAutoImport = value === true;
+        await updateSettings({ cardAutoImport: this.plugin.cardAutoImport });
+      });
+    });
     new import_obsidian2.Setting(containerEl).setName("\u8BE6\u7EC6\u65E5\u5FD7").setDesc("\u628A\u9762\u677F\u4E0E\u540C\u6B65\u7684\u6BCF\u4E00\u6B65\u6253\u8FDB\u5F00\u53D1\u8005\u63A7\u5236\u53F0\uFF08Ctrl+Shift+I\uFF09\u3002\u6392\u67E5\u95EE\u9898\u65F6\u6253\u5F00\uFF0C\u5E73\u65F6\u5173\u7740\u2014\u2014\u63A7\u5236\u53F0\u91CC\u6324\u7740\u51E0\u5341\u4E2A\u63D2\u4EF6\uFF0C\u5237\u5C4F\u7684\u8F93\u51FA\u53CD\u800C\u6CA1\u4EBA\u770B\u3002").addToggle((toggle) => {
       toggle.setValue(this.plugin.debugLogging === true).onChange(async (value) => {
         this.plugin.debugLogging = value === true;
