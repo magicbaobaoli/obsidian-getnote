@@ -223,6 +223,28 @@ async function saveFile(url, filename) {
       return () => __cssListeners.delete(listener)
     }
 
+    // 宿主的库变动事件。
+    //
+    // 用户在 Obsidian 编辑器里改了当前这篇、或者干脆把它删了/改了名，面板不能
+    // 还端着旧正文——以前只有重新点一次卡片才会重读，开着的那一篇等于一直停在
+    // 过去。这里只负责把「哪一篇、什么动作」转给面板，怎么反应由面板决定
+    // （整库扫描缓存的失效在 main.js 那边单独做）。
+    const __vaultListeners = new Set()
+    export function notifyVaultChange(change) {
+      for (const listener of Array.from(__vaultListeners)) {
+        try {
+          listener(change)
+        } catch {
+          // 一个监听器出错不能影响其它监听器
+        }
+      }
+    }
+    export function subscribeVaultChange(listener) {
+      if (typeof listener !== 'function') return () => {}
+      __vaultListeners.add(listener)
+      return () => __vaultListeners.delete(listener)
+    }
+
     // 面板把「现在有几篇笔记、打开的是哪一篇」报给宿主。
     //
     // 状态栏是用户唯一一直看得见我们的地方：只写「得到大脑」四个字，用户既不知道
@@ -3276,6 +3298,9 @@ async function saveFile(url, filename) {
       const [current, setCurrent] = React.useState(null)
       // 在飞的 /read 请求序号，见 openNote 里的说明
       const openSeq = React.useRef(0)
+      // 面板自己刚存过的那一篇。宿主写盘之后会发 modify，那次不是「别处改了」，
+      // 重读只会白跑一趟还把滚动位置顶掉，所以记下来放行一次。
+      const selfSavedRef = React.useRef(null)
       const [draft, setDraft] = React.useState(null)
       const [busy, setBusy] = React.useState(false)
       const [toast, setToast] = React.useState(null)
@@ -3510,15 +3535,18 @@ async function saveFile(url, filename) {
        * 「再点一下它又缩回去」，而不是「必须去别处点一下才能关掉」。
        * 其它调用方（新建后自动打开、保存后重载、双链跳转）都传 false：
        * 那些场景点一下本来就该是「打开」，折起来反而是 bug。
+       *
+       * reload=true 是「库里那篇被别处改了，把正文重读一遍」。此时即使它就是
+       * 当前打开的那一篇也要重读——toggle 那套「再点一下收起」在这里是反的。
        */
       const openNote = React.useCallback(
-        async (path, toggle = false) => {
+        async (path, toggle = false, reload = false) => {
           // 序号闸门：打开一篇要等 /read 回来，这中间用户可能已经关掉笔记
           // 或者点了另一篇。晚到的那份响应不能把界面按回旧状态——否则点
           // 「返回列表」之后旧笔记会自己又冒出来。
           const seq = openSeq.current + 1
           openSeq.current = seq
-          if (toggle && current !== null && current.path === path) {
+          if (!reload && toggle && current !== null && current.path === path) {
             setCurrent(null)
             setDraft(null)
             setError(null)
@@ -3539,6 +3567,54 @@ async function saveFile(url, filename) {
         },
         [current],
       )
+
+      // 宿主的 vault 事件：用户在 Obsidian 编辑器里改了这篇（或删了、改名了），
+      // 面板不能还端着旧正文。以前只有重新点一次才会重读，开着的那一篇等于
+      // 一直停在过去。整库扫描缓存那边由 main.js 负责失效，这里只管当前这篇。
+      //
+      // 这里**不订阅 draft/current**（用 ref 读当下的值）：宿主在磁盘上写一次
+      // 常常连着发好几个事件（写临时文件、rename、chmod 都会），如果每次重读都
+      // 让 effect 重建，新订阅可能赶不上同一批事件里后面的那几个；更要命的是
+      // 订阅重建期间到的事件直接丢了，正文就永远停在旧的一版。
+      const liveRef = React.useRef({ current: null, draft: null })
+      liveRef.current = { current, draft }
+      // 宿主写一次盘常常连着发好几个事件（先写临时文件再 rename 之类）。
+      // 同一篇在一秒内只重读一次，否则一串事件会把 /read 打成连发。
+      const reloadRef = React.useRef({ path: '', at: 0 })
+      React.useEffect(() => {
+        return subscribeVaultChange((change) => {
+          if (change === null || typeof change !== 'object') return
+          const path = String(change.path || '')
+          if (path === '') return
+          const live = liveRef.current
+          const open = live.current
+          if (open === null || open.path !== path) return
+          // 删掉或改走了：不能再端着一篇已经不存在的笔记
+          if (change.kind === 'delete' || change.kind === 'rename') {
+            openSeq.current += 1
+            setCurrent(null)
+            setDraft(null)
+            setError(null)
+            return
+          }
+          // 面板自己刚存完的那一下，宿主也会发一个 modify。这时磁盘上的正文就是
+          // 我们写的那份，重读纯属白跑一趟（还会把光标/滚动位置顶掉）。
+          // 只认「保存之后紧接着来的第一个 modify」：用户在宿主编辑器里改了同一篇
+          // 再存，我们这边会先收到 modify，正常重读。
+          const saved = selfSavedRef.current
+          if (saved !== null && saved.path === path) {
+            selfSavedRef.current = null
+            return
+          }
+          // 还有没保存的改动就不覆盖：用户正在改，别把草稿冲掉
+          if (live.draft !== null && live.draft !== open.content) return
+          const now = Date.now()
+          const last = reloadRef.current
+          if (last.path === path && now - last.at < 1000) return
+          reloadRef.current = { path, at: now }
+          void openNote(path, false, true)
+        })
+      }, [openNote])
 
       // 恢复上次开着的那一篇。等列表回来再开：笔记可能已经被删掉或改了名，
       // 直接 /read 会 404 弹一条没头没尾的错；先确认它还在列表里。
@@ -3609,6 +3685,8 @@ async function saveFile(url, filename) {
       const saveNote = React.useCallback(async () => {
         if (current === null || draft === null) return
         setBusy(true)
+        // 先记下来再写：宿主的 modify 可能比 /save 的响应还早到
+        selfSavedRef.current = { path: current.path }
         try {
           await api('/save', {
             method: 'POST',
@@ -3619,6 +3697,8 @@ async function saveFile(url, filename) {
           showToast(t('note.saved'))
           void refresh()
         } catch (err) {
+          // 没存成：磁盘上什么都没变，别让下一次真正的改动被我们吞掉
+          selfSavedRef.current = null
           setError(err && err.message ? err.message : String(err))
         } finally {
           setBusy(false)

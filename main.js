@@ -7641,6 +7641,21 @@ function subscribeCssChange(listener) {
   __cssListeners.add(listener);
   return () => __cssListeners.delete(listener);
 }
+var __vaultListeners = /* @__PURE__ */ new Set();
+function notifyVaultChange(change) {
+  for (const listener of Array.from(__vaultListeners)) {
+    try {
+      listener(change);
+    } catch {
+    }
+  }
+}
+function subscribeVaultChange(listener) {
+  if (typeof listener !== "function") return () => {
+  };
+  __vaultListeners.add(listener);
+  return () => __vaultListeners.delete(listener);
+}
 var __statusReport = null;
 function setStatusReport(fn2) {
   __statusReport = typeof fn2 === "function" ? fn2 : null;
@@ -10409,6 +10424,7 @@ function GetnotePage() {
   const [listLimit, setListLimit] = h2(LIST_PAGE_SIZE);
   const [current, setCurrent] = h2(null);
   const openSeq = A2(0);
+  const selfSavedRef = A2(null);
   const [draft, setDraft] = h2(null);
   const [busy, setBusy] = h2(false);
   const [toast, setToast] = h2(null);
@@ -10567,10 +10583,10 @@ function GetnotePage() {
     [shown.length]
   );
   const openNote = q2(
-    async (path, toggle = false) => {
+    async (path, toggle = false, reload = false) => {
       const seq = openSeq.current + 1;
       openSeq.current = seq;
-      if (toggle && current !== null && current.path === path) {
+      if (!reload && toggle && current !== null && current.path === path) {
         setCurrent(null);
         setDraft(null);
         setError(null);
@@ -10591,6 +10607,37 @@ function GetnotePage() {
     },
     [current]
   );
+  const liveRef = A2({ current: null, draft: null });
+  liveRef.current = { current, draft };
+  const reloadRef = A2({ path: "", at: 0 });
+  y2(() => {
+    return subscribeVaultChange((change) => {
+      if (change === null || typeof change !== "object") return;
+      const path = String(change.path || "");
+      if (path === "") return;
+      const live = liveRef.current;
+      const open = live.current;
+      if (open === null || open.path !== path) return;
+      if (change.kind === "delete" || change.kind === "rename") {
+        openSeq.current += 1;
+        setCurrent(null);
+        setDraft(null);
+        setError(null);
+        return;
+      }
+      const saved = selfSavedRef.current;
+      if (saved !== null && saved.path === path) {
+        selfSavedRef.current = null;
+        return;
+      }
+      if (live.draft !== null && live.draft !== open.content) return;
+      const now = Date.now();
+      const last = reloadRef.current;
+      if (last.path === path && now - last.at < 1e3) return;
+      reloadRef.current = { path, at: now };
+      void openNote(path, false, true);
+    });
+  }, [openNote]);
   const restoredRef = A2(false);
   y2(() => {
     if (restoredRef.current) return;
@@ -10643,6 +10690,7 @@ function GetnotePage() {
   const saveNote = q2(async () => {
     if (current === null || draft === null) return;
     setBusy(true);
+    selfSavedRef.current = { path: current.path };
     try {
       await api("/save", {
         method: "POST",
@@ -10653,6 +10701,7 @@ function GetnotePage() {
       showToast(t3("note.saved"));
       void refresh();
     } catch (err) {
+      selfSavedRef.current = null;
       setError(err && err.message ? err.message : String(err));
     } finally {
       setBusy(false);
@@ -16044,6 +16093,15 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     this.registerEvent(this.app.vault.on("create", bump));
     this.registerEvent(this.app.vault.on("delete", bump));
     this.registerEvent(this.app.vault.on("rename", bump));
+    const tellPanel = (kind) => (file, oldPath) => {
+      const path = this.notePathInVault(file);
+      if (path === "") return;
+      notifyVaultChange({ kind, path, oldPath: typeof oldPath === "string" ? oldPath : "" });
+    };
+    this.registerEvent(this.app.vault.on("modify", tellPanel("modify")));
+    this.registerEvent(this.app.vault.on("create", tellPanel("create")));
+    this.registerEvent(this.app.vault.on("delete", tellPanel("delete")));
+    this.registerEvent(this.app.vault.on("rename", tellPanel("rename")));
     this.registerEvent(this.app.workspace.on("css-change", () => notifyCssChange()));
     this.registerEvent(
       this.app.workspace.on("file-menu", (menu, file) => {

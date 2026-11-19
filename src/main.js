@@ -46,6 +46,7 @@ import {
   setVaultGraph,
   setStatusReport,
   notifyCssChange,
+  notifyVaultChange,
 } from './view/panel.js'
 import { GetnoteView, VIEW_TYPE_GETNOTE, PanelIcon } from './view/view.js'
 
@@ -333,6 +334,21 @@ export default class GetnoteObsidianPlugin extends Plugin {
     this.registerEvent(this.app.vault.on('create', bump))
     this.registerEvent(this.app.vault.on('delete', bump))
     this.registerEvent(this.app.vault.on('rename', bump))
+
+    // 同时把「哪一篇、什么动作」转给面板。
+    //
+    // 缓存失效解决的是「下一次扫描读到什么」，解决不了「屏幕上已经显示的旧正文」：
+    // 用户在宿主编辑器里改了当前这篇，面板不重新读就一直停在上一个版本。
+    // 面板自己保存的那一下也会走到这里，它会靠正文相同把这次重读跳过。
+    const tellPanel = (kind) => (file, oldPath) => {
+      const path = this.notePathInVault(file)
+      if (path === '') return
+      notifyVaultChange({ kind, path, oldPath: typeof oldPath === 'string' ? oldPath : '' })
+    }
+    this.registerEvent(this.app.vault.on('modify', tellPanel('modify')))
+    this.registerEvent(this.app.vault.on('create', tellPanel('create')))
+    this.registerEvent(this.app.vault.on('delete', tellPanel('delete')))
+    this.registerEvent(this.app.vault.on('rename', tellPanel('rename')))
 
     // 宿主换主题（或改字体、字号、界面缩放）会发 css-change。面板的配色是按
     // 宿主的 CSS 变量现场推导的，收到就得重算一遍——比 MutationObserver 盯

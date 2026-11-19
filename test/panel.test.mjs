@@ -917,3 +917,73 @@ test('面板记得上次停在哪个页签、哪个目录、开着哪一篇', as
   )
 })
 
+
+/**
+ * 别处改了库里那篇，面板要跟着变。
+ *
+ * 用户在 Obsidian 编辑器里改正文、或者把笔记删了，面板不能还端着旧内容——
+ * 以前只有重新点一次卡片才重读，开着的那一篇等于停在过去。宿主那边由
+ * vault 事件转成 notifyVaultChange 送进来，这里守三件事：正文跟着变、
+ * 自己刚存过的那一下不重复读、被删掉之后退回空态。
+ */
+test('别处改了库里那篇，面板跟着变；自己刚存过的不重复读', async () => {
+  const { readSession } = panel.__internals
+  await clickTab('笔记')
+  await waitFor(() => window.document.querySelector('.dshgn_card') !== null, 8000, '列表有卡片')
+
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const backBtn = window.document.querySelector('.dshgn_noteBack')
+  if (backBtn !== null) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '先退回列表')
+    panel.setConfirmDialog(null)
+  }
+
+  window.document.querySelector('.dshgn_card').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 8000, '笔记打开')
+  await waitFor(() => readSession().path !== '', 5000, '记下了开着的那一篇')
+  const path = readSession().path
+
+  // 在「别处」改这篇（走服务接口写盘，绕开面板自己的保存流程）
+  const written = '外部改动验收：这一段是别处写进来的。'
+  const res = await fetch(server.origin + '/getnote/save', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({ path, content: written }),
+  })
+  assert.equal(res.status, 200, '写盘应该成功')
+  await sleep(80)
+
+  panel.notifyVaultChange({ kind: 'modify', path })
+  await waitFor(
+    () => {
+      const node = window.document.querySelector('.dshgn_note')
+      return node !== null && (node.textContent || '').includes('外部改动验收')
+    },
+    8000,
+    '面板要换成外部改动之后的正文',
+  )
+
+  // 自己刚保存过（正文没变）时不重复读：再送一次同样的通知，/read 次数不该涨
+  const readsBefore = fetchCalls.filter((url) => url.includes('/getnote/read')).length
+  panel.notifyVaultChange({ kind: 'modify', path })
+  await sleep(200)
+  assert.equal(
+    fetchCalls.filter((url) => url.includes('/getnote/read')).length,
+    readsBefore,
+    '正文没变就不该重新读一遍',
+  )
+
+  // 乱传的通知不该炸
+  assert.doesNotThrow(() => {
+    panel.notifyVaultChange(null)
+    panel.notifyVaultChange({})
+    panel.notifyVaultChange({ kind: 'modify' })
+  })
+
+  // 被删掉：退回空态，而不是继续显示一篇不存在的笔记
+  panel.notifyVaultChange({ kind: 'delete', path })
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '删掉之后退回空态')
+})
+
