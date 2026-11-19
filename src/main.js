@@ -861,12 +861,25 @@ export default class GetnoteObsidianPlugin extends Plugin {
    */
   openInVaultEditor(path) {
     try {
-      const rel = String(path || '').replace(/^\/+/, '')
-      if (rel === '') return false
-      const file = this.app.vault.getAbstractFileByPath(rel)
-      if (!file) return false
-      void this.app.workspace.getLeaf('tab').openFile(file)
-      return true
+      const raw = String(path || '').replace(/\\/g, '/')
+      if (raw === '') return false
+      const runtime = settingsStore.getRuntime()
+      const base = String(runtime.vaultBase || '').replace(/\\/g, '/').replace(/\/+$/, '')
+      const sub = String(runtime.subfolder || DEFAULT_SUBFOLDER).replace(/^\/+|\/+$/g, '')
+      // 面板传过来的可能是三种口径：库内相对路径（得到大脑/随手记/甲.md）、
+      // 相对笔记目录的路径（随手记/甲.md，列表里的 entry.path 就是这种）、
+      // 或者拼好的绝对路径（笔记头按钮用的）。宿主只认第一种，所以这里统一。
+      let rel = raw.replace(/^\/+/, '')
+      if (base !== '' && rel.startsWith(base + '/')) rel = rel.slice(base.length + 1)
+      const candidates = [rel]
+      if (sub !== '' && !rel.startsWith(sub + '/')) candidates.push(`${sub}/${rel}`)
+      for (const candidate of candidates) {
+        const file = this.app.vault.getAbstractFileByPath(candidate)
+        if (!file) continue
+        void this.app.workspace.getLeaf('tab').openFile(file)
+        return true
+      }
+      return false
     } catch {
       return false
     }

@@ -984,6 +984,17 @@ test('原生确认框、在宿主里打开、css-change 都接到宿主上了', 
   assert.equal(plugin.openInVaultEditor('得到大脑/随手记/根本不存在.md'), false)
   assert.equal(plugin.openInVaultEditor(''), false)
 
+  // 三种路径口径都要认：列表里的 entry.path 是相对笔记目录的，笔记头按钮拼的是
+  // 绝对路径，命令与深链给的是库内相对路径。宿主只认库内相对路径，换算在这里做。
+  app.workspace.openedFiles.length = 0
+  assert.equal(plugin.openInVaultEditor('随手记/宿主打开验收.md'), true, '相对笔记目录的口径也要认')
+  assert.equal(plugin.openInVaultEditor(`${BASE}/得到大脑/随手记/宿主打开验收.md`), true, '绝对路径的口径也要认')
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  assert.deepEqual(app.workspace.openedFiles, [
+    '得到大脑/随手记/宿主打开验收.md',
+    '得到大脑/随手记/宿主打开验收.md',
+  ])
+
   // ③ css-change：宿主发事件，插件要把它转给面板（重算配色本身由 panel.test 验）
   const listeners = app.workspace.wsHandlers['css-change'] || []
   assert.equal(listeners.length, 1, '应该注册了一个 css-change 监听')

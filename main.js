@@ -11565,6 +11565,15 @@ function GetnotePage() {
                           });
                         }
                       },
+                      // 右键菜单也要有「在 Obsidian 里打开」：用户常常是在列表里
+                      // 扫到一篇、想拿宿主的补全/Vim 去改，而不是先点开再找按钮。
+                      hasOpenInEditor() ? {
+                        id: "open-in-editor",
+                        label: t3("action.openInEditor"),
+                        run: () => {
+                          openInEditor(entry.path);
+                        }
+                      } : null,
                       {
                         id: "copy-ref",
                         label: t3("action.copyRef"),
@@ -11596,7 +11605,7 @@ function GetnotePage() {
                         }
                       }
                     ];
-                    showNoteMenu(event, items);
+                    showNoteMenu(event, items.filter((item) => item !== null));
                   },
                   title: entry.path
                 },
@@ -16581,12 +16590,22 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
    */
   openInVaultEditor(path) {
     try {
-      const rel = String(path || "").replace(/^\/+/, "");
-      if (rel === "") return false;
-      const file = this.app.vault.getAbstractFileByPath(rel);
-      if (!file) return false;
-      void this.app.workspace.getLeaf("tab").openFile(file);
-      return true;
+      const raw = String(path || "").replace(/\\/g, "/");
+      if (raw === "") return false;
+      const runtime2 = getRuntime();
+      const base = String(runtime2.vaultBase || "").replace(/\\/g, "/").replace(/\/+$/, "");
+      const sub = String(runtime2.subfolder || DEFAULT_SUBFOLDER).replace(/^\/+|\/+$/g, "");
+      let rel = raw.replace(/^\/+/, "");
+      if (base !== "" && rel.startsWith(base + "/")) rel = rel.slice(base.length + 1);
+      const candidates = [rel];
+      if (sub !== "" && !rel.startsWith(sub + "/")) candidates.push(`${sub}/${rel}`);
+      for (const candidate of candidates) {
+        const file = this.app.vault.getAbstractFileByPath(candidate);
+        if (!file) continue;
+        void this.app.workspace.getLeaf("tab").openFile(file);
+        return true;
+      }
+      return false;
     } catch {
       return false;
     }

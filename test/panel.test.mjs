@@ -342,6 +342,25 @@ test('右键笔记卡片会把动作清单交给宿主，执行其中一项真�
     '右键打开后正文区显示这篇笔记',
   )
 
+  // 接上宿主编辑器之后，清单里要多一项「在 Obsidian 里打开」：用户常常是在列表里
+  // 扫到一篇就想拿宿主的补全/Vim 去改，不必先点开再回头找按钮。
+  const opened = []
+  panel.setOpenInEditor((path) => {
+    opened.push(String(path))
+    return true
+  })
+  panel.setNoteMenu((event, items) => {
+    const item = items.find((one) => one.id === 'open-in-editor')
+    assert.ok(item, '接上宿主编辑器之后，清单里应该有「在 Obsidian 里打开」，实际 ' + items.map((one) => one.id).join(','))
+    item.run()
+    return true
+  })
+  card.dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+  await sleep(120)
+  assert.equal(opened.length, 1, '执行这一项应该把路径交给宿主一次')
+  assert.match(opened[0], /右键菜单验收\.md$/, '交出去的是这篇的路径，实际 ' + opened[0])
+
+  panel.setOpenInEditor(null)
   panel.setNoteMenu(null)
 })
 

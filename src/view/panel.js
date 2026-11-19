@@ -4626,6 +4626,17 @@ async function saveFile(url, filename) {
                                 })
                               },
                             },
+                            // 右键菜单也要有「在 Obsidian 里打开」：用户常常是在列表里
+                            // 扫到一篇、想拿宿主的补全/Vim 去改，而不是先点开再找按钮。
+                            hasOpenInEditor()
+                              ? {
+                                  id: 'open-in-editor',
+                                  label: t('action.openInEditor'),
+                                  run: () => {
+                                    openInEditor(entry.path)
+                                  },
+                                }
+                              : null,
                             {
                               id: 'copy-ref',
                               label: t('action.copyRef'),
@@ -4657,7 +4668,10 @@ async function saveFile(url, filename) {
                               },
                             },
                           ]
-                          showNoteMenu(event, items)
+                          // 有条件的项（比如没接上宿主编辑器时的「在 Obsidian 里
+                          // 打开」）会是 null，交给宿主之前先滤掉：宿主拿到 null 会
+                          // 在 setTitle 上炸，整个菜单就没了。
+                          showNoteMenu(event, items.filter((item) => item !== null))
                         },
                         title: entry.path,
                       },
