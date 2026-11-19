@@ -161,6 +161,106 @@ try {
   const assetPostRes = await call('/asset', { method: 'POST' })
   check('POST /asset → 405', assetPostRes.status === 405, `status=${assetPostRes.status}`)
 
+  // 5c. 上传附件：面板把拖进来 / 粘进来的文件放进这篇笔记的附件目录。
+  //     原始字节走 body、文件名走请求头——图片动辄几 MB，套 base64 的 JSON
+  //     要多花三成，服务端的 JSON 上限也只有 256KB。
+  const uploadNote = '随手记/2026-11-13-示例录音笔记.md'
+  const pngBytes = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3, 4])
+  const uploadRes = await call(
+    '/asset/upload?path=' + encodeURIComponent(uploadNote),
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/octet-stream', 'x-getnote-filename': encodeURIComponent('截图.png') },
+      body: pngBytes,
+    },
+  )
+  check('POST /asset/upload 成功', uploadRes.status === 200 && uploadRes.json.ok === true, JSON.stringify(uploadRes.json))
+  // 名字要带笔记主干前缀：listAssets 认领附件第一条就是「文件名以主干开头」，
+  // 不加前缀文件是落盘了，但附件区看不见，用户会再拖一次、盘上堆两份。
+  check(
+    'POST /asset/upload 名字带笔记主干前缀',
+    typeof uploadRes.json.name === 'string' && uploadRes.json.name.startsWith('2026-11-13-示例录音笔记_'),
+    String(uploadRes.json.name),
+  )
+  check('POST /asset/upload 落在同目录的 asset 下', uploadRes.json.path === `随手记/asset/${uploadRes.json.name}`, String(uploadRes.json.path))
+  const uploadedOnDisk = await readFile(join(vault, '随手记', 'asset', uploadRes.json.name)).then((b) => b, () => null)
+  check('POST /asset/upload 落盘字节一致', uploadedOnDisk !== null && Buffer.compare(uploadedOnDisk, pngBytes) === 0, String(uploadedOnDisk && uploadedOnDisk.length))
+
+  const uploadedRead = await call('/asset?path=' + encodeURIComponent(uploadRes.json.path))
+  check('上传后的附件能读回来', uploadedRead.status === 200 && uploadedRead.contentType.startsWith('image/png'), `${uploadedRead.status} ${uploadedRead.contentType}`)
+  const readAfterUpload = await call('/read?path=' + encodeURIComponent(uploadNote))
+  check(
+    '上传的附件出现在这篇的附件列表里',
+    (readAfterUpload.json.assets || []).some((a) => a.kind === 'image' && a.name === uploadRes.json.name),
+    JSON.stringify((readAfterUpload.json.assets || []).map((a) => a.name)),
+  )
+
+  // 同名再传一次：加后缀，绝不覆盖——覆盖等于把上次拖进来的同名文件悄悄吃掉
+  const againRes = await call(
+    '/asset/upload?path=' + encodeURIComponent(uploadNote),
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/octet-stream', 'x-getnote-filename': encodeURIComponent('截图.png') },
+      body: pngBytes,
+    },
+  )
+  check(
+    'POST /asset/upload 重名加后缀不覆盖',
+    againRes.status === 200 && againRes.json.name !== uploadRes.json.name && againRes.json.name.includes('-2'),
+    String(againRes.json.name),
+  )
+
+  // 拖进来的可能是宿主的绝对路径，文件名只取最后一段
+  const pathyRes = await call(
+    '/asset/upload?path=' + encodeURIComponent(uploadNote),
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/octet-stream',
+        'x-getnote-filename': encodeURIComponent('/Users/someone/Pictures/截图.png'),
+      },
+      body: pngBytes,
+    },
+  )
+  check(
+    'POST /asset/upload 只取文件名最后一段',
+    pathyRes.status === 200 && !String(pathyRes.json.name).includes('Users'),
+    String(pathyRes.json.name),
+  )
+
+  const uploadNoPath = await call('/asset/upload', {
+    method: 'POST',
+    headers: { 'content-type': 'application/octet-stream', 'x-getnote-filename': 'a.png' },
+    body: pngBytes,
+  })
+  check('POST /asset/upload 缺 path → 400', uploadNoPath.status === 400, `status=${uploadNoPath.status}`)
+  const uploadNoName = await call('/asset/upload?path=' + encodeURIComponent(uploadNote), {
+    method: 'POST',
+    headers: { 'content-type': 'application/octet-stream' },
+    body: pngBytes,
+  })
+  check('POST /asset/upload 缺文件名 → 400', uploadNoName.status === 400, `status=${uploadNoName.status}`)
+  const uploadEmpty = await call('/asset/upload?path=' + encodeURIComponent(uploadNote), {
+    method: 'POST',
+    headers: { 'content-type': 'application/octet-stream', 'x-getnote-filename': 'a.png' },
+    body: Buffer.alloc(0),
+  })
+  check('POST /asset/upload 空文件 → 400', uploadEmpty.status === 400, `status=${uploadEmpty.status}`)
+  const uploadNotMd = await call('/asset/upload?path=' + encodeURIComponent('随手记/asset/x.png'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/octet-stream', 'x-getnote-filename': 'a.png' },
+    body: pngBytes,
+  })
+  check('POST /asset/upload 目标不是 .md → 400', uploadNotMd.status === 400, `status=${uploadNotMd.status}`)
+  const uploadEscape = await call('/asset/upload?path=' + encodeURIComponent('../secret.md'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/octet-stream', 'x-getnote-filename': 'a.png' },
+    body: pngBytes,
+  })
+  check('POST /asset/upload 拒绝 ../ 逃逸', uploadEscape.status === 400, `status=${uploadEscape.status}`)
+  const uploadGet = await call('/asset/upload')
+  check('GET /asset/upload → 405', uploadGet.status === 405, `status=${uploadGet.status}`)
+
   // 6. save（写入生效 + 留历史而不是 .bak）
   const savedRes = await call('/save', postJson('/save', { path: '随手记/2026-11-13-示例录音笔记.md', content: '# 改过了\n\n新内容。\n' }))
   check('POST /save 成功', savedRes.status === 200 && savedRes.json.ok === true, JSON.stringify(savedRes.json))

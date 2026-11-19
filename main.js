@@ -256,6 +256,7 @@ __export(vault_exports, {
   restoreNote: () => restoreNote,
   rewriteTags: () => rewriteTags,
   safeFilename: () => safeFilename,
+  saveAsset: () => saveAsset,
   scanVault: () => scanVault,
   searchNotes: () => searchNotes,
   toPosix: () => toPosix,
@@ -608,6 +609,46 @@ async function listAssets(root, rel, noteId = "") {
   }
   out.sort((a3, b3) => a3.name.localeCompare(b3.name, "zh"));
   return out;
+}
+async function saveAsset(root, relNote, name, data) {
+  const { rel: normalized } = resolveInside(root, relNote);
+  if (!normalized.toLowerCase().endsWith(NOTE_EXT)) {
+    throw Object.assign(new Error("\u53EA\u80FD\u7ED9 .md \u7B14\u8BB0\u5B58\u9644\u4EF6"), { status: 400 });
+  }
+  if (!Buffer.isBuffer(data) || data.length === 0) {
+    throw Object.assign(new Error("\u6587\u4EF6\u662F\u7A7A\u7684"), { status: 400 });
+  }
+  const dir = import_node_path3.posix.dirname(normalized);
+  const stem = import_node_path3.posix.basename(normalized, NOTE_EXT);
+  const assetRel = dir === "." || dir === "" ? "asset" : `${dir}/asset`;
+  const raw = String(name || "").replace(/\\/g, "/");
+  const base = raw.slice(raw.lastIndexOf("/") + 1);
+  const cleaned = base.replace(/[\\/:*?"<>|\r\n\t]/g, " ").replace(/\s+/g, " ").trim().replace(/^\.+/, "");
+  const safe = (cleaned === "" ? "file" : cleaned).slice(0, 80);
+  const prefix = stem === "" ? "" : `${stem}_`;
+  const wanted = prefix !== "" && safe.startsWith(prefix) ? safe : `${prefix}${safe}`;
+  const dot = wanted.lastIndexOf(".");
+  const head = dot > 0 ? wanted.slice(0, dot) : wanted;
+  const ext = dot > 0 ? wanted.slice(dot) : "";
+  const assetAbs = resolveInside(root, assetRel).abs;
+  await mkdir2(assetAbs, { recursive: true });
+  for (let counter = 1; counter <= 99; counter += 1) {
+    const candidate = counter === 1 ? wanted : `${head}-${counter}${ext}`;
+    const relPath = `${assetRel}/${candidate}`;
+    const abs = resolveInside(root, relPath).abs;
+    let exists = false;
+    try {
+      await stat2(abs);
+      exists = true;
+    } catch {
+      exists = false;
+    }
+    if (exists) continue;
+    await writeFile2(abs, data);
+    invalidateScan(root);
+    return { name: candidate, path: relPath, bytes: data.length };
+  }
+  throw Object.assign(new Error("\u540C\u540D\u9644\u4EF6\u8FC7\u591A"), { status: 409 });
 }
 async function writeNote(root, rel, content, options = {}) {
   const backup = options.backup !== false;
@@ -4629,6 +4670,7 @@ var importState = {
 };
 var AUTH_TTL_MS = 15 * 60 * 1e3;
 var MAX_BODY = 2 * 1024 * 1024 + 64 * 1024;
+var MAX_UPLOAD = 100 * 1024 * 1024;
 var cardState = {
   running: false,
   startedAt: null,
@@ -5328,6 +5370,18 @@ function createHandler(config) {
     headers["content-length"] = String(st.size);
     res.writeHead(200, headers);
     return res.end(await readAssetCached(abs, st));
+  }
+  async function handleAssetUpload(req, res, url) {
+    const { root } = await currentRoot();
+    const note = url.searchParams.get("path") || "";
+    if (note === "") throw Object.assign(new Error("path \u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+    const header = req.headers["x-getnote-filename"];
+    const name = typeof header === "string" ? decodeURIComponent(header) : "";
+    if (name === "") throw Object.assign(new Error("\u6587\u4EF6\u540D\u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+    const data = await readBufferBody(req, MAX_UPLOAD);
+    if (data.length === 0) throw Object.assign(new Error("\u6587\u4EF6\u662F\u7A7A\u7684"), { status: 400 });
+    const saved = await saveAsset(root, note, name, data);
+    return send(res, 200, { ok: true, ...saved });
   }
   async function handleSave(req, res) {
     const body = await readJsonBody(req, MAX_BODY);
@@ -6180,6 +6234,10 @@ function createHandler(config) {
       if (action === "audio") {
         if (method !== "GET") return send(res, 405, { error: "method not allowed" });
         return await handleAudioProxy(req, res, url);
+      }
+      if (action === "asset" && parts[2] === "upload") {
+        if (method !== "POST") return send(res, 405, { error: "method not allowed" });
+        return await handleAssetUpload(req, res, url);
       }
       if (action === "asset") {
         if (method !== "GET") return send(res, 405, { error: "method not allowed" });
@@ -7996,6 +8054,10 @@ var LEX = {
     "note.localAudio": "\u672C\u5730\u5F55\u97F3",
     "note.outline": "\u672C\u6587\u5927\u7EB2",
     "note.openImage": "\u5728 Obsidian \u91CC\u6253\u5F00\u8FD9\u5F20\u56FE",
+    "note.attach": "\u63D2\u5165\u9644\u4EF6",
+    "attach.added": "\u9644\u4EF6\u5DF2\u63D2\u5165",
+    "attach.failed": "\u6709\u51E0\u4E2A\u9644\u4EF6\u6CA1\u4F20\u4E0A\u53BB",
+    "attach.needNote": "\u5148\u6253\u5F00\u4E00\u7BC7\u7B14\u8BB0\uFF0C\u518D\u5F80\u91CC\u653E\u6587\u4EF6",
     "note.backlinks": "\u5F15\u7528\u4E86\u8FD9\u7BC7\u7684\u7B14\u8BB0",
     "note.outlinks": "\u8FD9\u7BC7\u5F15\u7528\u4E86",
     "note.fontSize": "\u5B57\u53F7",
@@ -8382,6 +8444,10 @@ var LEX = {
     "note.localAudio": "Local recording",
     "note.outline": "Outline",
     "note.openImage": "Open this image in Obsidian",
+    "note.attach": "Attach a file",
+    "attach.added": "Attachment inserted",
+    "attach.failed": "Some files could not be uploaded",
+    "attach.needNote": "Open a note first, then drop files into it",
     "note.backlinks": "Notes linking here",
     "note.outlinks": "Links from this note",
     "note.fontSize": "Text size",
@@ -8768,6 +8834,10 @@ var LEX = {
     "note.localAudio": "Lokale opname",
     "note.outline": "Overzicht",
     "note.openImage": "Open deze afbeelding in Obsidian",
+    "note.attach": "Bestand toevoegen",
+    "attach.added": "Bijlage ingevoegd",
+    "attach.failed": "Sommige bestanden zijn niet ge\xFCpload",
+    "attach.needNote": "Open eerst een notitie en zet daar bestanden in",
     "note.backlinks": "Notities die hierheen linken",
     "note.outlinks": "Links uit deze notitie",
     "note.fontSize": "Tekstgrootte",
@@ -9124,6 +9194,26 @@ async function api(path, init) {
     }
   }
 }
+async function uploadAsset(notePath, file) {
+  const name = String(file && file.name || "") || "file";
+  const buffer = await file.arrayBuffer();
+  const response = await fetch(
+    `${apiOrigin()}/getnote/asset/upload?path=${encodeURIComponent(String(notePath || ""))}`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/octet-stream",
+        // 头里只能放 ASCII，中文文件名得先编码，服务端那边再解回来
+        "x-getnote-filename": encodeURIComponent(name),
+        ...__apiToken === "" ? {} : { "x-getnote-token": __apiToken }
+      },
+      body: buffer
+    }
+  );
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(json && json.error || `HTTP ${response.status}`);
+  return json;
+}
 function formatBytes2(bytes) {
   const n2 = Number(bytes) || 0;
   if (n2 < 1024) return `${n2} B`;
@@ -9360,7 +9450,8 @@ var ICONS = {
   calendar: "M4 7h16v13H4Z M4 11h16 M8 4v5 M16 4v5",
   note: "M5 4h9l5 5v11H5Z M14 4v5h5 M8 13h8 M8 17h5",
   "external-link": "M14 4h6v6 M20 4l-9 9 M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5",
-  rename: "M9 4h6 M12 4v16 M9 20h6"
+  rename: "M9 4h6 M12 4v16 M9 20h6",
+  attach: "M14 3.5a4.5 4.5 0 0 1 6.4 6.4l-8.5 8.5a3 3 0 0 1-4.2-4.2l7.8-7.8"
 };
 function Icon(props) {
   const size = props && typeof props.size === "number" ? props.size : 16;
@@ -10455,6 +10546,7 @@ var CSS = `
 .dshgn_embedTitle:hover{text-decoration:underline}
 .dshgn_embedBody{font-size:12.5px;color:var(--dsw-alias-label-secondary)}
 .dshgn_embedEmpty{font-size:11px;color:var(--dsw-alias-label-tertiary)}
+.dshgn_noteDrop{position:relative}
 .dshgn_statGrid{display:flex;flex-wrap:wrap;gap:8px}
 .dshgn_stat{display:flex;flex-direction:column;gap:1px;padding:7px 11px;border-radius:8px;
   background:var(--dsw-alias-interactive-bg-hover);min-width:66px}
@@ -11407,6 +11499,57 @@ function GetnotePage() {
     }),
     [activeDir, entries, newNote, openNote, refresh, showToast, status, t3]
   );
+  const attachFiles = q2(
+    async (fileList) => {
+      const files = Array.from(fileList || []).filter((file) => file !== null && typeof file === "object");
+      if (files.length === 0) return;
+      if (current === null) {
+        showToast(t3("attach.needNote"));
+        return;
+      }
+      setBusy(true);
+      try {
+        const names = [];
+        let failed = 0;
+        for (const file of files) {
+          try {
+            const saved = await uploadAsset(current.path, file);
+            if (saved && typeof saved.name === "string" && saved.name !== "") names.push(saved.name);
+          } catch {
+            failed += 1;
+          }
+        }
+        if (names.length === 0) {
+          showToast(t3("attach.failed"));
+          return;
+        }
+        const base = draft !== null ? draft : current.content;
+        const insert = names.map((name) => `![[${name}]]`).join("\n");
+        const next = base.trim() === "" ? `${insert}
+` : `${base.replace(/\s*$/, "")}
+
+${insert}
+`;
+        const unsaved = draft !== null && draft !== current.content;
+        if (unsaved) {
+          setDraft(next);
+        } else {
+          await api("/save", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ path: current.path, content: next, requestId: requestId() })
+          });
+          await openNote(current.path);
+        }
+        showToast(failed > 0 ? t3("attach.failed") : t3("attach.added"));
+      } catch (err) {
+        setError(err && err.message ? err.message : String(err));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [current, draft, openNote, setDraft, showToast, t3]
+  );
   const renameNote = q2(
     async (path) => {
       const target = String(path || "");
@@ -12247,6 +12390,7 @@ function GetnotePage() {
         anchor: pendingAnchor,
         onAnchorDone: () => setPendingAnchor(null),
         resolveNote: resolveNotePath,
+        onAttach: attachFiles,
         onError: (message) => setError(message),
         // 勾待办直接落盘再重读：本地文件已经变了，只改前端状态的话
         // 下次保存草稿会把旧内容写回去，把刚勾的那一下冲掉。
@@ -15439,7 +15583,7 @@ ${t3("tree.menuDelete")}\uFF1A\u53F3\u952E`
   );
 }
 function NotePane(props) {
-  const { t: t3, status, current, draft, setDraft, dirty, busy, onSave, onRename, onDelete, onCopyReference, onOpenWikiLink, onSyncOne, onRestored, onError, onToggleTodo, onClose } = props;
+  const { t: t3, status, current, draft, setDraft, dirty, busy, onSave, onRename, onDelete, onCopyReference, onOpenWikiLink, onSyncOne, onRestored, onError, onToggleTodo, onClose, onAttach } = props;
   const anchorRequest = props.anchor;
   const onAnchorDone = props.onAnchorDone;
   const resolveNote = props.resolveNote;
@@ -15466,6 +15610,8 @@ function NotePane(props) {
   const [historyItems, setHistoryItems] = h2(null);
   const [historyPreview, setHistoryPreview] = h2(null);
   const [historyBusy, setHistoryBusy] = h2(false);
+  const attachRef = A2(null);
+  const canAttach = typeof onAttach === "function";
   const loadHistory = q2(async (path) => {
     if (path === null || path === "") {
       setHistoryItems(null);
@@ -15643,7 +15789,18 @@ function NotePane(props) {
   const absolute = status !== null ? `${status.vaultRoot}/${current.path}` : current.path;
   return h4(
     "section",
-    { className: "dshgn_note" },
+    {
+      className: "dshgn_note" + (canAttach ? " dshgn_noteDrop" : ""),
+      // 把文件拖进笔记正文就插进来。列表那边的 drop 是「挪目录」，
+      // 这里同一个手势是「存成附件」——落点不同、意思不同，跟宿主一致。
+      onDrop: canAttach ? (event) => {
+        const files = event.dataTransfer && event.dataTransfer.files;
+        if (!files || files.length === 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        void onAttach(files);
+      } : void 0
+    },
     h4(
       "div",
       { className: "dshgn_noteHead" },
@@ -15767,6 +15924,36 @@ function NotePane(props) {
           },
           h4(Icon, { name: "external-link", size: 15 })
         ) : null,
+        canAttach ? h4(
+          b,
+          null,
+          h4(
+            "button",
+            {
+              type: "button",
+              className: "dshgn_iconBtn",
+              title: t3("note.attach"),
+              onClick: () => {
+                if (attachRef.current) attachRef.current.click();
+              },
+              disabled: busy
+            },
+            h4(Icon, { name: "attach", size: 15 })
+          ),
+          // 藏起来的 file input：宿主里插图走的是同一个系统选择器，
+          // 面板没必要自造一套。
+          h4("input", {
+            ref: attachRef,
+            type: "file",
+            multiple: true,
+            style: { display: "none" },
+            onChange: (event) => {
+              const files = event.target.files;
+              if (files && files.length > 0) void onAttach(files);
+              event.target.value = "";
+            }
+          })
+        ) : null,
         h4(
           "button",
           { type: "button", className: "dshgn_iconBtn", title: t3("action.delete"), onClick: onDelete, disabled: busy },
@@ -15778,7 +15965,16 @@ function NotePane(props) {
       className: "dshgn_editor",
       value: draft === null ? "" : draft,
       spellCheck: false,
-      onChange: (event) => setDraft(event.target.value)
+      onChange: (event) => setDraft(event.target.value),
+      // 截图之后 Ctrl+V 是最顺手的插图方式。宿主接住了，面板以前什么都不做，
+      // 剪贴板里的图就悄悄没了。
+      onPaste: canAttach ? (event) => {
+        const files = event.clipboardData && event.clipboardData.files;
+        if (files && files.length > 0) {
+          event.preventDefault();
+          void onAttach(files);
+        }
+      } : void 0
     }) : historyOpen ? h4(
       "div",
       { className: "dshgn_historyPane" },

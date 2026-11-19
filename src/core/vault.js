@@ -496,6 +496,62 @@ export async function listAssets(root, rel, noteId = '') {
 }
 
 /**
+ * 把本地文件存进这篇笔记的附件目录。
+ *
+ * 为什么文件名前面要加笔记主干：listAssets 认领附件的第一条就是「文件名以笔记
+ * 主干开头」。不加这个前缀，用户拖进来的图确实落到了盘上，但面板的附件区看不见
+ * 它——用户会以为没存进去，然后再拖一次，盘上就堆了两份。
+ *
+ * 重名不覆盖：加 -2 / -3 后缀。覆盖等于把用户上一次拖进来的同名文件悄悄吃掉。
+ */
+export async function saveAsset(root, relNote, name, data) {
+  const { rel: normalized } = resolveInside(root, relNote)
+  if (!normalized.toLowerCase().endsWith(NOTE_EXT)) {
+    throw Object.assign(new Error('只能给 .md 笔记存附件'), { status: 400 })
+  }
+  if (!Buffer.isBuffer(data) || data.length === 0) {
+    throw Object.assign(new Error('文件是空的'), { status: 400 })
+  }
+  const dir = posix.dirname(normalized)
+  const stem = posix.basename(normalized, NOTE_EXT)
+  const assetRel = dir === '.' || dir === '' ? 'asset' : `${dir}/asset`
+  // 只取最后一段：拖进来的东西可能带着宿主的绝对路径，落盘时不能带目录
+  const raw = String(name || '').replace(/\\/g, '/')
+  const base = raw.slice(raw.lastIndexOf('/') + 1)
+  const cleaned = base
+    .replace(/[\\/:*?"<>|\r\n\t]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^\.+/, '')
+  const safe = (cleaned === '' ? 'file' : cleaned).slice(0, 80)
+  // 已经带笔记主干就不重复加（用户从库里又拖回来一次的情况）
+  const prefix = stem === '' ? '' : `${stem}_`
+  const wanted = prefix !== '' && safe.startsWith(prefix) ? safe : `${prefix}${safe}`
+  const dot = wanted.lastIndexOf('.')
+  const head = dot > 0 ? wanted.slice(0, dot) : wanted
+  const ext = dot > 0 ? wanted.slice(dot) : ''
+  const assetAbs = resolveInside(root, assetRel).abs
+  await mkdir(assetAbs, { recursive: true })
+  for (let counter = 1; counter <= 99; counter += 1) {
+    const candidate = counter === 1 ? wanted : `${head}-${counter}${ext}`
+    const relPath = `${assetRel}/${candidate}`
+    const abs = resolveInside(root, relPath).abs
+    let exists = false
+    try {
+      await stat(abs)
+      exists = true
+    } catch {
+      exists = false
+    }
+    if (exists) continue
+    await writeFile(abs, data)
+    invalidateScan(root)
+    return { name: candidate, path: relPath, bytes: data.length }
+  }
+  throw Object.assign(new Error('同名附件过多'), { status: 409 })
+}
+
+/**
  * 保存笔记：内容整篇覆盖（面板是全量编辑，不走行级 diff）。
  *
  * `options.backup` 默认 true。同步镜像云端内容时要传 false：那时本地文件本来就

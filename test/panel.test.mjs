@@ -2202,3 +2202,137 @@ test('正文里嵌入的另一篇笔记真的把内容嵌进来，只嵌一层',
   assert.equal(tooDeep.props.className, 'dshgn_embedFile', '第二层不再嵌')
 })
 
+/**
+ * 宿主里把文件拖进编辑器就存进附件目录、正文里多一行 ![[图.png]]；截图之后
+ * Ctrl+V 也一样。面板以前什么都不做——用户以为图存进去了，其实盘上没有，
+ * 正文里只有一串文件名。
+ */
+test('拖进来 / 粘进来的文件存成附件并在正文里留下引用', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const backBtn = window.document.querySelector('.dshgn_noteBack')
+  if (backBtn) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    try {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+  }
+
+  const createRes = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '附件验收',
+      content: '正文开头\n',
+      withDatePrefix: false,
+      requestId: 'seed-attach',
+    }),
+  })
+  const created = await createRes.json()
+  assert.equal(created.path, '随手记/附件验收.md')
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  const card = await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_card')).find(
+        (el) => el.getAttribute('title') === created.path,
+      ),
+    5000,
+    '笔记出现在列表里',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(
+    () => ((window.document.querySelector('.dshgn_note') || {}).textContent || '').includes('正文开头'),
+    5000,
+    '笔记打开了',
+  )
+
+  const readNote = async () => {
+    const res = await realFetch(
+      server.origin + '/getnote/read?path=' + encodeURIComponent(created.path),
+      { headers: { 'x-getnote-token': server.token } },
+    )
+    return res.json()
+  }
+
+  // 造一个「拖进来的文件」：只用到 name 与 arrayBuffer，跟浏览器给的 File 同形
+  const fakeFile = (name, bytes) => ({
+    name,
+    arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+  })
+  const pngBytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3, 4])
+
+  // ① 把文件拖到笔记正文上
+  const note = window.document.querySelector('.dshgn_note')
+  assert.ok(note.className.includes('dshgn_noteDrop'), '接上插入能力之后笔记区要认这个手势')
+  const dropEvent = new window.Event('drop', { bubbles: true, cancelable: true })
+  dropEvent.dataTransfer = { files: [fakeFile('截图.png', pngBytes)] }
+  note.dispatchEvent(dropEvent)
+
+  await waitFor(
+    () => {
+      const toast = window.document.querySelector('.dshgn_toast')
+      return toast !== null && (toast.textContent || '').includes('附件已插入')
+    },
+    5000,
+    '拖进来之后有提示',
+  )
+
+  // 等落盘：正文里出现 ![[...]]，附件也在列表里
+  let savedNote = null
+  for (let attempt = 0; attempt < 60 && savedNote === null; attempt += 1) {
+    const json = await readNote()
+    const assets = Array.isArray(json.assets) ? json.assets : []
+    if (String(json.content || '').includes('![[') && assets.length > 0) savedNote = json
+    else await sleep(100)
+  }
+  assert.ok(savedNote !== null, '拖进来的文件要真的落盘')
+  assert.ok(
+    savedNote.content.includes('![[附件验收_截图.png]]'),
+    '正文里留的是带笔记主干前缀的附件名，实际：' + savedNote.content,
+  )
+  const imageAsset = (savedNote.assets || []).find((a) => a.kind === 'image')
+  assert.ok(imageAsset !== undefined, '附件列表里要能看见它，否则用户会再拖一次')
+  assert.equal(imageAsset.name, '附件验收_截图.png')
+
+  // ② 截图之后直接 Ctrl+V：编辑态下的 textarea 接住剪贴板里的图
+  const editBtn = Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find(
+    (el) => el.title === '编辑',
+  )
+  assert.ok(editBtn !== undefined, '笔记头上要有编辑按钮')
+  editBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const editor = await waitFor(() => window.document.querySelector('.dshgn_editor'), 5000, '进编辑态')
+
+  const pasteEvent = new window.Event('paste', { bubbles: true, cancelable: true })
+  pasteEvent.clipboardData = { files: [fakeFile('粘贴.png', pngBytes)] }
+  editor.dispatchEvent(pasteEvent)
+
+  await waitFor(
+    () => ((window.document.querySelector('.dshgn_editor') || {}).value || '').includes('粘贴.png'),
+    5000,
+    '粘进来的图写进了草稿',
+  )
+  const draftText = window.document.querySelector('.dshgn_editor').value
+  assert.ok(draftText.includes('![[附件验收_粘贴.png]]'), '草稿里是附件引用，实际：' + draftText)
+  assert.ok(draftText.includes('正文开头'), '原有内容不能被冲掉')
+  assert.equal(
+    window.document.querySelector('.dshgn_root').getAttribute('data-has-note'),
+    'true',
+    '有没保存的草稿时不该把面板搞乱',
+  )
+
+  // 退出编辑态，别把草稿状态留给后面的用例
+  window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  await sleep(120)
+})
+

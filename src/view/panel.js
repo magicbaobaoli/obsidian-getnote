@@ -655,6 +655,10 @@ async function saveFile(url, filename) {
         'note.localAudio': '本地录音',
         'note.outline': '本文大纲',
         'note.openImage': '在 Obsidian 里打开这张图',
+        'note.attach': '插入附件',
+        'attach.added': '附件已插入',
+        'attach.failed': '有几个附件没传上去',
+        'attach.needNote': '先打开一篇笔记，再往里放文件',
         'note.backlinks': '引用了这篇的笔记',
         'note.outlinks': '这篇引用了',
         'note.fontSize': '字号',
@@ -1045,6 +1049,10 @@ async function saveFile(url, filename) {
         'note.localAudio': 'Local recording',
         'note.outline': 'Outline',
         'note.openImage': 'Open this image in Obsidian',
+        'note.attach': 'Attach a file',
+        'attach.added': 'Attachment inserted',
+        'attach.failed': 'Some files could not be uploaded',
+        'attach.needNote': 'Open a note first, then drop files into it',
         'note.backlinks': 'Notes linking here',
         'note.outlinks': 'Links from this note',
         'note.fontSize': 'Text size',
@@ -1434,6 +1442,10 @@ async function saveFile(url, filename) {
         'note.localAudio': 'Lokale opname',
         'note.outline': 'Overzicht',
         'note.openImage': 'Open deze afbeelding in Obsidian',
+        'note.attach': 'Bestand toevoegen',
+        'attach.added': 'Bijlage ingevoegd',
+        'attach.failed': 'Sommige bestanden zijn niet geüpload',
+        'attach.needNote': 'Open eerst een notitie en zet daar bestanden in',
         'note.backlinks': 'Notities die hierheen linken',
         'note.outlinks': 'Links uit deze notitie',
         'note.fontSize': 'Tekstgrootte',
@@ -1868,6 +1880,34 @@ async function saveFile(url, filename) {
       }
     }
 
+    /**
+     * 把一个本地文件传进这篇笔记的附件目录。
+     *
+     * 不用 api()：它只会 res.json()，而这里要发的是原始字节。走请求头带文件名、
+     * 查询串带笔记路径，跟归档导入收 zip 是同一个套路——图片动辄几 MB，套进
+     * base64 的 JSON 里要多花三成，服务端的 JSON 上限也只有 256KB。
+     */
+    async function uploadAsset(notePath, file) {
+      const name = String((file && file.name) || '') || 'file'
+      const buffer = await file.arrayBuffer()
+      const response = await fetch(
+        `${apiOrigin()}/getnote/asset/upload?path=${encodeURIComponent(String(notePath || ''))}`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/octet-stream',
+            // 头里只能放 ASCII，中文文件名得先编码，服务端那边再解回来
+            'x-getnote-filename': encodeURIComponent(name),
+            ...(__apiToken === '' ? {} : { 'x-getnote-token': __apiToken }),
+          },
+          body: buffer,
+        },
+      )
+      const json = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error((json && json.error) || `HTTP ${response.status}`)
+      return json
+    }
+
     function formatBytes(bytes) {
       const n = Number(bytes) || 0
       if (n < 1024) return `${n} B`
@@ -2182,6 +2222,7 @@ async function saveFile(url, filename) {
       note: 'M5 4h9l5 5v11H5Z M14 4v5h5 M8 13h8 M8 17h5',
       'external-link': 'M14 4h6v6 M20 4l-9 9 M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5',
       rename: 'M9 4h6 M12 4v16 M9 20h6',
+      attach: 'M14 3.5a4.5 4.5 0 0 1 6.4 6.4l-8.5 8.5a3 3 0 0 1-4.2-4.2l7.8-7.8',
     }
 
     function Icon(props) {
@@ -3434,6 +3475,7 @@ async function saveFile(url, filename) {
 .dshgn_embedTitle:hover{text-decoration:underline}
 .dshgn_embedBody{font-size:12.5px;color:var(--dsw-alias-label-secondary)}
 .dshgn_embedEmpty{font-size:11px;color:var(--dsw-alias-label-tertiary)}
+.dshgn_noteDrop{position:relative}
 .dshgn_statGrid{display:flex;flex-wrap:wrap;gap:8px}
 .dshgn_stat{display:flex;flex-direction:column;gap:1px;padding:7px 11px;border-radius:8px;
   background:var(--dsw-alias-interactive-bg-hover);min-width:66px}
@@ -4626,6 +4668,64 @@ async function saveFile(url, filename) {
       )
 
       /**
+       * 把拖进来 / 粘进来的文件存成这篇笔记的附件，并在正文里留下引用。
+       *
+       * 宿主里这两件事是自动的：拖张图进编辑器就落到附件目录、正文里多一行
+       * ![[图.png]]。面板以前什么都不做——用户以为图存进去了，其实盘上没有，
+       * 正文里只有一串文件名。这里补上同一件事。
+       *
+       * 有没保存的草稿时只改草稿不落盘：用户正在写，我们替他保存会把半句话
+       * 也一起写进去。没草稿才直接存，省得用户还要再点一次保存。
+       */
+      const attachFiles = React.useCallback(
+        async (fileList) => {
+          const files = Array.from(fileList || []).filter((file) => file !== null && typeof file === 'object')
+          if (files.length === 0) return
+          if (current === null) {
+            showToast(t('attach.needNote'))
+            return
+          }
+          setBusy(true)
+          try {
+            const names = []
+            let failed = 0
+            for (const file of files) {
+              try {
+                const saved = await uploadAsset(current.path, file)
+                if (saved && typeof saved.name === 'string' && saved.name !== '') names.push(saved.name)
+              } catch {
+                failed += 1
+              }
+            }
+            if (names.length === 0) {
+              showToast(t('attach.failed'))
+              return
+            }
+            const base = draft !== null ? draft : current.content
+            const insert = names.map((name) => `![[${name}]]`).join('\n')
+            const next = base.trim() === '' ? `${insert}\n` : `${base.replace(/\s*$/, '')}\n\n${insert}\n`
+            const unsaved = draft !== null && draft !== current.content
+            if (unsaved) {
+              setDraft(next)
+            } else {
+              await api('/save', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ path: current.path, content: next, requestId: requestId() }),
+              })
+              await openNote(current.path)
+            }
+            showToast(failed > 0 ? t('attach.failed') : t('attach.added'))
+          } catch (err) {
+            setError(err && err.message ? err.message : String(err))
+          } finally {
+            setBusy(false)
+          }
+        },
+        [current, draft, openNote, setDraft, showToast, t],
+      )
+
+      /**
        * 重命名一篇笔记。
        *
        * 这件事必须交给宿主：它改名的时候会顺手把全库的双链、Markdown 链接一起
@@ -5573,6 +5673,7 @@ async function saveFile(url, filename) {
             anchor: pendingAnchor,
             onAnchorDone: () => setPendingAnchor(null),
             resolveNote: resolveNotePath,
+            onAttach: attachFiles,
             onError: (message) => setError(message),
             // 勾待办直接落盘再重读：本地文件已经变了，只改前端状态的话
             // 下次保存草稿会把旧内容写回去，把刚勾的那一下冲掉。
@@ -9328,7 +9429,7 @@ async function saveFile(url, filename) {
     // ── 阅读 / 编辑 ───────────────────────────────────────────────────────────
 
     function NotePane(props) {
-      const { t, status, current, draft, setDraft, dirty, busy, onSave, onRename, onDelete, onCopyReference, onOpenWikiLink, onSyncOne, onRestored, onError, onToggleTodo, onClose } = props
+      const { t, status, current, draft, setDraft, dirty, busy, onSave, onRename, onDelete, onCopyReference, onOpenWikiLink, onSyncOne, onRestored, onError, onToggleTodo, onClose, onAttach } = props
       const anchorRequest = props.anchor
       const onAnchorDone = props.onAnchorDone
       // 嵌入 ![[另一篇笔记]] 时用它把名字解析成路径（与点双链共用一套口径）
@@ -9364,6 +9465,9 @@ async function saveFile(url, filename) {
       const [historyItems, setHistoryItems] = React.useState(null)
       const [historyPreview, setHistoryPreview] = React.useState(null)
       const [historyBusy, setHistoryBusy] = React.useState(false)
+      // 插入附件的文件选择器：按钮只是把它点开，真正干活的是 onAttach
+      const attachRef = React.useRef(null)
+      const canAttach = typeof onAttach === 'function'
 
       const loadHistory = React.useCallback(async (path) => {
         if (path === null || path === '') {
@@ -9601,7 +9705,20 @@ async function saveFile(url, filename) {
 
       return h(
         'section',
-        { className: 'dshgn_note' },
+        {
+          className: 'dshgn_note' + (canAttach ? ' dshgn_noteDrop' : ''),
+          // 把文件拖进笔记正文就插进来。列表那边的 drop 是「挪目录」，
+          // 这里同一个手势是「存成附件」——落点不同、意思不同，跟宿主一致。
+          onDrop: canAttach
+            ? (event) => {
+                const files = event.dataTransfer && event.dataTransfer.files
+                if (!files || files.length === 0) return
+                event.preventDefault()
+                event.stopPropagation()
+                void onAttach(files)
+              }
+            : undefined,
+        },
         h(
           'div',
           { className: 'dshgn_noteHead' },
@@ -9732,6 +9849,38 @@ async function saveFile(url, filename) {
                       h(Icon, { name: 'external-link', size: 15 }),
                     )
                   : null,
+                canAttach
+                  ? h(
+                      React.Fragment,
+                      null,
+                      h(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'dshgn_iconBtn',
+                          title: t('note.attach'),
+                          onClick: () => {
+                            if (attachRef.current) attachRef.current.click()
+                          },
+                          disabled: busy,
+                        },
+                        h(Icon, { name: 'attach', size: 15 }),
+                      ),
+                      // 藏起来的 file input：宿主里插图走的是同一个系统选择器，
+                      // 面板没必要自造一套。
+                      h('input', {
+                        ref: attachRef,
+                        type: 'file',
+                        multiple: true,
+                        style: { display: 'none' },
+                        onChange: (event) => {
+                          const files = event.target.files
+                          if (files && files.length > 0) void onAttach(files)
+                          event.target.value = ''
+                        },
+                      }),
+                    )
+                  : null,
                 h(
                   'button',
                   { type: 'button', className: 'dshgn_iconBtn', title: t('action.delete'), onClick: onDelete, disabled: busy },
@@ -9745,6 +9894,17 @@ async function saveFile(url, filename) {
               value: draft === null ? '' : draft,
               spellCheck: false,
               onChange: (event) => setDraft(event.target.value),
+              // 截图之后 Ctrl+V 是最顺手的插图方式。宿主接住了，面板以前什么都不做，
+              // 剪贴板里的图就悄悄没了。
+              onPaste: canAttach
+                ? (event) => {
+                    const files = event.clipboardData && event.clipboardData.files
+                    if (files && files.length > 0) {
+                      event.preventDefault()
+                      void onAttach(files)
+                    }
+                  }
+                : undefined,
             })
           : historyOpen
             ? h(

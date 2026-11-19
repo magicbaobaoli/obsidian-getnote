@@ -77,6 +77,7 @@ import {
   unresolveConflict,
   resolveInside,
   restoreNote,
+  saveAsset,
   scanVault,
   searchNotes,
   trashNote,
@@ -132,6 +133,9 @@ const importState = {
 }
 const AUTH_TTL_MS = 15 * 60 * 1000
 const MAX_BODY = 2 * 1024 * 1024 + 64 * 1024
+// 单个附件的上限。拖进来的通常是图或录音，100MB 足够覆盖一段长录音；
+// 再大就该走归档导入而不是往笔记旁边塞。
+const MAX_UPLOAD = 100 * 1024 * 1024
 
 /**
  * 录音卡直连的运行期状态（进程内单例）。
@@ -1126,6 +1130,26 @@ export function createHandler(config) {
     // Obsidian 版的文件系统走 adapter，没有可读流：整块读出来再回。
     // 附件都是录音/图片（几十 MB 以内），一次性读进内存是可接受的代价。
     return res.end(await readAssetCached(abs, st))
+  }
+
+  /**
+   * 上传一个本地文件，放进这篇笔记的附件目录。
+   *
+   * 为什么原始字节走 body 而不是 base64 JSON：图片动辄几 MB，base64 要多花三成
+   * 带宽与内存，而 readJsonBody 的上限只有 256KB。文件名走请求头，路径走查询串，
+   * body 就是文件本身——与 archive/import 收 zip 是同一个套路。
+   */
+  async function handleAssetUpload(req, res, url) {
+    const { root } = await currentRoot()
+    const note = url.searchParams.get('path') || ''
+    if (note === '') throw Object.assign(new Error('path 不能为空'), { status: 400 })
+    const header = req.headers['x-getnote-filename']
+    const name = typeof header === 'string' ? decodeURIComponent(header) : ''
+    if (name === '') throw Object.assign(new Error('文件名不能为空'), { status: 400 })
+    const data = await readBufferBody(req, MAX_UPLOAD)
+    if (data.length === 0) throw Object.assign(new Error('文件是空的'), { status: 400 })
+    const saved = await saveAsset(root, note, name, data)
+    return send(res, 200, { ok: true, ...saved })
   }
 
   async function handleSave(req, res) {
@@ -2267,6 +2291,12 @@ export function createHandler(config) {
       if (action === 'audio') {
         if (method !== 'GET') return send(res, 405, { error: 'method not allowed' })
         return await handleAudioProxy(req, res, url)
+      }
+
+      // 上传附件：面板把本地文件拖进来 / 粘贴进来时走这条
+      if (action === 'asset' && parts[2] === 'upload') {
+        if (method !== 'POST') return send(res, 405, { error: 'method not allowed' })
+        return await handleAssetUpload(req, res, url)
       }
 
       // 本地附件（录音 / 图片 / 转写）同样是二进制流
