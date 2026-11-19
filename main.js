@@ -5432,7 +5432,10 @@ function createHandler(config) {
         dir: typeof body.dir === "string" ? body.dir : "",
         title: typeof body.title === "string" ? body.title : "",
         content: typeof body.content === "string" ? body.content : "",
-        date: typeof body.date === "string" ? body.date : void 0
+        date: typeof body.date === "string" ? body.date : void 0,
+        // 日记这类「名字本身就是日期」的笔记不该再被加一遍日期前缀，
+        // 否则宿主的日记插件和我们都认不出这是同一天。
+        withDatePrefix: body.withDatePrefix !== false
       })
     );
     send(res, 200, { ok: true, ...created });
@@ -7699,6 +7702,26 @@ function revealInVault(path) {
   } catch {
     return false;
   }
+}
+var __dailyNote = null;
+function setDailyNote(fn2) {
+  __dailyNote = typeof fn2 === "function" ? fn2 : null;
+}
+function dailyNoteOf() {
+  if (__dailyNote === null) return null;
+  let raw = "";
+  try {
+    const answer = __dailyNote();
+    raw = typeof answer === "string" ? answer : "";
+  } catch {
+    return null;
+  }
+  const clean = raw.replace(/\\/g, "/").replace(/^\/+/, "");
+  if (clean === "") return null;
+  const cut = clean.lastIndexOf("/");
+  const title = clean.slice(cut + 1).replace(/\.md$/i, "");
+  if (title === "") return null;
+  return { dir: cut < 0 ? "" : clean.slice(0, cut), title };
 }
 var __cssListeners = /* @__PURE__ */ new Set();
 function notifyCssChange() {
@@ -11030,9 +11053,13 @@ function GetnotePage() {
         const now = /* @__PURE__ */ new Date();
         const pad2 = (n2) => String(n2).padStart(2, "0");
         const stamp = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+        const hosted = dailyNoteOf();
+        const todayDir = hosted !== null ? hosted.dir : "";
+        const todayTitle = hosted !== null ? hosted.title : stamp;
+        const todayPath = todayDir === "" ? `${todayTitle}.md` : `${todayDir}/${todayTitle}.md`;
         setTab("notes");
-        const hit = (entries || []).find(
-          (entry) => entry.date === stamp || String(entry.title || "").trim() === stamp
+        const hit = (entries || []).find((entry) => entry.path === todayPath) || (entries || []).find(
+          (entry) => hosted !== null && String(entry.title || "").trim() === todayTitle || entry.date === stamp || String(entry.title || "").trim() === stamp
         );
         if (hit !== void 0) {
           void openNote(hit.path);
@@ -11043,7 +11070,14 @@ function GetnotePage() {
         void api("/create", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ dir: activeDir, title: stamp, content: "", requestId: requestId() })
+          body: JSON.stringify({
+            dir: hosted !== null ? todayDir : activeDir,
+            title: todayTitle,
+            content: "",
+            // 宿主的日记名可能本身就是日期，别再叠一层日期前缀
+            withDatePrefix: hosted === null,
+            requestId: requestId()
+          })
         }).then(async (created) => {
           showToast(t3("note.created"));
           await refresh();
@@ -16255,6 +16289,7 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     setMarkdownLink((path) => this.markdownLinkFor(path));
     setAssetUrl((path) => this.assetUrlFor(path));
     setRevealInVault((path) => this.revealInVaultItem(path));
+    setDailyNote(() => this.dailyNoteRel());
     setVaultGraph((path, kind) => this.vaultGraphOf(path, kind));
     setStatusReport((info) => this.updateStatusBar(info));
     const stored = await readSettings();
@@ -16686,6 +16721,22 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     const name = format.replace(/YYYY/g, String(now.getFullYear())).replace(/MM/g, pad2(now.getMonth() + 1)).replace(/DD/g, pad2(now.getDate()));
     const rel = folder.trim() === "" ? name : `${folder.replace(/\\/g, "/").replace(/\/+$/, "")}/${name}`;
     return `${rel}.md`;
+  }
+  /**
+   * 今天的日记，按面板的路径口径给（相对笔记子目录，没有子目录时就是库内相对路径）。
+   *
+   * dailyNotePath() 给的是库内相对路径，面板的 entry.path / /create 的 dir 都按
+   * 笔记子目录算，两者差一层子目录，这里补上。日记落在笔记目录之外时返回 ''，
+   * 面板据此退回自己的日期标题——我们不替用户把日记搬进笔记目录。
+   */
+  dailyNoteRel() {
+    const full = this.dailyNotePath();
+    if (full === "") return "";
+    const runtime2 = getRuntime();
+    const sub = String(runtime2.subfolder || DEFAULT_SUBFOLDER).replace(/^\/+|\/+$/g, "");
+    if (sub === "") return full;
+    if (!full.startsWith(`${sub}/`)) return "";
+    return full.slice(sub.length + 1);
   }
   /**
    * 把一轮同步的结果追加到当天的日记里。

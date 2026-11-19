@@ -1346,4 +1346,75 @@ test('从宿主文件树拖进来的笔记会挪进当前目录，没选目录�
   window.document.querySelector('.dshgn_listBody').dispatchEvent(empty)
 })
 
+/**
+ * 命令里的「打开今天的笔记」要落在用户自己配的日记位置上。
+ *
+ * 很多人把日记配成「得到大脑/日记/YYYY-MM-DD」。如果面板自己拼一个
+ * 「得到大脑/2026-11-19.md」，同一个库里就有两个「今天」——用户在宿主里点
+ * 「打开今天的日记」看到的是另一个文件，这种分裂很难自己发现。
+ */
+test('「今天」按宿主的日记配置落位置，没配就退回自己的日期标题', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const pad = (n) => String(n).padStart(2, '0')
+  const now = new Date()
+  const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+
+  const readsAt = (rel) =>
+    fetchCalls.filter(
+      (url) => url.includes('/getnote/read') && url.includes(encodeURIComponent(rel)),
+    ).length
+
+  // 先把「日记/<日期>.md」造出来（宿主的日记格式，不带日期前缀），
+  // 这样「今天」该打开的就是它，而不是另建一个。
+  const seeded = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '日记',
+      title: stamp,
+      content: '今天的日记',
+      withDatePrefix: false,
+      requestId: 'seed-daily-note',
+    }),
+  })
+  const seededJson = await seeded.json()
+  assert.equal(seededJson.path, `日记/${stamp}.md`, '日记文件名不该被叠上日期前缀')
+
+  // ① 宿主说「今天在 日记/<日期>.md」：面板要打开的就是这一篇
+  panel.setDailyNote(() => `日记/${stamp}.md`)
+  try {
+    await clickTab('笔记')
+    const refreshBtn = () =>
+      Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+    refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+    panel.requestIntent({ type: 'today' })
+    await waitFor(
+      () => readsAt(`日记/${stamp}.md`) > 0,
+      8000,
+      '按宿主的日记配置去找今天的笔记',
+    )
+  } finally {
+    panel.setDailyNote(null)
+  }
+
+  // ② 没配日记（问不到位置）：退回自己的日期标题按日期找。
+  // 这时已经有一篇标题就是今天的，按日期认得出来——不该再建一篇重复的。
+  const readsBefore = readsAt(`日记/${stamp}.md`)
+  const createsBefore = fetchCalls.filter((url) => url.includes('/getnote/create')).length
+  panel.requestIntent({ type: 'today' })
+  await waitFor(
+    () => readsAt(`日记/${stamp}.md`) > readsBefore,
+    8000,
+    '没配日记时按日期找回今天那篇',
+  )
+  assert.equal(
+    fetchCalls.filter((url) => url.includes('/getnote/create')).length,
+    createsBefore,
+    '已经有一篇日期笔记时不该再建一篇重复的',
+  )
+})
+
 

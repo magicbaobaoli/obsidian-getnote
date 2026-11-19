@@ -854,6 +854,51 @@ test('同步摘要写进当天日记，路径与格式跟着日记核心插件�
   assert.equal(adapter._dump().length, before, '日记插件关掉时不该写任何东西')
 })
 
+/**
+ * 「今天」的笔记也要落在用户自己配的日记位置上。
+ *
+ * 同步摘要写日记用的是 dailyNotePath()（库内相对路径），面板的「今天」用的是
+ * 相对笔记子目录的路径——差一层子目录。这条守住那层换算，以及两条不该替用户
+ * 做主的边界：日记插件关了、日记落在笔记目录之外。
+ */
+test('「今天」用宿主的日记配置，落在笔记目录之外就不替用户做主', async () => {
+  app.internalPlugins = {
+    getPluginById: (id) =>
+      id === 'daily-notes'
+        ? { enabled: true, instance: { options: { folder: '得到大脑/日记', format: 'YYYY-MM-DD' } } }
+        : null,
+  }
+  const pad = (n) => String(n).padStart(2, '0')
+  const now = new Date()
+  const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+  assert.equal(plugin.dailyNoteRel(), `日记/${stamp}.md`, '子目录要换算成面板口径')
+
+  // 日记就配在笔记目录本身：换算之后没有目录，只有文件名
+  app.internalPlugins = {
+    getPluginById: () => ({ enabled: true, instance: { options: { folder: '得到大脑', format: 'YYYY-MM-DD' } } }),
+  }
+  assert.equal(plugin.dailyNoteRel(), `${stamp}.md`, '笔记目录下的日记不该多出一层斜杠')
+
+  // 日记配在库根（不在笔记目录里）：同样不替用户搬
+  app.internalPlugins = {
+    getPluginById: () => ({ enabled: true, instance: { options: { folder: '', format: 'YYYY-MM-DD' } } }),
+  }
+  assert.equal(plugin.dailyNoteRel(), '', '库根下的日记在笔记目录之外，不该被搬进来')
+
+  // 日记在笔记目录之外：不替用户搬，退回自己的日期标题
+  app.internalPlugins = {
+    getPluginById: () => ({ enabled: true, instance: { options: { folder: '日记', format: 'YYYY-MM-DD' } } }),
+  }
+  assert.equal(plugin.dailyNoteRel(), '', '笔记目录之外的日记不该被搬进来')
+
+  // 日记插件关掉 / 根本没有：同样交给面板自己拼
+  app.internalPlugins = { getPluginById: () => ({ enabled: false, instance: { options: {} } }) }
+  assert.equal(plugin.dailyNoteRel(), '', '日记插件关掉时不该给出位置')
+  app.internalPlugins = null
+  assert.equal(plugin.dailyNoteRel(), '', '没有日记插件时不该给出位置')
+  delete app.internalPlugins
+})
+
 test('录音卡自动导入：默认关、开关能存下来、巡检在没卡时安静退出', async () => {
   const settings = await import('../src/core/settings.js')
   // 默认必须是关的：它会定期占蓝牙适配器，不能替用户做主

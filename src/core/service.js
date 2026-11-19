@@ -1260,6 +1260,9 @@ export function createHandler(config) {
         title: typeof body.title === 'string' ? body.title : '',
         content: typeof body.content === 'string' ? body.content : '',
         date: typeof body.date === 'string' ? body.date : undefined,
+        // 日记这类「名字本身就是日期」的笔记不该再被加一遍日期前缀，
+        // 否则宿主的日记插件和我们都认不出这是同一天。
+        withDatePrefix: body.withDatePrefix !== false,
       }),
     )
     send(res, 200, { ok: true, ...created })

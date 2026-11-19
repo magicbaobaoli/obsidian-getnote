@@ -269,6 +269,39 @@ async function saveFile(url, filename) {
       }
     }
 
+    // 「今天」该落在哪一篇，由宿主的日记核心插件说了算。
+    //
+    // 很多人把日记配成「日记/YYYY/YYYY-MM-DD」或者别的文件名格式，插件再自己
+    // 拼一个 YYYY-MM-DD 丢在库根，等于在同一个库里造第二套「今天」——用户下次
+    // 在宿主里点「打开今天的日记」看到的又是另一个文件。所以这里只问，不猜。
+    let __dailyNote = null
+    export function setDailyNote(fn) {
+      __dailyNote = typeof fn === 'function' ? fn : null
+    }
+    /**
+     * 问宿主「今天的日记在哪」。
+     *
+     * 返回 { dir, title }（相对笔记目录的目录 + 文件名，面板直接喂给 /create），
+     * 宿主没配日记或没注入时返回 null——这时调用方退回自己的日期标题。
+     * 路径里没有斜杠时 dir 是空串，正好等于「笔记根」。
+     */
+    function dailyNoteOf() {
+      if (__dailyNote === null) return null
+      let raw = ''
+      try {
+        const answer = __dailyNote()
+        raw = typeof answer === 'string' ? answer : ''
+      } catch {
+        return null
+      }
+      const clean = raw.replace(/\\/g, '/').replace(/^\/+/, '')
+      if (clean === '') return null
+      const cut = clean.lastIndexOf('/')
+      const title = clean.slice(cut + 1).replace(/\.md$/i, '')
+      if (title === '') return null
+      return { dir: cut < 0 ? '' : clean.slice(0, cut), title }
+    }
+
     // 宿主换主题时 Obsidian 会发 'css-change' 事件，比 MutationObserver 盯 body
     // 的 class 更准（用户改了字体、字号、界面缩放也能收到）。没有宿主时靠
     // MutationObserver 兜底，两者最终都只是让面板重新算一次配色。
@@ -4057,13 +4090,28 @@ async function saveFile(url, filename) {
             if (kind === 'today') {
               // 「今天」的笔记：先按日期找，找不到就按日期新建。
               // 用日期做标题而不是「今日」两个字，归档后仍然能一眼看出是哪天。
+              //
+              // 目录和文件名格式先问宿主的日记核心插件：用户可能把日记配成
+              // 「日记/YYYY/YYYY-MM-DD」，自己再拼一个丢在库根，就等于在同一个库里
+              // 造第二套「今天」。问不到才退回「库根 + YYYY-MM-DD」。
               const now = new Date()
               const pad = (n) => String(n).padStart(2, '0')
               const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+              const hosted = dailyNoteOf()
+              const todayDir = hosted !== null ? hosted.dir : ''
+              const todayTitle = hosted !== null ? hosted.title : stamp
+              const todayPath = todayDir === '' ? `${todayTitle}.md` : `${todayDir}/${todayTitle}.md`
               setTab('notes')
-              const hit = (entries || []).find(
-                (entry) => entry.date === stamp || String(entry.title || '').trim() === stamp,
-              )
+              // 先按路径认（宿主的格式可能不是日期，比如「YYYY年MM月DD日」），
+              // 再退回按日期认（用户手写过同名日期笔记的情况）。
+              const hit =
+                (entries || []).find((entry) => entry.path === todayPath) ||
+                (entries || []).find(
+                  (entry) =>
+                    (hosted !== null && String(entry.title || '').trim() === todayTitle) ||
+                    entry.date === stamp ||
+                    String(entry.title || '').trim() === stamp,
+                )
               if (hit !== undefined) {
                 void openNote(hit.path)
                 return
@@ -4073,7 +4121,14 @@ async function saveFile(url, filename) {
               void api('/create', {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
-                body: JSON.stringify({ dir: activeDir, title: stamp, content: '', requestId: requestId() }),
+                body: JSON.stringify({
+                  dir: hosted !== null ? todayDir : activeDir,
+                  title: todayTitle,
+                  content: '',
+                  // 宿主的日记名可能本身就是日期，别再叠一层日期前缀
+                  withDatePrefix: hosted === null,
+                  requestId: requestId(),
+                }),
               })
                 .then(async (created) => {
                   showToast(t('note.created'))

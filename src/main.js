@@ -46,6 +46,7 @@ import {
   setMarkdownLink,
   setAssetUrl,
   setRevealInVault,
+  setDailyNote,
   setVaultGraph,
   setStatusReport,
   notifyCssChange,
@@ -159,6 +160,9 @@ export default class GetnoteObsidianPlugin extends Plugin {
     // 「在文件列表里定位」：面板的列表是平的，用户想知道这一篇在库里挨着什么，
     // 只有宿主自己的文件列表说得清。
     setRevealInVault((path) => this.revealInVaultItem(path))
+    // 「今天」落在哪一篇由宿主的日记核心插件决定：那边已经配好目录和文件名格式，
+    // 我们再拼一套只会在同一个库里造出第二个「今天」。
+    setDailyNote(() => this.dailyNoteRel())
 
     // 反链、出链交给宿主的 metadataCache。
     //
@@ -717,6 +721,23 @@ export default class GetnoteObsidianPlugin extends Plugin {
       .replace(/DD/g, pad(now.getDate()))
     const rel = folder.trim() === '' ? name : `${folder.replace(/\\/g, '/').replace(/\/+$/, '')}/${name}`
     return `${rel}.md`
+  }
+
+  /**
+   * 今天的日记，按面板的路径口径给（相对笔记子目录，没有子目录时就是库内相对路径）。
+   *
+   * dailyNotePath() 给的是库内相对路径，面板的 entry.path / /create 的 dir 都按
+   * 笔记子目录算，两者差一层子目录，这里补上。日记落在笔记目录之外时返回 ''，
+   * 面板据此退回自己的日期标题——我们不替用户把日记搬进笔记目录。
+   */
+  dailyNoteRel() {
+    const full = this.dailyNotePath()
+    if (full === '') return ''
+    const runtime = settingsStore.getRuntime()
+    const sub = String(runtime.subfolder || DEFAULT_SUBFOLDER).replace(/^\/+|\/+$/g, '')
+    if (sub === '') return full
+    if (!full.startsWith(`${sub}/`)) return ''
+    return full.slice(sub.length + 1)
   }
 
   /**
