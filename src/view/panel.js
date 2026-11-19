@@ -2291,7 +2291,27 @@ async function saveFile(url, filename) {
           const target = (hash === -1 ? linkText : linkText.slice(0, hash)).trim()
           const anchor = hash === -1 ? '' : linkText.slice(hash + 1).trim()
           if (embed) {
-            const embedded = renderEmbed(target, key, opts)
+            // `![[#本页小节]]`：没写笔记名就是「这一篇的这一节」，没有东西可嵌，
+            // 拿一个空名字去解析只会解析失败。直接滚过去。
+            if (target === '' && anchor !== '') {
+              nodes.push(
+                h(
+                  'button',
+                  {
+                    key,
+                    type: 'button',
+                    className: 'dshgn_wikilink',
+                    onClick: () => {
+                      if (typeof opts.onOpenWikiLink === 'function') opts.onOpenWikiLink('', anchor)
+                    },
+                  },
+                  label || anchor,
+                ),
+              )
+              last = match.index + token.length
+              continue
+            }
+            const embedded = renderEmbed(target, key, Object.assign({}, opts, { anchor }))
             // 嵌进来的是一整篇笔记时它自己就是块级元素，再套一层 inline-flex 的
             // 胶囊会把它挤成一条线——那种情况下直接放进来。
             const blockLevel = embedded !== null && embedded !== undefined && embedded.type === NoteEmbed
@@ -2368,6 +2388,35 @@ async function saveFile(url, filename) {
       return Array.from(host.querySelectorAll('h1, h2, h3, h4, h5, h6'))
     }
 
+    /**
+     * 把某个容器滚到它的某一节标题上。
+     *
+     * 嵌进来的那一篇自己不是滚动容器——滚动发生在外面那层 `.dshgn_scroll` 上，
+     * 所以从内容往上找到最近的滚动容器再算偏移。找不到标题、或者容器压根不在
+     * 滚动区里，都返回 false，让调用方自己决定要不要说点什么。
+     */
+    function scrollToHeading(box, text) {
+      if (!box) return false
+      const want = normalizeHeading(text)
+      if (want === '') return false
+      const heads = headingNodes(box)
+      let hit = null
+      for (let i = 0; i < heads.length; i += 1) {
+        if (normalizeHeading(heads[i].textContent) === want) {
+          hit = heads[i]
+          break
+        }
+      }
+      if (hit === null) return false
+      let host = box.parentElement
+      while (host && !(host.classList && host.classList.contains('dshgn_scroll'))) host = host.parentElement
+      if (!host) return false
+      // 与大纲跳转同一套算法：只改滚动容器自己的 scrollTop，横向一点不动
+      const offset = hit.getBoundingClientRect().top - host.getBoundingClientRect().top + host.scrollTop - 8
+      host.scrollTo({ top: Math.max(0, offset), behavior: 'smooth' })
+      return true
+    }
+
     /** 图像扩展名判定：只认浏览器能直接显示的格式。 */
     const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|avif|svg|bmp)$/i
 
@@ -2394,6 +2443,7 @@ async function saveFile(url, filename) {
       const path = String(props.path || '')
       const [note, setNote] = React.useState(null)
       const [failed, setFailed] = React.useState(false)
+      const boxRef = React.useRef(null)
       React.useEffect(() => {
         if (path === '') return undefined
         let alive = true
@@ -2423,6 +2473,14 @@ async function saveFile(url, filename) {
       const open = () => {
         if (typeof props.onOpen === 'function') props.onOpen(path)
       }
+      // `![[笔记#小节]]`：正文读回来之后滚到那一节。滚的是外面那层滚动容器，
+      // 所以等 note 落地（DOM 里真的有了标题）再滚，且只滚一次——anchor 变了
+      // 才重来，不然勾个待办重新渲染又会把人拽回去。
+      const anchor = typeof props.anchor === 'string' ? props.anchor : ''
+      React.useEffect(() => {
+        if (anchor === '' || note === null) return
+        scrollToHeading(boxRef.current, anchor)
+      }, [anchor, note])
       let body
       if (failed) {
         body = h('div', { className: 'dshgn_embedEmpty' }, t('note.embedBroken'))
@@ -2448,7 +2506,7 @@ async function saveFile(url, filename) {
       }
       return h(
         'div',
-        { className: 'dshgn_noteEmbed' },
+        { className: 'dshgn_noteEmbed', ref: boxRef },
         h(
           'div',
           { className: 'dshgn_embedHead' },
@@ -2494,6 +2552,7 @@ async function saveFile(url, filename) {
           path: notePath,
           label: base.replace(/\.md$/i, ''),
           depth: depth + 1,
+          anchor: typeof opts.anchor === 'string' ? opts.anchor : '',
           onOpen: opts.onOpenWikiLink,
           resolveNote: opts.resolveNote,
           t: opts.t,

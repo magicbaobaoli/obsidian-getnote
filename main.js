@@ -9503,7 +9503,25 @@ function renderInline(text, keyPrefix, options) {
       const target = (hash === -1 ? linkText : linkText.slice(0, hash)).trim();
       const anchor = hash === -1 ? "" : linkText.slice(hash + 1).trim();
       if (embed) {
-        const embedded = renderEmbed(target, key, opts);
+        if (target === "" && anchor !== "") {
+          nodes.push(
+            h4(
+              "button",
+              {
+                key,
+                type: "button",
+                className: "dshgn_wikilink",
+                onClick: () => {
+                  if (typeof opts.onOpenWikiLink === "function") opts.onOpenWikiLink("", anchor);
+                }
+              },
+              label || anchor
+            )
+          );
+          last = match.index + token.length;
+          continue;
+        }
+        const embedded = renderEmbed(target, key, Object.assign({}, opts, { anchor }));
         const blockLevel = embedded !== null && embedded !== void 0 && embedded.type === NoteEmbed;
         nodes.push(blockLevel ? embedded : h4("span", { key, className: "dshgn_embed" }, embedded));
       } else {
@@ -9556,12 +9574,33 @@ function headingNodes(host) {
   if (own.length > 0) return Array.from(own);
   return Array.from(host.querySelectorAll("h1, h2, h3, h4, h5, h6"));
 }
+function scrollToHeading(box, text) {
+  if (!box) return false;
+  const want = normalizeHeading(text);
+  if (want === "") return false;
+  const heads = headingNodes(box);
+  let hit = null;
+  for (let i3 = 0; i3 < heads.length; i3 += 1) {
+    if (normalizeHeading(heads[i3].textContent) === want) {
+      hit = heads[i3];
+      break;
+    }
+  }
+  if (hit === null) return false;
+  let host = box.parentElement;
+  while (host && !(host.classList && host.classList.contains("dshgn_scroll"))) host = host.parentElement;
+  if (!host) return false;
+  const offset = hit.getBoundingClientRect().top - host.getBoundingClientRect().top + host.scrollTop - 8;
+  host.scrollTo({ top: Math.max(0, offset), behavior: "smooth" });
+  return true;
+}
 var IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|avif|svg|bmp)$/i;
 var FILE_EXT_RE = /\.(pdf|docx?|xlsx?|pptx?|zip|rar|7z|tar|gz|mp3|wav|m4a|aac|ogg|flac|mp4|mov|webm|mkv|canvas|excalidraw|txt|csv|tsv|json|html?|js|css)$/i;
 function NoteEmbed(props) {
   const path = String(props.path || "");
   const [note, setNote] = h2(null);
   const [failed, setFailed] = h2(false);
+  const boxRef = A2(null);
   y2(() => {
     if (path === "") return void 0;
     let alive = true;
@@ -9581,6 +9620,11 @@ function NoteEmbed(props) {
   const open = () => {
     if (typeof props.onOpen === "function") props.onOpen(path);
   };
+  const anchor = typeof props.anchor === "string" ? props.anchor : "";
+  y2(() => {
+    if (anchor === "" || note === null) return;
+    scrollToHeading(boxRef.current, anchor);
+  }, [anchor, note]);
   let body;
   if (failed) {
     body = h4("div", { className: "dshgn_embedEmpty" }, t3("note.embedBroken"));
@@ -9606,7 +9650,7 @@ function NoteEmbed(props) {
   }
   return h4(
     "div",
-    { className: "dshgn_noteEmbed" },
+    { className: "dshgn_noteEmbed", ref: boxRef },
     h4(
       "div",
       { className: "dshgn_embedHead" },
@@ -9632,6 +9676,7 @@ function renderEmbed(target, key, options) {
       path: notePath,
       label: base.replace(/\.md$/i, ""),
       depth: depth + 1,
+      anchor: typeof opts.anchor === "string" ? opts.anchor : "",
       onOpen: opts.onOpenWikiLink,
       resolveNote: opts.resolveNote,
       t: opts.t

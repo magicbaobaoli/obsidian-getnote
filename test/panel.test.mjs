@@ -2336,3 +2336,117 @@ test('拖进来 / 粘进来的文件存成附件并在正文里留下引用', as
   await sleep(120)
 })
 
+/**
+ * 嵌进来的那一篇也可以带小节：`![[笔记#小节]]`。宿主会把那一篇嵌进来并停在那一节，
+ * 我们原来嵌是嵌了、但永远从第一行开始——用户想看的偏偏是中间那一段。
+ * `![[#本节]]` 更极端：它压根没有「另一篇」可嵌，只有「滚到这一篇的这一节」。
+ */
+test('嵌进来的笔记能停在小节上，本节的小节直接滚过去', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const backBtn = window.document.querySelector('.dshgn_noteBack')
+  if (backBtn) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    try {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+  }
+
+  const seed = async (title, content, requestId) => {
+    const res = await realFetch(server.origin + '/getnote/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({ dir: '随手记', title, content, withDatePrefix: false, requestId }),
+    })
+    const json = await res.json()
+    assert.equal(json.path, `随手记/${title}.md`, '这条要按真路径测，不能靠猜文件名')
+    return json.path
+  }
+
+  await seed('嵌入锚点目标', '## 甲节\n\n甲里的正文\n\n## 乙节\n\n乙里的正文\n', 'seed-embed-anchor-target')
+  const source = await seed(
+    '嵌入锚点来源',
+    '## 第一节\n\n本节开头\n\n跳到 ![[#第一节]]\n\n还有 ![[嵌入锚点目标#乙节]]\n',
+    'seed-embed-anchor-source',
+  )
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  const card = await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_card')).find(
+        (el) => el.getAttribute('title') === source,
+      ),
+    5000,
+    '来源笔记出现在列表里',
+  )
+
+  const scrollCalls = []
+  const originalScrollTo = window.HTMLElement.prototype.scrollTo
+  window.HTMLElement.prototype.scrollTo = function scrollTo(options) {
+    scrollCalls.push(options)
+  }
+  try {
+    card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(
+      () => ((window.document.querySelector('.dshgn_note') || {}).textContent || '').includes('本节开头'),
+      5000,
+      '来源笔记打开了',
+    )
+
+    // ① 嵌进来的那一篇停在乙节上：嵌入框自己不是滚动容器，滚的是外面那层
+    const embed = await waitFor(
+      () => window.document.querySelector('.dshgn_noteEmbed'),
+      5000,
+      '嵌入框出现',
+    )
+    await waitFor(
+      () => ((embed.querySelector('.dshgn_embedBody') || {}).textContent || '').includes('乙里的正文'),
+      5000,
+      '嵌入框里是那一篇的正文',
+    )
+    await waitFor(() => scrollCalls.length > 0, 3000, '嵌进来的那一篇也要滚到它那一节')
+    assert.equal(typeof scrollCalls[0].top, 'number', '滚的是一个具体位置，不是瞎滚')
+
+    // ② 本节的小节：没有另一篇可嵌，点一下就该滚过去
+    const sameNote = await waitFor(
+      () =>
+        Array.from(window.document.querySelectorAll('.dshgn_wikilink')).find(
+          (el) => (el.textContent || '').trim() === '第一节',
+        ),
+      5000,
+      '本节小节的双链',
+    )
+    const before = scrollCalls.length
+    sameNote.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => scrollCalls.length > before, 3000, '本节的小节也要滚过去')
+
+    // ③ 渲染器层面：小节要一路递到嵌入组件上，不能半路丢掉
+    const { renderEmbed } = panel.__internals
+    const withAnchor = renderEmbed('嵌入锚点目标', 'k-anchor', {
+      resolveNote: () => '随手记/嵌入锚点目标.md',
+      embedDepth: 0,
+      anchor: '乙节',
+    })
+    assert.equal(typeof withAnchor.type, 'function', '解析得出路径时要换成嵌入组件')
+    assert.equal(withAnchor.props.anchor, '乙节', '小节要递给嵌入组件，否则它只会从头显示')
+    const noAnchor = renderEmbed('嵌入锚点目标', 'k-anchor2', {
+      resolveNote: () => '随手记/嵌入锚点目标.md',
+      embedDepth: 0,
+    })
+    assert.equal(noAnchor.props.anchor, '', '没写小节就是空串，别拿 undefined 往下传')
+  } finally {
+    window.HTMLElement.prototype.scrollTo = originalScrollTo
+    panel.setLinkResolve(null)
+    panel.setVaultGraph(null)
+  }
+})
+
