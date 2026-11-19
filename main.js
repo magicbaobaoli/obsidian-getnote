@@ -7736,6 +7736,19 @@ function resolveViaHost(linkpath, sourcePath) {
     return "";
   }
 }
+var __newNotePlacement = null;
+function setNewNotePlacement(fn2) {
+  __newNotePlacement = typeof fn2 === "function" ? fn2 : null;
+}
+function newNotePlacementOf() {
+  if (__newNotePlacement === null) return "";
+  try {
+    const answer = __newNotePlacement();
+    return typeof answer === "string" ? answer.replace(/^\/+|\/+$/g, "") : "";
+  } catch {
+    return "";
+  }
+}
 var __cssListeners = /* @__PURE__ */ new Set();
 function notifyCssChange() {
   for (const listener of Array.from(__cssListeners)) {
@@ -11003,12 +11016,13 @@ function GetnotePage() {
       const spec = typeof templateId === "string" ? templateContent(templateId) : { title: t3("action.new"), content: "" };
       setTemplatesOpen(false);
       setBusy(true);
+      const dir = activeDir !== "" ? activeDir : newNotePlacementOf();
       try {
         const created = await api("/create", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            dir: activeDir,
+            dir,
             title: spec.title,
             content: spec.content,
             requestId: requestId()
@@ -16313,6 +16327,7 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     setRevealInVault((path) => this.revealInVaultItem(path));
     setDailyNote(() => this.dailyNoteRel());
     setLinkResolve((linkpath, sourcePath) => this.linkResolveFor(linkpath, sourcePath));
+    setNewNotePlacement(() => this.newNoteDir());
     setVaultGraph((path, kind) => this.vaultGraphOf(path, kind));
     setStatusReport((info) => this.updateStatusBar(info));
     const stored = await readSettings();
@@ -16760,6 +16775,43 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     if (sub === "") return full;
     if (!full.startsWith(`${sub}/`)) return "";
     return full.slice(sub.length + 1);
+  }
+  /**
+   * 新建的笔记该落在哪个目录（面板口径），按宿主的设置来。
+   *
+   * 「设置 → 文件与链接 → 新建笔记的默认位置」有三档：库根 / 当前笔记所在目录 /
+   * 指定目录。面板原来固定丢在笔记目录根，用户在别处点「新建笔记」看到的却是
+   * 另一个位置，同一个库里于是有两套「新建落在哪」。宿主的设置存在 vault 配置里
+   * （getConfig 的 newFileLocation / newFileFolderPath），这里换算成面板口径。
+   *
+   * 落在笔记目录之外、或宿主要求跟着当前笔记但当前没有打开的文件，返回空串，
+   * 面板退回自己的做法——不替用户把笔记建到笔记目录外面去。
+   */
+  newNoteDir() {
+    try {
+      const vault = this.app.vault;
+      if (!vault || typeof vault.getConfig !== "function") return "";
+      const where = String(vault.getConfig("newFileLocation") || "");
+      let target = "";
+      if (where === "folder") {
+        target = String(vault.getConfig("newFileFolderPath") || "");
+      } else if (where === "current") {
+        const active = this.app.workspace.getActiveFile ? this.app.workspace.getActiveFile() : null;
+        if (!active || !active.parent || typeof active.parent.path !== "string") return "";
+        target = active.parent.path;
+      } else {
+        return "";
+      }
+      const rel = target.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+      const runtime2 = getRuntime();
+      const sub = String(runtime2.subfolder || DEFAULT_SUBFOLDER).replace(/^\/+|\/+$/g, "");
+      if (sub === "") return rel;
+      if (rel === "" || rel === sub) return "";
+      if (!rel.startsWith(`${sub}/`)) return "";
+      return rel.slice(sub.length + 1);
+    } catch {
+      return "";
+    }
   }
   /**
    * 一个双链该指向哪一篇，交给宿主的索引去解析。

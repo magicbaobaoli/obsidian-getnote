@@ -48,6 +48,7 @@ import {
   setRevealInVault,
   setDailyNote,
   setLinkResolve,
+  setNewNotePlacement,
   setVaultGraph,
   setStatusReport,
   notifyCssChange,
@@ -169,6 +170,7 @@ export default class GetnoteObsidianPlugin extends Plugin {
     // 我们再拼一套只会在同一个库里造出第二个「今天」。
     setDailyNote(() => this.dailyNoteRel())
     setLinkResolve((linkpath, sourcePath) => this.linkResolveFor(linkpath, sourcePath))
+    setNewNotePlacement(() => this.newNoteDir())
 
     // 反链、出链交给宿主的 metadataCache。
     //
@@ -744,6 +746,44 @@ export default class GetnoteObsidianPlugin extends Plugin {
     if (sub === '') return full
     if (!full.startsWith(`${sub}/`)) return ''
     return full.slice(sub.length + 1)
+  }
+
+  /**
+   * 新建的笔记该落在哪个目录（面板口径），按宿主的设置来。
+   *
+   * 「设置 → 文件与链接 → 新建笔记的默认位置」有三档：库根 / 当前笔记所在目录 /
+   * 指定目录。面板原来固定丢在笔记目录根，用户在别处点「新建笔记」看到的却是
+   * 另一个位置，同一个库里于是有两套「新建落在哪」。宿主的设置存在 vault 配置里
+   * （getConfig 的 newFileLocation / newFileFolderPath），这里换算成面板口径。
+   *
+   * 落在笔记目录之外、或宿主要求跟着当前笔记但当前没有打开的文件，返回空串，
+   * 面板退回自己的做法——不替用户把笔记建到笔记目录外面去。
+   */
+  newNoteDir() {
+    try {
+      const vault = this.app.vault
+      if (!vault || typeof vault.getConfig !== 'function') return ''
+      const where = String(vault.getConfig('newFileLocation') || '')
+      let target = ''
+      if (where === 'folder') {
+        target = String(vault.getConfig('newFileFolderPath') || '')
+      } else if (where === 'current') {
+        const active = this.app.workspace.getActiveFile ? this.app.workspace.getActiveFile() : null
+        if (!active || !active.parent || typeof active.parent.path !== 'string') return ''
+        target = active.parent.path
+      } else {
+        return ''
+      }
+      const rel = target.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+      const runtime = settingsStore.getRuntime()
+      const sub = String(runtime.subfolder || DEFAULT_SUBFOLDER).replace(/^\/+|\/+$/g, '')
+      if (sub === '') return rel
+      if (rel === '' || rel === sub) return ''
+      if (!rel.startsWith(`${sub}/`)) return ''
+      return rel.slice(sub.length + 1)
+    } catch {
+      return ''
+    }
   }
 
   /**

@@ -328,6 +328,29 @@ async function saveFile(url, filename) {
       }
     }
 
+    // 新建的笔记落在哪儿，宿主的「设置 → 文件与链接 → 新建笔记的默认位置」
+    // 里已经写好了（库根 / 当前笔记所在目录 / 指定目录）。面板自己默认丢在
+    // 笔记目录根，跟用户在其他地方点「新建笔记」的习惯对不上。
+    let __newNotePlacement = null
+    export function setNewNotePlacement(fn) {
+      __newNotePlacement = typeof fn === 'function' ? fn : null
+    }
+    /**
+     * 问宿主「新建的笔记该放哪个目录」。
+     *
+     * 返回相对笔记目录的目录（空串 = 笔记根），宿主没配或配在笔记目录之外
+     * 时也返回空串——不把笔记建到笔记目录外面去。
+     */
+    function newNotePlacementOf() {
+      if (__newNotePlacement === null) return ''
+      try {
+        const answer = __newNotePlacement()
+        return typeof answer === 'string' ? answer.replace(/^\/+|\/+$/g, '') : ''
+      } catch {
+        return ''
+      }
+    }
+
     // 宿主换主题时 Obsidian 会发 'css-change' 事件，比 MutationObserver 盯 body
     // 的 class 更准（用户改了字体、字号、界面缩放也能收到）。没有宿主时靠
     // MutationObserver 兜底，两者最终都只是让面板重新算一次配色。
@@ -4034,12 +4057,15 @@ async function saveFile(url, filename) {
           const spec = typeof templateId === 'string' ? templateContent(templateId) : { title: t('action.new'), content: '' }
           setTemplatesOpen(false)
           setBusy(true)
+          // 在面板里选了目录就以它为准（那是用户刚刚明说的）；没选才跟着宿主
+          // 的「新建笔记默认位置」走，免得在同一个库里有两套「新建落在哪」。
+          const dir = activeDir !== '' ? activeDir : newNotePlacementOf()
           try {
             const created = await api('/create', {
               method: 'POST',
               headers: { 'content-type': 'application/json' },
               body: JSON.stringify({
-                dir: activeDir,
+                dir,
                 title: spec.title,
                 content: spec.content,
                 requestId: requestId(),

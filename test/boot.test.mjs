@@ -313,6 +313,12 @@ const app = {
   vault: {
     adapter,
     configDir: '.obsidian',
+    // 「设置 → 文件与链接 → 新建笔记的默认位置」存在库配置里，宿主用
+    // getConfig 读。测试按需改 app.vault.vaultConfig。
+    vaultConfig: { newFileLocation: 'root' },
+    getConfig(key) {
+      return app.vault.vaultConfig[key]
+    },
     // 面板的「在 Obsidian 里打开」会把库内相对路径交给宿主查文件。
     getAbstractFileByPath(path) {
       const rel = String(path || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
@@ -911,6 +917,53 @@ test('「今天」用宿主的日记配置，落在笔记目录之外就不替�
   app.internalPlugins = null
   assert.equal(plugin.dailyNoteRel(), '', '没有日记插件时不该给出位置')
   delete app.internalPlugins
+})
+
+test('新建笔记落在哪儿跟着宿主的设置走，落在笔记目录之外就不替用户做主', async () => {
+  // 宿主默认是「库根」：那在笔记目录之外，交回面板自己决定
+  app.vault.vaultConfig = { newFileLocation: 'root' }
+  assert.equal(plugin.newNoteDir(), '', '库根不是笔记目录，不该替用户搬')
+
+  // 「指定目录」：换算成面板口径（相对笔记目录）
+  app.vault.vaultConfig = { newFileLocation: 'folder', newFileFolderPath: '得到大脑/随手记' }
+  assert.equal(plugin.newNoteDir(), '随手记', '指定目录要换算成面板口径')
+
+  // 指定的就是笔记目录本身：面板那边是「没有目录」
+  app.vault.vaultConfig = { newFileLocation: 'folder', newFileFolderPath: '得到大脑' }
+  assert.equal(plugin.newNoteDir(), '', '指定到笔记目录本身时不该多出一层目录名')
+
+  // 两端斜杠与反斜杠都容忍
+  app.vault.vaultConfig = { newFileLocation: 'folder', newFileFolderPath: '/得到大脑\\日记/' }
+  assert.equal(plugin.newNoteDir(), '日记', '两端的斜杠要先去掉')
+
+  // 指定到笔记目录之外：不把笔记建到那儿去
+  app.vault.vaultConfig = { newFileLocation: 'folder', newFileFolderPath: '别处的目录' }
+  assert.equal(plugin.newNoteDir(), '', '笔记目录之外的指定目录不接')
+
+  // 「当前笔记所在目录」：按正在看的那篇算
+  app.vault.vaultConfig = { newFileLocation: 'current' }
+  const realActive = app.workspace.activeFile
+  app.workspace.activeFile = { path: '得到大脑/日记/某篇.md', parent: { path: '得到大脑/日记' } }
+  assert.equal(plugin.newNoteDir(), '日记', '跟着当前笔记时按它所在的目录算')
+  app.workspace.activeFile = { path: '别处的目录/某篇.md', parent: { path: '别处的目录' } }
+  assert.equal(plugin.newNoteDir(), '', '当前笔记在笔记目录之外时不接')
+  app.workspace.activeFile = null
+  assert.equal(plugin.newNoteDir(), '', '当前没打开笔记时交回面板自己决定')
+  app.workspace.activeFile = realActive
+
+  // 宿主读配置炸了 / 根本没有 getConfig：都不能把新建这条路径弄坏
+  const realConfig = app.vault.vaultConfig
+  app.vault.vaultConfig = { newFileLocation: 'folder', newFileFolderPath: '得到大脑/随手记' }
+  const realGetConfig = app.vault.getConfig
+  app.vault.getConfig = () => {
+    throw new Error('宿主还没准备好')
+  }
+  assert.equal(plugin.newNoteDir(), '', '宿主读配置抛错时要安静退回')
+  app.vault.getConfig = realGetConfig
+  app.vault.getConfig = undefined
+  assert.equal(plugin.newNoteDir(), '', '没有 getConfig 时也要安静退回')
+  app.vault.getConfig = realGetConfig
+  app.vault.vaultConfig = realConfig
 })
 
 test('录音卡自动导入：默认关、开关能存下来、巡检在没卡时安静退出', async () => {

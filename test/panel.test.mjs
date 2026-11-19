@@ -1532,4 +1532,85 @@ test('「今天」按宿主的日记配置落位置，没配就退回自己的�
   )
 })
 
+test('新建笔记落在宿主指定的目录里，没指定就还落在原来的地方', async () => {
+  const { readSession } = panel.__internals
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  // 上一条用例可能还开着笔记：先退回空态，免得「新建」被草稿确认挡下
+  const backBtn = window.document.querySelector('.dshgn_noteBack')
+  if (backBtn) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    try {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+  }
+
+  await clickTab('笔记')
+  // 先把目录选到「全部笔记」：这条验的是「没在面板里选目录时」才跟宿主走
+  const allRow = Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) =>
+    (el.textContent || '').includes('全部笔记'),
+  )
+  assert.ok(allRow, '找不到「全部笔记」那一行')
+  allRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  const pressNew = () => {
+    window.dispatchEvent(
+      new window.KeyboardEvent('keydown', { key: 'n', ctrlKey: true, bubbles: true }),
+    )
+  }
+
+  // ① 宿主说「新建放在 宿主新建」：新建出来的那篇要落在那儿
+  panel.setNewNotePlacement(() => '宿主新建')
+  try {
+    const before = readSession().path
+    pressNew()
+    await waitFor(() => {
+      const path = readSession().path
+      return path !== '' && path !== before
+    }, 8000, '新建之后打开了新的一篇')
+    const opened = readSession().path
+    assert.match(opened, /^宿主新建\//, '新建的笔记该落在宿主指定的目录里，实际：' + opened)
+  } finally {
+    panel.setNewNotePlacement(null)
+  }
+
+  // ② 问不到宿主的设置：退回原来的做法（面板没选目录就落在笔记根）
+  const beforeSecond = readSession().path
+  pressNew()
+  await waitFor(() => {
+    const path = readSession().path
+    return path !== '' && path !== beforeSecond
+  }, 8000, '没问到时也建得出来')
+  const fallback = readSession().path
+  assert.ok(
+    !fallback.startsWith('宿主新建/'),
+    '问不到宿主设置时不该还往那个目录里放，实际：' + fallback,
+  )
+
+  // ③ 宿主给的东西不像目录（空串 / 抛错）：都不能把新建弄坏
+  panel.setNewNotePlacement(() => '')
+  const beforeThird = readSession().path
+  pressNew()
+  await waitFor(() => {
+    const path = readSession().path
+    return path !== '' && path !== beforeThird
+  }, 8000, '宿主给空串时也建得出来')
+
+  panel.setNewNotePlacement(() => {
+    throw new Error('宿主还没准备好')
+  })
+  const beforeFourth = readSession().path
+  pressNew()
+  await waitFor(() => {
+    const path = readSession().path
+    return path !== '' && path !== beforeFourth
+  }, 8000, '宿主抛错时也建得出来')
+  panel.setNewNotePlacement(null)
+})
+
 
