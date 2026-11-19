@@ -963,6 +963,46 @@ export function createHandler(config) {
   }
 
   /**
+   * 附件的小 LRU 缓存。
+   *
+   * 拖动录音进度条时浏览器会连着发好几个 Range 请求，每次都从 adapter 整块读一遍
+   * 几十兆的 ogg 是纯浪费；切换笔记来回翻也一样。键里带 mtime 和 size，文件真变了
+   * 自然换键，不会给出旧内容。
+   *
+   * 上限按「条数 + 总字节」双闸：只按条数，二十几个 40MB 的录音就能吃掉 1GB；
+   * 只按字节，一堆小图会把 Map 撑到几万条。
+   */
+  const assetCache = new Map()
+  const ASSET_CACHE_MAX = 24
+  const ASSET_CACHE_BYTES = 64 * 1024 * 1024
+  let assetCacheBytes = 0
+
+  async function readAssetCached(abs, st) {
+    const key = `${abs}\u0000${st.mtimeMs}\u0000${st.size}`
+    const hit = assetCache.get(key)
+    if (hit !== undefined) {
+      // 命中的挪到队尾：Map 保持插入顺序，队首就是最久没用的
+      assetCache.delete(key)
+      assetCache.set(key, hit)
+      return hit
+    }
+    const buffer = await vfsReadFile(abs)
+    // 单个文件超过总预算就不进缓存——缓存它等于把别的一堆全挤掉，得不偿失
+    if (buffer.length <= ASSET_CACHE_BYTES) {
+      assetCache.set(key, buffer)
+      assetCacheBytes += buffer.length
+      while (assetCache.size > ASSET_CACHE_MAX || assetCacheBytes > ASSET_CACHE_BYTES) {
+        const oldest = assetCache.keys().next()
+        if (oldest.done === true) break
+        const evicted = assetCache.get(oldest.value)
+        assetCache.delete(oldest.value)
+        assetCacheBytes -= evicted === undefined ? 0 : evicted.length
+      }
+    }
+    return buffer
+  }
+
+  /**
    * 本地附件直出（录音 / 图片）。
    *
    * 和音频代理是两回事：这里读的是**用户自己库里的文件**，没有外网、没有签名
@@ -1023,7 +1063,7 @@ export function createHandler(config) {
         headers['content-range'] = `bytes ${start}-${end}/${st.size}`
         headers['content-length'] = String(end - start + 1)
         res.writeHead(206, headers)
-        const whole = await vfsReadFile(abs)
+        const whole = await readAssetCached(abs, st)
         return res.end(whole.subarray(start, end + 1))
       }
     }
@@ -1031,7 +1071,7 @@ export function createHandler(config) {
     res.writeHead(200, headers)
     // Obsidian 版的文件系统走 adapter，没有可读流：整块读出来再回。
     // 附件都是录音/图片（几十 MB 以内），一次性读进内存是可接受的代价。
-    return res.end(await vfsReadFile(abs))
+    return res.end(await readAssetCached(abs, st))
   }
 
   async function handleSave(req, res) {

@@ -29,7 +29,7 @@
  */
 import { createHash } from 'node:crypto'
 import { readFile } from './vfs.js'
-import { parseFrontmatter, readNote, resolveInside, scanVault, writeNote } from './vault.js'
+import { conflictArchiveName, parseFrontmatter, readNote, resolveInside, scanVault, writeNote } from './vault.js'
 import { extractOriginal, normalizeNote } from './openapi.js'
 
 /** 每页条数，官方未文档化上限，20 是保守值。 */
@@ -484,8 +484,7 @@ async function pullNote({ client, root, note, relPath, known, log, archiveDate, 
 
   // 被 adopt 过的笔记：云端后续更新一律不覆盖本地，只把新版本另存一份供比对
   if (known.adopted === true && cloudFp !== known.cloudFp) {
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
-    const altPath = `.conflicts/${stamp}__cloud-${(relPath.split('/').pop() || 'note.md')}`
+    const altPath = conflictArchiveName(relPath, { cloud: true })
     try {
       await writeNote(root, altPath, rendered, { backup: false })
       log(`云端有新版本，另存为：${altPath}（你的本地版保持不动）`)
@@ -513,8 +512,7 @@ async function pullNote({ client, root, note, relPath, known, log, archiveDate, 
   }
 
   // 两边都动 → 冲突。本地版本另存，正文写云端版，两条都留给人挑
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-')
-  const conflictPath = `.conflicts/${stamp}__${(relPath.split('/').pop() || 'note.md')}`
+  const conflictPath = conflictArchiveName(relPath)
   // readNote 返回的是 { content, body, frontmatter, ... }，字段名是 content 不是 text。
   // 之前写成 original.text 会抛「content 必须是字符串」并落进 catch，
   // 于是本地版本**根本没被备份**、正文却照样被云端版覆盖——用户的手工编辑就丢了。

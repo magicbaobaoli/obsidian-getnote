@@ -224,6 +224,7 @@ __export(vault_exports, {
   MAX_WRITE: () => MAX_WRITE,
   NOTE_EXT: () => NOTE_EXT,
   buildTree: () => buildTree,
+  conflictArchiveName: () => conflictArchiveName,
   createDir: () => createDir,
   createNote: () => createNote,
   deriveDate: () => deriveDate,
@@ -1007,6 +1008,16 @@ function outlineOf(body) {
   }
   return items;
 }
+function conflictPathHash(relPath) {
+  return (0, import_node_crypto2.createHash)("sha1").update(String(relPath || "")).digest("hex").slice(0, 6);
+}
+function conflictArchiveName(relPath, options = {}) {
+  const rel = normalizeRel(relPath);
+  const when = options.at === void 0 ? /* @__PURE__ */ new Date() : new Date(options.at);
+  const stamp = (Number.isNaN(when.getTime()) ? /* @__PURE__ */ new Date() : when).toISOString().replace(/[:.]/g, "-");
+  const name = (0, import_node_path3.basename)(rel) || "note.md";
+  return `${CONFLICT_DIR}/${stamp}__${conflictPathHash(rel)}__${options.cloud === true ? "cloud-" : ""}${name}`;
+}
 async function readConflictState(root) {
   try {
     const text = await readFile2((0, import_node_path3.join)(root, CONFLICT_DIR, CONFLICT_STATE_FILE), "utf8");
@@ -1027,10 +1038,16 @@ async function writeConflictState(root, state) {
 }
 function parseConflictName(name) {
   const m3 = CONFLICT_NAME_RE.exec(name);
-  if (m3 === null) return { savedAt: null, originalName: name, cloudMarked: false };
+  if (m3 === null) return { savedAt: null, originalName: name, cloudMarked: false, pathHash: "" };
   const ms = m3[5] === void 0 ? "000" : m3[5];
   const cloudMarked = /__cloud-/.test(name);
-  return { savedAt: `${m3[1]}T${m3[2]}:${m3[3]}:${m3[4]}.${ms}Z`, originalName: m3[6], cloudMarked };
+  return {
+    savedAt: `${m3[1]}T${m3[2]}:${m3[3]}:${m3[4]}.${ms}Z`,
+    originalName: m3[7],
+    cloudMarked,
+    // 老留档没有这一段，给空串，调用方据此退回「按文件名找正本」的老办法
+    pathHash: m3[6] || ""
+  };
 }
 async function listConflicts(root) {
   const dir = (0, import_node_path3.join)(root, CONFLICT_DIR);
@@ -1059,6 +1076,7 @@ async function listConflicts(root) {
       path: `${CONFLICT_DIR}/${name}`,
       originalName: parsed.originalName,
       savedAt: parsed.savedAt,
+      pathHash: parsed.pathHash,
       archiveIsCloud: parsed.cloudMarked === true,
       bytes: st.size,
       mtimeMs: st.mtimeMs,
@@ -1085,7 +1103,8 @@ async function readConflict(root, conflictPath) {
   const parsed = parseConflictName(base);
   const { data, body } = parseFrontmatter(text);
   const { entries } = await scanVault(root);
-  const candidates = entries.filter((e3) => {
+  const hashed = parsed.pathHash === "" ? [] : entries.filter((e3) => conflictPathHash(e3.path) === parsed.pathHash);
+  const candidates = hashed.length > 0 ? hashed : entries.filter((e3) => {
     const name = e3.path.split("/").pop() || e3.path;
     return name === parsed.originalName;
   });
@@ -1098,6 +1117,7 @@ async function readConflict(root, conflictPath) {
     body,
     frontmatter: data,
     savedAt: parsed.savedAt,
+    pathHash: parsed.pathHash,
     // 这份留档里装的是哪一边：true = 云端版（文件名带 cloud- 前缀的旧留档），false = 本地版。
     // 面板和 resolveConflict 都必须按这一位决定「本地版/云端版」各自去哪，
     // 而不是假定「留档一定是本地版」——历史里两种都真实存在过。
@@ -1491,7 +1511,7 @@ var init_vault = __esm({
     TRASH_DIR = ".trash";
     TRASH_NAME_RE = /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z__(.+)$/;
     CONFLICT_DIR = ".conflicts";
-    CONFLICT_NAME_RE = /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})(?:-(\d{3}))?Z?__(?:cloud-)?(.+)$/;
+    CONFLICT_NAME_RE = /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})(?:-(\d{3}))?Z?__(?:([0-9a-f]{6})__)?(?:cloud-)?(.+)$/;
     CONFLICT_STATE_FILE = ".resolved.json";
   }
 });
@@ -4414,8 +4434,7 @@ async function pullNote({ client, root, note, relPath, known, log, archiveDate, 
     return { action: "adopted", path: relPath, cloudFp, localFp, adopted: true };
   }
   if (known.adopted === true && cloudFp !== known.cloudFp) {
-    const stamp2 = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
-    const altPath = `.conflicts/${stamp2}__cloud-${relPath.split("/").pop() || "note.md"}`;
+    const altPath = conflictArchiveName(relPath, { cloud: true });
     try {
       await writeNote(root, altPath, rendered, { backup: false });
       log(`\u4E91\u7AEF\u6709\u65B0\u7248\u672C\uFF0C\u53E6\u5B58\u4E3A\uFF1A${altPath}\uFF08\u4F60\u7684\u672C\u5730\u7248\u4FDD\u6301\u4E0D\u52A8\uFF09`);
@@ -4434,8 +4453,7 @@ async function pullNote({ client, root, note, relPath, known, log, archiveDate, 
     log(`\u4FDD\u7559\u672C\u5730\u4FEE\u6539\uFF1A${relPath}`);
     return { action: "kept-local", path: relPath, cloudFp, localFp };
   }
-  const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
-  const conflictPath = `.conflicts/${stamp}__${relPath.split("/").pop() || "note.md"}`;
+  const conflictPath = conflictArchiveName(relPath);
   let backedUp = false;
   try {
     const original = await readNote(root, relPath);
@@ -5120,6 +5138,32 @@ function createHandler(config) {
     const result = await importZipToVault(root, buffer, { mode });
     send(res, 200, { ok: true, ...result });
   }
+  const assetCache = /* @__PURE__ */ new Map();
+  const ASSET_CACHE_MAX = 24;
+  const ASSET_CACHE_BYTES = 64 * 1024 * 1024;
+  let assetCacheBytes = 0;
+  async function readAssetCached(abs, st) {
+    const key = `${abs}\0${st.mtimeMs}\0${st.size}`;
+    const hit = assetCache.get(key);
+    if (hit !== void 0) {
+      assetCache.delete(key);
+      assetCache.set(key, hit);
+      return hit;
+    }
+    const buffer = await readFile2(abs);
+    if (buffer.length <= ASSET_CACHE_BYTES) {
+      assetCache.set(key, buffer);
+      assetCacheBytes += buffer.length;
+      while (assetCache.size > ASSET_CACHE_MAX || assetCacheBytes > ASSET_CACHE_BYTES) {
+        const oldest = assetCache.keys().next();
+        if (oldest.done === true) break;
+        const evicted = assetCache.get(oldest.value);
+        assetCache.delete(oldest.value);
+        assetCacheBytes -= evicted === void 0 ? 0 : evicted.length;
+      }
+    }
+    return buffer;
+  }
   async function handleAsset(req, res, url) {
     const { root, missing } = await currentRoot();
     if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
@@ -5154,13 +5198,13 @@ function createHandler(config) {
         headers["content-range"] = `bytes ${start}-${end}/${st.size}`;
         headers["content-length"] = String(end - start + 1);
         res.writeHead(206, headers);
-        const whole = await readFile2(abs);
+        const whole = await readAssetCached(abs, st);
         return res.end(whole.subarray(start, end + 1));
       }
     }
     headers["content-length"] = String(st.size);
     res.writeHead(200, headers);
-    return res.end(await readFile2(abs));
+    return res.end(await readAssetCached(abs, st));
   }
   async function handleSave(req, res) {
     const body = await readJsonBody(req, MAX_BODY);

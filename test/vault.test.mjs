@@ -28,6 +28,11 @@ import {
   renameTag,
   heatmapOf,
   toggleTodo,
+  conflictArchiveName,
+  listConflicts,
+  readConflict,
+  resolveConflict,
+  unresolveConflict,
 } from '../src/core/vault.js'
 
 const results = []
@@ -156,6 +161,57 @@ note_url: https://www.biji.com/note/1200000000000000001
 
   const noDir = await listAssets(root, '做过的项目/2026-11-13-没有 asset 目录.md', '')
   check('listAssets: 没有 asset 目录时返回空数组', Array.isArray(noDir) && noDir.length === 0, JSON.stringify(noDir))
+
+  // ── 冲突留档的命名与认回正本 ──────────────────────────────────────────────
+  // 老名字只按文件名去重：`随手记/甲.md` 与 `做过的项目/甲.md` 同一毫秒撞车时，
+  // 后写的会把先写的覆盖掉，两份内容只剩一份。新名字里带原路径的短哈希。
+  const nameA = conflictArchiveName('随手记/甲.md', { at: '2026-11-15T10:00:00.000Z' })
+  const nameB = conflictArchiveName('做过的项目/甲.md', { at: '2026-11-15T10:00:00.000Z' })
+  check('冲突命名: 形如 .conflicts/<时间戳>__<哈希>__<原名>', /^\.conflicts\/2026-11-15T10-00-00-000Z__[0-9a-f]{6}__甲\.md$/.test(nameA), nameA)
+  check('冲突命名: 同名不同目录落点不同', nameA !== nameB, `${nameA} vs ${nameB}`)
+  check('冲突命名: 反斜杠路径也认', conflictArchiveName('随手记\\甲.md', { at: '2026-11-15T10:00:00.000Z' }) === nameA)
+  check(
+    '冲突命名: cloud 前缀在哈希之后',
+    /^[^]*__[0-9a-f]{6}__cloud-甲\.md$/.test(conflictArchiveName('随手记/甲.md', { cloud: true })),
+    conflictArchiveName('随手记/甲.md', { cloud: true }),
+  )
+  check('冲突命名: 认不出时间就用当前时刻', /^[^]*__[0-9a-f]{6}__甲\.md$/.test(conflictArchiveName('随手记/甲.md', { at: '不是时间' })))
+
+  // 两篇同名笔记都进了留档，各自都要认回自己那篇正本
+  await createNote(root, { dir: '随手记', title: '撞名正本', content: '# 撞名正本\n\n随手记里的\n' })
+  await createNote(root, { dir: '做过的项目', title: '撞名正本', content: '# 撞名正本\n\n项目里的\n' })
+  const allEntries = (await scanVault(root)).entries.filter((e) => e.title === '撞名正本')
+  check('冲突认回: 造出两篇同名正本', allEntries.length === 2, JSON.stringify(allEntries.map((e) => e.path)))
+  for (const entry of allEntries) {
+    const rel = conflictArchiveName(entry.path)
+    await mkdir(join(root, '.conflicts'), { recursive: true })
+    await writeFile(join(root, rel), `# 留档\n\n来自 ${entry.path}\n`, 'utf8')
+    const detail = await readConflict(root, rel)
+    check(
+      `冲突认回: 认回 ${entry.path}`,
+      detail.candidates.length === 1 && detail.candidates[0].path === entry.path,
+      JSON.stringify(detail.candidates.map((c) => c.path)),
+    )
+  }
+  const listed = await listConflicts(root)
+  check('冲突列表: 两份都在，各带哈希', listed.length === 2 && listed.every((i) => /^[0-9a-f]{6}$/.test(i.pathHash)), JSON.stringify(listed.map((i) => [i.name, i.pathHash])))
+
+  // 老格式（没有哈希）仍要能读、能认回
+  // 老名字里带的是正本当时的完整文件名（createNote 会加日期前缀），不是标题
+  const legacyName = allEntries[0].path.split('/').pop()
+  const legacyRel = `${'.conflicts'}/2026-11-15T10-00-00-000Z__${legacyName}`
+  await writeFile(join(root, legacyRel), '# 老留档\n', 'utf8')
+  const legacyDetail = await readConflict(root, legacyRel)
+  check('冲突认回: 老格式没有哈希也能读', legacyDetail.pathHash === '' && legacyDetail.originalName === legacyName, JSON.stringify({ hash: legacyDetail.pathHash, name: legacyDetail.originalName }))
+  check('冲突认回: 老格式退回按文件名找正本', legacyDetail.candidates.length === 2, JSON.stringify(legacyDetail.candidates.map((c) => c.path)))
+
+  // 采纳一份之后能退回未处理
+  const firstConflict = listed[0]
+  const resolved = await resolveConflict(root, firstConflict.path, { keepLocal: true })
+  check('冲突处理: 采纳本地版写回正本', typeof resolved.path === 'string' && resolved.keepLocal === true, JSON.stringify(resolved))
+  check('冲突处理: 处理完标为已处理', (await listConflicts(root)).find((i) => i.path === firstConflict.path).resolved === true)
+  await unresolveConflict(root, firstConflict.path)
+  check('冲突处理: 能退回未处理', (await listConflicts(root)).find((i) => i.path === firstConflict.path).resolved === false)
 
   // ── 回收站 ────────────────────────────────────────────────────────────────
   // 以前删除只进不出：面板上没有任何入口能看见 .trash、更没法恢复。下面这组

@@ -78,7 +78,7 @@
 ```bash
 npm install
 npm run build      # 产出 main.js，并把 card/ 与 locale/ 复制到插件根
-npm test           # 571 项离线测试（需 Node ≥ 22，jsdom 31 依赖 Node 22 的 zstd API）
+npm test           # 585 项离线测试（需 Node ≥ 22，jsdom 31 依赖 Node 22 的 zstd API）
 ```
 
 开发时用 `npm run dev` 进入 watch 模式。
@@ -160,7 +160,7 @@ src/
 npm test
 ```
 
-覆盖：vault 算法（110 项）、归档包（64 项）、历史快照（46 项）、同步合并（66 项）、
+覆盖：vault 算法（124 项）、归档包（64 项）、历史快照（46 项）、同步合并（66 项）、
 **9 项文件系统适配层验收**（`app.vault.adapter` 与 `node:fs` 的语义差异：`list()` 回裸文件名
 还是完整路径都得吃得住、`mkdir` 不建父目录要自己逐级补齐、删目录得走 `rmdir(recursive)`
 而不是 `remove`）、**236 项 HTTP 路由验收**（真起服务、真打请求、真读文件，含 Range 206/416、路径逃逸拒绝、

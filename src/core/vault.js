@@ -9,7 +9,7 @@
  * 落地读写前统一过 resolveInside() 做包含性校验，防止 `../` 逃逸出库根。
  */
 import { readdir, readFile, writeFile, rename, mkdir, stat, rm, rmdir, realpath, copyFile } from './vfs.js'
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { basename, dirname, extname, join, posix, relative, resolve, sep } from 'node:path'
 
 const NOTE_EXT = '.md'
@@ -1031,8 +1031,35 @@ const CONFLICT_DIR = '.conflicts'
  *   `YYYY-MM-DDTHH-MM-SS__cloud-<原名>`      ← 早期手工留档留下的（不带毫秒）
  * 一定要都认，否则旧留档会整片变成「解析不出时间」的哑条目，用户看到一片
  * 空白的时间列，会以为是文件坏了。
+ *
+ * 中间那一段 6 位十六进制是**原笔记相对路径的短哈希**（后加的）：只按文件名去重的话，
+ * `随手记/甲.md` 和 `做过的项目/甲.md` 在同一毫秒撞车时会落到同一个留档名上，
+ * 后写的把先写的覆盖掉——两份内容只剩一份。老名字没有这一段，所以它是可选的。
  */
-const CONFLICT_NAME_RE = /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})(?:-(\d{3}))?Z?__(?:cloud-)?(.+)$/
+const CONFLICT_NAME_RE = /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})(?:-(\d{3}))?Z?__(?:([0-9a-f]{6})__)?(?:cloud-)?(.+)$/
+
+/** 原笔记相对路径 → 6 位短哈希，用来区分「不同目录下同名」的两篇笔记。 */
+function conflictPathHash(relPath) {
+  return createHash('sha1').update(String(relPath || '')).digest('hex').slice(0, 6)
+}
+
+/**
+ * 生成一份冲突留档的路径（库内相对路径）。
+ *
+ * 命名只在这里生成：同步引擎写本地版、以及未来任何需要留档的地方都调它，
+ * 免得两处各写一套格式、解析侧再跟着改两遍。
+ *
+ * @param {string} relPath 正本的库内相对路径
+ * @param {{cloud?: boolean, at?: Date|string|number}} [options] cloud 表示这份装的是云端版
+ */
+export function conflictArchiveName(relPath, options = {}) {
+  const rel = normalizeRel(relPath)
+  const when = options.at === undefined ? new Date() : new Date(options.at)
+  // ISO 里的 : 和 . 在 Windows 上是非法文件名字符，换成 -
+  const stamp = (Number.isNaN(when.getTime()) ? new Date() : when).toISOString().replace(/[:.]/g, '-')
+  const name = basename(rel) || 'note.md'
+  return `${CONFLICT_DIR}/${stamp}__${conflictPathHash(rel)}__${options.cloud === true ? 'cloud-' : ''}${name}`
+}
 
 /**
  * 已处理冲突的记录文件。
@@ -1073,13 +1100,19 @@ async function writeConflictState(root, state) {
 
 function parseConflictName(name) {
   const m = CONFLICT_NAME_RE.exec(name)
-  if (m === null) return { savedAt: null, originalName: name, cloudMarked: false }
+  if (m === null) return { savedAt: null, originalName: name, cloudMarked: false, pathHash: '' }
   const ms = m[5] === undefined ? '000' : m[5]
   // 文件名里带 `cloud-` 前缀的留档，装的是**云端版**；不带的是**本地版**。
   // 两种在历史里都真实存在（同步引擎只写本地版，早期手工抢救时存过云端版），
   // 所以解析时必须把这一位带出来，否则「哪边是本地」就会看反。
   const cloudMarked = /__cloud-/.test(name)
-  return { savedAt: `${m[1]}T${m[2]}:${m[3]}:${m[4]}.${ms}Z`, originalName: m[6], cloudMarked }
+  return {
+    savedAt: `${m[1]}T${m[2]}:${m[3]}:${m[4]}.${ms}Z`,
+    originalName: m[7],
+    cloudMarked,
+    // 老留档没有这一段，给空串，调用方据此退回「按文件名找正本」的老办法
+    pathHash: m[6] || '',
+  }
 }
 
 /**
@@ -1119,6 +1152,7 @@ export async function listConflicts(root) {
       path: `${CONFLICT_DIR}/${name}`,
       originalName: parsed.originalName,
       savedAt: parsed.savedAt,
+      pathHash: parsed.pathHash,
       archiveIsCloud: parsed.cloudMarked === true,
       bytes: st.size,
       mtimeMs: st.mtimeMs,
@@ -1153,10 +1187,15 @@ export async function readConflict(root, conflictPath) {
   const parsed = parseConflictName(base)
   const { data, body } = parseFrontmatter(text)
   const { entries } = await scanVault(root)
-  const candidates = entries.filter((e) => {
-    const name = e.path.split('/').pop() || e.path
-    return name === parsed.originalName
-  })
+  // 优先按「原路径短哈希」认回正本：同名不同目录的两篇笔记只有这一位能区分。
+  // 老留档没有哈希，退回按文件名匹配（与旧行为一致）。
+  const hashed = parsed.pathHash === '' ? [] : entries.filter((e) => conflictPathHash(e.path) === parsed.pathHash)
+  const candidates = hashed.length > 0
+    ? hashed
+    : entries.filter((e) => {
+        const name = e.path.split('/').pop() || e.path
+        return name === parsed.originalName
+      })
   const state = await readConflictState(root)
   const mark = state[base]
   return {
@@ -1166,6 +1205,7 @@ export async function readConflict(root, conflictPath) {
     body,
     frontmatter: data,
     savedAt: parsed.savedAt,
+    pathHash: parsed.pathHash,
     // 这份留档里装的是哪一边：true = 云端版（文件名带 cloud- 前缀的旧留档），false = 本地版。
     // 面板和 resolveConflict 都必须按这一位决定「本地版/云端版」各自去哪，
     // 而不是假定「留档一定是本地版」——历史里两种都真实存在过。
