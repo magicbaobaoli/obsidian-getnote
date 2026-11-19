@@ -232,6 +232,7 @@ __export(vault_exports, {
   excerptOf: () => excerptOf,
   extractWikiLinks: () => extractWikiLinks,
   findBacklinks: () => findBacklinks,
+  findBrokenLinks: () => findBrokenLinks,
   heatmapOf: () => heatmapOf,
   invalidateScan: () => invalidateScan,
   listAssets: () => listAssets,
@@ -1055,6 +1056,85 @@ async function findBacklinks(root, target, entries) {
   }
   hits.sort((a3, b3) => a3.title.localeCompare(b3.title, "zh"));
   return { target: raw, hits };
+}
+function knownLinkNames(entries) {
+  const known = /* @__PURE__ */ new Set();
+  const add = (value) => {
+    const name = String(value || "").trim().toLowerCase();
+    if (name !== "") known.add(name);
+  };
+  for (const entry of entries) {
+    const noExt = String(entry.path || "").replace(/\.md$/i, "");
+    add(entry.path);
+    add(noExt);
+    add(noExt.split("/").pop() || noExt);
+    add(entry.title);
+    for (const alias of Array.isArray(entry.aliases) ? entry.aliases : []) add(alias);
+  }
+  return known;
+}
+function linkResolves(target, known) {
+  const raw = String(target || "").trim().toLowerCase();
+  if (raw === "") return true;
+  const noExt = raw.replace(/\.md$/i, "");
+  const base = noExt.split("/").pop() || noExt;
+  return known.has(raw) || known.has(noExt) || known.has(base);
+}
+function lineContext(line, width = 80) {
+  const text = String(line || "").replace(/^\s*#+\s*/, "").replace(/\s+/g, " ").trim();
+  if (text.length <= width) return text;
+  return `${text.slice(0, width - 1).trim()}\u2026`;
+}
+async function findBrokenLinks(root, entries) {
+  const list = Array.isArray(entries) ? entries : (await scanVault(root)).entries;
+  const known = knownLinkNames(list);
+  const hits = [];
+  const MAX_HITS = 500;
+  for (const entry of list) {
+    let text;
+    try {
+      text = await readFile2(resolveInside(root, entry.path).abs, "utf8");
+    } catch {
+      continue;
+    }
+    const lines = text.split(/\r?\n/);
+    let inFence = false;
+    for (let i3 = 0; i3 < lines.length; i3 += 1) {
+      const line = lines[i3];
+      if (/^\s*(```|~~~)/.test(line)) {
+        inFence = !inFence;
+        continue;
+      }
+      if (inFence) continue;
+      const re = /\[\[([^\]\n|]+)(?:\|[^\]\n]*)?\]\]/g;
+      let m3;
+      while ((m3 = re.exec(line)) !== null) {
+        const rawTarget = m3[1].trim();
+        if (rawTarget === "") continue;
+        const hash = rawTarget.indexOf("#");
+        const target = (hash === -1 ? rawTarget : rawTarget.slice(0, hash)).trim();
+        if (target === "") continue;
+        if (/\.(?!md$)[a-z0-9]{1,6}$/i.test(target)) continue;
+        if (linkResolves(target, known)) continue;
+        hits.push({
+          path: entry.path,
+          title: entry.title,
+          line: i3 + 1,
+          target,
+          text: lineContext(line)
+        });
+        if (hits.length >= MAX_HITS) break;
+      }
+      if (hits.length >= MAX_HITS) break;
+    }
+    if (hits.length >= MAX_HITS) break;
+  }
+  hits.sort((a3, b3) => {
+    const byPath = String(a3.path).localeCompare(String(b3.path), "zh");
+    if (byPath !== 0) return byPath;
+    return a3.line - b3.line;
+  });
+  return { hits, scanned: list.length, truncated: hits.length >= MAX_HITS };
 }
 function outlineOf(body) {
   const lines = String(body || "").split(/\r?\n/);
@@ -5145,6 +5225,12 @@ function createHandler(config) {
     const result = await findBacklinks(root, target);
     send(res, 200, result);
   }
+  async function handleBrokenLinks(res) {
+    const { root, missing } = await currentRoot();
+    if (missing) return send(res, 200, { hits: [], scanned: 0, truncated: false });
+    const result = await findBrokenLinks(root);
+    send(res, 200, result);
+  }
   async function handleConflictList(res) {
     const { root, missing } = await currentRoot();
     if (missing) return send(res, 200, { items: [], count: 0, pending: 0, resolved: 0 });
@@ -6295,6 +6381,7 @@ function createHandler(config) {
         if (action === "read") return await handleRead(res, url);
         if (action === "search") return await handleSearch(res, url);
         if (action === "backlinks") return await handleBacklinks(res, url);
+        if (action === "broken") return await handleBrokenLinks(res);
         if (action === "settings") return await handleGetSettings(res);
         if (action === "probe") return await handleProbe(req, res);
         if (action === "import" && parts[2] === "status") return handleImportStatus(res);
@@ -8190,6 +8277,13 @@ var LEX = {
     "conflict.undo": "\u9000\u56DE\u672A\u5904\u7406",
     "conflict.undone": "\u5DF2\u9000\u56DE\u672A\u5904\u7406",
     "tab.trash": "\u56DE\u6536\u7AD9",
+    "tab.broken": "\u65AD\u94FE",
+    "broken.desc": "\u8FD9\u91CC\u5217\u51FA\u5168\u5E93\u300C\u5199\u4E86\u53CC\u94FE\u3001\u4F46\u5E93\u91CC\u6CA1\u6709\u8FD9\u4E00\u7BC7\u300D\u7684\u5730\u65B9\u3002\u70B9\u4E00\u884C\u5C31\u6253\u5F00\u51FA\u95EE\u9898\u7684\u90A3\u4E00\u7BC7\uFF0C\u6539\u6389\u90A3\u4E2A\u540D\u5B57\u5C31\u597D\u3002",
+    "broken.empty": "\u6CA1\u6709\u65AD\u94FE",
+    "broken.emptyHint": "\u5E93\u91CC\u6BCF\u4E00\u6761\u53CC\u94FE\u90FD\u6307\u5F97\u5230\u4E1C\u897F\u3002\u5199\u5B8C\u65B0\u94FE\u63A5\u987A\u624B\u56DE\u6765\u770B\u4E00\u773C\u5C31\u884C\u3002",
+    "broken.found": "\u626B\u4E86 {scanned} \u7BC7\uFF0C\u6709 {n} \u5904\u6307\u4E0D\u5230\u3002",
+    "broken.truncated": "\u592A\u591A\u4E86\uFF0C\u53EA\u5217\u524D 500 \u5904\u3002\u5148\u4FEE\u6389\u4E00\u4E9B\u518D\u5237\u65B0\u3002",
+    "broken.line": "\u7B2C",
     "trash.desc": "\u5220\u6389\u7684\u7B14\u8BB0\u5148\u653E\u8FD9\u91CC\uFF0C\u968F\u65F6\u53EF\u4EE5\u6062\u590D\u3002\u6062\u590D\u53EA\u662F\u628A\u6587\u4EF6\u642C\u56DE\u5E93\u91CC\uFF0C\u4E0D\u78B0\u5185\u5BB9\u3002",
     "trash.empty": "\u56DE\u6536\u7AD9\u662F\u7A7A\u7684",
     "trash.emptyHint": "\u5728\u7B14\u8BB0\u5217\u8868\u91CC\u70B9\u5220\u9664\uFF0C\u6587\u4EF6\u4F1A\u5148\u5230\u8FD9\u91CC\u3002\u6E05\u7A7A\u624D\u4F1A\u771F\u7684\u5220\u3002",
@@ -8584,6 +8678,13 @@ var LEX = {
     "conflict.undo": "Mark unresolved",
     "conflict.undone": "Marked unresolved",
     "tab.trash": "Trash",
+    "tab.broken": "Broken links",
+    "broken.desc": "Every place where a note links to something that is not in the vault. Click a row to open the note and fix the name.",
+    "broken.empty": "No broken links",
+    "broken.emptyHint": "Every link in the vault resolves. Check back after writing new ones.",
+    "broken.found": "Scanned {scanned} notes, {n} links go nowhere.",
+    "broken.truncated": "That is a lot \u2014 only the first 500 are listed. Fix some and refresh.",
+    "broken.line": "line",
     "trash.desc": "Deleted notes wait here and can be restored. Restoring just moves the file back.",
     "trash.empty": "Trash is empty",
     "trash.emptyHint": "Deleting a note moves it here first. Only purging really deletes it.",
@@ -8978,6 +9079,13 @@ var LEX = {
     "conflict.undo": "Terugzetten op onafgehandeld",
     "conflict.undone": "Teruggezet op onafgehandeld",
     "tab.trash": "Prullenbak",
+    "tab.broken": "Dode links",
+    "broken.desc": "Elke plek waar een notitie naar iets linkt dat niet in de map staat. Klik op een regel om de notitie te openen en de naam te herstellen.",
+    "broken.empty": "Geen dode links",
+    "broken.emptyHint": "Elke link in de map wijst ergens naar. Kom later terug na nieuwe links.",
+    "broken.found": "{scanned} notities gescand, {n} links wijzen nergens heen.",
+    "broken.truncated": "Dat zijn er veel \u2014 alleen de eerste 500 staan er. Herstel er een paar en vernieuw.",
+    "broken.line": "regel",
     "trash.desc": "Verwijderde notities wachten hier en kunnen worden hersteld. Herstellen zet het bestand gewoon terug.",
     "trash.empty": "De prullenbak is leeg",
     "trash.emptyHint": "Een notitie verwijderen verplaatst hem eerst hierheen. Pas leegmaken verwijdert echt.",
@@ -10115,6 +10223,18 @@ var CSS = `
   color:var(--dsw-alias-brand-primary);cursor:pointer}
 .dshgn_propTag:hover{background:var(--dsw-alias-interactive-bg-hover-accent)}
 /* \u5173\u8054\u7B14\u8BB0\uFF1A\u6B63\u6587\u8BFB\u5B8C\u624D\u51FA\u73B0\uFF0C\u6240\u4EE5\u6837\u5F0F\u6BD4\u5927\u7EB2\u66F4\u8F7B\u2014\u2014\u5B83\u662F\u4E00\u6761\u8865\u5145\u4FE1\u606F\uFF0C\u4E0D\u8BE5\u62A2\u6B63\u6587\u89C6\u7EBF\u3002 */
+/* \u65AD\u94FE\u6E05\u5355\uFF1A\u4E00\u884C\u4E00\u5904\u3002\u76EE\u6807\u540D\u5B57\u7528\u9519\u8BEF\u8272\uFF0C\u56E0\u4E3A\u8FD9\u4E00\u884C\u672C\u8EAB\u5C31\u662F\u300C\u8FD9\u91CC\u6709\u95EE\u9898\u300D\uFF1B
+   \u5E95\u4E0B\u7684\u4F4D\u7F6E\u4E0E\u4E0A\u4E0B\u6587\u7528\u6DE1\u8272\uFF0C\u626B\u4E00\u773C\u5C31\u80FD\u8DF3\u8FC7\u6B63\u5E38\u7684\u90A3\u4E9B\u3002 */
+.dshgn_brokenRow{appearance:none;display:flex;flex-direction:column;gap:3px;width:100%;
+  text-align:left;padding:8px 10px;border:0.5px solid var(--dsw-alias-border-l1);
+  border-radius:8px;background:transparent;font:inherit;cursor:pointer}
+.dshgn_brokenRow:hover{background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-border-l2)}
+.dshgn_brokenTarget{font-size:12px;font-weight:600;color:var(--dsw-alias-state-error-primary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_brokenWhere{font-size:10.5px;color:var(--dsw-alias-label-dimmed);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_brokenSnip{font-size:11px;line-height:1.5;color:var(--dsw-alias-label-secondary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_backlinks{margin-top:18px;padding-top:12px;border-top:0.5px solid var(--dsw-alias-border-l1)}
 .dshgn_backlinksHead{display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:11px;
   color:var(--dsw-alias-label-tertiary)}
@@ -12034,6 +12154,7 @@ ${insert}
         status !== null && status.conflicts > 0 ? status.conflicts : void 0
       ),
       tabButton("card", t3("tab.card")),
+      tabButton("broken", t3("tab.broken")),
       tabButton("settings", t3("tab.settings")),
       tabButton("trash", t3("tab.trash"))
     )
@@ -12087,6 +12208,16 @@ ${insert}
       },
       onError: (message) => setError(message),
       showToast
+    });
+  } else if (tab === "broken") {
+    body = h4(BrokenPane, {
+      t: t3,
+      status,
+      onError: (message) => setError(message),
+      onOpen: (path) => {
+        setTab("notes");
+        void openNote(path);
+      }
     });
   } else if (tab === "trash") {
     body = h4(TrashPane, {
@@ -14790,6 +14921,80 @@ function ConflictPane(props) {
     )
   );
 }
+function BrokenPane(props) {
+  const { t: t3, status, onError, onOpen } = props;
+  const [hits, setHits] = h2(null);
+  const [scanned, setScanned] = h2(0);
+  const [truncated, setTruncated] = h2(false);
+  const [loading, setLoading] = h2(false);
+  const load = q2(async () => {
+    setLoading(true);
+    try {
+      const result = await api("/broken");
+      setHits(Array.isArray(result.hits) ? result.hits : []);
+      setScanned(Number(result.scanned) || 0);
+      setTruncated(result.truncated === true);
+    } catch (err) {
+      onError(err && err.message ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [onError]);
+  y2(() => {
+    void load();
+  }, [load]);
+  const list = hits === null ? [] : hits;
+  const summary = t3("broken.found").replace("{n}", String(list.length)).replace("{scanned}", String(scanned));
+  return h4(
+    "div",
+    { className: "dshgn_pane" },
+    h4(
+      "div",
+      { className: "dshgn_section" },
+      h4(
+        "div",
+        { className: "dshgn_sectionHead" },
+        h4("div", { className: "dshgn_sectionTitle" }, t3("tab.broken")),
+        h4(
+          "button",
+          { type: "button", className: "dshgn_btn", onClick: () => void load(), disabled: loading },
+          loading ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "refresh", size: 12 }),
+          t3("action.refresh")
+        )
+      ),
+      h4("div", { className: "dshgn_sectionDesc" }, t3("broken.desc")),
+      hits !== null && list.length > 0 ? h4("div", { className: "dshgn_sectionDesc" }, summary) : null,
+      truncated ? h4("div", { className: "dshgn_sectionDesc" }, t3("broken.truncated")) : null
+    ),
+    loading && list.length === 0 ? h4("div", { className: "dshgn_emptyState" }, h4("span", { className: "dshgn_spin" })) : list.length === 0 ? h4(
+      "div",
+      { className: "dshgn_empty" },
+      h4(Icon, { name: "check", size: 24 }),
+      h4("div", { className: "dshgn_emptyTitle" }, t3("broken.empty")),
+      h4("div", { className: "dshgn_emptyDesc" }, t3("broken.emptyHint"))
+    ) : h4(
+      "div",
+      { className: "dshgn_cardBox" },
+      list.map(
+        (hit) => h4(
+          "button",
+          {
+            key: `${hit.path}#${hit.line}#${hit.target}`,
+            type: "button",
+            className: "dshgn_brokenRow",
+            title: hit.path,
+            onClick: () => {
+              if (typeof onOpen === "function") onOpen(hit.path);
+            }
+          },
+          h4("span", { className: "dshgn_brokenTarget" }, hit.target),
+          h4("span", { className: "dshgn_brokenWhere" }, `${hit.title || hit.path} \xB7 ${t3("broken.line")} ${hit.line}`),
+          hit.text === "" ? null : h4("span", { className: "dshgn_brokenSnip" }, hit.text)
+        )
+      )
+    )
+  );
+}
 function TrashPane(props) {
   const { t: t3, status, onChanged, onError, showToast } = props;
   const [items, setItems] = h2(null);
@@ -15312,7 +15517,7 @@ function writeColWidths(widths) {
   }
 }
 var SESSION_KEY = "dshgn.session";
-var SESSION_TABS = ["notes", "cloud", "settings", "card", "conflict", "trash"];
+var SESSION_TABS = ["notes", "cloud", "settings", "card", "conflict", "broken", "trash"];
 function readSession() {
   const empty = { tab: "", dir: "", tag: "", path: "" };
   try {

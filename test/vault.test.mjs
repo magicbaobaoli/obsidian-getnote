@@ -27,6 +27,7 @@ import {
   normalizeTags,
   normalizeAliases,
   findBacklinks,
+  findBrokenLinks,
   renameTag,
   heatmapOf,
   toggleTodo,
@@ -590,6 +591,52 @@ note_url: https://www.biji.com/note/1200000000000000001
       errNone = error
     }
     check('待办: 笔记里没有待办时报 404 而不是假装成功', errNone !== null && errNone.status === 404)
+  }
+
+  // 断链体检：写了双链但库里没有这一篇的地方
+  {
+    const brokenDir = '断链测试'
+    await mkdir(join(root, brokenDir), { recursive: true })
+    await writeFile(
+      join(root, brokenDir, '有问题的.md'),
+      [
+        '# 有问题的',
+        '',
+        '这里指得到 [[没问题的]] 和 [[不存在的一篇]]。',
+        '还有一条带小节的 [[也不存在#某个小节]]。',
+        '附件不算断链：![[示意图.png]] 和 ![[说明.pdf]]。',
+        '自己这一节也不算：[[#本节]]。',
+        '\u0060\u0060\u0060',
+        '围栏里的 [[也是不存在的]] 不算。',
+        '\u0060\u0060\u0060',
+      ].join('\n'),
+      'utf8',
+    )
+    await writeFile(
+      join(root, brokenDir, '没问题的.md'),
+      '---\naliases: [别名一篇]\n---\n\n# 没问题的\n\n正文\n',
+      'utf8',
+    )
+    await writeFile(
+      join(root, brokenDir, '用别名的.md'),
+      '# 用别名的\n\n见 [[别名一篇]]，这个是好的。\n',
+      'utf8',
+    )
+    const broken = await findBrokenLinks(root)
+    // 库里还有前面用例建的笔记，只挑这一个目录里的看
+    const mine = broken.hits.filter((h) => h.path.startsWith(`${brokenDir}/`))
+    check('断链: 找得到指向不存在的那些', mine.length === 2, JSON.stringify(mine.map((h) => h.target)))
+    check(
+      '断链: 目标名字原样交回（带小节时只留前面那段）',
+      mine[0].target === '不存在的一篇' && mine[1].target === '也不存在',
+      JSON.stringify(mine.map((h) => h.target)),
+    )
+    check('断链: 带出行号与那一行上下文', mine[0].line === 3 && mine[0].text.includes('不存在的一篇'))
+    check('断链: 附件不算断链', !mine.some((h) => /\.(png|pdf)$/i.test(h.target)))
+    check('断链: 本节的小节不算断链', !mine.some((h) => h.target === ''))
+    check('断链: 围栏里的不算', !mine.some((h) => h.target === '也是不存在的'))
+    check('断链: 别名指得到的不算断链', !mine.some((h) => h.target === '别名一篇'))
+    check('断链: 扫描篇数交回去', broken.scanned >= 3, String(broken.scanned))
   }
 } finally {
   await rm(root, { recursive: true, force: true })

@@ -747,6 +747,13 @@ async function saveFile(url, filename) {
         'conflict.undo': '退回未处理',
         'conflict.undone': '已退回未处理',
         'tab.trash': '回收站',
+        'tab.broken': '断链',
+        'broken.desc': '这里列出全库「写了双链、但库里没有这一篇」的地方。点一行就打开出问题的那一篇，改掉那个名字就好。',
+        'broken.empty': '没有断链',
+        'broken.emptyHint': '库里每一条双链都指得到东西。写完新链接顺手回来看一眼就行。',
+        'broken.found': '扫了 {scanned} 篇，有 {n} 处指不到。',
+        'broken.truncated': '太多了，只列前 500 处。先修掉一些再刷新。',
+        'broken.line': '第',
         'trash.desc': '删掉的笔记先放这里，随时可以恢复。恢复只是把文件搬回库里，不碰内容。',
         'trash.empty': '回收站是空的',
         'trash.emptyHint': '在笔记列表里点删除，文件会先到这里。清空才会真的删。',
@@ -1145,6 +1152,13 @@ async function saveFile(url, filename) {
         'conflict.undo': 'Mark unresolved',
         'conflict.undone': 'Marked unresolved',
         'tab.trash': 'Trash',
+        'tab.broken': 'Broken links',
+        'broken.desc': 'Every place where a note links to something that is not in the vault. Click a row to open the note and fix the name.',
+        'broken.empty': 'No broken links',
+        'broken.emptyHint': 'Every link in the vault resolves. Check back after writing new ones.',
+        'broken.found': 'Scanned {scanned} notes, {n} links go nowhere.',
+        'broken.truncated': 'That is a lot — only the first 500 are listed. Fix some and refresh.',
+        'broken.line': 'line',
         'trash.desc': 'Deleted notes wait here and can be restored. Restoring just moves the file back.',
         'trash.empty': 'Trash is empty',
         'trash.emptyHint': 'Deleting a note moves it here first. Only purging really deletes it.',
@@ -1542,6 +1556,13 @@ async function saveFile(url, filename) {
         'conflict.undo': 'Terugzetten op onafgehandeld',
         'conflict.undone': 'Teruggezet op onafgehandeld',
         'tab.trash': 'Prullenbak',
+        'tab.broken': 'Dode links',
+        'broken.desc': 'Elke plek waar een notitie naar iets linkt dat niet in de map staat. Klik op een regel om de notitie te openen en de naam te herstellen.',
+        'broken.empty': 'Geen dode links',
+        'broken.emptyHint': 'Elke link in de map wijst ergens naar. Kom later terug na nieuwe links.',
+        'broken.found': '{scanned} notities gescand, {n} links wijzen nergens heen.',
+        'broken.truncated': 'Dat zijn er veel — alleen de eerste 500 staan er. Herstel er een paar en vernieuw.',
+        'broken.line': 'regel',
         'trash.desc': 'Verwijderde notities wachten hier en kunnen worden hersteld. Herstellen zet het bestand gewoon terug.',
         'trash.empty': 'De prullenbak is leeg',
         'trash.emptyHint': 'Een notitie verwijderen verplaatst hem eerst hierheen. Pas leegmaken verwijdert echt.',
@@ -3036,6 +3057,18 @@ async function saveFile(url, filename) {
   color:var(--dsw-alias-brand-primary);cursor:pointer}
 .dshgn_propTag:hover{background:var(--dsw-alias-interactive-bg-hover-accent)}
 /* 关联笔记：正文读完才出现，所以样式比大纲更轻——它是一条补充信息，不该抢正文视线。 */
+/* 断链清单：一行一处。目标名字用错误色，因为这一行本身就是「这里有问题」；
+   底下的位置与上下文用淡色，扫一眼就能跳过正常的那些。 */
+.dshgn_brokenRow{appearance:none;display:flex;flex-direction:column;gap:3px;width:100%;
+  text-align:left;padding:8px 10px;border:0.5px solid var(--dsw-alias-border-l1);
+  border-radius:8px;background:transparent;font:inherit;cursor:pointer}
+.dshgn_brokenRow:hover{background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-border-l2)}
+.dshgn_brokenTarget{font-size:12px;font-weight:600;color:var(--dsw-alias-state-error-primary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_brokenWhere{font-size:10.5px;color:var(--dsw-alias-label-dimmed);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_brokenSnip{font-size:11px;line-height:1.5;color:var(--dsw-alias-label-secondary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_backlinks{margin-top:18px;padding-top:12px;border-top:0.5px solid var(--dsw-alias-border-l1)}
 .dshgn_backlinksHead{display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:11px;
   color:var(--dsw-alias-label-tertiary)}
@@ -5274,6 +5307,7 @@ async function saveFile(url, filename) {
             status !== null && status.conflicts > 0 ? status.conflicts : undefined,
           ),
           tabButton('card', t('tab.card')),
+          tabButton('broken', t('tab.broken')),
           tabButton('settings', t('tab.settings')),
           tabButton('trash', t('tab.trash')),
         ),
@@ -5328,6 +5362,16 @@ async function saveFile(url, filename) {
           },
           onError: (message) => setError(message),
           showToast,
+        })
+      } else if (tab === 'broken') {
+        body = h(BrokenPane, {
+          t,
+          status,
+          onError: (message) => setError(message),
+          onOpen: (path) => {
+            setTab('notes')
+            void openNote(path)
+          },
         })
       } else if (tab === 'trash') {
         body = h(TrashPane, {
@@ -8487,6 +8531,96 @@ async function saveFile(url, filename) {
       )
     }
 
+    /**
+     * 断链体检：把全库「写了双链但库里没有这一篇」的地方摊成一张清单。
+     *
+     * 点一行直接打开出问题的那一篇——用户要改的是那一行字，不是这条记录。
+     * 行号留着是为了在长笔记里能对上位置（面板没有「跳到第 N 行」，
+     * 所以把它当路标写在旁边）。
+     */
+    function BrokenPane(props) {
+      const { t, status, onError, onOpen } = props
+      const [hits, setHits] = React.useState(null)
+      const [scanned, setScanned] = React.useState(0)
+      const [truncated, setTruncated] = React.useState(false)
+      const [loading, setLoading] = React.useState(false)
+
+      const load = React.useCallback(async () => {
+        setLoading(true)
+        try {
+          const result = await api('/broken')
+          setHits(Array.isArray(result.hits) ? result.hits : [])
+          setScanned(Number(result.scanned) || 0)
+          setTruncated(result.truncated === true)
+        } catch (err) {
+          onError(err && err.message ? err.message : String(err))
+        } finally {
+          setLoading(false)
+        }
+      }, [onError])
+
+      React.useEffect(() => {
+        void load()
+      }, [load])
+
+      const list = hits === null ? [] : hits
+      const summary = t('broken.found').replace('{n}', String(list.length)).replace('{scanned}', String(scanned))
+
+      return h(
+        'div',
+        { className: 'dshgn_pane' },
+        h(
+          'div',
+          { className: 'dshgn_section' },
+          h(
+            'div',
+            { className: 'dshgn_sectionHead' },
+            h('div', { className: 'dshgn_sectionTitle' }, t('tab.broken')),
+            h(
+              'button',
+              { type: 'button', className: 'dshgn_btn', onClick: () => void load(), disabled: loading },
+              loading ? h('span', { className: 'dshgn_spin' }) : h(Icon, { name: 'refresh', size: 12 }),
+              t('action.refresh'),
+            ),
+          ),
+          h('div', { className: 'dshgn_sectionDesc' }, t('broken.desc')),
+          hits !== null && list.length > 0 ? h('div', { className: 'dshgn_sectionDesc' }, summary) : null,
+          truncated ? h('div', { className: 'dshgn_sectionDesc' }, t('broken.truncated')) : null,
+        ),
+        loading && list.length === 0
+          ? h('div', { className: 'dshgn_emptyState' }, h('span', { className: 'dshgn_spin' }))
+          : list.length === 0
+            ? h(
+                'div',
+                { className: 'dshgn_empty' },
+                h(Icon, { name: 'check', size: 24 }),
+                h('div', { className: 'dshgn_emptyTitle' }, t('broken.empty')),
+                h('div', { className: 'dshgn_emptyDesc' }, t('broken.emptyHint')),
+              )
+            : h(
+                'div',
+                { className: 'dshgn_cardBox' },
+                list.map((hit) =>
+                  h(
+                    'button',
+                    {
+                      key: `${hit.path}#${hit.line}#${hit.target}`,
+                      type: 'button',
+                      className: 'dshgn_brokenRow',
+                      title: hit.path,
+                      onClick: () => {
+                        if (typeof onOpen === 'function') onOpen(hit.path)
+                      },
+                    },
+                    h('span', { className: 'dshgn_brokenTarget' }, hit.target),
+                    h('span', { className: 'dshgn_brokenWhere' }, `${hit.title || hit.path} · ${t('broken.line')} ${hit.line}`),
+                    hit.text === '' ? null : h('span', { className: 'dshgn_brokenSnip' }, hit.text),
+                  ),
+                ),
+              ),
+      )
+    }
+
     function TrashPane(props) {
       const { t, status, onChanged, onError, showToast } = props
       const [items, setItems] = React.useState(null)
@@ -9086,7 +9220,7 @@ async function saveFile(url, filename) {
     // 只存路径不存正文：正文可能已经被别处改过（同步、宿主编辑器、另一个
     // 窗口），恢复时重新走一遍 /read 才是当下真实的内容。
     const SESSION_KEY = 'dshgn.session'
-    const SESSION_TABS = ['notes', 'cloud', 'settings', 'card', 'conflict', 'trash']
+    const SESSION_TABS = ['notes', 'cloud', 'settings', 'card', 'conflict', 'broken', 'trash']
 
     function readSession() {
       const empty = { tab: '', dir: '', tag: '', path: '' }
@@ -11209,7 +11343,7 @@ export {
 
 // 离线测试直接验渲染结构用，运行时无影响
 export const __internals = {
-  renderBlocks, renderInline, stripLeadingHeading, LEX, ICONS, AudioPlayer, CloudPane,
+  renderBlocks, renderInline, stripLeadingHeading, BrokenPane, LEX, ICONS, AudioPlayer, CloudPane,
   SyncPane, CloudCredCard, SettingsPane, GetnotePage, NotePane, TranscriptBlock,
   looksLikeTranscript, formatMoment, parseTranscript, stampToSeconds, activeTranscriptIndex,
   TrashPane, renderEmbed, assetLabel, ThemeCard, readSession, writeSession, SESSION_KEY,

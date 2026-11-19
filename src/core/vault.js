@@ -1089,6 +1089,113 @@ export async function findBacklinks(root, target, entries) {
 }
 
 /**
+ * 把库里「可能被双链指到」的名字收成一个集合，用于断链判断。
+ *
+ * 双链的写法比文件路径松得多：`[[甲]]`、`[[随手记/甲]]`、`[[甲.md]]`、别名、
+ * 以及标题与文件名不一致的情况，在 Obsidian 里都能指到同一篇。所以「有这一篇」
+ * 不能只比路径——宁可放过，也不能把一条好好的链接报成断的（那样用户会去改一条
+ * 本来没错的链接，越改越乱）。
+ */
+function knownLinkNames(entries) {
+  const known = new Set()
+  const add = (value) => {
+    const name = String(value || '').trim().toLowerCase()
+    if (name !== '') known.add(name)
+  }
+  for (const entry of entries) {
+    const noExt = String(entry.path || '').replace(/\.md$/i, '')
+    add(entry.path)
+    add(noExt)
+    add(noExt.split('/').pop() || noExt)
+    add(entry.title)
+    for (const alias of Array.isArray(entry.aliases) ? entry.aliases : []) add(alias)
+  }
+  return known
+}
+
+/** 链接目标在库里有没有对应的笔记（按路径 / 去扩展名 / 文件名 / 标题 / 别名任一层算）。 */
+function linkResolves(target, known) {
+  const raw = String(target || '').trim().toLowerCase()
+  if (raw === '') return true
+  const noExt = raw.replace(/\.md$/i, '')
+  const base = noExt.split('/').pop() || noExt
+  return known.has(raw) || known.has(noExt) || known.has(base)
+}
+
+/** 一行上下文：去掉标题井号、压平空白，太长两头留一点。双链本身留着，好认是哪一条。 */
+function lineContext(line, width = 80) {
+  const text = String(line || '').replace(/^\s*#+\s*/, '').replace(/\s+/g, ' ').trim()
+  if (text.length <= width) return text
+  return `${text.slice(0, width - 1).trim()}…`
+}
+
+/**
+ * 断链体检：全库找「写了双链，但库里没有这一篇」的地方。
+ *
+ * 为什么值得单独做一遍：双链写错一个字的当时完全没感觉——点下去没反应，或者
+ * 过几个月才发现有一堆死链。等发现时已经想不起来当初想指的是哪一篇了。所以
+ * 除了「点的时候报错」，还要能一次性把全库的断链摊出来看。
+ *
+ * 跳过三类，免得报一堆假断链：
+ *   · 围栏代码里的 `[[...]]`（示例、粘贴的日志）；
+ *   · 指向附件 / 别的文件类型的（`![[图.png]]`、`![[说明.pdf]]`——库扫描只看 .md，
+ *     但那些文件确实存在，不该被当成断链）；
+ *   · `[[#小节]]`（指的是这一篇自己的某一节，没有别的笔记要指）。
+ */
+export async function findBrokenLinks(root, entries) {
+  const list = Array.isArray(entries) ? entries : (await scanVault(root)).entries
+  const known = knownLinkNames(list)
+  const hits = []
+  const MAX_HITS = 500
+  for (const entry of list) {
+    let text
+    try {
+      text = await readFile(resolveInside(root, entry.path).abs, 'utf8')
+    } catch {
+      continue
+    }
+    const lines = text.split(/\r?\n/)
+    let inFence = false
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i]
+      if (/^\s*(```|~~~)/.test(line)) {
+        inFence = !inFence
+        continue
+      }
+      if (inFence) continue
+      const re = /\[\[([^\]\n|]+)(?:\|[^\]\n]*)?\]\]/g
+      let m
+      while ((m = re.exec(line)) !== null) {
+        const rawTarget = m[1].trim()
+        if (rawTarget === '') continue
+        const hash = rawTarget.indexOf('#')
+        const target = (hash === -1 ? rawTarget : rawTarget.slice(0, hash)).trim()
+        if (target === '') continue
+        // 带扩展名但不是 .md 的：那是附件或别的文件，不是笔记
+        if (/\.(?!md$)[a-z0-9]{1,6}$/i.test(target)) continue
+        if (linkResolves(target, known)) continue
+        hits.push({
+          path: entry.path,
+          title: entry.title,
+          line: i + 1,
+          target,
+          text: lineContext(line),
+        })
+        if (hits.length >= MAX_HITS) break
+      }
+      if (hits.length >= MAX_HITS) break
+    }
+    if (hits.length >= MAX_HITS) break
+  }
+  hits.sort((a, b) => {
+    const byPath = String(a.path).localeCompare(String(b.path), 'zh')
+    if (byPath !== 0) return byPath
+    return a.line - b.line
+  })
+  return { hits, scanned: list.length, truncated: hits.length >= MAX_HITS }
+}
+
+/**
  * 抽 Markdown 大纲（标题树），供阅读区旁的大纲导航用。
  *
  * 跳过代码围栏里的 `#`——逐字稿那种围栏里经常有以 # 开头的行，

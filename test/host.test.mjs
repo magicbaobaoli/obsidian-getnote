@@ -676,6 +676,15 @@ try {
   const backJson = await jget('/backlinks?path=' + encodeURIComponent('随手记/大纲测试.md'))
   check('A2 /backlinks 找到引用者', backJson.hits.some((h) => h.path === '随手记/引用者.md'), JSON.stringify(backJson.hits.map((h) => h.path)))
 
+  // A2+ 断链体检：全库哪些双链指向了不存在的笔记
+  await jpost('/save', { path: '随手记/断链体检.md', content: '好的 [[大纲测试]]，坏的 [[根本没有这一篇]]。\n' })
+  const brokenJson = await jget('/broken')
+  const mineBroken = Array.isArray(brokenJson.hits) ? brokenJson.hits.filter((h) => h.path === '随手记/断链体检.md') : []
+  check('A2+ /broken 找出指向不存在的链接', mineBroken.length === 1 && mineBroken[0].target === '根本没有这一篇', JSON.stringify(mineBroken))
+  check('A2+ /broken 带出行号与上下文', mineBroken[0].line === 1 && mineBroken[0].text.includes('根本没有这一篇'))
+  check('A2+ /broken 不把指得到的报成断链', !mineBroken.some((h) => h.target === '大纲测试'))
+  check('A2+ /broken 交回扫描篇数', Number(brokenJson.scanned) > 0, String(brokenJson.scanned))
+
   // A3 搜索增强：多词取交集
   await jpost('/save', { path: '随手记/交集A.md', content: '会议 和 录音 都提到了\n' })
   await jpost('/save', { path: '随手记/交集B.md', content: '只提到 会议\n' })

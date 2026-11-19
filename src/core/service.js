@@ -56,6 +56,7 @@ import {
   excerptOf,
   extractWikiLinks,
   findBacklinks,
+  findBrokenLinks,
   heatmapOf,
   listAssets,
   listConflicts,
@@ -739,6 +740,18 @@ export function createHandler(config) {
     const target = url.searchParams.get('path') || ''
     if (missing) return send(res, 200, { target, hits: [] })
     const result = await findBacklinks(root, target)
+    send(res, 200, result)
+  }
+
+  /**
+   * 断链体检：全库哪些双链指向了不存在的笔记。
+   *
+   * 和反查一样要读全库正文，所以单开一个端点、点开才查，不塞进 /status。
+   */
+  async function handleBrokenLinks(res) {
+    const { root, missing } = await currentRoot()
+    if (missing) return send(res, 200, { hits: [], scanned: 0, truncated: false })
+    const result = await findBrokenLinks(root)
     send(res, 200, result)
   }
 
@@ -2319,6 +2332,7 @@ export function createHandler(config) {
         if (action === 'read') return await handleRead(res, url)
         if (action === 'search') return await handleSearch(res, url)
         if (action === 'backlinks') return await handleBacklinks(res, url)
+        if (action === 'broken') return await handleBrokenLinks(res)
         if (action === 'settings') return await handleGetSettings(res)
         if (action === 'probe') return await handleProbe(req, res)
         if (action === 'import' && parts[2] === 'status') return handleImportStatus(res)

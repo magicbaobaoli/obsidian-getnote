@@ -2936,3 +2936,47 @@ test('搜索结果卡片上列出这一篇引用了谁', async () => {
   assert.ok(texts.includes('搜索出链甲'), '胶囊上是链接原文：' + texts.join(','))
   assert.ok(texts.includes('搜索出链乙'), '两条都要有：' + texts.join(','))
 })
+
+test('断链页把全库指不到的双链摊出来，点一行就打开那一篇', async () => {
+  const res = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '断链验收',
+      content: '好的 [[断链验收]]，坏的 [[这一篇根本不存在]]。\n',
+      withDatePrefix: false,
+      requestId: 'seed-broken',
+    }),
+  })
+  const created = await res.json()
+  assert.equal(created.path, '随手记/断链验收.md')
+
+  await clickTab('断链')
+  // 前面的用例在库里留下过别的断链（甲、乙那些），按目标名字挑我们这一条
+  const row = await waitFor(
+    () => {
+      const all = Array.from(window.document.querySelectorAll('.dshgn_brokenRow'))
+      return all.find((el) => {
+        const name = el.querySelector('.dshgn_brokenTarget')
+        return name !== null && name.textContent === '这一篇根本不存在'
+      }) || null
+    },
+    8000,
+    '断链页应该列出一条指不到的链接',
+  )
+  const target = row.querySelector('.dshgn_brokenTarget')
+  assert.equal(target.textContent, '这一篇根本不存在')
+  const where = row.querySelector('.dshgn_brokenWhere')
+  assert.ok((where.textContent || '').includes('断链验收'), '位置要带上出自哪一篇：' + where.textContent)
+
+  row.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(
+    () => window.document.querySelector('.dshgn_root').getAttribute('data-has-note') === 'true',
+    8000,
+    '点断链那一行应该把出问题的那一篇打开',
+  )
+  const noteText = window.document.querySelector('.dshgn_note').textContent
+  assert.ok(noteText.includes('这一篇根本不存在'), '打开的是出问题的那一篇：' + noteText.slice(0, 120))
+})
+
