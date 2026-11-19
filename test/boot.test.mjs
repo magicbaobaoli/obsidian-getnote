@@ -901,6 +901,67 @@ test('原生确认框、在宿主里打开、css-change 都接到宿主上了', 
   }, 'css-change 回调不该抛')
 })
 
+test('宿主右键菜单里挂着得到大脑的入口，路径口径与面板一致', async () => {
+  await adapter.write('得到大脑/随手记/菜单验收.md', '---\ntitle: 菜单验收\n---\n\n正文\n')
+
+  // ① 库内路径 → 面板路径：只认笔记目录里的 Markdown
+  assert.equal(
+    plugin.notePathInVault({ path: '得到大脑/随手记/菜单验收.md' }),
+    '随手记/菜单验收.md',
+    '应该剥掉笔记目录前缀',
+  )
+  assert.equal(plugin.notePathInVault({ path: '/得到大脑/菜单验收.md' }), '菜单验收.md')
+  assert.equal(plugin.notePathInVault({ path: '别处的目录/甲.md' }), '', '子目录外的文件不该出现')
+  assert.equal(plugin.notePathInVault({ path: '得到大脑/随手记/图.png' }), '', '非 Markdown 不该出现')
+  assert.equal(plugin.notePathInVault({ path: '得到大脑' }), '')
+  assert.equal(plugin.notePathInVault(null), '')
+  assert.equal(plugin.notePathInVault({}), '')
+
+  // ② file-menu：右键库里的笔记，菜单里多一条「在得到大脑里打开」
+  const fileListeners = app.workspace.wsHandlers['file-menu'] || []
+  assert.equal(fileListeners.length, 1, '应该注册了一个 file-menu 监听')
+
+  const fileMenu = new Menu()
+  fileListeners[0](fileMenu, { path: '得到大脑/随手记/菜单验收.md' })
+  const openItem = fileMenu.items.find((item) => item.title === '在得到大脑里打开')
+  assert.ok(openItem, '菜单里应该有「在得到大脑里打开」')
+  assert.equal(openItem.icon, 'brain')
+  assert.doesNotThrow(() => openItem.handler(), '点下去不该抛')
+
+  // 笔记目录外的文件：菜单一条都不加，也不抛
+  const otherMenu = new Menu()
+  fileListeners[0](otherMenu, { path: '别处的目录/甲.md' })
+  assert.equal(otherMenu.items.length, 0)
+  assert.doesNotThrow(() => fileListeners[0](null, { path: '得到大脑/甲.md' }), '菜单为 null 也不该抛')
+  assert.doesNotThrow(() => fileListeners[0]({ addItem() {} }, null), 'file 为 null 也不该抛')
+
+  // ③ editor-menu：选中文字与没选中，标题不一样
+  const editorListeners = app.workspace.wsHandlers['editor-menu'] || []
+  assert.equal(editorListeners.length, 1, '应该注册了一个 editor-menu 监听')
+
+  const makeEditor = (selection, line) => ({
+    getSelection: () => selection,
+    getCursor: () => ({ line: 0 }),
+    getLine: () => line,
+  })
+
+  const selected = new Menu()
+  editorListeners[0](selected, makeEditor('选中的一段', '整行内容'), { file: { path: '别处的目录/甲.md' } })
+  assert.equal(selected.items.length, 1)
+  assert.equal(selected.items[0].title, '把选中的文字存进得到大脑')
+  assert.doesNotThrow(() => selected.items[0].handler(), '点下去不该抛')
+
+  const bare = new Menu()
+  editorListeners[0](bare, makeEditor('', '当前这一行'), { file: { path: '别处的目录/甲.md' } })
+  assert.equal(bare.items[0].title, '把这一行存进得到大脑')
+
+  // 什么都没得存的时候：给一句提示，不炸
+  const empty = new Menu()
+  editorListeners[0](empty, makeEditor('   ', '   '), null)
+  assert.doesNotThrow(() => empty.items[0].handler(), '空选区也不该抛')
+  assert.equal(plugin.captureFromEditor(null, null), false, '没有编辑器时返回 false')
+})
+
 test('反链与出链优先问宿主的链接索引，问不到才自己扫', async () => {
   await adapter.write('得到大脑/随手记/甲.md', '---\ntitle: 甲\n---\n\n正文\n')
   await adapter.write('得到大脑/随手记/乙.md', '---\ntitle: 乙\n---\n\n见 [[甲]] 和 ![[图.png]]\n')

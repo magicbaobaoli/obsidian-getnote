@@ -15990,14 +15990,7 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       id: "capture-selection",
       name: "\u628A\u9009\u4E2D\u7684\u6587\u5B57\u5B58\u8FDB\u5F97\u5230\u5927\u8111",
       editorCallback: (editor, view) => {
-        const selection = typeof editor.getSelection === "function" ? editor.getSelection() : "";
-        const text = selection.trim() !== "" ? selection : editor.getLine(editor.getCursor().line);
-        if (String(text || "").trim() === "") {
-          new import_obsidian2.Notice("\u5F97\u5230\u5927\u8111\uFF1A\u5148\u9009\u4E2D\u8981\u6458\u7684\u6587\u5B57");
-          return;
-        }
-        const source = view && view.file && typeof view.file.path === "string" ? view.file.path : "";
-        void this.activateView().then(() => requestIntent({ type: "capture", text, source }));
+        this.captureFromEditor(editor, view);
       }
     });
     this.addCommand({
@@ -16052,11 +16045,76 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     this.registerEvent(this.app.vault.on("delete", bump));
     this.registerEvent(this.app.vault.on("rename", bump));
     this.registerEvent(this.app.workspace.on("css-change", () => notifyCssChange()));
+    this.registerEvent(
+      this.app.workspace.on("file-menu", (menu, file) => {
+        if (!menu || typeof menu.addItem !== "function") return;
+        const rel = this.notePathInVault(file);
+        if (rel === "") return;
+        menu.addItem((item) => {
+          item.setTitle("\u5728\u5F97\u5230\u5927\u8111\u91CC\u6253\u5F00");
+          item.setIcon("brain");
+          item.onClick(() => {
+            void this.activateView().then(() => requestIntent({ type: "open", path: rel }));
+          });
+        });
+      })
+    );
+    this.registerEvent(
+      this.app.workspace.on("editor-menu", (menu, editor, view) => {
+        if (!menu || typeof menu.addItem !== "function" || !editor) return;
+        const selection = typeof editor.getSelection === "function" ? String(editor.getSelection() || "") : "";
+        menu.addItem((item) => {
+          item.setTitle(
+            selection.trim() === "" ? "\u628A\u8FD9\u4E00\u884C\u5B58\u8FDB\u5F97\u5230\u5927\u8111" : "\u628A\u9009\u4E2D\u7684\u6587\u5B57\u5B58\u8FDB\u5F97\u5230\u5927\u8111"
+          );
+          item.setIcon("brain");
+          item.onClick(() => {
+            this.captureFromEditor(editor, view);
+          });
+        });
+      })
+    );
     setSyncReport((result) => {
       void this.appendSyncReport(result);
     });
     this.stopAutoSync = startAutoSync();
     this.stopCardAutoImport = startCardAutoImport();
+  }
+  /**
+   * 把宿主的库内路径翻成面板里的笔记路径（相对笔记子目录）。
+   *
+   * 宿主的 file.path 是库内相对路径（`得到大脑/随手记/甲.md`），而面板的
+   * entry.path 相对的是笔记目录本身。不在笔记目录里的文件一律返回空串——
+   * 右键菜单不该对无关文件冒出我们这一条。
+   */
+  notePathInVault(file) {
+    const raw = file && typeof file.path === "string" ? file.path.replace(/^\/+/, "") : "";
+    if (raw === "" || !raw.toLowerCase().endsWith(".md")) return "";
+    const runtime2 = getRuntime();
+    const sub = String(runtime2.subfolder || DEFAULT_SUBFOLDER).replace(/^\/+|\/+$/g, "");
+    if (sub === "") return raw;
+    if (raw === sub) return "";
+    if (!raw.startsWith(`${sub}/`)) return "";
+    return raw.slice(sub.length + 1);
+  }
+  /**
+   * 把编辑器里选中的文字（没选就是当前行）存成一篇笔记。
+   *
+   * 命令面板的「把选中的文字存进得到大脑」和编辑器右键菜单走的是同一条路，
+   * 所以抽出来一份——两边行为不一致的话，用户会以为右键那条是坏的。
+   */
+  captureFromEditor(editor, view) {
+    if (!editor) return false;
+    const selection = typeof editor.getSelection === "function" ? String(editor.getSelection() || "") : "";
+    const cursor = typeof editor.getCursor === "function" ? editor.getCursor() : null;
+    const text = selection.trim() !== "" ? selection : cursor !== null && typeof editor.getLine === "function" ? String(editor.getLine(cursor.line) || "") : "";
+    if (text.trim() === "") {
+      new import_obsidian2.Notice("\u5F97\u5230\u5927\u8111\uFF1A\u5148\u9009\u4E2D\u8981\u6458\u7684\u6587\u5B57");
+      return false;
+    }
+    const source = view && view.file && typeof view.file.path === "string" ? view.file.path : "";
+    void this.activateView().then(() => requestIntent({ type: "capture", text, source }));
+    return true;
   }
   /**
    * 快速切换器里挑一篇得到大脑的笔记。

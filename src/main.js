@@ -249,16 +249,7 @@ export default class GetnoteObsidianPlugin extends Plugin {
       id: 'capture-selection',
       name: '把选中的文字存进得到大脑',
       editorCallback: (editor, view) => {
-        const selection =
-          typeof editor.getSelection === 'function' ? editor.getSelection() : ''
-        const text = selection.trim() !== '' ? selection : editor.getLine(editor.getCursor().line)
-        if (String(text || '').trim() === '') {
-          new Notice('得到大脑：先选中要摘的文字')
-          return
-        }
-        const source =
-          view && view.file && typeof view.file.path === 'string' ? view.file.path : ''
-        void this.activateView().then(() => requestIntent({ type: 'capture', text, source }))
+        this.captureFromEditor(editor, view)
       },
     })
 
@@ -348,6 +339,42 @@ export default class GetnoteObsidianPlugin extends Plugin {
     // body 的 class 更准：换字体、调字号这些不改 class 的情况也能收到。
     this.registerEvent(this.app.workspace.on('css-change', () => notifyCssChange()))
 
+    // 宿主右键菜单里的入口。
+    //
+    // 用户在文件树里右键一篇笔记、在编辑器里选中一段文字时，顺手就能进得到大脑，
+    // 不必先想起「那个面板在哪个按钮后面」。file-menu / editor-menu 是 Obsidian
+    // 自己的事件，我们只往里加条目，不接管菜单本身——别的插件的条目照旧。
+    this.registerEvent(
+      this.app.workspace.on('file-menu', (menu, file) => {
+        if (!menu || typeof menu.addItem !== 'function') return
+        const rel = this.notePathInVault(file)
+        if (rel === '') return
+        menu.addItem((item) => {
+          item.setTitle('在得到大脑里打开')
+          item.setIcon('brain')
+          item.onClick(() => {
+            void this.activateView().then(() => requestIntent({ type: 'open', path: rel }))
+          })
+        })
+      }),
+    )
+    this.registerEvent(
+      this.app.workspace.on('editor-menu', (menu, editor, view) => {
+        if (!menu || typeof menu.addItem !== 'function' || !editor) return
+        const selection =
+          typeof editor.getSelection === 'function' ? String(editor.getSelection() || '') : ''
+        menu.addItem((item) => {
+          item.setTitle(
+            selection.trim() === '' ? '把这一行存进得到大脑' : '把选中的文字存进得到大脑',
+          )
+          item.setIcon('brain')
+          item.onClick(() => {
+            this.captureFromEditor(editor, view)
+          })
+        })
+      }),
+    )
+
     // 一轮同步跑完之后，把「今天补进来几篇」写进当天的日记。
     //
     // 为什么放在宿主而不是面板：日记在哪、叫什么名字，是 Obsidian 的日常笔记
@@ -362,6 +389,50 @@ export default class GetnoteObsidianPlugin extends Plugin {
     // 录音卡插上就导。定时器一直转着，真正的开关在设置里（cardAutoImport），
     // 关着的时候每次 tick 只读一个 JSON 就返回，代价可以忽略。
     this.stopCardAutoImport = startCardAutoImport()
+  }
+
+  /**
+   * 把宿主的库内路径翻成面板里的笔记路径（相对笔记子目录）。
+   *
+   * 宿主的 file.path 是库内相对路径（`得到大脑/随手记/甲.md`），而面板的
+   * entry.path 相对的是笔记目录本身。不在笔记目录里的文件一律返回空串——
+   * 右键菜单不该对无关文件冒出我们这一条。
+   */
+  notePathInVault(file) {
+    const raw = file && typeof file.path === 'string' ? file.path.replace(/^\/+/, '') : ''
+    if (raw === '' || !raw.toLowerCase().endsWith('.md')) return ''
+    const runtime = settingsStore.getRuntime()
+    const sub = String(runtime.subfolder || DEFAULT_SUBFOLDER).replace(/^\/+|\/+$/g, '')
+    if (sub === '') return raw
+    if (raw === sub) return ''
+    if (!raw.startsWith(`${sub}/`)) return ''
+    return raw.slice(sub.length + 1)
+  }
+
+  /**
+   * 把编辑器里选中的文字（没选就是当前行）存成一篇笔记。
+   *
+   * 命令面板的「把选中的文字存进得到大脑」和编辑器右键菜单走的是同一条路，
+   * 所以抽出来一份——两边行为不一致的话，用户会以为右键那条是坏的。
+   */
+  captureFromEditor(editor, view) {
+    if (!editor) return false
+    const selection = typeof editor.getSelection === 'function' ? String(editor.getSelection() || '') : ''
+    const cursor = typeof editor.getCursor === 'function' ? editor.getCursor() : null
+    const text =
+      selection.trim() !== ''
+        ? selection
+        : cursor !== null && typeof editor.getLine === 'function'
+          ? String(editor.getLine(cursor.line) || '')
+          : ''
+    if (text.trim() === '') {
+      new Notice('得到大脑：先选中要摘的文字')
+      return false
+    }
+    const source =
+      view && view.file && typeof view.file.path === 'string' ? view.file.path : ''
+    void this.activateView().then(() => requestIntent({ type: 'capture', text, source }))
+    return true
   }
 
   /**
