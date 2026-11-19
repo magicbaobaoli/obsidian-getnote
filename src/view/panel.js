@@ -302,6 +302,32 @@ async function saveFile(url, filename) {
       return { dir: cut < 0 ? '' : clean.slice(0, cut), title }
     }
 
+    // 双链该指向哪一篇，宿主的索引比我们清楚。
+    //
+    // 面板原来在自己扫到的 entries 里按「路径全等 → 文件名去扩展名 → 标题」三级
+    // 退让，能应付大多数 [[笔记名]]，但宿主的解析规则要多得多：同名笔记取离当前
+    // 文件最近的那篇、认别名、认不带扩展名的路径前缀、大小写也按库里的实际文件
+    // 来。同一篇链接我们可能指错，宿主不会。所以先问它，问不到再走自己那套。
+    let __linkResolve = null
+    export function setLinkResolve(fn) {
+      __linkResolve = typeof fn === 'function' ? fn : null
+    }
+    /**
+     * 问宿主「这个双链指向哪一篇」。
+     *
+     * 返回相对笔记目录的路径（面板 entry.path 的口径），解析不出来返回空串——
+     * 这时调用方退回自己的三级退让。
+     */
+    function resolveViaHost(linkpath, sourcePath) {
+      if (__linkResolve === null) return ''
+      try {
+        const answer = __linkResolve(String(linkpath || ''), String(sourcePath || ''))
+        return typeof answer === 'string' ? answer : ''
+      } catch {
+        return ''
+      }
+    }
+
     // 宿主换主题时 Obsidian 会发 'css-change' 事件，比 MutationObserver 盯 body
     // 的 class 更准（用户改了字体、字号、界面缩放也能收到）。没有宿主时靠
     // MutationObserver 兜底，两者最终都只是让面板重新算一次配色。
@@ -3886,6 +3912,16 @@ async function saveFile(url, filename) {
         (target) => {
           const raw = String(target || '').trim()
           if (raw === '') return
+          // 先问宿主的索引：别名、同名取最近、路径前缀这些规则都在它那儿，
+          // 我们自己在 entries 里找容易指到另一篇同名笔记上去。
+          const sub = status !== null && typeof status.subfolder === 'string' ? status.subfolder.replace(/^\/+|\/+$/g, '') : ''
+          const rel = current !== null && typeof current.path === 'string' ? current.path : ''
+          const sourceRel = rel === '' ? sub : sub === '' ? rel : `${sub}/${rel}`
+          const hosted = resolveViaHost(raw, sourceRel)
+          if (hosted !== '') {
+            void openNote(hosted)
+            return
+          }
           const wanted = raw.replace(/\.md$/i, '')
           const list = entries || []
           const direct = list.find((entry) => entry.path === raw || entry.path === `${wanted}.md`)
@@ -3909,7 +3945,7 @@ async function saveFile(url, filename) {
           }
           setError(t('note.wikilinkMissing').replace('{name}', wanted))
         },
-        [entries, openNote, t],
+        [current, entries, openNote, status, t],
       )
 
       const dirty = current !== null && draft !== null && draft !== current.content

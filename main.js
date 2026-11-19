@@ -7723,6 +7723,19 @@ function dailyNoteOf() {
   if (title === "") return null;
   return { dir: cut < 0 ? "" : clean.slice(0, cut), title };
 }
+var __linkResolve = null;
+function setLinkResolve(fn2) {
+  __linkResolve = typeof fn2 === "function" ? fn2 : null;
+}
+function resolveViaHost(linkpath, sourcePath) {
+  if (__linkResolve === null) return "";
+  try {
+    const answer = __linkResolve(String(linkpath || ""), String(sourcePath || ""));
+    return typeof answer === "string" ? answer : "";
+  } catch {
+    return "";
+  }
+}
 var __cssListeners = /* @__PURE__ */ new Set();
 function notifyCssChange() {
   for (const listener of Array.from(__cssListeners)) {
@@ -10854,6 +10867,14 @@ function GetnotePage() {
     (target) => {
       const raw = String(target || "").trim();
       if (raw === "") return;
+      const sub = status !== null && typeof status.subfolder === "string" ? status.subfolder.replace(/^\/+|\/+$/g, "") : "";
+      const rel = current !== null && typeof current.path === "string" ? current.path : "";
+      const sourceRel = rel === "" ? sub : sub === "" ? rel : `${sub}/${rel}`;
+      const hosted = resolveViaHost(raw, sourceRel);
+      if (hosted !== "") {
+        void openNote(hosted);
+        return;
+      }
       const wanted = raw.replace(/\.md$/i, "");
       const list = entries || [];
       const direct = list.find((entry) => entry.path === raw || entry.path === `${wanted}.md`);
@@ -10877,7 +10898,7 @@ function GetnotePage() {
       }
       setError(t3("note.wikilinkMissing").replace("{name}", wanted));
     },
-    [entries, openNote, t3]
+    [current, entries, openNote, status, t3]
   );
   const dirty = current !== null && draft !== null && draft !== current.content;
   const saveNote = q2(async () => {
@@ -16226,6 +16247,7 @@ var GetnoteView = class extends import_obsidian.ItemView {
 
 // src/main.js
 var DEFAULT_SUBFOLDER = "\u5F97\u5230\u5927\u8111";
+var FRESH_INDEX_MS = 3e4;
 var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
   async onload() {
     const adapter2 = this.app.vault.adapter;
@@ -16290,6 +16312,7 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     setAssetUrl((path) => this.assetUrlFor(path));
     setRevealInVault((path) => this.revealInVaultItem(path));
     setDailyNote(() => this.dailyNoteRel());
+    setLinkResolve((linkpath, sourcePath) => this.linkResolveFor(linkpath, sourcePath));
     setVaultGraph((path, kind) => this.vaultGraphOf(path, kind));
     setStatusReport((info) => this.updateStatusBar(info));
     const stored = await readSettings();
@@ -16739,6 +16762,31 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     return full.slice(sub.length + 1);
   }
   /**
+   * 一个双链该指向哪一篇，交给宿主的索引去解析。
+   *
+   * getFirstLinkpathDest 是 Obsidian 自己用的那套规则：别名、不带扩展名的路径
+   * 前缀、同名笔记取离 sourcePath 最近的一篇、大小写按库里实际文件名。面板自己
+   * 在 entries 里三级退让能应付常见的 [[笔记名]]，但同名笔记一多就会指错，而
+   * 「点进去是另一篇」这种错用户很难察觉。
+   *
+   * 返回面板口径（相对笔记子目录）的路径；解析不出来、或结果落在笔记目录之外，
+   * 返回空串让面板退回自己那套。
+   */
+  linkResolveFor(linkpath, sourcePath) {
+    try {
+      const wanted = String(linkpath || "").trim();
+      if (wanted === "") return "";
+      const cache = this.app.metadataCache;
+      if (!cache || typeof cache.getFirstLinkpathDest !== "function") return "";
+      const source = String(sourcePath || "").replace(/^\/+/, "");
+      const dest = cache.getFirstLinkpathDest(wanted, source);
+      if (!dest || typeof dest.path !== "string") return "";
+      return this.notePathInVault(dest);
+    } catch {
+      return "";
+    }
+  }
+  /**
    * 把一轮同步的结果追加到当天的日记里。
    *
    * 用 Obsidian 的日常笔记配置（设置 → 日记）找文件：那里已经定义好了目录、
@@ -17068,6 +17116,10 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
             if (!targets || targets[rel] === void 0) continue;
             hits.push({ path: sourcePath, title: titleOf2(sourcePath), date: "", links: [rel] });
           }
+        }
+        if (hits.length === 0) {
+          const mtime = Number(file.stat && file.stat.mtime) || 0;
+          if (mtime > 0 && Date.now() - mtime < FRESH_INDEX_MS) return null;
         }
         hits.sort((a3, b3) => a3.title.localeCompare(b3.title, "zh"));
         return { target: rel, hits, host: true };

@@ -47,6 +47,7 @@ import {
   setAssetUrl,
   setRevealInVault,
   setDailyNote,
+  setLinkResolve,
   setVaultGraph,
   setStatusReport,
   notifyCssChange,
@@ -56,6 +57,10 @@ import { GetnoteView, VIEW_TYPE_GETNOTE, PanelIcon } from './view/view.js'
 import { setHoverSource } from './view/markdown.js'
 
 const DEFAULT_SUBFOLDER = '得到大脑'
+
+// 刚写下的文件，宿主的索引还没跑到它身上时，「没人引用」和「还没收录」看起来
+// 一模一样。这段时间内宁可不替宿主下结论，让面板走一次本地扫描。
+const FRESH_INDEX_MS = 30000
 
 export default class GetnoteObsidianPlugin extends Plugin {
   async onload() {
@@ -163,6 +168,7 @@ export default class GetnoteObsidianPlugin extends Plugin {
     // 「今天」落在哪一篇由宿主的日记核心插件决定：那边已经配好目录和文件名格式，
     // 我们再拼一套只会在同一个库里造出第二个「今天」。
     setDailyNote(() => this.dailyNoteRel())
+    setLinkResolve((linkpath, sourcePath) => this.linkResolveFor(linkpath, sourcePath))
 
     // 反链、出链交给宿主的 metadataCache。
     //
@@ -741,6 +747,32 @@ export default class GetnoteObsidianPlugin extends Plugin {
   }
 
   /**
+   * 一个双链该指向哪一篇，交给宿主的索引去解析。
+   *
+   * getFirstLinkpathDest 是 Obsidian 自己用的那套规则：别名、不带扩展名的路径
+   * 前缀、同名笔记取离 sourcePath 最近的一篇、大小写按库里实际文件名。面板自己
+   * 在 entries 里三级退让能应付常见的 [[笔记名]]，但同名笔记一多就会指错，而
+   * 「点进去是另一篇」这种错用户很难察觉。
+   *
+   * 返回面板口径（相对笔记子目录）的路径；解析不出来、或结果落在笔记目录之外，
+   * 返回空串让面板退回自己那套。
+   */
+  linkResolveFor(linkpath, sourcePath) {
+    try {
+      const wanted = String(linkpath || '').trim()
+      if (wanted === '') return ''
+      const cache = this.app.metadataCache
+      if (!cache || typeof cache.getFirstLinkpathDest !== 'function') return ''
+      const source = String(sourcePath || '').replace(/^\/+/, '')
+      const dest = cache.getFirstLinkpathDest(wanted, source)
+      if (!dest || typeof dest.path !== 'string') return ''
+      return this.notePathInVault(dest)
+    } catch {
+      return ''
+    }
+  }
+
+  /**
    * 把一轮同步的结果追加到当天的日记里。
    *
    * 用 Obsidian 的日常笔记配置（设置 → 日记）找文件：那里已经定义好了目录、
@@ -1099,6 +1131,13 @@ export default class GetnoteObsidianPlugin extends Plugin {
             if (!targets || targets[rel] === undefined) continue
             hits.push({ path: sourcePath, title: titleOf(sourcePath), date: '', links: [rel] })
           }
+        }
+        // 一条反向链接都没有，但这篇刚写下来：宿主的索引可能还没跑到它身上，
+        // 「真的没人引用」和「还没来得及收录」在这里长得一模一样。这种情况下
+        // 不替宿主下结论，返回 null 让面板走一次本地扫描。
+        if (hits.length === 0) {
+          const mtime = Number(file.stat && file.stat.mtime) || 0
+          if (mtime > 0 && Date.now() - mtime < FRESH_INDEX_MS) return null
         }
         hits.sort((a, b) => a.title.localeCompare(b.title, 'zh'))
         return { target: rel, hits, host: true }

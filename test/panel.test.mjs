@@ -606,6 +606,121 @@ test('反链优先问宿主，注入了就不再扫全库', async () => {
 })
 
 /**
+ * 双链该指向哪一篇，先问宿主的索引。
+ *
+ * 面板原来自己在扫到的 entries 里按「路径全等 → 文件名 → 标题」三级退让。
+ * 同名笔记一多，这个顺序就会指到另一篇上去，而「点进去是另一篇」用户很难察觉。
+ * 宿主的 getFirstLinkpathDest 知道别名、同名取最近、路径前缀这些规则，先问它。
+ */
+test('点内链先问宿主的索引，问不到才自己按名字找', async () => {
+  await waitFor(() => window.document.querySelector('.dshgn_root') !== null, 5000, '根节点渲染')
+
+  // 目标笔记真的存在，否则打开时会 404，测不出「打开的是哪一篇」
+  const seeded = await fetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '宿主解析目标',
+      content: '被链到的那篇',
+      withDatePrefix: false,
+      requestId: 'seed-link-target',
+    }),
+  })
+  const targetPath = (await seeded.json()).path
+  assert.equal(targetPath, '随手记/宿主解析目标.md', '这条要按真路径测，不能靠猜文件名')
+
+  const asked = []
+  panel.setLinkResolve((linkpath, sourcePath) => {
+    asked.push([String(linkpath), String(sourcePath)])
+    return targetPath
+  })
+  panel.setVaultGraph((path, kind) => {
+    if (kind !== 'backlinks') return null
+    return { target: path, hits: [{ path: '宿主解析目标', title: '宿主解析目标', links: [path] }] }
+  })
+  try {
+    // 上一条用例结束时可能还开着一篇，先退回列表，否则点卡片是「收起」不是「打开」
+    const back = window.document.querySelector('.dshgn_noteBack')
+    if (back) {
+      panel.setConfirmDialog(() => Promise.resolve(true))
+      try {
+        back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+        await waitFor(
+          () => window.document.querySelector('.dshgn_root').getAttribute('data-has-note') === 'false',
+          5000,
+          '先退回列表',
+        )
+      } finally {
+        panel.setConfirmDialog(null)
+      }
+    }
+    await clickTab('云端')
+    await clickTab('笔记')
+    const card = await waitFor(
+      () =>
+        Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) =>
+          (el.textContent || '').includes('右键菜单验收'),
+        ),
+      5000,
+    )
+    card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+
+    const item = await waitFor(
+      () => window.document.querySelector('.dshgn_backlinkItem'),
+      5000,
+      '关联笔记出现',
+    )
+    item.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+
+    const note = await waitFor(
+      () => {
+        const el = window.document.querySelector('.dshgn_note')
+        if (!el) return null
+        return (el.textContent || '').includes('被链到的那篇') ? el : null
+      },
+      5000,
+      '内链把那一篇打开了',
+    )
+    assert.ok(note, '打开的应该就是宿主解析出来的那一篇')
+    assert.ok(asked.length > 0, '应该问过宿主')
+    assert.equal(asked[0][0], '宿主解析目标', '递过去的应该是链接原文')
+    // 源笔记是测试开头用 /create 建的，名字带日期前缀，所以按模式匹配
+    assert.match(
+      asked[0][1],
+      /^得到大脑\/.*右键菜单验收\.md$/,
+      '还要告诉宿主是从哪一篇链出来的，同名笔记要靠这个判断远近',
+    )
+
+    // 宿主解析不出来时退回自己那套：这篇在 entries 里，按名字也找得到
+    panel.setLinkResolve(() => '')
+    const again = await waitFor(
+      () => window.document.querySelector('.dshgn_backlinkItem'),
+      5000,
+      '关联笔记还在',
+    )
+    again.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(
+      () => (window.document.querySelector('.dshgn_note') || {}).textContent !== undefined,
+      3000,
+      '退回自己那套也要能打开',
+    )
+
+    // 宿主抛错时同理，不能让点内链变成没反应
+    panel.setLinkResolve(() => { throw new Error('索引炸了') })
+    const third = await waitFor(
+      () => window.document.querySelector('.dshgn_backlinkItem'),
+      5000,
+      '关联笔记还在',
+    )
+    assert.doesNotThrow(() => third.dispatchEvent(new window.MouseEvent('click', { bubbles: true })))
+  } finally {
+    panel.setLinkResolve(null)
+    panel.setVaultGraph(null)
+  }
+})
+
+/**
  * 命令面板投递的意图要真的落到面板上。
  *
  * 命令面板触发时面板可能刚被创建、还没渲染完，所以意图是「投递」而不是直接

@@ -363,6 +363,20 @@ const app = {
     getFileCache(file) {
       return app.metadataCache.fileCache[file.path] || null
     },
+    // 双链解析：宿主的规则比我们多（别名、同名取最近、路径前缀、大小写），
+    // 这里给一个最小实现，够验证「先问宿主」这条路径。
+    getFirstLinkpathDest(linkpath, sourcePath) {
+      const wanted = String(linkpath || '').replace(/\.md$/i, '')
+      const table = app.metadataCache.linkDest || {}
+      const hit = table[wanted]
+      if (typeof hit === 'string') return app.vault.getAbstractFileByPath(hit)
+      // 没登记过的按「同名取最近」简化成「文件名相等」，找不到就返回 null
+      for (const dir of ['得到大脑/随手记', '得到大脑/日记', '得到大脑']) {
+        const candidate = app.vault.getAbstractFileByPath(`${dir}/${wanted}.md`)
+        if (candidate) return candidate
+      }
+      return null
+    },
     getBacklinksForFile(file) {
       const data = new Map()
       for (const source of Object.keys(app.metadataCache.resolvedLinks)) {
@@ -1148,6 +1162,74 @@ test('反链与出链优先问宿主的链接索引，问不到才自己扫', as
   app.metadataCache = broken
   app.metadataCache.resolvedLinks = {}
   app.metadataCache.fileCache = {}
+})
+
+test('刚写下的笔记反链为空时不替宿主下结论，交给面板自己扫一遍', async () => {
+  await adapter.write('得到大脑/随手记/刚写的.md', '# 刚写的\n')
+  await adapter.write('得到大脑/随手记/老笔记.md', '# 老笔记\n')
+
+  // 宿主的索引里一条反链都没有：可能是真没人引用，也可能是索引还没跑到。
+  app.metadataCache.resolvedLinks = {}
+  app.metadataCache.fileCache = {}
+  const realLookup = app.vault.getAbstractFileByPath
+  const asFresh = (fresh) => {
+    app.vault.getAbstractFileByPath = (path) => {
+      const rel = String(path || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+      if (rel === '') return null
+      if (!adapter._dump().includes(rel)) return null
+      return { path: rel, stat: { mtime: fresh ? Date.now() : 1, ctime: 1 } }
+    }
+  }
+
+  asFresh(true)
+  assert.equal(plugin.vaultGraphOf('得到大脑/随手记/刚写的.md', 'backlinks'), null, '刚写下的要交给面板自己扫')
+  asFresh(false)
+  const settled = plugin.vaultGraphOf('得到大脑/随手记/老笔记.md', 'backlinks')
+  assert.ok(settled !== null, '放久了的就信宿主：确实没人引用')
+  assert.equal(settled.hits.length, 0)
+  assert.equal(settled.host, true)
+
+  // 有反链时不管新不新，宿主的答案就是答案
+  asFresh(true)
+  app.metadataCache.resolvedLinks = { '得到大脑/随手记/老笔记.md': { '得到大脑/随手记/刚写的.md': 1 } }
+  const linked = plugin.vaultGraphOf('得到大脑/随手记/刚写的.md', 'backlinks')
+  assert.ok(linked !== null && linked.hits.length === 1, '有反链就不用再自己扫')
+
+  app.vault.getAbstractFileByPath = realLookup
+  app.metadataCache.resolvedLinks = {}
+})
+
+test('双链指向哪一篇由宿主的索引说了算，问不到才自己找', async () => {
+  await adapter.write('得到大脑/随手记/同名.md', '# 随手记里的同名\n')
+  await adapter.mkdir('得到大脑/日记')
+  await adapter.write('得到大脑/日记/同名.md', '# 日记里的同名\n')
+  await adapter.write('得到大脑/随手记/引用方.md', '# 引用方\n')
+
+  // 宿主说「同名」指的是日记里那篇——面板自己按文件名找会先撞上随手记里那篇
+  app.metadataCache.linkDest = { 同名: '得到大脑/日记/同名.md' }
+  assert.equal(plugin.linkResolveFor('同名', '得到大脑/随手记/引用方.md'), '日记/同名.md', '要按宿主的口径换算成面板口径')
+  // 带 .md、带库内相对路径前缀也要认
+  assert.equal(plugin.linkResolveFor('同名.md', '得到大脑/随手记/引用方.md'), '日记/同名.md')
+
+  // 宿主没登记时按文件名找，取到的是它自己的结果
+  app.metadataCache.linkDest = {}
+  assert.equal(plugin.linkResolveFor('引用方', '得到大脑/随手记/同名.md'), '随手记/引用方.md')
+
+  // 落在笔记目录之外、解析不出来、空串一律返回 ''，让面板退回自己那套
+  app.metadataCache.linkDest = { 外头: '别处的目录/外头.md' }
+  assert.equal(plugin.linkResolveFor('外头', ''), '', '笔记目录之外的不接')
+  assert.equal(plugin.linkResolveFor('根本没有', ''), '')
+  assert.equal(plugin.linkResolveFor('', ''), '')
+  assert.equal(plugin.linkResolveFor(null, null), '')
+
+  // 宿主的索引炸了也不能把面板带崩
+  const brokenCache = app.metadataCache
+  app.metadataCache = {
+    getFirstLinkpathDest() { throw new Error('索引坏了') },
+  }
+  assert.equal(plugin.linkResolveFor('同名', ''), '')
+  app.metadataCache = brokenCache
+  delete app.metadataCache.linkDest
 })
 
 test('页面预览的来源登记给宿主了，鼠标停在内链上才弹得出来', async () => {
