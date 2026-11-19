@@ -8033,6 +8033,8 @@ var LEX = {
     "note.fontSize.l": "\u5927\u5B57",
     "note.wikilinkMissing": "\u5E93\u91CC\u627E\u4E0D\u5230\u300C{name}\u300D\u8FD9\u7BC7\u7B14\u8BB0",
     "note.anchorMissing": "\u8FD9\u4E00\u7BC7\u91CC\u6CA1\u6709\u300C{name}\u300D\u8FD9\u4E00\u8282",
+    "note.openEmbed": "\u6253\u5F00\u8FD9\u4E00\u7BC7",
+    "note.embedBroken": "\u8FD9\u4E00\u7BC7\u6CA1\u8BFB\u51FA\u6765",
     "note.image": "\u56FE\u7247",
     "action.close": "\u5173\u95ED",
     "action.back": "\u8FD4\u56DE\u5217\u8868",
@@ -8417,6 +8419,8 @@ var LEX = {
     "note.fontSize.l": "Large",
     "note.wikilinkMissing": 'No note named "{name}" in this vault',
     "note.anchorMissing": 'No section called "{name}" in this note',
+    "note.openEmbed": "Open this note",
+    "note.embedBroken": "Could not read this note",
     "note.image": "Image",
     "action.close": "Close",
     "action.back": "Back to list",
@@ -8801,6 +8805,8 @@ var LEX = {
     "note.fontSize.l": "Groot",
     "note.wikilinkMissing": "Geen notitie met de naam \u2018{name}\u2019 in deze map",
     "note.anchorMissing": "Geen kop met de naam \u2018{name}\u2019 in deze notitie",
+    "note.openEmbed": "Open deze notitie",
+    "note.embedBroken": "Deze notitie kon niet gelezen worden",
     "note.image": "Afbeelding",
     "action.close": "Sluiten",
     "action.back": "Terug naar lijst",
@@ -9406,7 +9412,9 @@ function renderInline(text, keyPrefix, options) {
       const target = (hash === -1 ? linkText : linkText.slice(0, hash)).trim();
       const anchor = hash === -1 ? "" : linkText.slice(hash + 1).trim();
       if (embed) {
-        nodes.push(h4("span", { key, className: "dshgn_embed" }, renderEmbed(target, key, opts)));
+        const embedded = renderEmbed(target, key, opts);
+        const blockLevel = embedded !== null && embedded !== void 0 && embedded.type === NoteEmbed;
+        nodes.push(blockLevel ? embedded : h4("span", { key, className: "dshgn_embed" }, embedded));
       } else {
         nodes.push(
           h4(
@@ -9458,6 +9466,65 @@ function headingNodes(host) {
   return Array.from(host.querySelectorAll("h1, h2, h3, h4, h5, h6"));
 }
 var IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|avif|svg|bmp)$/i;
+var FILE_EXT_RE = /\.(pdf|docx?|xlsx?|pptx?|zip|rar|7z|tar|gz|mp3|wav|m4a|aac|ogg|flac|mp4|mov|webm|mkv|canvas|excalidraw|txt|csv|tsv|json|html?|js|css)$/i;
+function NoteEmbed(props) {
+  const path = String(props.path || "");
+  const [note, setNote] = h2(null);
+  const [failed, setFailed] = h2(false);
+  y2(() => {
+    if (path === "") return void 0;
+    let alive = true;
+    setNote(null);
+    setFailed(false);
+    void api(`/read?path=${encodeURIComponent(path)}`).then((json) => {
+      if (alive) setNote(json);
+    }).catch(() => {
+      if (alive) setFailed(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [path]);
+  const t3 = typeof props.t === "function" ? props.t : getT();
+  const title = typeof props.label === "string" && props.label.trim() !== "" ? props.label.trim() : note !== null && typeof note.title === "string" ? note.title : path;
+  const open = () => {
+    if (typeof props.onOpen === "function") props.onOpen(path);
+  };
+  let body;
+  if (failed) {
+    body = h4("div", { className: "dshgn_embedEmpty" }, t3("note.embedBroken"));
+  } else if (note === null) {
+    body = h4("div", { className: "dshgn_embedEmpty" }, t3("panel.loading"));
+  } else {
+    body = h4(
+      "div",
+      { className: "dshgn_embedBody" },
+      renderMarkdown(note.body !== void 0 && note.body !== null ? note.body : note.content, {
+        assets: Array.isArray(note.assets) ? note.assets : [],
+        sourcePath: "",
+        // 嵌进来的正文里再点双链：交回面板自己那套（宿主编辑器不该被
+        // 一个「看引用」的动作拉起来）
+        onOpenWikiLink: open,
+        onToggleTodo: void 0,
+        // 再往下一层不再嵌笔记：两篇互相嵌入时递归没有尽头
+        embedDepth: props.depth,
+        resolveNote: props.resolveNote,
+        t: t3
+      })
+    );
+  }
+  return h4(
+    "div",
+    { className: "dshgn_noteEmbed" },
+    h4(
+      "div",
+      { className: "dshgn_embedHead" },
+      h4(Icon, { name: "file", size: 12 }),
+      h4("button", { type: "button", className: "dshgn_embedTitle", title: t3("note.openEmbed"), onClick: open }, title)
+    ),
+    body
+  );
+}
 function renderEmbed(target, key, options) {
   const opts = options || {};
   const clean = String(target || "").trim();
@@ -9466,6 +9533,19 @@ function renderEmbed(target, key, options) {
   const base = clean.split("/").pop();
   const hit = assets.find((a3) => a3.name === clean || a3.name === base);
   const path = hit && hit.path || clean;
+  const notePath = hit === void 0 && !IMAGE_EXT_RE.test(path) && !FILE_EXT_RE.test(path) && typeof opts.resolveNote === "function" ? opts.resolveNote(clean) : "";
+  const depth = typeof opts.embedDepth === "number" ? opts.embedDepth : 0;
+  if (notePath !== "" && depth < 1) {
+    return h4(NoteEmbed, {
+      key,
+      path: notePath,
+      label: base.replace(/\.md$/i, ""),
+      depth: depth + 1,
+      onOpen: opts.onOpenWikiLink,
+      resolveNote: opts.resolveNote,
+      t: opts.t
+    });
+  }
   if (IMAGE_EXT_RE.test(path)) {
     const hosted = assetUrlOf(path);
     const openable = hasOpenAsset();
@@ -10364,6 +10444,17 @@ var CSS = `
   background:var(--dsw-alias-interactive-bg-hover);font-size:11px;
   color:var(--dsw-alias-label-secondary);white-space:nowrap;vertical-align:middle}
 .dshgn_embedFile{font-size:11px;color:var(--dsw-alias-label-tertiary)}
+/* \u5D4C\u5165\u7684\u53E6\u4E00\u7BC7\u7B14\u8BB0\uFF1A\u5DE6\u8FB9\u4E00\u9053\u7AD6\u7EBF\u628A\u5B83\u548C\u8FD9\u4E00\u7BC7\u7684\u6B63\u6587\u5206\u5F00\uFF0C\u770B\u8D77\u6765\u50CF\u300C\u5F15\u7528\u4E86\u4E00\u6BB5\u300D\u3002 */
+.dshgn_noteEmbed{display:block;margin:8px 0;padding:6px 10px;border-left:2px solid var(--dsw-alias-border-l2);
+  background:var(--dsw-alias-interactive-bg-hover);border-radius:0 8px 8px 0}
+.dshgn_embedHead{display:flex;align-items:center;gap:5px;margin-bottom:4px;
+  color:var(--dsw-alias-label-tertiary)}
+.dshgn_embedTitle{appearance:none;border:0;background:transparent;padding:0;font:inherit;
+  font-size:11px;font-weight:600;color:var(--dsw-alias-brand-primary);cursor:pointer;
+  max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_embedTitle:hover{text-decoration:underline}
+.dshgn_embedBody{font-size:12.5px;color:var(--dsw-alias-label-secondary)}
+.dshgn_embedEmpty{font-size:11px;color:var(--dsw-alias-label-tertiary)}
 .dshgn_statGrid{display:flex;flex-wrap:wrap;gap:8px}
 .dshgn_stat{display:flex;flex-direction:column;gap:1px;padding:7px 11px;border-radius:8px;
   background:var(--dsw-alias-interactive-bg-hover);min-width:66px}
@@ -11029,6 +11120,28 @@ function GetnotePage() {
       setError(t3("note.wikilinkMissing").replace("{name}", wanted));
     },
     [current, entries, openNote, requestAnchor, status, t3]
+  );
+  const resolveNotePath = q2(
+    (target) => {
+      const raw = String(target || "").trim();
+      if (raw === "") return "";
+      const sub = status !== null && typeof status.subfolder === "string" ? status.subfolder.replace(/^\/+|\/+$/g, "") : "";
+      const rel = current !== null && typeof current.path === "string" ? current.path : "";
+      const sourceRel = rel === "" ? sub : sub === "" ? rel : `${sub}/${rel}`;
+      const hosted = resolveViaHost(raw, sourceRel);
+      if (hosted !== "") return hosted;
+      const wanted = raw.replace(/\.md$/i, "");
+      const list = entries || [];
+      const direct = list.find((entry) => entry.path === raw || entry.path === `${wanted}.md`);
+      if (direct !== void 0) return direct.path;
+      const byName = list.find((entry) => entry.path.split("/").pop().replace(/\.md$/i, "") === wanted);
+      if (byName !== void 0) return byName.path;
+      const lowered = wanted.toLowerCase();
+      const byTitle = list.find((entry) => String(entry.title || "").toLowerCase() === lowered);
+      if (byTitle !== void 0) return byTitle.path;
+      return "";
+    },
+    [current, entries, status]
   );
   const dirty = current !== null && draft !== null && draft !== current.content;
   const saveNote = q2(async () => {
@@ -12133,6 +12246,7 @@ function GetnotePage() {
         },
         anchor: pendingAnchor,
         onAnchorDone: () => setPendingAnchor(null),
+        resolveNote: resolveNotePath,
         onError: (message) => setError(message),
         // 勾待办直接落盘再重读：本地文件已经变了，只改前端状态的话
         // 下次保存草稿会把旧内容写回去，把刚勾的那一下冲掉。
@@ -15328,6 +15442,7 @@ function NotePane(props) {
   const { t: t3, status, current, draft, setDraft, dirty, busy, onSave, onRename, onDelete, onCopyReference, onOpenWikiLink, onSyncOne, onRestored, onError, onToggleTodo, onClose } = props;
   const anchorRequest = props.anchor;
   const onAnchorDone = props.onAnchorDone;
+  const resolveNote = props.resolveNote;
   const subfolder = status !== null && typeof status.subfolder === "string" ? status.subfolder.replace(/^\/+|\/+$/g, "") : "";
   const vaultPathOf = (note) => {
     const rel = note !== null && typeof note.path === "string" ? note.path : "";
@@ -15817,7 +15932,12 @@ function NotePane(props) {
               onOpenWikiLink(target);
             },
             onOpenWikiLink,
-            onToggleTodo: editing ? void 0 : onToggleTodo
+            onToggleTodo: editing ? void 0 : onToggleTodo,
+            // ![[另一篇笔记]]：把那一篇的正文嵌进来。解析口径与点双链
+            // 共用一套，否则会出现「点得过去、嵌不进来」。
+            resolveNote,
+            embedDepth: 0,
+            t: t3
           }
         )
       ),

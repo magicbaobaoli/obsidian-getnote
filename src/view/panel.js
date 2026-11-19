@@ -692,6 +692,8 @@ async function saveFile(url, filename) {
         'note.fontSize.l': '大字',
         'note.wikilinkMissing': '库里找不到「{name}」这篇笔记',
         'note.anchorMissing': '这一篇里没有「{name}」这一节',
+        'note.openEmbed': '打开这一篇',
+        'note.embedBroken': '这一篇没读出来',
         'note.image': '图片',
         'action.close': '关闭',
         'action.back': '返回列表',
@@ -1080,6 +1082,8 @@ async function saveFile(url, filename) {
         'note.fontSize.l': 'Large',
         'note.wikilinkMissing': 'No note named "{name}" in this vault',
         'note.anchorMissing': 'No section called "{name}" in this note',
+        'note.openEmbed': 'Open this note',
+        'note.embedBroken': 'Could not read this note',
         'note.image': 'Image',
         'action.close': 'Close',
         'action.back': 'Back to list',
@@ -1467,6 +1471,8 @@ async function saveFile(url, filename) {
         'note.fontSize.l': 'Groot',
         'note.wikilinkMissing': 'Geen notitie met de naam ‘{name}’ in deze map',
         'note.anchorMissing': 'Geen kop met de naam ‘{name}’ in deze notitie',
+        'note.openEmbed': 'Open deze notitie',
+        'note.embedBroken': 'Deze notitie kon niet gelezen worden',
         'note.image': 'Afbeelding',
         'action.close': 'Sluiten',
         'action.back': 'Terug naar lijst',
@@ -2244,7 +2250,11 @@ async function saveFile(url, filename) {
           const target = (hash === -1 ? linkText : linkText.slice(0, hash)).trim()
           const anchor = hash === -1 ? '' : linkText.slice(hash + 1).trim()
           if (embed) {
-            nodes.push(h('span', { key, className: 'dshgn_embed' }, renderEmbed(target, key, opts)))
+            const embedded = renderEmbed(target, key, opts)
+            // 嵌进来的是一整篇笔记时它自己就是块级元素，再套一层 inline-flex 的
+            // 胶囊会把它挤成一条线——那种情况下直接放进来。
+            const blockLevel = embedded !== null && embedded !== undefined && embedded.type === NoteEmbed
+            nodes.push(blockLevel ? embedded : h('span', { key, className: 'dshgn_embed' }, embedded))
           } else {
             nodes.push(
               h(
@@ -2321,6 +2331,94 @@ async function saveFile(url, filename) {
     const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|avif|svg|bmp)$/i
 
     /**
+     * 认得出「这是个附件文件」的扩展名。
+     *
+     * `![[xxx]]` 里通常不写扩展名，所以「不是图片」并不等于「是一篇笔记」：
+     * PDF、录音、压缩包这些也该老老实实显示成文件名胶囊，不能拿去当笔记读。
+     */
+    const FILE_EXT_RE =
+      /\.(pdf|docx?|xlsx?|pptx?|zip|rar|7z|tar|gz|mp3|wav|m4a|aac|ogg|flac|mp4|mov|webm|mkv|canvas|excalidraw|txt|csv|tsv|json|html?|js|css)$/i
+
+    /**
+     * 正文里 `![[另一篇笔记]]` 的嵌入。
+     *
+     * 宿主会把那一篇的正文整段嵌进来（连标题一起），我们原来只给一颗文件名
+     * 胶囊——点了能跳过去，但「在这儿引用一段别处的内容」这件事根本没做到：
+     * 读者得点开、看完、再退回来，对比两篇时来回切。
+     *
+     * 正文走 /read，和打开笔记是同一个端点；只往下嵌一层——嵌进来的那篇里
+     * 再嵌一篇时显示成文件名胶囊，两篇互相嵌入不会无限递归下去。
+     */
+    function NoteEmbed(props) {
+      const path = String(props.path || '')
+      const [note, setNote] = React.useState(null)
+      const [failed, setFailed] = React.useState(false)
+      React.useEffect(() => {
+        if (path === '') return undefined
+        let alive = true
+        setNote(null)
+        setFailed(false)
+        void api(`/read?path=${encodeURIComponent(path)}`)
+          .then((json) => {
+            if (alive) setNote(json)
+          })
+          .catch(() => {
+            // 读不到（刚被删、路径变了）就明说，别留一个永远转圈的框
+            if (alive) setFailed(true)
+          })
+        return () => {
+          alive = false
+        }
+      }, [path])
+      const t = typeof props.t === 'function' ? props.t : getT()
+      // 标题用用户写下的那个名字：note.title 是正文里第一个标题，常常是
+      // 「目标的小节」这种，写在嵌入框头上会让人以为嵌的是另一篇。
+      const title =
+        typeof props.label === 'string' && props.label.trim() !== ''
+          ? props.label.trim()
+          : note !== null && typeof note.title === 'string'
+            ? note.title
+            : path
+      const open = () => {
+        if (typeof props.onOpen === 'function') props.onOpen(path)
+      }
+      let body
+      if (failed) {
+        body = h('div', { className: 'dshgn_embedEmpty' }, t('note.embedBroken'))
+      } else if (note === null) {
+        body = h('div', { className: 'dshgn_embedEmpty' }, t('panel.loading'))
+      } else {
+        body = h(
+          'div',
+          { className: 'dshgn_embedBody' },
+          renderMarkdown(note.body !== undefined && note.body !== null ? note.body : note.content, {
+            assets: Array.isArray(note.assets) ? note.assets : [],
+            sourcePath: '',
+            // 嵌进来的正文里再点双链：交回面板自己那套（宿主编辑器不该被
+            // 一个「看引用」的动作拉起来）
+            onOpenWikiLink: open,
+            onToggleTodo: undefined,
+            // 再往下一层不再嵌笔记：两篇互相嵌入时递归没有尽头
+            embedDepth: props.depth,
+            resolveNote: props.resolveNote,
+            t,
+          }),
+        )
+      }
+      return h(
+        'div',
+        { className: 'dshgn_noteEmbed' },
+        h(
+          'div',
+          { className: 'dshgn_embedHead' },
+          h(Icon, { name: 'file', size: 12 }),
+          h('button', { type: 'button', className: 'dshgn_embedTitle', title: t('note.openEmbed'), onClick: open }, title),
+        ),
+        body,
+      )
+    }
+
+    /**
      * 渲染一个 `![[附件]]` 嵌入。
      *
      * 图片走 `/getnote/asset` 直接读用户库里的文件——同源、不受 CDN 签名过期影响，
@@ -2336,6 +2434,30 @@ async function saveFile(url, filename) {
       const base = clean.split('/').pop()
       const hit = assets.find((a) => a.name === clean || a.name === base)
       const path = (hit && hit.path) || clean
+      // 嵌入的另一篇笔记：宿主会把它的正文嵌进来（连标题一起），我们原来只显示
+      // 一个文件名胶囊——点了能跳过去，但「引用一段别处的内容」这件事完全没做到。
+      //
+      // 判断顺序很要紧：图片 > 认得出的附件 > 剩下的才当笔记。`![[xxx]]` 通常
+      // 不写扩展名，所以「不是图片」推不出「是笔记」——PDF、录音这些必须先在
+      // 附件那一档拦住，否则会拿一个二进制文件去 /read。
+      const notePath =
+        hit === undefined && !IMAGE_EXT_RE.test(path) && !FILE_EXT_RE.test(path) && typeof opts.resolveNote === 'function'
+          ? opts.resolveNote(clean)
+          : ''
+      // 嵌进来的笔记里再嵌一篇、那一篇又嵌回来，会无限递归。只往下走一层：
+      // 第二层开始一律显示成文件名胶囊，用户点进去就能看到完整的那一篇。
+      const depth = typeof opts.embedDepth === 'number' ? opts.embedDepth : 0
+      if (notePath !== '' && depth < 1) {
+        return h(NoteEmbed, {
+          key,
+          path: notePath,
+          label: base.replace(/\.md$/i, ''),
+          depth: depth + 1,
+          onOpen: opts.onOpenWikiLink,
+          resolveNote: opts.resolveNote,
+          t: opts.t,
+        })
+      }
       if (IMAGE_EXT_RE.test(path)) {
         const hosted = assetUrlOf(path)
         // 点了交给宿主打开；没注入宿主时不给光标、不挂 onClick——挂一个点了
@@ -3301,6 +3423,17 @@ async function saveFile(url, filename) {
   background:var(--dsw-alias-interactive-bg-hover);font-size:11px;
   color:var(--dsw-alias-label-secondary);white-space:nowrap;vertical-align:middle}
 .dshgn_embedFile{font-size:11px;color:var(--dsw-alias-label-tertiary)}
+/* 嵌入的另一篇笔记：左边一道竖线把它和这一篇的正文分开，看起来像「引用了一段」。 */
+.dshgn_noteEmbed{display:block;margin:8px 0;padding:6px 10px;border-left:2px solid var(--dsw-alias-border-l2);
+  background:var(--dsw-alias-interactive-bg-hover);border-radius:0 8px 8px 0}
+.dshgn_embedHead{display:flex;align-items:center;gap:5px;margin-bottom:4px;
+  color:var(--dsw-alias-label-tertiary)}
+.dshgn_embedTitle{appearance:none;border:0;background:transparent;padding:0;font:inherit;
+  font-size:11px;font-weight:600;color:var(--dsw-alias-brand-primary);cursor:pointer;
+  max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_embedTitle:hover{text-decoration:underline}
+.dshgn_embedBody{font-size:12.5px;color:var(--dsw-alias-label-secondary)}
+.dshgn_embedEmpty{font-size:11px;color:var(--dsw-alias-label-tertiary)}
 .dshgn_statGrid{display:flex;flex-wrap:wrap;gap:8px}
 .dshgn_stat{display:flex;flex-direction:column;gap:1px;padding:7px 11px;border-radius:8px;
   background:var(--dsw-alias-interactive-bg-hover);min-width:66px}
@@ -4143,6 +4276,36 @@ async function saveFile(url, filename) {
           setError(t('note.wikilinkMissing').replace('{name}', wanted))
         },
         [current, entries, openNote, requestAnchor, status, t],
+      )
+
+      /**
+       * 把 `![[xxx]]` 里的那段文字解析成一篇笔记的路径（解析不出来返回空串）。
+       *
+       * 判断口径与点双链完全一致：先问宿主的索引，再按「路径全等 → 文件名 →
+       * 标题」三级退让。两边用不同的规则会出现「点能跳过去、嵌不进来」这种
+       * 说不清的现象。
+       */
+      const resolveNotePath = React.useCallback(
+        (target) => {
+          const raw = String(target || '').trim()
+          if (raw === '') return ''
+          const sub = status !== null && typeof status.subfolder === 'string' ? status.subfolder.replace(/^\/+|\/+$/g, '') : ''
+          const rel = current !== null && typeof current.path === 'string' ? current.path : ''
+          const sourceRel = rel === '' ? sub : sub === '' ? rel : `${sub}/${rel}`
+          const hosted = resolveViaHost(raw, sourceRel)
+          if (hosted !== '') return hosted
+          const wanted = raw.replace(/\.md$/i, '')
+          const list = entries || []
+          const direct = list.find((entry) => entry.path === raw || entry.path === `${wanted}.md`)
+          if (direct !== undefined) return direct.path
+          const byName = list.find((entry) => entry.path.split('/').pop().replace(/\.md$/i, '') === wanted)
+          if (byName !== undefined) return byName.path
+          const lowered = wanted.toLowerCase()
+          const byTitle = list.find((entry) => String(entry.title || '').toLowerCase() === lowered)
+          if (byTitle !== undefined) return byTitle.path
+          return ''
+        },
+        [current, entries, status],
       )
 
       const dirty = current !== null && draft !== null && draft !== current.content
@@ -5409,6 +5572,7 @@ async function saveFile(url, filename) {
             },
             anchor: pendingAnchor,
             onAnchorDone: () => setPendingAnchor(null),
+            resolveNote: resolveNotePath,
             onError: (message) => setError(message),
             // 勾待办直接落盘再重读：本地文件已经变了，只改前端状态的话
             // 下次保存草稿会把旧内容写回去，把刚勾的那一下冲掉。
@@ -9167,6 +9331,8 @@ async function saveFile(url, filename) {
       const { t, status, current, draft, setDraft, dirty, busy, onSave, onRename, onDelete, onCopyReference, onOpenWikiLink, onSyncOne, onRestored, onError, onToggleTodo, onClose } = props
       const anchorRequest = props.anchor
       const onAnchorDone = props.onAnchorDone
+      // 嵌入 ![[另一篇笔记]] 时用它把名字解析成路径（与点双链共用一套口径）
+      const resolveNote = props.resolveNote
       // 渲染器要的是「库内相对路径」：status.vaultRoot 是绝对路径，笔记在库里
       // 真正的位置是「<子目录>/<笔记相对路径>」。相对链接、图片、嵌入块都靠它解析。
       const subfolder = status !== null && typeof status.subfolder === 'string' ? status.subfolder.replace(/^\/+|\/+$/g, '') : ''
@@ -9757,6 +9923,11 @@ async function saveFile(url, filename) {
                     },
                     onOpenWikiLink,
                     onToggleTodo: editing ? undefined : onToggleTodo,
+                    // ![[另一篇笔记]]：把那一篇的正文嵌进来。解析口径与点双链
+                    // 共用一套，否则会出现「点得过去、嵌不进来」。
+                    resolveNote,
+                    embedDepth: 0,
+                    t,
                   },
                 ),
               ),

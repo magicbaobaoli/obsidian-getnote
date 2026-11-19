@@ -2097,3 +2097,108 @@ test('这篇引用了谁也能看见，先问宿主的索引', async () => {
     panel.setLinkResolve(null)
   }
 })
+
+/**
+ * 宿主会把 `![[另一篇笔记]]` 渲染成那一篇的正文（连标题一起）。我们原来只给
+ * 一颗文件名胶囊——点了能跳过去，但「在这儿引用一段别处的内容」没做到，对比
+ * 两篇得来回切。
+ */
+test('正文里嵌入的另一篇笔记真的把内容嵌进来，只嵌一层', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const backBtn = window.document.querySelector('.dshgn_noteBack')
+  if (backBtn) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    try {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+  }
+
+  const seed = async (title, content, requestId) => {
+    const res = await realFetch(server.origin + '/getnote/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({ dir: '随手记', title, content, withDatePrefix: false, requestId }),
+    })
+    const json = await res.json()
+    assert.equal(json.path, '随手记/' + title + '.md', '这条要按真路径测，不能靠猜文件名')
+    return json.path
+  }
+
+  await seed('嵌入更深', '不该出现的内容\n', 'seed-embed-deep')
+  await seed('嵌入目标', '## 目标的小节\n\n目标里的正文\n\n![[嵌入更深]]\n', 'seed-embed-target')
+  const sourcePath = await seed('嵌入来源', '开头\n\n![[嵌入目标]]\n\n![[说明.pdf]]\n\n结尾\n', 'seed-embed-source')
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  const card = await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_card')).find(
+        (el) => el.getAttribute('title') === sourcePath,
+      ),
+    5000,
+    '来源笔记出现在列表里',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(
+    () => ((window.document.querySelector('.dshgn_note') || {}).textContent || '').includes('开头'),
+    5000,
+    '来源笔记打开了',
+  )
+
+  // ① 嵌入框真的出现了，里面是那一篇的正文
+  const embed = await waitFor(
+    () => window.document.querySelector('.dshgn_noteEmbed'),
+    5000,
+    '嵌入框出现',
+  )
+  await waitFor(
+    () => ((embed.querySelector('.dshgn_embedBody') || {}).textContent || '').includes('目标里的正文'),
+    5000,
+    '嵌入框里是那一篇的正文',
+  )
+  const head = embed.querySelector('.dshgn_embedTitle')
+  assert.equal((head.textContent || '').trim(), '嵌入目标', '标题用那一篇的名字')
+  assert.equal(head.getAttribute('title'), '打开这一篇', '标题按钮要说清点了会怎样')
+
+  // ② 只嵌一层：嵌进来的那篇里再嵌一篇，只留文件名，不会一路读下去
+  const bodyText = (embed.querySelector('.dshgn_embedBody') || {}).textContent || ''
+  assert.ok(bodyText.includes('嵌入更深'), '再往下那一层要留成文件名')
+  assert.ok(!bodyText.includes('不该出现'), '只嵌一层，别把整棵树都拉进来')
+  assert.equal(
+    window.document.querySelectorAll('.dshgn_noteEmbed').length,
+    1,
+    '整篇正文里只该有一个嵌入框',
+  )
+
+  // ③ 不是笔记的东西仍然只是文件名胶囊（![[说明.pdf]]）
+  const fileName = Array.from(window.document.querySelectorAll('.dshgn_embedFile')).map((el) =>
+    (el.textContent || '').trim(),
+  )
+  // 「嵌入更深」也在里面：那是第二层降级成的文件名胶囊（见上一条断言）
+  assert.deepEqual(fileName, ['嵌入更深', '说明.pdf'], '附件不该被当成笔记去读，实际：' + fileName.join(','))
+
+  // ④ 渲染器层面：解析得出路径才嵌，解析不出来还是文件名
+  const { renderEmbed } = panel.__internals
+  const embedded = renderEmbed('嵌入目标', 'k-embed', {
+    resolveNote: () => '随手记/嵌入目标.md',
+    embedDepth: 0,
+  })
+  assert.equal(typeof embedded.type, 'function', '解析得出路径时要换成嵌入组件')
+  const unresolved = renderEmbed('没有这一篇', 'k-embed2', { resolveNote: () => '', embedDepth: 0 })
+  assert.equal(unresolved.props.className, 'dshgn_embedFile', '解析不出来就还是文件名')
+  const tooDeep = renderEmbed('嵌入更深', 'k-embed3', {
+    resolveNote: () => '随手记/嵌入更深.md',
+    embedDepth: 1,
+  })
+  assert.equal(tooDeep.props.className, 'dshgn_embedFile', '第二层不再嵌')
+})
+
