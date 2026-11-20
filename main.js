@@ -9939,6 +9939,38 @@ function scrollToHeading(box, text) {
   scrollHostTo(host, hit);
   return true;
 }
+function blockTextOf(body, id) {
+  const want = String(id === void 0 || id === null ? "" : id).trim().replace(/^\^/, "");
+  if (want === "") return "";
+  const lines = String(body === void 0 || body === null ? "" : body).split("\n");
+  let inFence = false;
+  for (let i3 = 0; i3 < lines.length; i3 += 1) {
+    const line = lines[i3];
+    if (/^\s*(```|~~~)/.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    if (blockIdIn(line) !== want) continue;
+    let start = i3;
+    const isList = /^\s*([-*+]|\d+[.)])\s+/.test(line);
+    if (!isList) {
+      while (start > 0 && lines[start - 1].trim() !== "" && !/^\s*([-*+]|\d+[.)])\s+/.test(lines[start - 1]) && !/^#{1,6}\s/.test(lines[start - 1])) {
+        start -= 1;
+      }
+    }
+    let end = i3;
+    if (!isList) {
+      while (end + 1 < lines.length && lines[end + 1].trim() !== "" && !/^\s*([-*+]|\d+[.)])\s+/.test(lines[end + 1]) && !/^#{1,6}\s/.test(lines[end + 1])) {
+        end += 1;
+      }
+    }
+    const picked = lines.slice(start, end + 1);
+    picked[picked.length - 1] = stripBlockId(picked[picked.length - 1]);
+    return picked.join("\n").trim();
+  }
+  return "";
+}
 function scrollToBlock(box, id) {
   const want = String(id || "").trim().replace(/^\^/, "");
   if (want === "") return false;
@@ -10046,10 +10078,12 @@ function NoteEmbed(props) {
   } else if (note === null) {
     body = h4("div", { className: "dshgn_embedEmpty" }, t4("panel.loading"));
   } else {
+    const fullBody = note.body !== void 0 && note.body !== null ? note.body : note.content;
+    const excerpt = isBlockAnchor(anchor) ? blockTextOf(fullBody, anchor) : "";
     body = h4(
       "div",
       { className: "dshgn_embedBody" },
-      renderMarkdown(note.body !== void 0 && note.body !== null ? note.body : note.content, {
+      renderMarkdown(excerpt === "" ? fullBody : excerpt, {
         assets: Array.isArray(note.assets) ? note.assets : [],
         sourcePath: "",
         // 嵌进来的正文里再点双链：交回面板自己那套（宿主编辑器不该被

@@ -2589,6 +2589,47 @@ async function saveFile(url, filename) {
      * 渲染时我们给每一块挂 `data-block-id`，所以这里只是一次属性查找。找不到
      * （用户刚把 id 删了、或者 id 写在没被渲染成块的容器里）返回 false。
      */
+    /**
+     * 从一篇正文里抠出挂了 `^id` 的那一块。
+     *
+     * 宿主里 `![[笔记#^abc123]]` 嵌的是「那一段」，不是「那一篇滚到那一段」。
+     * 整篇嵌进来再滚过去，用户会看到一大段跟自己无关的正文，还以为嵌错了。
+     * 段落（连续的非空行）和列表项都算一块；找不到返回空串，调用方退回去整篇显示。
+     */
+    function blockTextOf(body, id) {
+      const want = String(id === undefined || id === null ? '' : id).trim().replace(/^\^/, '')
+      if (want === '') return ''
+      const lines = String(body === undefined || body === null ? '' : body).split('\n')
+      let inFence = false
+      for (let i = 0; i < lines.length; i += 1) {
+        const line = lines[i]
+        if (/^\s*(```|~~~)/.test(line)) {
+          inFence = !inFence
+          continue
+        }
+        if (inFence) continue
+        if (blockIdIn(line) !== want) continue
+        // 命中的这一行可能是段落中间一行，也可能就是列表项：往回找到这一块的起点
+        let start = i
+        const isList = /^\s*([-*+]|\d+[.)])\s+/.test(line)
+        if (!isList) {
+          while (start > 0 && lines[start - 1].trim() !== '' && !/^\s*([-*+]|\d+[.)])\s+/.test(lines[start - 1]) && !/^#{1,6}\s/.test(lines[start - 1])) {
+            start -= 1
+          }
+        }
+        let end = i
+        if (!isList) {
+          while (end + 1 < lines.length && lines[end + 1].trim() !== '' && !/^\s*([-*+]|\d+[.)])\s+/.test(lines[end + 1]) && !/^#{1,6}\s/.test(lines[end + 1])) {
+            end += 1
+          }
+        }
+        const picked = lines.slice(start, end + 1)
+        picked[picked.length - 1] = stripBlockId(picked[picked.length - 1])
+        return picked.join('\n').trim()
+      }
+      return ''
+    }
+
     function scrollToBlock(box, id) {
       const want = String(id || '').trim().replace(/^\^/, '')
       if (want === '') return false
@@ -2767,10 +2808,14 @@ async function saveFile(url, filename) {
       } else if (note === null) {
         body = h('div', { className: 'dshgn_embedEmpty' }, t('panel.loading'))
       } else {
+        const fullBody = note.body !== undefined && note.body !== null ? note.body : note.content
+        // `![[笔记#^abc123]]` 嵌的是那一段：只把这一段摆出来，而不是整篇嵌进来再滚过去
+        // （滚过去之后用户看到的还是一整篇，分不清哪一句是被引的那句）。
+        const excerpt = isBlockAnchor(anchor) ? blockTextOf(fullBody, anchor) : ''
         body = h(
           'div',
           { className: 'dshgn_embedBody' },
-          renderMarkdown(note.body !== undefined && note.body !== null ? note.body : note.content, {
+          renderMarkdown(excerpt === '' ? fullBody : excerpt, {
             assets: Array.isArray(note.assets) ? note.assets : [],
             sourcePath: '',
             // 嵌进来的正文里再点双链：交回面板自己那套（宿主编辑器不该被
@@ -11931,5 +11976,5 @@ export const __internals = {
   themeVars, parseHex, rgbToHsl, hslToHex, ConflictPane, ArchiveCard, CardPane,
   TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale,
   reportSync, dailyTemplateOf, frontmatterText, isTagKey, FollowCard, parseTable, countWords,
-  isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote, parseImageSize, renderParagraph,
+  isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote, parseImageSize, renderParagraph, blockTextOf,
 }

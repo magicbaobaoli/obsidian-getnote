@@ -3740,3 +3740,39 @@ test('段落里的换行按宿主的口径：软换行接成一句，两个空�
   assert.equal(flat([para]), '这是第一行 这是第二行 这是第三行')
   assert.equal(para.props.className, 'dshgn_p')
 })
+
+test('嵌进来的块引用只摆那一段，不是整篇嵌进来再滚过去', async () => {
+  // 宿主里 ![[笔记#^abc123]] 嵌的是「那一段」。整篇嵌进来再滚过去，用户看到的
+  // 还是一整篇，分不清哪一句是被引的那句。
+  const { blockTextOf } = panel.__internals
+  const body = [
+    '# 块引用来源',
+    '',
+    '第一段，跟谁都没关系。',
+    '',
+    '第二段第一行，',
+    '第二段第二行，这才是挂了 id 的那一段 ^want01',
+    '',
+    '第三段，也不该出现。',
+    '',
+    '- 列表项一 ^item01',
+    '- 列表项二',
+  ].join('\n')
+
+  const para = blockTextOf(body, '^want01')
+  assert.ok(para.includes('第二段第一行'), '段落要整段抠出来：' + para)
+  assert.ok(para.includes('第二段第二行'))
+  assert.ok(!para.includes('第一段'), '别的段落不该跟着来')
+  assert.ok(!para.includes('第三段'))
+  assert.ok(!para.includes('^want01'), '块记号本身要削掉')
+
+  assert.equal(blockTextOf(body, 'item01'), '- 列表项一', '列表项只抠那一项')
+  assert.equal(blockTextOf(body, '没有这个'), '', '找不到就返回空串，调用方退回整篇')
+  assert.equal(blockTextOf(body, ''), '')
+  assert.equal(blockTextOf('', 'want01'), '')
+
+  // 围栏里的 ^id 不算（那是代码，不是块）
+  const fenced = ['```', '代码里 ^fence01', '```', '', '真的 ^real01'].join('\n')
+  assert.equal(blockTextOf(fenced, 'fence01'), '')
+  assert.equal(blockTextOf(fenced, 'real01'), '真的')
+})
