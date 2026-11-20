@@ -8371,6 +8371,8 @@ var LEX = {
     "tree.deletedDir": "\u76EE\u5F55\u5DF2\u5220\u9664",
     "tree.deletedTag": "\u6807\u7B7E\u5DF2\u79FB\u9664",
     "tree.dirNotEmpty": "\u8FD9\u4E2A\u76EE\u5F55\u91CC\u8FD8\u6709\u7B14\u8BB0\uFF0C\u5148\u628A\u5B83\u4EEC\u79FB\u8D70",
+    "tree.fold": "\u6536\u8D77\u5B50\u76EE\u5F55",
+    "tree.unfold": "\u5C55\u5F00\u5B50\u76EE\u5F55",
     "tree.dirCreated": "\u76EE\u5F55\u5DF2\u521B\u5EFA\uFF08\u7A7A\u76EE\u5F55\u6682\u65F6\u4E0D\u663E\u793A\u5728\u5217\u8868\u91CC\uFF09",
     "tree.movedTo": "\u5DF2\u632A\u5230 {dir}",
     "tree.tagCreated": "\u6807\u7B7E\u5DF2\u6DFB\u52A0\u5230\u5F53\u524D\u7B14\u8BB0",
@@ -8839,6 +8841,8 @@ var LEX = {
     "tree.deletedDir": "Folder deleted",
     "tree.deletedTag": "Tag removed",
     "tree.dirNotEmpty": "This folder still has notes \u2014 move them out first",
+    "tree.fold": "Collapse subfolders",
+    "tree.unfold": "Expand subfolders",
     "tree.dirCreated": "Folder created (empty folders stay hidden)",
     "tree.movedTo": "Moved to {dir}",
     "tree.tagCreated": "Tag added to the open note",
@@ -9306,6 +9310,8 @@ var LEX = {
     "tree.deletedDir": "Map verwijderd",
     "tree.deletedTag": "Tag verwijderd",
     "tree.dirNotEmpty": "Er staan nog notities in deze map \u2014 verplaats ze eerst",
+    "tree.fold": "Submappen inklappen",
+    "tree.unfold": "Submappen uitklappen",
     "tree.dirCreated": "Map aangemaakt (lege mappen blijven verborgen)",
     "tree.movedTo": "Verplaatst naar {dir}",
     "tree.tagCreated": "Tag toegevoegd aan de geopende notitie",
@@ -11789,6 +11795,12 @@ var CSS = `
 .dshgn_treeRow[data-on="true"]{background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-label-primary)}
 /* \u5361\u7247\u6B63\u62D6\u5230\u8FD9\u4E00\u884C\u4E0A\u9762\uFF1A\u865A\u7EBF\u6846 + \u54C1\u724C\u8272\uFF0C\u548C\u300C\u5F53\u524D\u9009\u4E2D\u7684\u76EE\u5F55\u300D\u90A3\u79CD\u5B9E\u5E95\u533A\u5206\u5F00\uFF0C
    \u5426\u5219\u62D6\u5230\u5DF2\u9009\u4E2D\u7684\u76EE\u5F55\u4E0A\u4F1A\u770B\u4E0D\u51FA\u6709\u6CA1\u6709\u63A5\u4F4F\u3002 */
+.dshgn_treeFold{appearance:none;flex:none;display:inline-flex;align-items:center;justify-content:center;width:12px;height:16px;margin-left:-12px;padding:0;border:0;border-radius:3px;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer}
+.dshgn_treeFold:hover{color:var(--dsw-alias-label-primary);background:rgba(var(--dshgn-tintRgb),.10)}
+.dshgn_treeFold:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_treeFold svg{transform:rotate(90deg);transition:transform .12s ease}
+.dshgn_treeFold[data-folded="true"] svg{transform:rotate(0deg)}
+.dshgn_treeFoldGap{flex:none;display:inline-block;width:12px;margin-left:-12px}
 .dshgn_treeRow[data-drop="true"]{background:rgba(var(--dshgn-tintRgb),.10);color:var(--dsw-alias-brand-primary);
   box-shadow:inset 0 0 0 1px var(--dsw-alias-brand-primary)}
 .dshgn_treeName{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;font-size:12px}
@@ -18042,6 +18054,15 @@ function TreePane(props) {
   const [busy, setBusy] = h2(false);
   const [renaming, setRenaming] = h2(null);
   const [dropOn, setDropOn] = h2("");
+  const [folded, setFolded] = h2(() => /* @__PURE__ */ new Set());
+  const toggleFold = (path) => {
+    setFolded((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  };
   y2(() => {
     if (menu === null) return void 0;
     const close = () => setMenu(null);
@@ -18077,7 +18098,9 @@ function TreePane(props) {
       const dirsOnly = (node.children || []).filter((child) => child.kind === "dir");
       dirsOnly.sort(compare);
       for (const child of dirsOnly) {
-        list.push({ path: child.path, name: child.name, depth, count: child.count });
+        const kids = (child.children || []).filter((one) => one.kind === "dir");
+        list.push({ path: child.path, name: child.name, depth, count: child.count, hasKids: kids.length > 0 });
+        if (kids.length > 0 && folded.has(child.path)) continue;
         walk(child, depth + 1);
       }
     };
@@ -18092,7 +18115,7 @@ function TreePane(props) {
       list.push(...fallback);
     }
     return list;
-  }, [tree, dirs, entries, dirSort]);
+  }, [tree, dirs, entries, dirSort, folded]);
   const sortedTags = T2(() => {
     const copy = [...tagCounts];
     if (tagSort === "name") {
@@ -18358,7 +18381,9 @@ function TreePane(props) {
           className: "dshgn_treeRow",
           "data-on": activeDir === node.path ? "true" : "false",
           "data-drop": dropOn === node.path ? "true" : "false",
-          style: { paddingLeft: `${7 + node.depth * 11}px` },
+          // 折叠箭头占 12px：同一层的名字必须对齐，所以没有子目录的行也
+          // 留出这段空位（摆一个等宽的占位 span），而不是让它往前挪一格。
+          style: { paddingLeft: `${7 + node.depth * 11 + 12}px` },
           onClick: picked(() => onPickDir(node.path)),
           onContextMenu: (event) => openMenu(event, "dir", node.path),
           // 卡片拖到这一行上就把它挪进这个目录。只认面板自己带的私有类型：
@@ -18394,6 +18419,27 @@ function TreePane(props) {
           title: `${node.path}
 ${t4("tree.menuDelete")}\uFF1A\u53F3\u952E`
         },
+        // 折叠箭头：只有底下还有目录的行才摆。按钮里不能套按钮，
+        // 所以它自己是一颗 button，点它只折叠、不选目录（stopPropagation）。
+        node.hasKids ? h4(
+          "button",
+          {
+            type: "button",
+            className: "dshgn_treeFold",
+            title: folded.has(node.path) ? t4("tree.unfold") : t4("tree.fold"),
+            "aria-label": folded.has(node.path) ? t4("tree.unfold") : t4("tree.fold"),
+            "aria-expanded": folded.has(node.path) ? "false" : "true",
+            "data-folded": folded.has(node.path) ? "true" : "false",
+            onClick: (event) => {
+              event.stopPropagation();
+              toggleFold(node.path);
+            },
+            onContextMenu: (event) => {
+              openMenu(event, "dir", node.path);
+            }
+          },
+          h4(Icon, { name: "chevron", size: 11 })
+        ) : h4("span", { className: "dshgn_treeFoldGap" }),
         h4(Icon, { name: "folder", size: 13 }),
         h4("span", { className: "dshgn_treeName" }, node.name),
         menu !== null && menu.kind === "dir" && menu.name === node.path ? rowMenu() : h4("span", { className: "dshgn_treeCount" }, String(node.count))

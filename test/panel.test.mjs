@@ -8859,3 +8859,118 @@ test('批量操作里能把一个标签从选中的几篇里一起去掉，正�
     '同一篇里的别的标签不该被连带去掉，实际 ' + JSON.stringify(noteB.tags),
   )
 })
+
+
+test('左栏目录能收起来：点箭头把这一支折下去，再点展开，没有子目录的行不摆箭头', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+  await clickTab('笔记')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+  const made = await post('/getnote/create', {
+    dir: '折叠验收/子目录一/更深一层',
+    title: '折叠验收-最底下一篇',
+    content: ['# 折叠验收底', '', '最底下的那一篇。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-fold-deep',
+  })
+  assert.ok(made && made.path, '造笔记失败：' + JSON.stringify(made))
+  await post('/getnote/create', {
+    dir: '折叠验收/子目录二',
+    title: '折叠验收-第二支',
+    content: ['# 折叠验收二', '', '第二支的一篇。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-fold-second',
+  })
+  await post('/getnote/create', {
+    dir: '折叠验收',
+    title: '折叠验收-根上那一篇',
+    content: ['# 折叠验收根', '', '直接放在折叠验收下面的一篇。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-fold-root',
+  })
+
+  // 退回空态、清搜索、退回全量
+  const backBtn = () => window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(async () => true)
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = backBtn()
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(220)
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox !== null) {
+    const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setValue.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(300)
+  }
+  const rowOf = (name) =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+      const label = el.querySelector('.dshgn_treeName')
+      return label !== null && (label.textContent || '').trim() === name
+    })
+  const allRow = rowOf('全部笔记')
+  if (allRow !== undefined) {
+    allRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rowOf('折叠验收') !== undefined, 8000, '左栏里出现折叠验收这一支')
+
+  const caretOf = (name) => {
+    const row = rowOf(name)
+    return row === undefined ? null : row.querySelector('.dshgn_treeFold')
+  }
+  // 底下还有目录的才摆箭头；叶子目录只留一段等宽空位，名字仍然对齐
+  assert.ok(caretOf('折叠验收'), '「折叠验收」底下有子目录，应该有一颗折叠箭头')
+  assert.ok(caretOf('子目录一'), '「子目录一」底下还有「更深一层」，也该有箭头')
+  assert.equal(caretOf('子目录二'), null, '「子目录二」底下没有目录，不该摆一颗按了没反应的箭头')
+  assert.ok(rowOf('更深一层') !== undefined, '一开始是全部展开的')
+
+  // 点箭头把这一支折下去：子目录和更深的那些行都该从列表里消失
+  caretOf('折叠验收').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(220)
+  assert.ok(rowOf('折叠验收') !== undefined, '折下去之后这一行本身还在')
+  assert.equal(rowOf('子目录一'), undefined, '折下去之后子目录不该还摊着')
+  assert.equal(rowOf('更深一层'), undefined, '折下去之后更深的那一层也不该在')
+  assert.equal(rowOf('子目录二'), undefined, '另一支同样收起来')
+  assert.equal(caretOf('折叠验收').getAttribute('data-folded'), 'true', '箭头要转成「收着」的样子')
+  assert.equal(caretOf('折叠验收').getAttribute('aria-expanded'), 'false')
+  assert.equal(caretOf('折叠验收').getAttribute('title'), '展开子目录')
+
+  // 点箭头只折叠，不顺手把这个目录选中
+  assert.equal(rowOf('折叠验收').getAttribute('data-on'), 'false', '点箭头不该等于点这一行')
+
+  // 再点一次展开
+  caretOf('折叠验收').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(220)
+  assert.ok(rowOf('子目录一') !== undefined, '展开之后子目录回来')
+  assert.ok(rowOf('更深一层') !== undefined, '展开之后更深的那一层也回来')
+  assert.equal(caretOf('折叠验收').getAttribute('data-folded'), 'false')
+  assert.equal(caretOf('折叠验收').getAttribute('title'), '收起子目录')
+
+  // 只折中间那一层：外层的兄弟目录不受影响
+  caretOf('子目录一').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(220)
+  assert.equal(rowOf('更深一层'), undefined, '折「子目录一」应该把它底下那一层收起来')
+  assert.ok(rowOf('子目录二') !== undefined, '折一支不该把另一支也收掉')
+  caretOf('子目录一').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(220)
+  assert.ok(rowOf('更深一层') !== undefined, '再点一次又回来')
+})

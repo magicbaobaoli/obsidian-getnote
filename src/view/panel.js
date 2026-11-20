@@ -636,6 +636,8 @@ async function saveFile(url, filename) {
         'tree.deletedDir': '目录已删除',
         'tree.deletedTag': '标签已移除',
         'tree.dirNotEmpty': '这个目录里还有笔记，先把它们移走',
+        'tree.fold': '收起子目录',
+        'tree.unfold': '展开子目录',
         'tree.dirCreated': '目录已创建（空目录暂时不显示在列表里）',
         'tree.movedTo': '已挪到 {dir}',
         'tree.tagCreated': '标签已添加到当前笔记',
@@ -1108,6 +1110,8 @@ async function saveFile(url, filename) {
         'tree.deletedDir': 'Folder deleted',
         'tree.deletedTag': 'Tag removed',
         'tree.dirNotEmpty': 'This folder still has notes — move them out first',
+        'tree.fold': 'Collapse subfolders',
+        'tree.unfold': 'Expand subfolders',
         'tree.dirCreated': 'Folder created (empty folders stay hidden)',
         'tree.movedTo': 'Moved to {dir}',
         'tree.tagCreated': 'Tag added to the open note',
@@ -1579,6 +1583,8 @@ async function saveFile(url, filename) {
         'tree.deletedDir': 'Map verwijderd',
         'tree.deletedTag': 'Tag verwijderd',
         'tree.dirNotEmpty': 'Er staan nog notities in deze map — verplaats ze eerst',
+        'tree.fold': 'Submappen inklappen',
+        'tree.unfold': 'Submappen uitklappen',
         'tree.dirCreated': 'Map aangemaakt (lege mappen blijven verborgen)',
         'tree.movedTo': 'Verplaatst naar {dir}',
         'tree.tagCreated': 'Tag toegevoegd aan de geopende notitie',
@@ -4814,6 +4820,12 @@ async function saveFile(url, filename) {
 .dshgn_treeRow[data-on="true"]{background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-label-primary)}
 /* 卡片正拖到这一行上面：虚线框 + 品牌色，和「当前选中的目录」那种实底区分开，
    否则拖到已选中的目录上会看不出有没有接住。 */
+.dshgn_treeFold{appearance:none;flex:none;display:inline-flex;align-items:center;justify-content:center;width:12px;height:16px;margin-left:-12px;padding:0;border:0;border-radius:3px;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer}
+.dshgn_treeFold:hover{color:var(--dsw-alias-label-primary);background:rgba(var(--dshgn-tintRgb),.10)}
+.dshgn_treeFold:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_treeFold svg{transform:rotate(90deg);transition:transform .12s ease}
+.dshgn_treeFold[data-folded="true"] svg{transform:rotate(0deg)}
+.dshgn_treeFoldGap{flex:none;display:inline-block;width:12px;margin-left:-12px}
 .dshgn_treeRow[data-drop="true"]{background:rgba(var(--dshgn-tintRgb),.10);color:var(--dsw-alias-brand-primary);
   box-shadow:inset 0 0 0 1px var(--dsw-alias-brand-primary)}
 .dshgn_treeName{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;font-size:12px}
@@ -12174,6 +12186,18 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 拖到别处（列表、正文、栏外）一律清掉——高亮是一种承诺，
       // 高亮着却没接住比不高亮更糟。
       const [dropOn, setDropOn] = React.useState('')
+      // 收起来的目录（记目录路径）。目录多的时候一屏放不下整个库的结构，
+      // 平时不看的那几支收起来，剩下的才看得见；折叠状态只活在这次会话里——
+      // 存下来反而会在下次打开时「我明明记得它是展开的」。
+      const [folded, setFolded] = React.useState(() => new Set())
+      const toggleFold = (path) => {
+        setFolded((prev) => {
+          const next = new Set(prev)
+          if (next.has(path)) next.delete(path)
+          else next.add(path)
+          return next
+        })
+      }
 
       // 点空白处关菜单：右键菜单不会自己消失是最烦人的一类小毛病
       React.useEffect(() => {
@@ -12226,7 +12250,13 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           const dirsOnly = (node.children || []).filter((child) => child.kind === 'dir')
           dirsOnly.sort(compare)
           for (const child of dirsOnly) {
-            list.push({ path: child.path, name: child.name, depth, count: child.count })
+            const kids = (child.children || []).filter((one) => one.kind === 'dir')
+            // hasKids 记的是「这一支底下还有没有目录」，不是「现在展不展开」：
+            // 没有子目录的行不该摆一个按了没反应的小箭头。
+            list.push({ path: child.path, name: child.name, depth, count: child.count, hasKids: kids.length > 0 })
+            // 收起来的目录不再往下走：它的子目录此刻不该出现在列表里，
+            // 否则「收起来」只是把箭头转了向、下面的行照旧摊着。
+            if (kids.length > 0 && folded.has(child.path)) continue
             walk(child, depth + 1)
           }
         }
@@ -12242,7 +12272,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           list.push(...fallback)
         }
         return list
-      }, [tree, dirs, entries, dirSort])
+      }, [tree, dirs, entries, dirSort, folded])
 
       const sortedTags = React.useMemo(() => {
         const copy = [...tagCounts]
@@ -12541,7 +12571,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
               className: 'dshgn_treeRow',
               'data-on': activeDir === node.path ? 'true' : 'false',
               'data-drop': dropOn === node.path ? 'true' : 'false',
-              style: { paddingLeft: `${7 + node.depth * 11}px` },
+              // 折叠箭头占 12px：同一层的名字必须对齐，所以没有子目录的行也
+              // 留出这段空位（摆一个等宽的占位 span），而不是让它往前挪一格。
+              style: { paddingLeft: `${7 + node.depth * 11 + 12}px` },
               onClick: picked(() => onPickDir(node.path)),
               onContextMenu: (event) => openMenu(event, 'dir', node.path),
               // 卡片拖到这一行上就把它挪进这个目录。只认面板自己带的私有类型：
@@ -12574,6 +12606,31 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
               },
               title: `${node.path}\n${t('tree.menuDelete')}：右键`,
             },
+            // 折叠箭头：只有底下还有目录的行才摆。按钮里不能套按钮，
+            // 所以它自己是一颗 button，点它只折叠、不选目录（stopPropagation）。
+            node.hasKids
+              ? h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'dshgn_treeFold',
+                    title: folded.has(node.path) ? t('tree.unfold') : t('tree.fold'),
+                    'aria-label': folded.has(node.path) ? t('tree.unfold') : t('tree.fold'),
+                    'aria-expanded': folded.has(node.path) ? 'false' : 'true',
+                    'data-folded': folded.has(node.path) ? 'true' : 'false',
+                    onClick: (event) => {
+                      event.stopPropagation()
+                      toggleFold(node.path)
+                    },
+                    onContextMenu: (event) => {
+                      // 右键这颗箭头应当和右键这一行一样弹目录菜单，
+                      // 否则鼠标稍微偏一点菜单就不出来了。
+                      openMenu(event, 'dir', node.path)
+                    },
+                  },
+                  h(Icon, { name: 'chevron', size: 11 }),
+                )
+              : h('span', { className: 'dshgn_treeFoldGap' }),
             h(Icon, { name: 'folder', size: 13 }),
             h('span', { className: 'dshgn_treeName' }, node.name),
             menu !== null && menu.kind === 'dir' && menu.name === node.path
