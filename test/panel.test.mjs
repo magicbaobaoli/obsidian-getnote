@@ -4448,6 +4448,120 @@ test('清单里按回车接着写下一行，Tab 把整行挪两格，空条目�
   await waitFor(() => window.document.querySelector('.dshgn_editor') === null, 5000, 'Esc 退出编辑态')
 })
 
+test('大纲上亮着「现在读到哪一节」，点过去就换一条，自己往下翻也跟着换', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+
+  // 前一个用例可能把某篇开着、搜索框里还留着词，先退回干净的空态
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    const backBtn = window.document.querySelector('.dshgn_noteBack')
+    if (backBtn) {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    }
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  const box = await waitFor(() => window.document.querySelector('.dshgn_search'), 5000, '搜索框')
+  const setInput = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  setInput.call(box, '')
+  box.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(260)
+
+  const res = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '大纲高亮验收',
+      content: '# 大纲高亮验收\n\n第一节的话。\n\n## 第二节\n\n第二节的话。\n\n## 第三节\n\n第三节的话。\n',
+      withDatePrefix: false,
+      requestId: 'seed-outline-active',
+    }),
+  })
+  assert.equal((await res.json()).path, '随手记/大纲高亮验收.md')
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  const card = await waitFor(
+    () => {
+      const all = Array.from(window.document.querySelectorAll('.dshgn_card'))
+      return all.find((el) => (el.textContent || '').includes('大纲高亮验收')) || null
+    },
+    8000,
+    '列表里的那一篇',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+
+  const items = await waitFor(
+    () => {
+      const all = Array.from(window.document.querySelectorAll('.dshgn_outlineItem'))
+      return all.length >= 3 ? all : null
+    },
+    8000,
+    '大纲里应该有三条',
+  )
+  assert.equal(items[0].textContent, '大纲高亮验收')
+  assert.equal(items[1].textContent, '第二节')
+
+  // jsdom 没有排版，所有元素的 getBoundingClientRect 都是 0——那样每个标题都
+  // 算「已经在视野上方」，滚动侦测会把最后一条点亮，跟浏览器里的表现不一样。
+  // 这里给标题补一份假排版（每条往下挪 100px），让「谁在视野里」有答案可比。
+  const realRect = window.HTMLElement.prototype.getBoundingClientRect
+  const realScrollTo = window.HTMLElement.prototype.scrollTo
+  let fakeScrollTop = 0
+  window.HTMLElement.prototype.getBoundingClientRect = function fakeRect() {
+    if (this.classList && this.classList.contains('dshgn_h')) {
+      const heads = Array.from(window.document.querySelectorAll('.dshgn_h'))
+      // 减去「已经滚过去多少」，标题才会随滚动移到视野上方
+      const top = heads.indexOf(this) * 100 - fakeScrollTop
+      return { top, bottom: top + 40, left: 0, right: 0, width: 0, height: 40, x: 0, y: top }
+    }
+    return realRect.call(this)
+  }
+  // jsdom 的 scrollTo 是空实现，滚完位置不会变；这里让它真把「滚到哪儿」记下来
+  window.HTMLElement.prototype.scrollTo = function fakeScrollToTo(options) {
+    if (options && typeof options.top === 'number') fakeScrollTop = options.top
+  }
+  try {
+  // 亮着的必须只有一条：两条同时亮等于没说「我在哪」。
+  // 每次重查一遍：React 重渲染会换掉节点，攥着旧引用会读到已经不挂在页面上的那份。
+  const outlineItems = () => Array.from(window.document.querySelectorAll('.dshgn_outlineItem'))
+  const onNow = () => outlineItems().filter((el) => el.getAttribute('data-on') === 'true')
+  assert.equal(onNow().length, 1, '同一时刻只有一节是「正在读的」')
+
+  // 点第二节：亮的那条跟着换过去，并且带 aria-current 给读屏
+  outlineItems()[1].dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(
+    () => {
+      const live = outlineItems()
+      return live.length >= 2 && live[1].getAttribute('data-on') === 'true' ? live : null
+    },
+    5000,
+    '点了第二节就该亮第二节',
+  )
+  assert.equal(outlineItems()[0].getAttribute('data-on'), 'false', '上一节要熄掉')
+  assert.equal(outlineItems()[1].getAttribute('aria-current'), 'true')
+  assert.equal(onNow().length, 1)
+
+  // 自己往下翻（滚动）时也得跟着变，不能只在点大纲时才对
+  const scroller = window.document.querySelector('.dshgn_scroll')
+  assert.ok(scroller !== null, '正文外面应该有滚动容器')
+  scroller.dispatchEvent(new window.Event('scroll'))
+  await sleep(200)
+  assert.equal(onNow().length, 1, '滚动之后仍然只有一节亮着')
+  } finally {
+    window.HTMLElement.prototype.getBoundingClientRect = realRect
+    window.HTMLElement.prototype.scrollTo = realScrollTo
+  }
+})
+
+
 test('搜索卡片上把用户敲的词标出来，tag:/dir: 限定词不去染正文', async () => {
   const { splitByTerms, highlightTerms, searchTermsOf } = panel.__internals
   const rootNode = () => window.document.querySelector('.dshgn_root')

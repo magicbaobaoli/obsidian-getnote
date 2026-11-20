@@ -10973,6 +10973,10 @@ var CSS = `
   color:var(--dsw-alias-label-secondary);cursor:pointer;text-align:left;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dshgn_outlineItem:hover{background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-brand-primary)}
+/* \u6B63\u5728\u8BFB\u7684\u90A3\u4E00\u8282\uFF1A\u5DE6\u4FA7\u4E00\u9053\u7AD6\u7EBF + \u4E3B\u8272\u6587\u5B57\u3002\u53EA\u52A0\u7C97\u4E0A\u8272\u4E0D\u52A8\u80CC\u666F\uFF0C
+   \u5426\u5219\u548C\u300C\u60AC\u505C\u300D\u62A2\u89C6\u89C9\uFF0C\u7528\u6237\u5206\u4E0D\u6E05\u300C\u6211\u70B9\u8FC7\u300D\u548C\u300C\u9F20\u6807\u6B63\u505C\u5728\u8FD9\u300D\u3002 */
+.dshgn_outlineItem[data-on='true']{color:var(--dsw-alias-brand-primary);font-weight:600;
+  box-shadow:inset 2px 0 0 var(--dsw-alias-brand-primary)}
 /* \u5C5E\u6027\u533A\uFF1A\u7B14\u8BB0\u5934\u90E8\u90A3\u4E9B\u952E\u503C\uFF08tags / aliases / \u81EA\u5B9A\u4E49\u5B57\u6BB5\uFF09\u3002
    \u653E\u5728\u6B63\u6587\u4E0A\u65B9\u3001\u6BD4\u5927\u7EB2\u66F4\u6DE1\u2014\u2014\u5B83\u662F\u300C\u8FD9\u7BC7\u662F\u4EC0\u4E48\u300D\uFF0C\u4E0D\u662F\u300C\u8FD9\u7BC7\u5199\u4E86\u4EC0\u4E48\u300D\uFF0C
    \u8BFB\u6B63\u6587\u65F6\u5B83\u5E94\u8BE5\u9000\u5230\u80CC\u666F\u91CC\uFF0C\u4F46\u8981\u4E00\u773C\u80FD\u626B\u5230\u3002 */
@@ -17111,6 +17115,7 @@ function NotePane(props) {
     return attachOnPanelWindows("keydown", onKey);
   }, []);
   const currentPathOf = current === null || current === void 0 ? "" : String(current.path || "");
+  const [activeHeading, setActiveHeading] = h2(-1);
   const zoomed = zoom !== null && zoom.path === currentPathOf ? zoom : null;
   const loadHistory = q2(async (path) => {
     if (path === null || path === "") {
@@ -17279,9 +17284,37 @@ function NotePane(props) {
     const heads = headingNodes(host);
     const target = heads[index];
     if (!target) return;
+    setActiveHeading(index);
     const offset = target.getBoundingClientRect().top - host.getBoundingClientRect().top + host.scrollTop - 8;
     host.scrollTo({ top: Math.max(0, offset), behavior: "smooth" });
   }, []);
+  y2(() => {
+    const host = scrollRef.current;
+    if (!host) return void 0;
+    let frame = 0;
+    const sync = () => {
+      frame = 0;
+      const heads = headingNodes(host);
+      if (heads.length === 0) return;
+      const top = host.getBoundingClientRect().top;
+      let found = -1;
+      for (let i3 = 0; i3 < heads.length; i3 += 1) {
+        if (heads[i3].getBoundingClientRect().top - top <= 24) found = i3;
+        else break;
+      }
+      setActiveHeading((prev) => prev === found ? prev : found);
+    };
+    const onScroll = () => {
+      if (frame !== 0) return;
+      frame = window.requestAnimationFrame(sync);
+    };
+    sync();
+    host.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      if (frame !== 0) window.cancelAnimationFrame(frame);
+      host.removeEventListener("scroll", onScroll);
+    };
+  }, [currentPathOf]);
   y2(() => {
     if (anchorRequest === null || anchorRequest === void 0) return;
     if (String(anchorRequest.path || "") !== "" && String(anchorRequest.path) !== String(currentPath || "")) return;
@@ -17696,6 +17729,10 @@ function NotePane(props) {
                 // 缩进跟着标题层级走，三级标题比一级多缩进两格，
                 // 结构一眼能看出来，不用读文字判断谁是谁的子节。
                 style: { paddingLeft: 8 + Math.max(0, item.level - 1) * 12 },
+                // 现在读到哪一节：长笔记滚到一半时，用户会想确认
+                // 「我看的是第几节」，亮着的那一条就是答案。
+                "data-on": activeHeading === index ? "true" : "false",
+                "aria-current": activeHeading === index ? "true" : void 0,
                 onClick: () => jumpToHeading(index)
               },
               item.text

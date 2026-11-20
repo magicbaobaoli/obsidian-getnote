@@ -3880,6 +3880,10 @@ async function saveFile(url, filename) {
   color:var(--dsw-alias-label-secondary);cursor:pointer;text-align:left;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dshgn_outlineItem:hover{background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-brand-primary)}
+/* 正在读的那一节：左侧一道竖线 + 主色文字。只加粗上色不动背景，
+   否则和「悬停」抢视觉，用户分不清「我点过」和「鼠标正停在这」。 */
+.dshgn_outlineItem[data-on='true']{color:var(--dsw-alias-brand-primary);font-weight:600;
+  box-shadow:inset 2px 0 0 var(--dsw-alias-brand-primary)}
 /* 属性区：笔记头部那些键值（tags / aliases / 自定义字段）。
    放在正文上方、比大纲更淡——它是「这篇是什么」，不是「这篇写了什么」，
    读正文时它应该退到背景里，但要一眼能扫到。 */
@@ -11038,6 +11042,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 不用 effect 去清——那个 effect 每次挂载都会跑，点开图之后紧接着的一次
       // 重渲染会把它立刻关掉（面板会随页签/窗口重挂载，路径一变就误判成换笔记）。
       const currentPathOf = current === null || current === undefined ? '' : String(current.path || '')
+      // 大纲里「现在读到哪一节」：点大纲跳过去算，自己往下翻也算。
+      // 存的是标题序号（见 jumpToHeading 的注释：序号比行号稳），换一篇就归零。
+      const [activeHeading, setActiveHeading] = React.useState(-1)
       const zoomed = zoom !== null && zoom.path === currentPathOf ? zoom : null
 
       const loadHistory = React.useCallback(async (path) => {
@@ -11270,6 +11277,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         const heads = headingNodes(host)
         const target = heads[index]
         if (!target) return
+        // 从大纲点过去的这一节就是「当前这一节」：顺手把阅读进度改成它，
+        // 省得用户读完再翻回来找自己刚点的是哪一条。
+        setActiveHeading(index)
         // 不用 scrollIntoView：它会把**外层每一个可滚动祖先**一起滚，包括横向。
         // 面板里有 overflow-x 的代码块和宽表格，横向一滚整块面板就被拖走、看起来
         // 像「点个大纲整个插件往左移还变形」。这里只改 host 自己的 scrollTop，
@@ -11277,6 +11287,38 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         const offset = target.getBoundingClientRect().top - host.getBoundingClientRect().top + host.scrollTop - 8
         host.scrollTo({ top: Math.max(0, offset), behavior: 'smooth' })
       }, [])
+
+      // 自己往下翻时大纲也要跟着亮：读者不会只用大纲跳。
+      // 「当前这一节」= 最后一个已经滚过容器顶部的那节标题，也就是他眼睛上方
+      // 最近的那个标题。滚一次事件能来几十条，所以按帧合并，别每条都 setState。
+      React.useEffect(() => {
+        const host = scrollRef.current
+        if (!host) return undefined
+        let frame = 0
+        const sync = () => {
+          frame = 0
+          const heads = headingNodes(host)
+          if (heads.length === 0) return
+          const top = host.getBoundingClientRect().top
+          let found = -1
+          for (let i = 0; i < heads.length; i += 1) {
+            // 留 24px 余量：标题刚贴到容器顶部时用户已经算「在这一节里」了
+            if (heads[i].getBoundingClientRect().top - top <= 24) found = i
+            else break
+          }
+          setActiveHeading((prev) => (prev === found ? prev : found))
+        }
+        const onScroll = () => {
+          if (frame !== 0) return
+          frame = window.requestAnimationFrame(sync)
+        }
+        sync()
+        host.addEventListener('scroll', onScroll, { passive: true })
+        return () => {
+          if (frame !== 0) window.cancelAnimationFrame(frame)
+          host.removeEventListener('scroll', onScroll)
+        }
+      }, [currentPathOf])
 
       // 从 `[[笔记#小节]]` 跳进来时滚到那一节。
       //
@@ -11742,6 +11784,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                                 // 缩进跟着标题层级走，三级标题比一级多缩进两格，
                                 // 结构一眼能看出来，不用读文字判断谁是谁的子节。
                                 style: { paddingLeft: 8 + Math.max(0, item.level - 1) * 12 },
+                                // 现在读到哪一节：长笔记滚到一半时，用户会想确认
+                                // 「我看的是第几节」，亮着的那一条就是答案。
+                                'data-on': activeHeading === index ? 'true' : 'false',
+                                'aria-current': activeHeading === index ? 'true' : undefined,
                                 onClick: () => jumpToHeading(index),
                               },
                               item.text,
