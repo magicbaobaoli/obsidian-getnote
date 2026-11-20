@@ -8595,3 +8595,138 @@ test('待办那一行点「去这一条」就落到正文里写着这条待办�
     panel.setConfirmDialog(null)
   }
 })
+test('大图能左右一张张看，一张时就不摆那两颗按钮', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const maskOf = () => window.document.querySelector('.dshgn_zoomMask')
+  const bigSrc = () => {
+    const mask = maskOf()
+    if (mask === null) return ''
+    const pic = mask.querySelector('.dshgn_zoomImg')
+    return pic === null ? '' : String(pic.getAttribute('src') || '')
+  }
+  const countText = () => {
+    const mask = maskOf()
+    if (mask === null) return ''
+    const span = mask.querySelector('.dshgn_zoomCount')
+    return span === null ? '' : span.textContent
+  }
+  const stepBtn = (title) => {
+    const mask = maskOf()
+    if (mask === null) return null
+    return Array.from(mask.querySelectorAll('.dshgn_zoomStep')).find((el) => el.getAttribute('title') === title) || null
+  }
+  const press = (key) => {
+    window.dispatchEvent(new window.KeyboardEvent('keydown', { key, bubbles: true }))
+  }
+
+  // 只渲染遮罩本身时：没给图单就不摆按钮（一颗按了永远停在原地的按钮比没有更糟）
+  const { ZoomOverlay } = panel.__internals
+  const lone = ZoomOverlay({ src: 'http://x/a.png', name: 'a.png', onClose: () => {}, index: 0, total: 1, onStep: () => {} })
+  const loneKids = Array.isArray(lone.props.children) ? lone.props.children : [lone.props.children]
+  assert.equal(
+    loneKids.filter((node) => node && typeof node === 'object' && node.props && node.props.className === 'dshgn_zoomBar').length,
+    0,
+    '只有一张图时不该摆左右按钮',
+  )
+  const stepped = []
+  const many = ZoomOverlay({ src: 'http://x/b.png', name: 'b.png', onClose: () => {}, index: 1, total: 3, onStep: (d) => stepped.push(d) })
+  const manyKids = Array.isArray(many.props.children) ? many.props.children : [many.props.children]
+  const bar = manyKids.find((node) => node && typeof node === 'object' && node.props && node.props.className === 'dshgn_zoomBar')
+  assert.ok(bar !== undefined, '多张图时该有那颗计数条')
+  const barKids = Array.isArray(bar.props.children) ? bar.props.children : [bar.props.children]
+  const countSpan = barKids.find((node) => node && typeof node === 'object' && node.props && node.props.className === 'dshgn_zoomCount')
+  assert.equal(countSpan.props.children, '2 / 3', '计数是「第几张 / 共几张」')
+  const prevBtn = barKids.find((node) => node && typeof node === 'object' && node.props && node.props.title === '上一张')
+  const nextBtn = barKids.find((node) => node && typeof node === 'object' && node.props && node.props.title === '下一张')
+  assert.ok(prevBtn !== undefined && nextBtn !== undefined, '该有上一张和下一张')
+  prevBtn.props.onClick({ stopPropagation() {} })
+  nextBtn.props.onClick({ stopPropagation() {} })
+  assert.deepEqual(stepped, [-1, 1], '点按钮各自往回走一格 / 往前走一格')
+
+  // 真渲染：一篇里三张图，点开第一张之后能一路看下去
+  const back = window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    if (back) back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox) {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setter.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(400)
+  }
+  const body = ['# 大图翻页验收', '', '![[翻页甲.png]]', '', '中间一句话。', '', '![[翻页乙.png]]', '', '![[翻页丙.png]]', '']
+  const createRes = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '大图翻页验收',
+      content: body.join('\n'),
+      withDatePrefix: false,
+      requestId: 'seed-zoom-gallery',
+    }),
+  })
+  const seeded = await createRes.json()
+  assert.equal(seeded.path, '随手记/大图翻页验收.md')
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+  const card = await waitFor(
+    () => Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === seeded.path) || null,
+    8000,
+    '列表里应该有这一篇',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 5000, '打开这一篇')
+
+  const pics = await waitFor(() => {
+    const list = window.document.querySelectorAll('.dshgn_md .dshgn_img')
+    return list.length >= 3 ? list : null
+  }, 8000, '正文里的三张图都该画出来')
+  pics[0].dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => maskOf() !== null, 5000, '点第一张图该放大')
+  const first = bigSrc()
+  assert.ok(first.includes('path='), '放大的还是同一张图')
+  assert.equal(countText(), '1 / 3', '计数从第一张开始')
+
+  stepBtn('下一张').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => countText() === '2 / 3', 5000, '点下一张该走到第二张')
+  assert.notEqual(bigSrc(), first, '换了一张图')
+  const second = bigSrc()
+
+  press('ArrowRight')
+  await waitFor(() => countText() === '3 / 3', 5000, '右键该走到第三张')
+  assert.notEqual(bigSrc(), second)
+  press('ArrowRight')
+  await waitFor(() => countText() === '1 / 3', 5000, '走到头再往前就绕回第一张')
+  assert.equal(bigSrc(), first, '绕回的是第一张那张图')
+  press('ArrowLeft')
+  await waitFor(() => countText() === '3 / 3', 5000, '往回走一格是最后一张')
+  stepBtn('上一张').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => countText() === '2 / 3', 5000, '上一张按钮也能往回走')
+
+  // 关掉之后笔记还读着，左右键也不该再弹图
+  press('Escape')
+  await waitFor(() => maskOf() === null, 5000, 'Esc 该收起来')
+  press('ArrowRight')
+  await sleep(120)
+  assert.equal(maskOf(), null, '没放大时左右键不该弹图')
+  assert.equal(rootNode().getAttribute('data-has-note'), 'true', 'Esc 只关遮罩，不该退出笔记')
+
+  const back2 = window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    if (back2) back2.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '收尾退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+})

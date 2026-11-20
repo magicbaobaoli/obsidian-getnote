@@ -721,6 +721,9 @@ async function saveFile(url, filename) {
         'note.copyHeadingLink': '复制指向这一节的链接',
         'note.openImage': '在 Obsidian 里打开这张图',
         'note.zoomImage': '点开看大图',
+        'zoom.prev': '上一张',
+        'zoom.next': '下一张',
+        'zoom.count': '{n} / {total}',
         'note.navBack': '回上一篇',
         'note.navForward': '去下一篇',
         'note.find': '在这篇里找',
@@ -1187,6 +1190,9 @@ async function saveFile(url, filename) {
         'note.copyHeadingLink': 'Copy a link to this section',
         'note.openImage': 'Open this image in Obsidian',
         'note.zoomImage': 'Click to enlarge',
+        'zoom.prev': 'Previous image',
+        'zoom.next': 'Next image',
+        'zoom.count': '{n} / {total}',
         'note.navBack': 'Previous note',
         'note.navForward': 'Next note',
         'note.find': 'Find in this note',
@@ -1652,6 +1658,9 @@ async function saveFile(url, filename) {
         'note.copyHeadingLink': 'Kopieer een link naar dit kopje',
         'note.openImage': 'Open deze afbeelding in Obsidian',
         'note.zoomImage': 'Klik om te vergroten',
+        'zoom.prev': 'Vorige afbeelding',
+        'zoom.next': 'Volgende afbeelding',
+        'zoom.count': '{n} / {total}',
         'note.navBack': 'Vorige notitie',
         'note.navForward': 'Volgende notitie',
         'note.find': 'Zoek in deze notitie',
@@ -2474,6 +2483,8 @@ async function saveFile(url, filename) {
       warn: 'M12 4 3.5 19.5h17Z M12 10v4 M12 17h.01',
       info: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z M12 11v5 M12 8h.01',
       down: 'M12 5v14 M5 12l7 7 7-7',
+      left: 'M19 12H5 M12 5l-7 7 7 7',
+      right: 'M5 12h14 M12 5l7 7-7 7',
       hash: 'M9.5 4 7.5 20 M16.5 4l-2 16 M4 9.5h16 M3.5 14.5h16',
     }
 
@@ -5297,6 +5308,17 @@ async function saveFile(url, filename) {
   width:28px;height:28px;border:0;border-radius:8px;background:rgba(255,255,255,.14);
   color:#fff;cursor:pointer}
 .dshgn_zoomClose:hover{background:rgba(255,255,255,.26)}
+/* 大图之间左右走：一篇笔记里常有好几张图，看完一张想接着看下一张时不该
+   先关掉、再回正文里找那张缩略图点开。计数放在按钮中间，用户得知道还剩几张。 */
+.dshgn_zoomBar{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);
+  display:flex;align-items:center;gap:10px;padding:4px 8px;border-radius:999px;
+  background:rgba(255,255,255,.14);color:#fff}
+.dshgn_zoomStep{appearance:none;display:inline-flex;align-items:center;justify-content:center;
+  width:26px;height:26px;border:0;border-radius:50%;background:rgba(255,255,255,.10);
+  color:#fff;cursor:pointer}
+.dshgn_zoomStep:hover{background:rgba(255,255,255,.26)}
+.dshgn_zoomStep:focus-visible{outline:1px solid #fff;outline-offset:1px}
+.dshgn_zoomCount{font-size:11px;line-height:1.6;font-variant-numeric:tabular-nums;white-space:nowrap}
 /* Obsidian 双链：外观要像链接但不能真跳（库内跳转由 JS 处理），所以用 button 而不是 a。 */
 .dshgn_wikilink{display:inline;padding:0;margin:0;border:0;background:transparent;font:inherit;
   color:var(--dsw-alias-brand-primary);cursor:pointer;text-decoration:none;
@@ -12753,7 +12775,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 才去挂，用户点开图之后立刻按 Esc 会落在这段空档里（效果是渲染提交之后
       // 才跑的，遮罩已经出现在屏幕上了，监听却还没挂）。
       const zoomRef = React.useRef(null)
-      zoomRef.current = zoom
+      // 左右键的处理器同样要挂载时就位，理由同上：靠 ref 读最新的图单。
+      const stepZoomRef = React.useRef(() => {})
       // 编辑区本身：列表续行之后要把光标放回新行末尾，得拿到这个节点
       const editorRef = React.useRef(null)
       // 双链补全：光标停在一个没写完的 [[ 里时弹一份候选（{ query, start, active }）。
@@ -12796,6 +12819,46 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       }, [])
       const canAttach = typeof onAttach === 'function'
       const closeZoom = React.useCallback(() => setZoom(null), [])
+      // 放大态里还能左右走：一篇笔记里常有好几张图，看完一张想接着看下一张，
+      // 以前得先关掉遮罩、回正文里找那张缩略图再点开。图单是在「当前这一篇」
+      // 渲染出来的那一组里按出现顺序排的，正文里的图在前、附件里的图在后——
+      // 与用户在页面上从上往下看到的顺序一致，左右键才符合直觉。
+      const [zoomList, setZoomList] = React.useState([])
+      // 打开放大时把这一篇的图单一起定下来。放进 state 而不是每次渲染现算：
+      // 遮罩开着时正文可能因为同步、勾待办之类的原因重渲染，现算会让左右键
+      // 走到一半忽然跳到别的图上。
+      //
+      // 图单从页面上现读：正文里的图、附件区里的图、嵌进来的那篇里的图都会渲染成
+      // 带 src 的 img，按 DOM 顺序读一遍就是用户看到的顺序。不另算一遍是因为
+      // 「正文里哪几处是图」得再解析一遍 markdown，两套口径迟早会分叉。
+      const openZoom = React.useCallback((item) => {
+        const host = scrollRef.current
+        const all = []
+        if (host !== null && host !== undefined && typeof host.querySelectorAll === 'function') {
+          const nodes = host.querySelectorAll('img')
+          for (let i = 0; i < nodes.length; i += 1) {
+            const node = nodes[i]
+            const src = String(node.getAttribute('src') || '')
+            if (src === '') continue
+            if (all.some((one) => one.src === src)) continue
+            all.push({ src, name: String(node.getAttribute('alt') || '') })
+          }
+        }
+        const wanted = item !== null && item !== undefined && typeof item.src === 'string' ? item.src : ''
+        setZoomList(wanted === '' ? [] : all)
+        setZoom(item)
+      }, [])
+      const zoomIndex = zoom === null ? -1 : zoomList.findIndex((one) => one.src === zoom.src)
+      const stepZoom = React.useCallback((delta) => {
+        setZoom((live) => {
+          if (live === null) return null
+          const at = zoomList.findIndex((one) => one.src === live.src)
+          if (at === -1 || zoomList.length < 2) return live
+          const next = (at + delta + zoomList.length) % zoomList.length
+          return { ...zoomList[next], path: live.path }
+        })
+      }, [zoomList])
+      stepZoomRef.current = stepZoom
       // 改完正文要把光标放回去：受控 textarea 重渲染之后光标会被甩到末尾。
       // 先放一次、下一帧再放一次兜住——第一次可能落在还没提交的那份 DOM 上。
       const placeCaret = React.useCallback((start, end) => {
@@ -12939,9 +13002,19 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 用户在遮罩上按 Esc 时事件未必从根节点冒上来。
       React.useEffect(() => {
         const onKey = (event) => {
-          if (event.key !== 'Escape' || zoomRef.current === null) return
-          event.stopPropagation()
-          setZoom(null)
+          if (zoomRef.current === null) return
+          if (event.key === 'Escape') {
+            event.stopPropagation()
+            setZoom(null)
+            return
+          }
+          // 左右键在放大态里换图。只在放大时接管：平时左右键在正文里什么也不做，
+          // 但一旦接管错了，用户按方向键翻页会莫名弹出图。
+          if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+            event.preventDefault()
+            event.stopPropagation()
+            stepZoomRef.current(event.key === 'ArrowLeft' ? -1 : 1)
+          }
         }
         return attachOnPanelWindows('keydown', onKey)
       }, [])
@@ -12949,6 +13022,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 不用 effect 去清——那个 effect 每次挂载都会跑，点开图之后紧接着的一次
       // 重渲染会把它立刻关掉（面板会随页签/窗口重挂载，路径一变就误判成换笔记）。
       const currentPathOf = current === null || current === undefined ? '' : String(current.path || '')
+      // 键处理器要认的是「屏幕上真的有一张放大的图」，不是「state 里还留着上次那张」。
+      // 换过笔记之后 zoom 还记着上一张图的路径，遮罩已经不画了；这时候要是还按
+      // zoom 非空去接管 Esc 和左右键，用户在正文里按方向键就会被悄悄吞掉。
+      zoomRef.current = zoom !== null && zoom.path === currentPathOf ? zoom : null
       // 换笔记时查找条收起：这个词是「在这篇里找」，换一篇还留着会让人以为
       // 已经搜过了。用路径当依赖，同一篇重渲染不受影响。
       //
@@ -14342,7 +14419,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                           loading: 'lazy',
                           onClick: (event) => {
                             if (event && typeof event.stopPropagation === 'function') event.stopPropagation()
-                            setZoom({ src: assetSrc, name: asset.name, path: currentPathOf })
+                            openZoom({ src: assetSrc, name: asset.name, path: currentPathOf })
                           },
                         })
                       }),
@@ -14380,7 +14457,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                     onCopyText: editing ? undefined : onCopyText,
                     // 图片点一下放大：面板里只有 200px 高的缩略图，扫描件看不清楚。
                     // 编辑态不给——那时看到的是原文，点图也不该盖住编辑区。
-                    onPreviewImage: editing ? undefined : (item) => setZoom({ ...item, path: currentPathOf }),
+                    onPreviewImage: editing ? undefined : (item) => openZoom({ ...item, path: currentPathOf }),
                     t,
                   },
                 ),
@@ -14486,7 +14563,16 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             ),
         // 放大查看的遮罩。点空白处关掉（图片自己 stopPropagation，点图不关），
         // 右上角那颗 × 是给「不知道该按 Esc」的人留的。
-        zoomed !== null ? h(ZoomOverlay, { src: zoomed.src, name: zoomed.name, onClose: closeZoom }) : null,
+        zoomed !== null
+          ? h(ZoomOverlay, {
+              src: zoomed.src,
+              name: zoomed.name,
+              onClose: closeZoom,
+              index: zoomIndex,
+              total: zoomList.length,
+              onStep: stepZoom,
+            })
+          : null,
       )
     }
 
@@ -14495,9 +14581,17 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
      * 这套行为只写一遍：正文里的图、附件区的图、嵌进来的那篇里的图都走同一个遮罩。
      */
     function ZoomOverlay(props) {
-      const { src, name, onClose } = props
+      const { src, name, onClose, index, total, onStep } = props
       const t = getT()
       const close = typeof onClose === 'function' ? onClose : () => {}
+      const step = typeof onStep === 'function' ? onStep : null
+      // 只有一张图时不摆左右按钮：一颗按了永远停在原地的按钮比没有更糟。
+      const count = Number(total) || 0
+      const at = Number(index)
+      const many = step !== null && count > 1
+      const stop = (event) => {
+        if (event && typeof event.stopPropagation === 'function') event.stopPropagation()
+      }
       return h(
         'div',
         { className: 'dshgn_zoomMask', onClick: close },
@@ -14505,10 +14599,47 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           className: 'dshgn_zoomImg',
           src,
           alt: typeof name === 'string' ? name : '',
-          onClick: (event) => {
-            if (event && typeof event.stopPropagation === 'function') event.stopPropagation()
-          },
+          onClick: stop,
         }),
+        many
+          ? h(
+              'div',
+              { className: 'dshgn_zoomBar', onClick: stop },
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dshgn_zoomStep',
+                  title: t('zoom.prev'),
+                  'aria-label': t('zoom.prev'),
+                  onClick: (event) => {
+                    stop(event)
+                    step(-1)
+                  },
+                },
+                h(Icon, { name: 'left', size: 13 }),
+              ),
+              h(
+                'span',
+                { className: 'dshgn_zoomCount' },
+                t('zoom.count').replace('{n}', String(at + 1)).replace('{total}', String(count)),
+              ),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dshgn_zoomStep',
+                  title: t('zoom.next'),
+                  'aria-label': t('zoom.next'),
+                  onClick: (event) => {
+                    stop(event)
+                    step(1)
+                  },
+                },
+                h(Icon, { name: 'right', size: 13 }),
+              ),
+            )
+          : null,
         h(
           'button',
           {
@@ -14516,7 +14647,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             className: 'dshgn_zoomClose',
             title: t('action.close'),
             onClick: (event) => {
-              if (event && typeof event.stopPropagation === 'function') event.stopPropagation()
+              stop(event)
               close()
             },
           },

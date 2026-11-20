@@ -8436,6 +8436,9 @@ var LEX = {
     "note.copyHeadingLink": "\u590D\u5236\u6307\u5411\u8FD9\u4E00\u8282\u7684\u94FE\u63A5",
     "note.openImage": "\u5728 Obsidian \u91CC\u6253\u5F00\u8FD9\u5F20\u56FE",
     "note.zoomImage": "\u70B9\u5F00\u770B\u5927\u56FE",
+    "zoom.prev": "\u4E0A\u4E00\u5F20",
+    "zoom.next": "\u4E0B\u4E00\u5F20",
+    "zoom.count": "{n} / {total}",
     "note.navBack": "\u56DE\u4E0A\u4E00\u7BC7",
     "note.navForward": "\u53BB\u4E0B\u4E00\u7BC7",
     "note.find": "\u5728\u8FD9\u7BC7\u91CC\u627E",
@@ -8898,6 +8901,9 @@ var LEX = {
     "note.copyHeadingLink": "Copy a link to this section",
     "note.openImage": "Open this image in Obsidian",
     "note.zoomImage": "Click to enlarge",
+    "zoom.prev": "Previous image",
+    "zoom.next": "Next image",
+    "zoom.count": "{n} / {total}",
     "note.navBack": "Previous note",
     "note.navForward": "Next note",
     "note.find": "Find in this note",
@@ -9360,6 +9366,9 @@ var LEX = {
     "note.copyHeadingLink": "Kopieer een link naar dit kopje",
     "note.openImage": "Open deze afbeelding in Obsidian",
     "note.zoomImage": "Klik om te vergroten",
+    "zoom.prev": "Vorige afbeelding",
+    "zoom.next": "Volgende afbeelding",
+    "zoom.count": "{n} / {total}",
     "note.navBack": "Vorige notitie",
     "note.navForward": "Volgende notitie",
     "note.find": "Zoek in deze notitie",
@@ -10019,6 +10028,8 @@ var ICONS = {
   warn: "M12 4 3.5 19.5h17Z M12 10v4 M12 17h.01",
   info: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z M12 11v5 M12 8h.01",
   down: "M12 5v14 M5 12l7 7 7-7",
+  left: "M19 12H5 M12 5l-7 7 7 7",
+  right: "M5 12h14 M12 5l7 7-7 7",
   hash: "M9.5 4 7.5 20 M16.5 4l-2 16 M4 9.5h16 M3.5 14.5h16"
 };
 function Icon(props) {
@@ -12253,6 +12264,17 @@ var CSS = `
   width:28px;height:28px;border:0;border-radius:8px;background:rgba(255,255,255,.14);
   color:#fff;cursor:pointer}
 .dshgn_zoomClose:hover{background:rgba(255,255,255,.26)}
+/* \u5927\u56FE\u4E4B\u95F4\u5DE6\u53F3\u8D70\uFF1A\u4E00\u7BC7\u7B14\u8BB0\u91CC\u5E38\u6709\u597D\u51E0\u5F20\u56FE\uFF0C\u770B\u5B8C\u4E00\u5F20\u60F3\u63A5\u7740\u770B\u4E0B\u4E00\u5F20\u65F6\u4E0D\u8BE5
+   \u5148\u5173\u6389\u3001\u518D\u56DE\u6B63\u6587\u91CC\u627E\u90A3\u5F20\u7F29\u7565\u56FE\u70B9\u5F00\u3002\u8BA1\u6570\u653E\u5728\u6309\u94AE\u4E2D\u95F4\uFF0C\u7528\u6237\u5F97\u77E5\u9053\u8FD8\u5269\u51E0\u5F20\u3002 */
+.dshgn_zoomBar{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);
+  display:flex;align-items:center;gap:10px;padding:4px 8px;border-radius:999px;
+  background:rgba(255,255,255,.14);color:#fff}
+.dshgn_zoomStep{appearance:none;display:inline-flex;align-items:center;justify-content:center;
+  width:26px;height:26px;border:0;border-radius:50%;background:rgba(255,255,255,.10);
+  color:#fff;cursor:pointer}
+.dshgn_zoomStep:hover{background:rgba(255,255,255,.26)}
+.dshgn_zoomStep:focus-visible{outline:1px solid #fff;outline-offset:1px}
+.dshgn_zoomCount{font-size:11px;line-height:1.6;font-variant-numeric:tabular-nums;white-space:nowrap}
 /* Obsidian \u53CC\u94FE\uFF1A\u5916\u89C2\u8981\u50CF\u94FE\u63A5\u4F46\u4E0D\u80FD\u771F\u8DF3\uFF08\u5E93\u5185\u8DF3\u8F6C\u7531 JS \u5904\u7406\uFF09\uFF0C\u6240\u4EE5\u7528 button \u800C\u4E0D\u662F a\u3002 */
 .dshgn_wikilink{display:inline;padding:0;margin:0;border:0;background:transparent;font:inherit;
   color:var(--dsw-alias-brand-primary);cursor:pointer;text-decoration:none;
@@ -18515,7 +18537,8 @@ function NotePane(props) {
   const attachRef = A2(null);
   const [zoom, setZoom] = h2(null);
   const zoomRef = A2(null);
-  zoomRef.current = zoom;
+  const stepZoomRef = A2(() => {
+  });
   const editorRef = A2(null);
   const [linkPick, setLinkPick] = h2(null);
   const linkHits = linkPick === null ? [] : wikilinkMatches(noteNames, linkPick.query);
@@ -18542,6 +18565,35 @@ function NotePane(props) {
   }, []);
   const canAttach = typeof onAttach === "function";
   const closeZoom = q2(() => setZoom(null), []);
+  const [zoomList, setZoomList] = h2([]);
+  const openZoom = q2((item) => {
+    const host = scrollRef.current;
+    const all = [];
+    if (host !== null && host !== void 0 && typeof host.querySelectorAll === "function") {
+      const nodes = host.querySelectorAll("img");
+      for (let i3 = 0; i3 < nodes.length; i3 += 1) {
+        const node = nodes[i3];
+        const src = String(node.getAttribute("src") || "");
+        if (src === "") continue;
+        if (all.some((one) => one.src === src)) continue;
+        all.push({ src, name: String(node.getAttribute("alt") || "") });
+      }
+    }
+    const wanted = item !== null && item !== void 0 && typeof item.src === "string" ? item.src : "";
+    setZoomList(wanted === "" ? [] : all);
+    setZoom(item);
+  }, []);
+  const zoomIndex = zoom === null ? -1 : zoomList.findIndex((one) => one.src === zoom.src);
+  const stepZoom = q2((delta) => {
+    setZoom((live) => {
+      if (live === null) return null;
+      const at = zoomList.findIndex((one) => one.src === live.src);
+      if (at === -1 || zoomList.length < 2) return live;
+      const next = (at + delta + zoomList.length) % zoomList.length;
+      return { ...zoomList[next], path: live.path };
+    });
+  }, [zoomList]);
+  stepZoomRef.current = stepZoom;
   const placeCaret = q2((start, end) => {
     const place = () => {
       const live = editorRef.current;
@@ -18644,13 +18696,22 @@ function NotePane(props) {
   }, []);
   y2(() => {
     const onKey = (event) => {
-      if (event.key !== "Escape" || zoomRef.current === null) return;
-      event.stopPropagation();
-      setZoom(null);
+      if (zoomRef.current === null) return;
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        setZoom(null);
+        return;
+      }
+      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        event.preventDefault();
+        event.stopPropagation();
+        stepZoomRef.current(event.key === "ArrowLeft" ? -1 : 1);
+      }
     };
     return attachOnPanelWindows("keydown", onKey);
   }, []);
   const currentPathOf = current === null || current === void 0 ? "" : String(current.path || "");
+  zoomRef.current = zoom !== null && zoom.path === currentPathOf ? zoom : null;
   const findPathRef = A2(currentPathOf);
   y2(() => {
     const prev = findPathRef.current;
@@ -19814,7 +19875,7 @@ ${t4("tree.menuReveal")}` : absolute,
             loading: "lazy",
             onClick: (event) => {
               if (event && typeof event.stopPropagation === "function") event.stopPropagation();
-              setZoom({ src: assetSrc, name: asset.name, path: currentPathOf });
+              openZoom({ src: assetSrc, name: asset.name, path: currentPathOf });
             }
           });
         })
@@ -19851,7 +19912,7 @@ ${t4("tree.menuReveal")}` : absolute,
             onCopyText: editing ? void 0 : onCopyText,
             // 图片点一下放大：面板里只有 200px 高的缩略图，扫描件看不清楚。
             // 编辑态不给——那时看到的是原文，点图也不该盖住编辑区。
-            onPreviewImage: editing ? void 0 : (item) => setZoom({ ...item, path: currentPathOf }),
+            onPreviewImage: editing ? void 0 : (item) => openZoom({ ...item, path: currentPathOf }),
             t: t4
           }
         )
@@ -19937,13 +19998,27 @@ ${t4("tree.menuReveal")}` : absolute,
     ),
     // 放大查看的遮罩。点空白处关掉（图片自己 stopPropagation，点图不关），
     // 右上角那颗 × 是给「不知道该按 Esc」的人留的。
-    zoomed !== null ? h4(ZoomOverlay, { src: zoomed.src, name: zoomed.name, onClose: closeZoom }) : null
+    zoomed !== null ? h4(ZoomOverlay, {
+      src: zoomed.src,
+      name: zoomed.name,
+      onClose: closeZoom,
+      index: zoomIndex,
+      total: zoomList.length,
+      onStep: stepZoom
+    }) : null
   );
 }
 function ZoomOverlay(props) {
-  const { src, name, onClose } = props;
+  const { src, name, onClose, index, total, onStep } = props;
   const t4 = getT();
   const close = typeof onClose === "function" ? onClose : () => {
+  };
+  const step = typeof onStep === "function" ? onStep : null;
+  const count = Number(total) || 0;
+  const at = Number(index);
+  const many = step !== null && count > 1;
+  const stop = (event) => {
+    if (event && typeof event.stopPropagation === "function") event.stopPropagation();
   };
   return h4(
     "div",
@@ -19952,10 +20027,45 @@ function ZoomOverlay(props) {
       className: "dshgn_zoomImg",
       src,
       alt: typeof name === "string" ? name : "",
-      onClick: (event) => {
-        if (event && typeof event.stopPropagation === "function") event.stopPropagation();
-      }
+      onClick: stop
     }),
+    many ? h4(
+      "div",
+      { className: "dshgn_zoomBar", onClick: stop },
+      h4(
+        "button",
+        {
+          type: "button",
+          className: "dshgn_zoomStep",
+          title: t4("zoom.prev"),
+          "aria-label": t4("zoom.prev"),
+          onClick: (event) => {
+            stop(event);
+            step(-1);
+          }
+        },
+        h4(Icon, { name: "left", size: 13 })
+      ),
+      h4(
+        "span",
+        { className: "dshgn_zoomCount" },
+        t4("zoom.count").replace("{n}", String(at + 1)).replace("{total}", String(count))
+      ),
+      h4(
+        "button",
+        {
+          type: "button",
+          className: "dshgn_zoomStep",
+          title: t4("zoom.next"),
+          "aria-label": t4("zoom.next"),
+          onClick: (event) => {
+            stop(event);
+            step(1);
+          }
+        },
+        h4(Icon, { name: "right", size: 13 })
+      )
+    ) : null,
     h4(
       "button",
       {
@@ -19963,7 +20073,7 @@ function ZoomOverlay(props) {
         className: "dshgn_zoomClose",
         title: t4("action.close"),
         onClick: (event) => {
-          if (event && typeof event.stopPropagation === "function") event.stopPropagation();
+          stop(event);
           close();
         }
       },
