@@ -8433,7 +8433,7 @@ var LEX = {
     "note.embedBroken": "\u8FD9\u4E00\u7BC7\u6CA1\u8BFB\u51FA\u6765",
     "callout.expand": "\u5C55\u5F00",
     "editor.words": "{n} \u5B57",
-    "editor.saveHint": "Ctrl+S \u4FDD\u5B58 \xB7 Esc \u53D6\u6D88 \xB7 Ctrl+B \u52A0\u7C97 \xB7 Ctrl+I \u659C\u4F53 \xB7 Ctrl+F \u67E5\u627E",
+    "editor.saveHint": "Ctrl+S \u4FDD\u5B58 \xB7 Ctrl+E \u5B58\u597D\u9000\u51FA \xB7 Esc \u53D6\u6D88 \xB7 Ctrl+B \u52A0\u7C97 \xB7 Ctrl+I \u659C\u4F53 \xB7 Ctrl+F \u67E5\u627E",
     "callout.collapse": "\u6536\u8D77",
     "note.image": "\u56FE\u7247",
     "action.close": "\u5173\u95ED",
@@ -8863,7 +8863,7 @@ var LEX = {
     "note.embedBroken": "Could not read this note",
     "callout.expand": "Expand",
     "editor.words": "{n} words",
-    "editor.saveHint": "Ctrl+S to save \xB7 Esc to cancel \xB7 Ctrl+B bold \xB7 Ctrl+I italic \xB7 Ctrl+F find",
+    "editor.saveHint": "Ctrl+S to save \xB7 Ctrl+E to save and leave \xB7 Esc to cancel \xB7 Ctrl+B bold \xB7 Ctrl+I italic \xB7 Ctrl+F find",
     "callout.collapse": "Collapse",
     "note.image": "Image",
     "action.close": "Close",
@@ -9293,7 +9293,7 @@ var LEX = {
     "note.embedBroken": "Deze notitie kon niet gelezen worden",
     "callout.expand": "Uitvouwen",
     "editor.words": "{n} woorden",
-    "editor.saveHint": "Ctrl+S om op te slaan \xB7 Esc om te annuleren \xB7 Ctrl+B vet \xB7 Ctrl+I cursief \xB7 Ctrl+F zoeken",
+    "editor.saveHint": "Ctrl+S om op te slaan \xB7 Ctrl+E om op te slaan en te verlaten \xB7 Esc om te annuleren \xB7 Ctrl+B vet \xB7 Ctrl+I cursief \xB7 Ctrl+F zoeken",
     "callout.collapse": "Invouwen",
     "note.image": "Afbeelding",
     "action.close": "Sluiten",
@@ -17601,6 +17601,22 @@ function NotePane(props) {
     };
     return attachOnPanelWindows("keydown", onKey);
   }, [busy, current, dirty, editing, onSave, setDraft]);
+  y2(() => {
+    const onKey = (event) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+      if (String(event.key).toLowerCase() !== "e") return;
+      if (current === null) return;
+      event.preventDefault();
+      if (!editing) {
+        setEditing(true);
+        return;
+      }
+      const leave = () => setEditing(false);
+      if (dirty && !busy) void Promise.resolve(onSave()).then(leave, leave);
+      else leave();
+    };
+    return attachOnPanelWindows("keydown", onKey);
+  }, [busy, current, dirty, editing, onSave]);
   const pathKey = current !== null ? current.path : null;
   const [lastPathKey, setLastPathKey] = h2(pathKey);
   if (lastPathKey !== pathKey) {
@@ -17926,7 +17942,14 @@ function NotePane(props) {
         null,
         h4(
           "button",
-          { type: "button", className: "dshgn_iconBtn", title: t4("action.edit"), onClick: () => setEditing(true) },
+          {
+            type: "button",
+            className: "dshgn_iconBtn",
+            title: t4("action.edit"),
+            // 宿主里 Ctrl/Cmd+E 就是这个动作，悬停时让浏览器把它显出来
+            "aria-keyshortcuts": "Control+E Meta+E",
+            onClick: () => setEditing(true)
+          },
           h4(Icon, { name: "edit", size: 15 })
         ),
         // 就地查找：读长笔记时想找一句话，翻回搜索框再搜一遍太重。

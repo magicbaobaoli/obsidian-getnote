@@ -5514,3 +5514,120 @@ test('在笔记之间前进后退：Alt+← 回上一篇、Alt+→ 再走回去�
   await waitFor(() => window.document.querySelector('.dshgn_editor') === null, 5000, 'Esc 退出编辑态')
 })
 
+/**
+ * 宿主里 Ctrl/Cmd+E 在「编辑」和「阅读」之间来回切，是最省事的那条路。
+ * 面板的编辑器是草稿式的，所以这个键在编辑态必须「先落盘再退」——直接退
+ * 等于把刚写的那几句丢掉，而用户按这个键的意思是「我看完了」。
+ */
+test('Ctrl+E 在阅读态进编辑、编辑态存好再退，没改过就不白写一次盘', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    const backBtn = window.document.querySelector('.dshgn_noteBack')
+    if (backBtn) {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    }
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox) {
+    searchBox.value = ''
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(260)
+  }
+
+  const rel = '随手记/退出编辑验收.md'
+  const res = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '退出编辑验收',
+      content: '# 退出编辑验收\n\n原来的第一句。\n',
+      withDatePrefix: false,
+      requestId: 'seed-ctrl-e-leave',
+    }),
+  })
+  assert.equal((await res.json()).path, rel)
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  const card = await waitFor(
+    () => Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === rel) || null,
+    8000,
+    '列表里应该有这一篇',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 8000, '笔记打开')
+
+  const readBack = async () => {
+    const got = await realFetch(server.origin + '/getnote/read?path=' + encodeURIComponent(rel), {
+      headers: { 'x-getnote-token': server.token },
+    })
+    return (await got.json()).content
+  }
+  const savesNow = () => fetchCalls.filter((url) => url.includes('/getnote/save')).length
+  const ctrlE = (extra) =>
+    window.dispatchEvent(
+      new window.KeyboardEvent('keydown', Object.assign({ key: 'e', ctrlKey: true, metaKey: true, bubbles: true }, extra || {})),
+    )
+  const editBtn = () => Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '编辑')
+
+  // 等一拍再按键：面板的快捷键监听是 effect 挂的，新闭包要等 React 把
+  // effect 排到才生效；点开笔记的同一个 tick 里按下去会落到旧闭包上。
+  await sleep(120)
+
+  // 阅读态按下去：进编辑态（这时候不该写盘）
+  const savesBeforeEnter = savesNow()
+  ctrlE()
+  const editor = await waitFor(() => window.document.querySelector('.dshgn_editor'), 5000, 'Ctrl+E 应该进编辑态')
+  assert.equal(savesNow(), savesBeforeEnter, '只是进编辑态，不该写盘')
+  assert.ok(
+    ((window.document.querySelector('.dshgn_editorFoot') || {}).textContent || '').includes('Ctrl+E'),
+    '脚下那条提示要写上这个键',
+  )
+
+  // 不按修饰键敲 e、或者按着 Alt 敲，都不该被当成这个动作
+  editor.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'e', bubbles: true }))
+  await sleep(120)
+  assert.ok(window.document.querySelector('.dshgn_editor'), '光敲 e 不该退出编辑态')
+  editor.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'e', altKey: true, bubbles: true }))
+  await sleep(120)
+  assert.ok(window.document.querySelector('.dshgn_editor'), 'Alt+E 不该被当成这个动作')
+
+  // 没改过就按：退出编辑态，但不白写一次盘
+  const savesBeforeClean = savesNow()
+  ctrlE()
+  await waitFor(() => window.document.querySelector('.dshgn_editor') === null, 5000, '没改过也照样退出编辑态')
+  await sleep(200)
+  assert.equal(savesNow(), savesBeforeClean, '正文没变就不该打保存')
+
+  // 改一句再按：先落盘、再退出，磁盘上要真的是新内容
+  editBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const editor2 = await waitFor(() => window.document.querySelector('.dshgn_editor'), 5000, '再进一次编辑态')
+  editor2.value = editor2.value + '补一句刚想到的。\n'
+  editor2.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(120)
+
+  const savesBeforeDirty = savesNow()
+  ctrlE()
+  await waitFor(() => savesNow() > savesBeforeDirty, 8000, '改过就要真的打一次保存')
+  await waitFor(() => window.document.querySelector('.dshgn_editor') === null, 8000, '存好之后退出编辑态')
+  // waitFor 只认同步判定，读盘要自己轮询（否则第一下没读到就直接判红）
+  let onDisk = ''
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    onDisk = await readBack()
+    if (onDisk.includes('补一句刚想到的')) break
+    await sleep(100)
+  }
+  assert.ok(onDisk.includes('补一句刚想到的'), '磁盘上要真的是新内容：' + onDisk)
+  assert.equal(rootNode().getAttribute('data-has-note'), 'true', '退出编辑态，但还留在这篇上')
+})
+

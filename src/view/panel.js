@@ -727,7 +727,7 @@ async function saveFile(url, filename) {
         'note.embedBroken': '这一篇没读出来',
         'callout.expand': '展开',
  'editor.words': '{n} 字',
- 'editor.saveHint': 'Ctrl+S 保存 · Esc 取消 · Ctrl+B 加粗 · Ctrl+I 斜体 · Ctrl+F 查找',
+ 'editor.saveHint': 'Ctrl+S 保存 · Ctrl+E 存好退出 · Esc 取消 · Ctrl+B 加粗 · Ctrl+I 斜体 · Ctrl+F 查找',
         'callout.collapse': '收起',
         'note.image': '图片',
         'action.close': '关闭',
@@ -1161,7 +1161,7 @@ async function saveFile(url, filename) {
         'note.embedBroken': 'Could not read this note',
         'callout.expand': 'Expand',
  'editor.words': '{n} words',
- 'editor.saveHint': 'Ctrl+S to save · Esc to cancel · Ctrl+B bold · Ctrl+I italic · Ctrl+F find',
+ 'editor.saveHint': 'Ctrl+S to save · Ctrl+E to save and leave · Esc to cancel · Ctrl+B bold · Ctrl+I italic · Ctrl+F find',
         'callout.collapse': 'Collapse',
         'note.image': 'Image',
         'action.close': 'Close',
@@ -1594,7 +1594,7 @@ async function saveFile(url, filename) {
         'note.embedBroken': 'Deze notitie kon niet gelezen worden',
         'callout.expand': 'Uitvouwen',
  'editor.words': '{n} woorden',
- 'editor.saveHint': 'Ctrl+S om op te slaan · Esc om te annuleren · Ctrl+B vet · Ctrl+I cursief · Ctrl+F zoeken',
+ 'editor.saveHint': 'Ctrl+S om op te slaan · Ctrl+E om op te slaan en te verlaten · Esc om te annuleren · Ctrl+B vet · Ctrl+I cursief · Ctrl+F zoeken',
         'callout.collapse': 'Invouwen',
         'note.image': 'Afbeelding',
         'action.close': 'Sluiten',
@@ -11715,6 +11715,26 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         return attachOnPanelWindows('keydown', onKey)
       }, [busy, current, dirty, editing, onSave, setDraft])
 
+      // Ctrl/Cmd+E：宿主里这个键在「编辑」和「阅读」之间来回切，是最省事的那条路
+      // （不用去笔记头找按钮）。编辑态按下去先落盘再退——面板的编辑器是草稿式
+      // 的，直接退出等于把刚写的丢掉，而用户按这个键的意思是「我看完了」。
+      React.useEffect(() => {
+        const onKey = (event) => {
+          if (!(event.ctrlKey || event.metaKey) || event.altKey) return
+          if (String(event.key).toLowerCase() !== 'e') return
+          if (current === null) return
+          event.preventDefault()
+          if (!editing) {
+            setEditing(true)
+            return
+          }
+          const leave = () => setEditing(false)
+          if (dirty && !busy) void Promise.resolve(onSave()).then(leave, leave)
+          else leave()
+        }
+        return attachOnPanelWindows('keydown', onKey)
+      }, [busy, current, dirty, editing, onSave])
+
       // 换笔记时退出编辑态与历史面板：留着编辑态会让用户以为新笔记也是可编辑草稿，
       // 留着上一篇的版本列表会让人点开就恢复错文件。
       //
@@ -12132,7 +12152,14 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                 null,
                 h(
                   'button',
-                  { type: 'button', className: 'dshgn_iconBtn', title: t('action.edit'), onClick: () => setEditing(true) },
+                  {
+                    type: 'button',
+                    className: 'dshgn_iconBtn',
+                    title: t('action.edit'),
+                    // 宿主里 Ctrl/Cmd+E 就是这个动作，悬停时让浏览器把它显出来
+                    'aria-keyshortcuts': 'Control+E Meta+E',
+                    onClick: () => setEditing(true),
+                  },
                   h(Icon, { name: 'edit', size: 15 }),
                 ),
                 // 就地查找：读长笔记时想找一句话，翻回搜索框再搜一遍太重。
