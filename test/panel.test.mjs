@@ -5136,3 +5136,88 @@ test('正文里就地找一句话，回车往下走、Shift+回车往回走，�
   }
 })
 
+test('列表能在「最近改的」和「按名称」之间切，切完记着下次还按这个排', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    const backBtn = window.document.querySelector('.dshgn_noteBack')
+    if (backBtn) {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    }
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  const searchBox = await waitFor(() => window.document.querySelector('.dshgn_search'), 5000, '搜索框')
+  const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  setValue.call(searchBox, '')
+  searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(260)
+
+  // 两篇：名字上 A 在前，但 A 先建、B 后建，所以「最近改的」那条路上 B 在前。
+  // 这样两种顺序互不相同，切一下就能看出确实换了排法。
+  for (const [title, requestId] of [
+    ['排序验收A', 'seed-list-sort-a'],
+    ['排序验收B', 'seed-list-sort-b'],
+  ]) {
+    const res = await realFetch(server.origin + '/getnote/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({ dir: '随手记', title, content: '正文', withDatePrefix: false, requestId }),
+    })
+    assert.equal((await res.json()).path, '随手记/' + title + '.md')
+  }
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+
+  // 只认这两篇的先后，别让库里别的笔记搅进来
+  const orderOf = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_card'))
+      .map((el) => el.textContent || '')
+      .filter((text) => text.includes('排序验收'))
+      .map((text) => (text.includes('排序验收A') ? 'A' : 'B'))
+
+  const sortBtn = await waitFor(
+    () => window.document.querySelector('.dshgn_listSort'),
+    5000,
+    '列表排序开关',
+  )
+  // 默认是「最近改的」：后建的 B 在前
+  assert.equal(sortBtn.textContent, '⏱', '默认该是最近改的在前')
+  assert.deepEqual(orderOf(), ['B', 'A'], '默认按修改时间倒序，后建的排前面')
+
+  sortBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(200)
+  assert.equal(sortBtn.textContent, 'A→Z', '点一下该切到按名称')
+  assert.deepEqual(orderOf(), ['A', 'B'], '按名称时 A 在前')
+  assert.equal(window.localStorage.getItem('dshgn.listSort'), 'name', '选择要记下来')
+
+  // 搜索态不给这个开关：那边的顺序是相关度排的，换成本地排序反而把最该看的挤下去
+  setValue.call(searchBox, '排序验收')
+  searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+  // 要等 /search 真的回来（那边有 220ms 防抖 + 一次请求），搜索态才成立
+  await waitFor(
+    () => window.document.querySelector('.dshgn_listSort') === null,
+    5000,
+    '搜索时收起排序开关',
+  )
+
+  setValue.call(searchBox, '')
+  searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(300)
+
+  // 切回「最近改的」，把偏好还原，免得影响后面的用例
+  const backSort = window.document.querySelector('.dshgn_listSort')
+  backSort.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(200)
+  assert.equal(window.localStorage.getItem('dshgn.listSort'), 'time')
+  window.localStorage.removeItem('dshgn.listSort')
+})
+
+

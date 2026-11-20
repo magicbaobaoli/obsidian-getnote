@@ -8274,6 +8274,10 @@ var LEX = {
     "tree.sortTime": "\u6309\u4FEE\u6539\u65F6\u95F4",
     "tree.sortName": "\u6309\u540D\u79F0",
     "tree.sortCount": "\u6309\u6761\u6570",
+    // 中栏列表的排序：只有「最近改的」和「名字好找」两档
+    "list.sort": "\u6392\u5E8F",
+    "list.sortTime": "\u6700\u8FD1\u6539\u7684\u5728\u524D",
+    "list.sortName": "\u6309\u540D\u79F0",
     // 三栏拖拽手柄的无障碍名字（视觉上是一条发丝线，读屏要能说出它是什么）
     "col.treeWidth": "\u8C03\u6574\u5DE6\u680F\u5BBD\u5EA6",
     "col.listWidth": "\u8C03\u6574\u4E2D\u680F\u5BBD\u5EA6",
@@ -8700,6 +8704,9 @@ var LEX = {
     "tree.sortTime": "By modified",
     "tree.sortName": "By name",
     "tree.sortCount": "By count",
+    "list.sort": "Sort",
+    "list.sortTime": "Recently edited first",
+    "list.sortName": "By name",
     "col.treeWidth": "Resize left column",
     "col.listWidth": "Resize middle column",
     "tree.newDir": "New folder",
@@ -9124,6 +9131,9 @@ var LEX = {
     "tree.sortTime": "Op gewijzigd",
     "tree.sortName": "Op naam",
     "tree.sortCount": "Op aantal",
+    "list.sort": "Sorteren",
+    "list.sortTime": "Recentst gewijzigd eerst",
+    "list.sortName": "Op naam",
     "col.treeWidth": "Linkerkolom breder of smaller maken",
     "col.listWidth": "Middenkolom breder of smaller maken",
     "tree.newDir": "Nieuwe map",
@@ -11396,6 +11406,13 @@ var CSS = `
 .dshgn_search:focus{border-color:var(--dsw-alias-brand-primary)}
 /* \u641C\u7D22\u6846\u5DE6\u4FA7\u7684\u653E\u5927\u955C\uFF1A\u4EE5\u524D\u6CA1\u6709\u89C4\u5219\uFF0C\u56FE\u6807\u4F1A\u88AB input \u7684 flex:1 \u6324\u5230\u8D34\u8FB9 */
 .dshgn_searchIcon{flex:none;color:var(--dsw-alias-label-tertiary);pointer-events:none}
+/* \u5217\u8868\u6392\u5E8F\u5F00\u5173\uFF1A\u4E0E\u5DE6\u680F\u90A3\u4E24\u9897\u540C\u6B3E\u5C0F\u65B9\u94AE\uFF0C\u4F46\u5217\u8868\u5E95\u8272\u662F\u6D45\u7684\uFF0C\u6240\u4EE5\u989C\u8272\u8D70\u522B\u540D */
+.dshgn_listSort{flex:none;display:inline-flex;align-items:center;justify-content:center;
+  height:20px;min-width:20px;padding:0 4px;border:0;border-radius:5px;background:transparent;
+  color:var(--dsw-alias-label-tertiary);font:inherit;font-size:9px;line-height:1;cursor:pointer;
+  letter-spacing:0;text-transform:none}
+.dshgn_listSort:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dshgn_listSort:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 /* \u4FA7\u680F\u5165\u53E3\u56FE\u6807\uFF08ownerProps.size \u51B3\u5B9A\u5C3A\u5BF8\uFF0C\u8FD9\u91CC\u53EA\u4FDD\u8BC1\u5757\u7EA7\u5BF9\u9F50\uFF09 */
 .dshgn_sideIcon{display:block;flex:none}
 .dshgn_listBody{flex:1;overflow-y:auto;padding:6px}
@@ -12166,6 +12183,7 @@ function GetnotePage() {
   };
   const [dirSort, setDirSort] = h2(() => makeSortPref("dshgn.sortDir").read());
   const [tagSort, setTagSort] = h2(() => makeSortPref("dshgn.sortTag").read());
+  const [listSort, setListSort] = h2(() => makeSortPref("dshgn.listSort").read());
   const [colWidths, setColWidths] = h2(() => readColWidths());
   const [treeOpen, setTreeOpen] = h2(false);
   const [listLimit, setListLimit] = h2(LIST_PAGE_SIZE);
@@ -12285,7 +12303,7 @@ function GetnotePage() {
   }, [entries]);
   const visible = T2(() => {
     const needle = query.trim().toLowerCase();
-    return entries.filter((entry) => {
+    const kept = entries.filter((entry) => {
       if (activeDir !== "") {
         if (entry.dir !== activeDir && !entry.path.startsWith(`${activeDir}/`)) return false;
       }
@@ -12293,7 +12311,9 @@ function GetnotePage() {
       if (needle === "") return true;
       return entry.title.toLowerCase().includes(needle) || entry.path.toLowerCase().includes(needle) || (entry.excerpt || "").toLowerCase().includes(needle) || (entry.tags || []).some((tag) => tag.toLowerCase().includes(needle));
     });
-  }, [entries, query, activeDir, activeTag]);
+    if (listSort !== "name") return kept;
+    return kept.sort((a3, b3) => a3.title.localeCompare(b3.title, "zh"));
+  }, [entries, query, activeDir, activeTag, listSort]);
   const [hits, setHits] = h2(null);
   const [searching, setSearching] = h2(false);
   y2(() => {
@@ -13404,7 +13424,24 @@ ${insert}
             placeholder: t4("search.placeholder"),
             onChange: (event) => setQuery(event.target.value)
           }),
-          searching ? h4("span", { className: "dshgn_searching" }, t4("search.searching")) : null
+          searching ? h4("span", { className: "dshgn_searching" }, t4("search.searching")) : null,
+          // 排序开关。搜索态不显示：那边的顺序是相关度排的，换成本地排序
+          // 反而把最该看的那篇挤下去。
+          searchMode ? null : h4(
+            "button",
+            {
+              type: "button",
+              className: "dshgn_listSort",
+              title: `${t4("list.sort")}\uFF1A${t4(listSort === "name" ? "list.sortName" : "list.sortTime")}`,
+              "aria-label": t4(listSort === "name" ? "list.sortName" : "list.sortTime"),
+              onClick: () => {
+                const next = listSort === "name" ? "time" : "name";
+                setListSort(next);
+                makeSortPref("dshgn.listSort").write(next);
+              }
+            },
+            listSort === "name" ? "A\u2192Z" : "\u23F1"
+          )
         ),
         // 限定语法提示：`tag:` / `dir:` 是隐藏功能，不提示没人会知道。
         // 只在输入框有内容时出现，平时不占位置。

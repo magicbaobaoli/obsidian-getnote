@@ -567,6 +567,10 @@ async function saveFile(url, filename) {
         'tree.sortTime': '按修改时间',
         'tree.sortName': '按名称',
         'tree.sortCount': '按条数',
+        // 中栏列表的排序：只有「最近改的」和「名字好找」两档
+        'list.sort': '排序',
+        'list.sortTime': '最近改的在前',
+        'list.sortName': '按名称',
         // 三栏拖拽手柄的无障碍名字（视觉上是一条发丝线，读屏要能说出它是什么）
         'col.treeWidth': '调整左栏宽度',
         'col.listWidth': '调整中栏宽度',
@@ -997,6 +1001,9 @@ async function saveFile(url, filename) {
         'tree.sortTime': 'By modified',
         'tree.sortName': 'By name',
         'tree.sortCount': 'By count',
+        'list.sort': 'Sort',
+        'list.sortTime': 'Recently edited first',
+        'list.sortName': 'By name',
         'col.treeWidth': 'Resize left column',
         'col.listWidth': 'Resize middle column',
         'tree.newDir': 'New folder',
@@ -1425,6 +1432,9 @@ async function saveFile(url, filename) {
         'tree.sortTime': 'Op gewijzigd',
         'tree.sortName': 'Op naam',
         'tree.sortCount': 'Op aantal',
+        'list.sort': 'Sorteren',
+        'list.sortTime': 'Recentst gewijzigd eerst',
+        'list.sortName': 'Op naam',
         'col.treeWidth': 'Linkerkolom breder of smaller maken',
         'col.listWidth': 'Middenkolom breder of smaller maken',
         'tree.newDir': 'Nieuwe map',
@@ -4367,6 +4377,13 @@ async function saveFile(url, filename) {
 .dshgn_search:focus{border-color:var(--dsw-alias-brand-primary)}
 /* 搜索框左侧的放大镜：以前没有规则，图标会被 input 的 flex:1 挤到贴边 */
 .dshgn_searchIcon{flex:none;color:var(--dsw-alias-label-tertiary);pointer-events:none}
+/* 列表排序开关：与左栏那两颗同款小方钮，但列表底色是浅的，所以颜色走别名 */
+.dshgn_listSort{flex:none;display:inline-flex;align-items:center;justify-content:center;
+  height:20px;min-width:20px;padding:0 4px;border:0;border-radius:5px;background:transparent;
+  color:var(--dsw-alias-label-tertiary);font:inherit;font-size:9px;line-height:1;cursor:pointer;
+  letter-spacing:0;text-transform:none}
+.dshgn_listSort:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dshgn_listSort:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 /* 侧栏入口图标（ownerProps.size 决定尺寸，这里只保证块级对齐） */
 .dshgn_sideIcon{display:block;flex:none}
 .dshgn_listBody{flex:1;overflow-y:auto;padding:6px}
@@ -5171,6 +5188,11 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       }
       const [dirSort, setDirSort] = React.useState(() => makeSortPref('dshgn.sortDir').read())
       const [tagSort, setTagSort] = React.useState(() => makeSortPref('dshgn.sortTag').read())
+      // 中栏列表自己的顺序。左栏的目录/标签早就能切排序，列表这边一直是
+      // 「服务端给什么顺序就是什么顺序」（按修改时间倒序）——想按名字找一篇
+      // 就只能靠搜索框。它跟左栏那两个开关分开存：列表要的是「最近改的」
+      // 和「名字好找」，没有「按条数」这一档。
+      const [listSort, setListSort] = React.useState(() => makeSortPref('dshgn.listSort').read())
       // 三栏宽度。拖动过程中只改内存状态（每帧都写 localStorage 会卡），
       // 松手后由下面那个 effect 落盘。
       const [colWidths, setColWidths] = React.useState(() => readColWidths())
@@ -5351,7 +5373,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
 
       const visible = React.useMemo(() => {
         const needle = query.trim().toLowerCase()
-        return entries.filter((entry) => {
+        const kept = entries.filter((entry) => {
           if (activeDir !== '') {
             if (entry.dir !== activeDir && !entry.path.startsWith(`${activeDir}/`)) return false
           }
@@ -5364,7 +5386,11 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             (entry.tags || []).some((tag) => tag.toLowerCase().includes(needle))
           )
         })
-      }, [entries, query, activeDir, activeTag])
+        // 默认不动：服务端已经按修改时间倒序排好了。只有切到「按名称」才重排，
+        // 而且用 zh 排序规则——纯 localeCompare 会把中文按码位排，读起来像乱序。
+        if (listSort !== 'name') return kept
+        return kept.sort((a, b) => a.title.localeCompare(b.title, 'zh'))
+      }, [entries, query, activeDir, activeTag, listSort])
 
       // 全文搜索：上面的 visible 只看标题/路径/摘要，正文里提到关键词的那篇
       // 搜不出来。这里在用户停止输入后打一次 /search 补上正文命中，并带上
@@ -6719,6 +6745,25 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                 onChange: (event) => setQuery(event.target.value),
               }),
               searching ? h('span', { className: 'dshgn_searching' }, t('search.searching')) : null,
+              // 排序开关。搜索态不显示：那边的顺序是相关度排的，换成本地排序
+              // 反而把最该看的那篇挤下去。
+              searchMode
+                ? null
+                : h(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'dshgn_listSort',
+                      title: `${t('list.sort')}：${t(listSort === 'name' ? 'list.sortName' : 'list.sortTime')}`,
+                      'aria-label': t(listSort === 'name' ? 'list.sortName' : 'list.sortTime'),
+                      onClick: () => {
+                        const next = listSort === 'name' ? 'time' : 'name'
+                        setListSort(next)
+                        makeSortPref('dshgn.listSort').write(next)
+                      },
+                    },
+                    listSort === 'name' ? 'A→Z' : '⏱',
+                  ),
             ),
             // 限定语法提示：`tag:` / `dir:` 是隐藏功能，不提示没人会知道。
             // 只在输入框有内容时出现，平时不占位置。
