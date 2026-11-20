@@ -10200,6 +10200,39 @@ function lineNeedle(text) {
   line = line.replace(/\s+/g, " ").trim();
   return line.slice(0, 40);
 }
+function splitByTerms(text, terms) {
+  const line = String(text || "");
+  const list = (Array.isArray(terms) ? terms : []).map((term) => String(term || "").trim()).filter((term) => term !== "").sort((a3, b3) => b3.length - a3.length);
+  if (line === "" || list.length === 0) return [{ hit: false, text: line }];
+  const escaped = list.map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const re = new RegExp("(" + escaped.join("|") + ")", "gi");
+  const parts = [];
+  let last = 0;
+  let m3;
+  while ((m3 = re.exec(line)) !== null) {
+    if (m3.index > last) parts.push({ hit: false, text: line.slice(last, m3.index) });
+    parts.push({ hit: true, text: m3[0] });
+    last = m3.index + m3[0].length;
+    if (m3[0] === "") re.lastIndex += 1;
+  }
+  if (last < line.length) parts.push({ hit: false, text: line.slice(last) });
+  return parts.length > 0 ? parts : [{ hit: false, text: line }];
+}
+function searchTermsOf(query) {
+  const rest = String(query || "").replace(/(?:^|\s)(?:tag|dir):(?:"[^"]*"|\S+)/gi, " ").replace(/(?:^|\s)#([^\s#]+)/g, " ");
+  const terms = [];
+  for (const token of rest.split(/\s+/)) {
+    if (token !== "") terms.push(token);
+  }
+  return terms;
+}
+function highlightTerms(text, terms) {
+  const parts = splitByTerms(text, terms);
+  if (parts.length === 1 && !parts[0].hit) return parts[0].text;
+  return parts.map(
+    (part, index) => part.hit ? h4("span", { key: `hit-${index}`, className: "dshgn_matchHit" }, part.text) : part.text
+  );
+}
 function scrollToText(box, text) {
   const needle = lineNeedle(text);
   if (needle === "") return false;
@@ -11040,6 +11073,7 @@ var CSS = `
 .dshgn_matchNo{flex:none;min-width:18px;text-align:right;font-variant-numeric:tabular-nums;
   color:var(--dsw-alias-label-dimmed);font-size:10px;padding-top:1px}
 .dshgn_matchText{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_matchHit{padding:0 1px;border-radius:3px;background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-label-primary);font-weight:600}
 .dshgn_cardLinks{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
 .dshgn_cardLinkChip{appearance:none;border:0;background:rgba(var(--dshgn-tintRgb),.08);
   color:var(--dsw-alias-brand-primary);border-radius:6px;padding:1px 6px;font-size:10px;
@@ -12147,6 +12181,7 @@ function GetnotePage() {
     };
   }, [query]);
   const searchMode = query.trim() !== "" && hits !== null;
+  const searchTerms = T2(() => searchTermsOf(query), [query]);
   const shown = searchMode ? hits : visible;
   const filterKey = `${query}\0${activeDir}\0${activeTag}`;
   const [lastFilterKey, setLastFilterKey] = h2(filterKey);
@@ -13501,10 +13536,10 @@ ${insert}
                         }
                       },
                       h4("span", { className: "dshgn_matchNo" }, String(match.line)),
-                      h4("span", { className: "dshgn_matchText" }, match.text)
+                      h4("span", { className: "dshgn_matchText" }, highlightTerms(match.text, searchTerms))
                     )
                   )
-                ) : entry.excerpt ? h4("div", { className: "dshgn_cardExcerpt" }, entry.excerpt) : null,
+                ) : entry.excerpt ? h4("div", { className: "dshgn_cardExcerpt" }, highlightTerms(entry.excerpt, searchTerms)) : null,
                 // 搜索态再补一行「它引用了谁」：只给命中次数的话，用户还得点进去
                 // 才知道这篇讲的是哪几篇。点胶囊直接跳过去。
                 searchMode && Array.isArray(entry.links) && entry.links.length > 0 ? h4(

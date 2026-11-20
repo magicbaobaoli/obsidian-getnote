@@ -2849,6 +2849,62 @@ async function saveFile(url, filename) {
     }
 
     /**
+     * 把一段文字按搜索词切成「命中 / 没命中」的片段。
+     *
+     * 搜索卡片上列出的命中行原来只是一整串灰字，用户还得自己在这一行里找那个词。
+     * 词是用户自己敲的（可能好几个、可能带大写），所以按原文的写法去比、不区分
+     * 大小写；重叠的词（「会议」「会议室」）按长的先吃，短的不会把它劈成两半。
+     */
+    function splitByTerms(text, terms) {
+      const line = String(text || '')
+      const list = (Array.isArray(terms) ? terms : [])
+        .map((term) => String(term || '').trim())
+        .filter((term) => term !== '')
+        .sort((a, b) => b.length - a.length)
+      if (line === '' || list.length === 0) return [{ hit: false, text: line }]
+      const escaped = list.map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      const re = new RegExp('(' + escaped.join('|') + ')', 'gi')
+      const parts = []
+      let last = 0
+      let m
+      while ((m = re.exec(line)) !== null) {
+        if (m.index > last) parts.push({ hit: false, text: line.slice(last, m.index) })
+        parts.push({ hit: true, text: m[0] })
+        last = m.index + m[0].length
+        // 空匹配不该发生（词都非空），但保险：不然这里会死循环
+        if (m[0] === '') re.lastIndex += 1
+      }
+      if (last < line.length) parts.push({ hit: false, text: line.slice(last) })
+      return parts.length > 0 ? parts : [{ hit: false, text: line }]
+    }
+
+    /**
+     * 从搜索框里那一串挑出「要在结果里标出来」的词。
+     *
+     * `tag:录音卡 会议` 这种查询里，tag:/dir: 是限定词、不会出现在正文那一行上，
+     * 拿它去标只会把整行染成没命中。所以这里跟服务端同一套拆法，只留正文词。
+     */
+    function searchTermsOf(query) {
+      const rest = String(query || '')
+        .replace(/(?:^|\s)(?:tag|dir):(?:"[^"]*"|\S+)/gi, ' ')
+        .replace(/(?:^|\s)#([^\s#]+)/g, ' ')
+      const terms = []
+      for (const token of rest.split(/\s+/)) {
+        if (token !== '') terms.push(token)
+      }
+      return terms
+    }
+
+    /** 命中行 / 摘录里把搜索词标出来。没词时原样返回那一串。 */
+    function highlightTerms(text, terms) {
+      const parts = splitByTerms(text, terms)
+      if (parts.length === 1 && !parts[0].hit) return parts[0].text
+      return parts.map((part, index) =>
+        part.hit ? h('span', { key: `hit-${index}`, className: 'dshgn_matchHit' }, part.text) : part.text,
+      )
+    }
+
+    /**
      * 滚到正文里包含某段文字的块上。
      *
      * 只认「块级」元素（段落、列表项、标题、引用、表格单元、代码块），不认
@@ -3924,6 +3980,7 @@ async function saveFile(url, filename) {
 .dshgn_matchNo{flex:none;min-width:18px;text-align:right;font-variant-numeric:tabular-nums;
   color:var(--dsw-alias-label-dimmed);font-size:10px;padding-top:1px}
 .dshgn_matchText{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_matchHit{padding:0 1px;border-radius:3px;background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-label-primary);font-weight:600}
 .dshgn_cardLinks{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
 .dshgn_cardLinkChip{appearance:none;border:0;background:rgba(var(--dshgn-tintRgb),.08);
   color:var(--dsw-alias-brand-primary);border-radius:6px;padding:1px 6px;font-size:10px;
@@ -5141,6 +5198,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 搜索命中优先用 /search 的结果：它包含正文命中，且已经按相关度排过序。
       // 只有在 /search 还没回来（或失败）时才退回本地过滤，避免输入时列表闪空。
       const searchMode = query.trim() !== '' && hits !== null
+      // 结果里要把用户敲的词标出来，先按服务端那套拆一遍：tag:/dir: 是限定词，
+      // 不会出现在正文那一行上，拿它去标等于把整行染成「没命中」。
+      const searchTerms = React.useMemo(() => searchTermsOf(query), [query])
       const shown = searchMode ? hits : visible
       // 只渲染前 listLimit 条。切查询/目录/标签时回到初始窗口，否则在新目录里
       // 还留着一个巨大的窗口，等于没省。
@@ -6754,12 +6814,12 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                                   },
                                 },
                                 h('span', { className: 'dshgn_matchNo' }, String(match.line)),
-                                h('span', { className: 'dshgn_matchText' }, match.text),
+                                h('span', { className: 'dshgn_matchText' }, highlightTerms(match.text, searchTerms)),
                               ),
                             ),
                           )
                         : entry.excerpt
-                          ? h('div', { className: 'dshgn_cardExcerpt' }, entry.excerpt)
+                          ? h('div', { className: 'dshgn_cardExcerpt' }, highlightTerms(entry.excerpt, searchTerms))
                           : null,
                       // 搜索态再补一行「它引用了谁」：只给命中次数的话，用户还得点进去
                       // 才知道这篇讲的是哪几篇。点胶囊直接跳过去。
@@ -12598,4 +12658,5 @@ export const __internals = {
   reportSync, dailyTemplateOf, frontmatterText, isTagKey, FollowCard, parseTable, countWords,
   isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote, parseImageSize, renderParagraph, blockTextOf, markdownLinkTarget,
   tagBodyOf, ZoomOverlay, continueListLine, indentLines,
+  splitByTerms, highlightTerms, searchTermsOf,
 }

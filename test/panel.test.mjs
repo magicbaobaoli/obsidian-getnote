@@ -3380,6 +3380,11 @@ test('搜索结果点一行就跳到正文里那一行，不从头开始读', as
   )
   assert.equal(lineBtn.getAttribute('title'), '跳到这一行', '按钮上要说清点了会发生什么')
 
+  // 命中行里那个词要标出来：整行灰字让用户自己在这一行里再找一遍，等于没搜
+  const hitSpans = Array.from(lineBtn.querySelectorAll('.dshgn_matchHit'))
+  assert.equal(hitSpans.length, 1, '一行里出现一次就只标一处')
+  assert.equal(hitSpans[0].textContent, '桂圆', '标出来的必须正好是用户敲的那个词')
+
   // 记下滚动：jsdom 的 scrollTo 是空函数，不记就什么都验证不了
   const scrollCalls = []
   const proto = window.HTMLElement.prototype
@@ -4442,3 +4447,96 @@ test('清单里按回车接着写下一行，Tab 把整行挪两格，空条目�
   window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
   await waitFor(() => window.document.querySelector('.dshgn_editor') === null, 5000, 'Esc 退出编辑态')
 })
+
+test('搜索卡片上把用户敲的词标出来，tag:/dir: 限定词不去染正文', async () => {
+  const { splitByTerms, highlightTerms, searchTermsOf } = panel.__internals
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+
+  // 纯函数：按原文写法切，大小写不敏感，重叠的词按长的先吃
+  assert.deepEqual(splitByTerms('开会时提到会议室', ['会议']), [
+    { hit: false, text: '开会时提到' },
+    { hit: true, text: '会议' },
+    { hit: false, text: '室' },
+  ])
+  assert.deepEqual(splitByTerms('Alpha beta ALPHA', ['alpha']), [
+    { hit: true, text: 'Alpha' },
+    { hit: false, text: ' beta ' },
+    { hit: true, text: 'ALPHA' },
+  ])
+  // 长词先吃：「会议」和「会议室」同时在，不能把「会议室」劈成两半
+  assert.deepEqual(splitByTerms('去会议室', ['会议', '会议室']).filter((p) => p.hit), [{ hit: true, text: '会议室' }])
+  // 一个词都没有就原样返回，别把整行拆成一堆片段
+  assert.deepEqual(splitByTerms('没有命中', []), [{ hit: false, text: '没有命中' }])
+  assert.deepEqual(splitByTerms('', ['甲']), [{ hit: false, text: '' }])
+
+  // 限定词不进正文：拿 tag: 去标正文只会把整行染成没命中
+  assert.deepEqual(searchTermsOf('tag:录音卡 会议'), ['会议'])
+  assert.deepEqual(searchTermsOf('dir:"随手记/子目录" 桂圆 荔枝'), ['桂圆', '荔枝'])
+  assert.deepEqual(searchTermsOf('#生活 桂圆'), ['桂圆'])
+  assert.deepEqual(searchTermsOf('   '), [])
+
+  // 没词时返回原字符串（渲染成纯文本，不套一堆 span）
+  assert.equal(highlightTerms('一整行灰字', []), '一整行灰字')
+
+  // 真渲染：搜索卡片上的命中行要带 .dshgn_matchHit
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    const backBtn = window.document.querySelector('.dshgn_noteBack')
+    if (backBtn) {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    }
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  const box = await waitFor(() => window.document.querySelector('.dshgn_search'), 5000, '搜索框')
+  const setInput = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  setInput.call(box, '')
+  box.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(260)
+
+  const res = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '标词验收',
+      content: '# 标词验收\n\n今天去买了 荔枝 和 龙眼，荔枝 很甜。\n',
+      withDatePrefix: false,
+      requestId: 'seed-highlight-terms',
+    }),
+  })
+  assert.equal((await res.json()).path, '随手记/标词验收.md')
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  const searchBox = await waitFor(() => window.document.querySelector('.dshgn_search'), 5000, '搜索框')
+  setInput.call(searchBox, '荔枝')
+  searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+
+  const line = await waitFor(
+    () => {
+      const all = Array.from(window.document.querySelectorAll('.dshgn_matchLine'))
+      return all.find((el) => (el.textContent || '').includes('荔枝')) || null
+    },
+    8000,
+    '搜索卡片上的命中行',
+  )
+  const marks = Array.from(line.querySelectorAll('.dshgn_matchHit'))
+  assert.equal(marks.length, 2, '这一行里出现两次就该标两处：' + line.textContent)
+  assert.equal(marks[0].textContent, '荔枝')
+  assert.equal(marks[1].textContent, '荔枝')
+  // 标出来的是原行的一部分，不是把整行换掉
+  assert.ok((line.textContent || '').includes('今天去买了'), '没命中的字还得原样留着')
+
+  // 清掉搜索框，别把词留给下一个用例
+  setInput.call(searchBox, '')
+  searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(260)
+})
+
