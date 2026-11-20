@@ -705,6 +705,7 @@ async function saveFile(url, filename) {
         'attach.needNote': '先打开一篇笔记，再往里放文件',
         'note.backlinks': '引用了这篇的笔记',
     'note.backlinkJump': '去这一句',
+        'sel.newNote': '存成新笔记',
         'note.outlinks': '这篇引用了',
         'note.fontSize': '字号',
         'panel.loading': '正在读取笔记库…',
@@ -1160,6 +1161,7 @@ async function saveFile(url, filename) {
         'attach.needNote': 'Open a note first, then drop files into it',
         'note.backlinks': 'Notes linking here',
     'note.backlinkJump': 'Jump to this line',
+        'sel.newNote': 'Save as a new note',
         'note.outlinks': 'Links from this note',
         'note.fontSize': 'Text size',
         'panel.loading': 'Loading vault…',
@@ -1614,6 +1616,7 @@ async function saveFile(url, filename) {
         'attach.needNote': 'Open eerst een notitie en zet daar bestanden in',
         'note.backlinks': 'Notities die hierheen linken',
     'note.backlinkJump': 'Naar deze regel',
+        'sel.newNote': 'Als nieuwe notitie opslaan',
         'note.outlinks': 'Links uit deze notitie',
         'note.fontSize': 'Tekstgrootte',
         'panel.loading': 'Notitiemap laden…',
@@ -4753,6 +4756,17 @@ async function saveFile(url, filename) {
   background:var(--dsw-alias-bg-primary);font:inherit;font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary);cursor:pointer}
 .dshgn_draftBtn:hover{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-primary)}
 .dshgn_draftBtn:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+/* 划选正文时弹出来的小条：位置按视口坐标钉住（松手那一刻算好的），
+   不参与排版，所以浮在正文上方一层，且不该被正文的 overflow 裁掉 */
+.dshgn_selPop{position:fixed;z-index:60;display:flex;align-items:center;gap:2px;
+  padding:2px;border:0.5px solid var(--dsw-alias-border-l2);border-radius:8px;
+  background:var(--dsw-alias-bg-primary);box-shadow:0 4px 14px rgba(0,0,0,.16);
+  transform:translate(-50%,-100%) translateY(-6px)}
+.dshgn_selPopBtn{appearance:none;display:inline-flex;align-items:center;gap:4px;padding:2px 8px;
+  border:0;border-radius:6px;background:transparent;font:inherit;font-size:11px;line-height:1.7;
+  color:var(--dsw-alias-label-secondary);cursor:pointer;white-space:nowrap}
+.dshgn_selPopBtn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dshgn_selPopBtn:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dshgn_empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:8px;padding:32px;text-align:center;color:var(--dsw-alias-label-tertiary)}
 .dshgn_emptyTitle{font-size:13px;color:var(--dsw-alias-label-secondary)}
@@ -6507,6 +6521,43 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         [showToast, t],
       )
 
+      // 选中一段存成新笔记：读长笔记时想把某一段摘出来单独成篇，
+      // 以前只能先新建一篇、再切回去复制、再粘过来。
+      // 标题取第一行的前 30 个字（与搜索摘要同一套削法：去掉标题记号、
+      // 列表记号、链接语法），落在当前目录或宿主给的位置——与「新建」同口径。
+      const createFromText = React.useCallback(
+        async (text) => {
+          const body = typeof text === 'string' ? text.trim() : ''
+          if (body === '') return
+          setBusy(true)
+          try {
+            const firstLine = body.split('\n').find((line) => line.trim() !== '') || body
+            const title = lineNeedle(firstLine).slice(0, 30) || t('action.new')
+            const dir = activeDir !== '' ? activeDir : newNotePlacementOf()
+            const created = await api('/create', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({
+                dir,
+                title,
+                // 末尾补一个换行：摘出来的是一段话，不是一整篇，
+                // 用户打开后多半要接着往下写
+                content: `${body}\n`,
+                requestId: requestId(),
+              }),
+            })
+            showToast(t('note.created'))
+            await refresh()
+            await openNote(created.path)
+          } catch (err) {
+            setError(err && err.message ? err.message : String(err))
+          } finally {
+            setBusy(false)
+          }
+        },
+        [activeDir, openNote, refresh, showToast, t],
+      )
+
       // B1 单篇同步：把当前这篇推上云端 / 从云端拉下来。
       // 整轮同步要翻页扫全库，而用户此刻只想让眼前这一篇对上，
       // 所以走 /sync/push-one 与 /sync/pull-one 这两个单篇端点。
@@ -7578,6 +7629,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             onRename: renameNote,
             onCopyReference: copyReference,
             onCopyText: copyText,
+            // 正文里划选一段 → 存成新笔记（摘抄/摘录单独立篇）
+            onCreateFromText: createFromText,
             // 就地查找「到头了 / 没有这个词」要说一声：静默不动的话，
             // 用户会以为是自己敲错了词，接着反复按回车。
             showToast,
@@ -11864,6 +11917,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       const onNavForward = typeof props.onNavForward === 'function' ? props.onNavForward : null
       // 反链底下那句上下文点一下 = 去那一篇的那一句（不是只去篇首）
       const onJumpToLine = typeof props.onJumpToLine === 'function' ? props.onJumpToLine : null
+      // 正文里划选一段 → 存成新笔记；没接上就只给「复制」，不摆一个按了没反应的按钮
+      const onCreateFromText = typeof props.onCreateFromText === 'function' ? props.onCreateFromText : null
       const anchorRequest = props.anchor
       const onAnchorDone = props.onAnchorDone
       // 嵌入 ![[另一篇笔记]] 时用它把名字解析成路径（与点双链共用一套口径）
@@ -12111,6 +12166,63 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         setFindOpen(false)
         setFindText('')
       }, [currentPathOf])
+
+      // 正文里划选一段 → 就地弹一颗小条：复制，或者直接存成新笔记。
+      //
+      // 读长笔记时想把某一段摘出来单独成篇，以前只能先新建一篇、再切回来复制、
+      // 再粘过去，中间还得记住是哪一段。选区一放开就在原地给出这两个动作。
+      // 只在阅读态摆：编辑态那一整块是可编辑的 textarea，划选是改字的前奏，
+      // 在上面弹一颗「存成新笔记」只会挡住正文。
+      const [selPop, setSelPop] = React.useState(null)
+      React.useEffect(() => {
+        if (editing || currentPathOf === '') {
+          setSelPop(null)
+          return undefined
+        }
+        const clear = () => setSelPop(null)
+        const onUp = (event) => {
+          // 在小条自己身上松开鼠标时别清：清掉的话 React 会把按钮摘掉，
+          // 紧接着的 click 就落在空气里，点了没反应。
+          const node = event && event.target
+          if (node && typeof node.closest === 'function' && node.closest('.dshgn_selPop') !== null) return
+          const sel = typeof window.getSelection === 'function' ? window.getSelection() : null
+          const text = sel === null || sel === undefined ? '' : String(sel.toString() || '').trim()
+          if (text === '') {
+            setSelPop(null)
+            return
+          }
+          const host = scrollRef.current
+          if (!host) {
+            setSelPop(null)
+            return
+          }
+          const range = sel.rangeCount > 0 ? sel.getRangeAt(0) : null
+          const holder = range === null ? null : range.commonAncestorContainer
+          // 选区不在正文里（在笔记头、在反链列表、在搜索框）就不该弹
+          if (holder === null || holder === undefined || !host.contains(holder)) {
+            setSelPop(null)
+            return
+          }
+          // 位置优先用选区自己的矩形；拿不到（老浏览器、跨行选区）就退回鼠标点
+          let x = typeof event.clientX === 'number' ? event.clientX : 0
+          let y = typeof event.clientY === 'number' ? event.clientY : 0
+          if (typeof range.getBoundingClientRect === 'function') {
+            const box = range.getBoundingClientRect()
+            if (box && (box.width > 0 || box.height > 0)) {
+              x = box.left + box.width / 2
+              y = box.top
+            }
+          }
+          setSelPop({ text, x: Math.max(8, Math.round(x)), y: Math.max(8, Math.round(y)) })
+        }
+        // 滚动时收起：小条是按视口坐标钉的，正文一滚它就飘到别处去了
+        const offUp = attachOnPanelWindows('mouseup', onUp)
+        const offScroll = attachOnPanelWindows('scroll', clear, true)
+        return () => {
+          offUp()
+          offScroll()
+        }
+      }, [currentPathOf, editing])
 
       // 没存完的草稿：切页签、关窗口、宿主重载插件都会把 React 的 state 一起丢掉，
       // 草稿只活在内存里就等于没救。编辑态边写边往 localStorage 里存一份，下次
@@ -12941,6 +13053,49 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                 },
                 t('draft.discard'),
               ),
+            )
+          : null,
+        // 划选一段：原地弹一颗小条，复制或存成新笔记。
+        // mousedown 拦一下：不拦的话按下按钮的瞬间选区就被取消了，
+        // 等 click 触发时已经拿不到那段字。
+        selPop !== null
+          ? h(
+              'div',
+              {
+                className: 'dshgn_selPop',
+                style: { left: `${selPop.x}px`, top: `${selPop.y}px` },
+                onMouseDown: (event) => event.preventDefault(),
+              },
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dshgn_selPopBtn',
+                  title: t('action.copy'),
+                  onClick: () => {
+                    void onCopyText(selPop.text)
+                    setSelPop(null)
+                  },
+                },
+                h(Icon, { name: 'file', size: 11 }),
+                t('action.copy'),
+              ),
+              onCreateFromText === null
+                ? null
+                : h(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'dshgn_selPopBtn',
+                      title: t('sel.newNote'),
+                      onClick: () => {
+                        void onCreateFromText(selPop.text)
+                        setSelPop(null)
+                      },
+                    },
+                    h(Icon, { name: 'note', size: 11 }),
+                    t('sel.newNote'),
+                  ),
             )
           : null,
         editing

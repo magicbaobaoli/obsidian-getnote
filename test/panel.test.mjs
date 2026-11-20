@@ -6386,3 +6386,127 @@ test('鼠标停在列表卡片上，请宿主把这一篇预览出来，别的�
   }
 })
 
+test('正文里划选一段，就地能复制或者直接存成新笔记', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const toastText = () => ((window.document.querySelector('.dshgn_toast') || {}).textContent || '')
+  const pop = () => window.document.querySelector('.dshgn_selPop')
+  const popBtn = (label) =>
+    Array.from(window.document.querySelectorAll('.dshgn_selPopBtn')).find((el) => (el.textContent || '').trim() === label)
+
+  // 退回空态，并把搜索框清干净（上一个用例可能留了筛选）
+  const back = window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    if (back) back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox) {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setter.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(400)
+  }
+
+  const paragraph = '这一段话是我想要单独摘出来的一片叶子，后面还有半句。'
+  const createRes = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '划选验收',
+      content: ['# 划选验收', '', '开头一段跟这次划选无关。', '', paragraph, '', '最后一段。'].join('\n'),
+      withDatePrefix: false,
+      requestId: 'seed-selection-quote',
+    }),
+  })
+  assert.equal(createRes.ok, true, '造笔记失败：' + createRes.status)
+  const targetPath = '随手记/划选验收.md'
+
+  await clickTab('笔记')
+  const refresh = Array.from(window.document.querySelectorAll('button')).find((el) => (el.getAttribute('title') || '') === '刷新')
+  assert.ok(refresh, '找不到刷新按钮')
+  refresh.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+  const card = await waitFor(
+    () => Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === targetPath),
+    5000,
+    '列表里出现这一篇',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 5000, '打开这一篇')
+  await waitFor(() => window.document.querySelector('.dshgn_md') !== null, 5000, '正文渲染出来')
+  // 划选监听是 effect 挂的：打开笔记的同一拍里派发 mouseup 会落到还没挂上的那一版，
+  // 让出一拍等 React 把 effect 排到。
+  await sleep(250)
+
+  // 在那一段里真的划一下：jsdom 有 Selection 与 Range，只是没有排版矩形
+  const mdBox = window.document.querySelector('.dshgn_md')
+  const para = Array.from(mdBox.querySelectorAll('p')).find((el) => (el.textContent || '').includes('单独摘出来'))
+  assert.ok(para, '正文里没找到那一段')
+  const textNode = para.firstChild
+  const range = window.document.createRange()
+  range.setStart(textNode, 0)
+  range.setEnd(textNode, paragraph.length)
+  const sel = window.getSelection()
+  sel.removeAllRanges()
+  sel.addRange(range)
+  para.dispatchEvent(new window.MouseEvent('mouseup', { bubbles: true, clientX: 120, clientY: 80 }))
+
+  const bar = await waitFor(pop, 3000, '划选之后弹出小条')
+  const copyBtn = popBtn('复制')
+  const noteBtn = popBtn('存成新笔记')
+  assert.ok(copyBtn, '小条上应该有「复制」')
+  assert.ok(noteBtn, '小条上应该有「存成新笔记」')
+  assert.equal(bar.style.left, '120px', '拿不到选区矩形时退回鼠标位置')
+
+  // 复制：剪贴板里应该是那一段原文
+  const written = []
+  clipboard.writeText = async (text) => { written.push(String(text)) }
+  copyBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => written.length === 1, 3000, '复制到剪贴板')
+  assert.equal(written[0], paragraph, '复制的应该是选中的那一段')
+  await waitFor(() => pop() === null, 3000, '复制完小条收起')
+
+  // 再划一次，这次存成新笔记
+  sel.removeAllRanges()
+  sel.addRange(range)
+  para.dispatchEvent(new window.MouseEvent('mouseup', { bubbles: true, clientX: 120, clientY: 80 }))
+  await waitFor(pop, 3000, '再划一次还弹')
+  popBtn('存成新笔记').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => toastText().includes('已新建'), 5000, '存成新笔记之后要说一声')
+  // data-has-note 这会儿本来就已经是 true（原来那篇开着），得等路径真的换过去
+  const openedPath = await waitFor(
+    () => {
+      const now = (window.document.querySelector('.dshgn_notePath') || {}).textContent || ''
+      return now.includes('这一段话是我想要单独摘出来') ? now : null
+    },
+    5000,
+    '切到新笔记（标题取选中内容的第一行）',
+  )
+  assert.ok(openedPath, '新笔记的标题取选中内容的第一行')
+  await waitFor(() => (window.document.querySelector('.dshgn_md') || {}).textContent.includes('单独摘出来'), 5000, '新笔记正文里就是那一段')
+
+  // 划选之外的地方松手不该弹：先把选区收掉
+  sel.removeAllRanges()
+  const head = window.document.querySelector('.dshgn_noteHead')
+  if (head) head.dispatchEvent(new window.MouseEvent('mouseup', { bubbles: true }))
+  await sleep(150)
+  assert.equal(pop(), null, '没有选区就不该弹')
+
+  // 编辑态不弹：那里划选是改字的前奏
+  const editBtn = Array.from(window.document.querySelectorAll('button')).find((el) => (el.getAttribute('title') || '') === '编辑')
+  assert.ok(editBtn, '找不到编辑按钮')
+  editBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(200)
+  const editor = window.document.querySelector('.dshgn_editor')
+  assert.ok(editor, '应该进了编辑态')
+  editor.dispatchEvent(new window.MouseEvent('mouseup', { bubbles: true }))
+  await sleep(150)
+  assert.equal(pop(), null, '编辑态里划选不该弹小条')
+  editor.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  await sleep(200)
+})
+

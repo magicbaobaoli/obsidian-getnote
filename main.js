@@ -8411,6 +8411,7 @@ var LEX = {
     "attach.needNote": "\u5148\u6253\u5F00\u4E00\u7BC7\u7B14\u8BB0\uFF0C\u518D\u5F80\u91CC\u653E\u6587\u4EF6",
     "note.backlinks": "\u5F15\u7528\u4E86\u8FD9\u7BC7\u7684\u7B14\u8BB0",
     "note.backlinkJump": "\u53BB\u8FD9\u4E00\u53E5",
+    "sel.newNote": "\u5B58\u6210\u65B0\u7B14\u8BB0",
     "note.outlinks": "\u8FD9\u7BC7\u5F15\u7528\u4E86",
     "note.fontSize": "\u5B57\u53F7",
     "panel.loading": "\u6B63\u5728\u8BFB\u53D6\u7B14\u8BB0\u5E93\u2026",
@@ -8862,6 +8863,7 @@ var LEX = {
     "attach.needNote": "Open a note first, then drop files into it",
     "note.backlinks": "Notes linking here",
     "note.backlinkJump": "Jump to this line",
+    "sel.newNote": "Save as a new note",
     "note.outlinks": "Links from this note",
     "note.fontSize": "Text size",
     "panel.loading": "Loading vault\u2026",
@@ -9313,6 +9315,7 @@ var LEX = {
     "attach.needNote": "Open eerst een notitie en zet daar bestanden in",
     "note.backlinks": "Notities die hierheen linken",
     "note.backlinkJump": "Naar deze regel",
+    "sel.newNote": "Als nieuwe notitie opslaan",
     "note.outlinks": "Links uit deze notitie",
     "note.fontSize": "Tekstgrootte",
     "panel.loading": "Notitiemap laden\u2026",
@@ -11745,6 +11748,17 @@ var CSS = `
   background:var(--dsw-alias-bg-primary);font:inherit;font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary);cursor:pointer}
 .dshgn_draftBtn:hover{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-primary)}
 .dshgn_draftBtn:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+/* \u5212\u9009\u6B63\u6587\u65F6\u5F39\u51FA\u6765\u7684\u5C0F\u6761\uFF1A\u4F4D\u7F6E\u6309\u89C6\u53E3\u5750\u6807\u9489\u4F4F\uFF08\u677E\u624B\u90A3\u4E00\u523B\u7B97\u597D\u7684\uFF09\uFF0C
+   \u4E0D\u53C2\u4E0E\u6392\u7248\uFF0C\u6240\u4EE5\u6D6E\u5728\u6B63\u6587\u4E0A\u65B9\u4E00\u5C42\uFF0C\u4E14\u4E0D\u8BE5\u88AB\u6B63\u6587\u7684 overflow \u88C1\u6389 */
+.dshgn_selPop{position:fixed;z-index:60;display:flex;align-items:center;gap:2px;
+  padding:2px;border:0.5px solid var(--dsw-alias-border-l2);border-radius:8px;
+  background:var(--dsw-alias-bg-primary);box-shadow:0 4px 14px rgba(0,0,0,.16);
+  transform:translate(-50%,-100%) translateY(-6px)}
+.dshgn_selPopBtn{appearance:none;display:inline-flex;align-items:center;gap:4px;padding:2px 8px;
+  border:0;border-radius:6px;background:transparent;font:inherit;font-size:11px;line-height:1.7;
+  color:var(--dsw-alias-label-secondary);cursor:pointer;white-space:nowrap}
+.dshgn_selPopBtn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dshgn_selPopBtn:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dshgn_empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:8px;padding:32px;text-align:center;color:var(--dsw-alias-label-tertiary)}
 .dshgn_emptyTitle{font-size:13px;color:var(--dsw-alias-label-secondary)}
@@ -13173,6 +13187,39 @@ ${insert}
     },
     [showToast, t4]
   );
+  const createFromText = q2(
+    async (text) => {
+      const body2 = typeof text === "string" ? text.trim() : "";
+      if (body2 === "") return;
+      setBusy(true);
+      try {
+        const firstLine = body2.split("\n").find((line) => line.trim() !== "") || body2;
+        const title = lineNeedle(firstLine).slice(0, 30) || t4("action.new");
+        const dir = activeDir !== "" ? activeDir : newNotePlacementOf();
+        const created = await api("/create", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            dir,
+            title,
+            // 末尾补一个换行：摘出来的是一段话，不是一整篇，
+            // 用户打开后多半要接着往下写
+            content: `${body2}
+`,
+            requestId: requestId()
+          })
+        });
+        showToast(t4("note.created"));
+        await refresh();
+        await openNote(created.path);
+      } catch (err) {
+        setError(err && err.message ? err.message : String(err));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [activeDir, openNote, refresh, showToast, t4]
+  );
   const syncCurrent = q2(
     async (direction) => {
       if (current === null) return;
@@ -14128,6 +14175,8 @@ ${insert}
         onRename: renameNote,
         onCopyReference: copyReference,
         onCopyText: copyText,
+        // 正文里划选一段 → 存成新笔记（摘抄/摘录单独立篇）
+        onCreateFromText: createFromText,
         // 就地查找「到头了 / 没有这个词」要说一声：静默不动的话，
         // 用户会以为是自己敲错了词，接着反复按回车。
         showToast,
@@ -17753,6 +17802,7 @@ function NotePane(props) {
   const onNavBack = typeof props.onNavBack === "function" ? props.onNavBack : null;
   const onNavForward = typeof props.onNavForward === "function" ? props.onNavForward : null;
   const onJumpToLine = typeof props.onJumpToLine === "function" ? props.onJumpToLine : null;
+  const onCreateFromText = typeof props.onCreateFromText === "function" ? props.onCreateFromText : null;
   const anchorRequest = props.anchor;
   const onAnchorDone = props.onAnchorDone;
   const resolveNote = props.resolveNote;
@@ -17918,6 +17968,51 @@ function NotePane(props) {
     setFindOpen(false);
     setFindText("");
   }, [currentPathOf]);
+  const [selPop, setSelPop] = h2(null);
+  y2(() => {
+    if (editing || currentPathOf === "") {
+      setSelPop(null);
+      return void 0;
+    }
+    const clear = () => setSelPop(null);
+    const onUp = (event) => {
+      const node = event && event.target;
+      if (node && typeof node.closest === "function" && node.closest(".dshgn_selPop") !== null) return;
+      const sel = typeof window.getSelection === "function" ? window.getSelection() : null;
+      const text = sel === null || sel === void 0 ? "" : String(sel.toString() || "").trim();
+      if (text === "") {
+        setSelPop(null);
+        return;
+      }
+      const host = scrollRef.current;
+      if (!host) {
+        setSelPop(null);
+        return;
+      }
+      const range = sel.rangeCount > 0 ? sel.getRangeAt(0) : null;
+      const holder = range === null ? null : range.commonAncestorContainer;
+      if (holder === null || holder === void 0 || !host.contains(holder)) {
+        setSelPop(null);
+        return;
+      }
+      let x4 = typeof event.clientX === "number" ? event.clientX : 0;
+      let y3 = typeof event.clientY === "number" ? event.clientY : 0;
+      if (typeof range.getBoundingClientRect === "function") {
+        const box = range.getBoundingClientRect();
+        if (box && (box.width > 0 || box.height > 0)) {
+          x4 = box.left + box.width / 2;
+          y3 = box.top;
+        }
+      }
+      setSelPop({ text, x: Math.max(8, Math.round(x4)), y: Math.max(8, Math.round(y3)) });
+    };
+    const offUp = attachOnPanelWindows("mouseup", onUp);
+    const offScroll = attachOnPanelWindows("scroll", clear, true);
+    return () => {
+      offUp();
+      offScroll();
+    };
+  }, [currentPathOf, editing]);
   const [stashFound, setStashFound] = h2(null);
   const [stashHandled, setStashHandled] = h2("");
   y2(() => {
@@ -18598,6 +18693,45 @@ function NotePane(props) {
           }
         },
         t4("draft.discard")
+      )
+    ) : null,
+    // 划选一段：原地弹一颗小条，复制或存成新笔记。
+    // mousedown 拦一下：不拦的话按下按钮的瞬间选区就被取消了，
+    // 等 click 触发时已经拿不到那段字。
+    selPop !== null ? h4(
+      "div",
+      {
+        className: "dshgn_selPop",
+        style: { left: `${selPop.x}px`, top: `${selPop.y}px` },
+        onMouseDown: (event) => event.preventDefault()
+      },
+      h4(
+        "button",
+        {
+          type: "button",
+          className: "dshgn_selPopBtn",
+          title: t4("action.copy"),
+          onClick: () => {
+            void onCopyText(selPop.text);
+            setSelPop(null);
+          }
+        },
+        h4(Icon, { name: "file", size: 11 }),
+        t4("action.copy")
+      ),
+      onCreateFromText === null ? null : h4(
+        "button",
+        {
+          type: "button",
+          className: "dshgn_selPopBtn",
+          title: t4("sel.newNote"),
+          onClick: () => {
+            void onCreateFromText(selPop.text);
+            setSelPop(null);
+          }
+        },
+        h4(Icon, { name: "note", size: 11 }),
+        t4("sel.newNote")
       )
     ) : null,
     editing ? h4(
