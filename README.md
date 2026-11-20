@@ -358,7 +358,8 @@ Obsidian 设置 → 第三方插件 → 浏览 → 搜「得到大脑」。目�
 ```bash
 npm install
 npm run build      # 产出 main.js，并把 card/ 与 locale/ 复制到插件根
-npm test           # 830 项离线测试（需 Node ≥ 22，jsdom 31 依赖 Node 22 的 zstd API）
+npm test           # 831 项离线测试（需 Node ≥ 22，jsdom 31 依赖 Node 22 的 zstd API）
+npm run check:market  # 上架条件自检：id/name/description 的规矩、版本三处一致、有没有泄露
 ```
 
 开发时用 `npm run dev` 进入 watch 模式。
@@ -366,7 +367,10 @@ npm test           # 830 项离线测试（需 Node ≥ 22，jsdom 31 依赖 Nod
 推上去之后 GitHub Actions 会跑同一套测试（`.github/workflows/test.yml`）：
 `npm ci` + `npm test`，Node 22 / Ubuntu。CI 最后一步还会重新构建一次再
 `git status --porcelain main.js card locale`——构建产物和源码不一致（改了源码忘重建、
-或重建后忘提交）会直接判失败，免得用户下到的是旧代码。
+或重建后忘提交）会直接判失败，免得用户下到的是旧代码。最后一步跑
+`npm run check:market`，把社区目录的硬性规矩（id 不能带 obsidian、description 不能带
+Obsidian 且必须以标点收尾、版本三处一致、仓库里没有个人信息与真凭证）在提交时就查一遍，
+免得等到目录审核驳回再重走一轮。
 
 打标签即发布（`.github/workflows/release.yml`）：`git tag 0.1.0 && git push --tags`
 会重跑测试、打包出 `getnote-brain-<tag>.zip`（含 `main.js` / `manifest.json` /

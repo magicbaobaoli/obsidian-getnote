@@ -40,3 +40,9 @@ jobs:
             git --no-pager diff --stat main.js
             exit 1
           fi
+
+      # 上架条件：id / name / description 的硬性规则、版本三处一致、
+      # 该有的文件都在、仓库里没有个人信息与真凭证。目录那边是人工 + 自动
+      # 审核，被驳回一次要重走一轮，这些又都是纯静态检查，放在 CI 里最省事。
+      - name: 上架条件自检
+        run: npm run check:market
