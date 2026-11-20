@@ -6787,3 +6787,113 @@ test('编辑区里选中一段字再粘贴网址，变成「那段字」当链�
     panel.setConfirmDialog(null)
   }
 })
+
+test('右键里能把这一篇复制成一份副本，原文件一个字都不动', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+
+  // 退回空态，并把搜索框清干净
+  const back = window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    if (back) back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox) {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setter.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(400)
+  }
+
+  const original = ['# 副本验收', '', '第一句。', '', '第二句。'].join('\n')
+  const created = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '副本验收',
+      content: original,
+      withDatePrefix: false,
+      requestId: 'seed-duplicate-note',
+    }),
+  })
+  assert.equal(created.ok, true, '造笔记失败：' + created.status)
+  const targetPath = '随手记/副本验收.md'
+
+  await clickTab('笔记')
+  const refresh = Array.from(window.document.querySelectorAll('button')).find((el) => (el.getAttribute('title') || '') === '刷新')
+  assert.ok(refresh, '找不到刷新按钮')
+  refresh.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+  const card = await waitFor(
+    () => Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === targetPath),
+    5000,
+    '列表里出现这一篇',
+  )
+
+  // 右键清单里要有这一项，点下去建出一篇「原标题 副本」
+  let ran = 0
+  panel.setNoteMenu((event, items) => {
+    const item = items.find((one) => one.id === 'duplicate')
+    assert.ok(item, '清单里应该有「复制这一篇」，实际 ' + items.map((one) => one.id).join(','))
+    assert.equal(item.label, '复制这一篇')
+    ran += 1
+    item.run()
+    return true
+  })
+  card.dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+  await sleep(200)
+  assert.equal(ran, 1, '右键应该把「复制这一篇」跑一次')
+
+  // 建完当场打开，路径是「随手记/副本验收 副本.md」
+  const opened = await waitFor(
+    () => {
+      const el = window.document.querySelector('.dshgn_notePath')
+      const text = el === null ? '' : String(el.textContent || '')
+      return text.includes('副本验收 副本') ? text : null
+    },
+    5000,
+    '复制完当场打开那一篇',
+  )
+  assert.equal(opened, '随手记/副本验收 副本.md')
+  // 副本名前面不该再叠一个今天的日期：原标题本来就没带日期前缀
+  assert.equal(/^\d{4}-\d{2}-\d{2}-/.test(opened.split('/').pop()), false)
+
+  // 正文一模一样
+  const copyRead = await realFetch(server.origin + '/getnote/read?path=' + encodeURIComponent(opened), {
+    headers: { 'x-getnote-token': server.token },
+  })
+  assert.equal(copyRead.ok, true, '读副本失败：' + copyRead.status)
+  const copyJson = await copyRead.json()
+  assert.equal(copyJson.content, original, '副本正文应当与原篇一致')
+
+  // 原文件一个字都没动
+  const originRead = await realFetch(server.origin + '/getnote/read?path=' + encodeURIComponent(targetPath), {
+    headers: { 'x-getnote-token': server.token },
+  })
+  assert.equal(originRead.ok, true, '读原篇失败：' + originRead.status)
+  const originJson = await originRead.json()
+  assert.equal(originJson.content, original, '原篇不该被改动')
+
+  // 笔记头上也有一颗按钮，没接上这个去处时不摆
+  panel.setNoteMenu(null)
+  const dupBtn = await waitFor(
+    () => Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => (el.getAttribute('title') || '') === '复制这一篇'),
+    5000,
+    '笔记头上的「复制这一篇」',
+  )
+  assert.ok(dupBtn, '笔记头上应该有「复制这一篇」')
+
+  // 收尾退回空态
+  const back2 = window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    if (back2) back2.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '收尾退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+})

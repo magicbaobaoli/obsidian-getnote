@@ -538,6 +538,8 @@ async function saveFile(url, filename) {
         'note.copyBlock': '复制这一段',
         'action.rename': '重命名',
         'action.renamed': '改好了',
+        'note.duplicate': '复制这一篇',
+        'note.duplicated': '已复制一份',
         'note.renameUnsaved': '先保存再改名，别把刚写的丢了',
         'action.copied': '已复制',
         'action.retry': '重试',
@@ -1003,6 +1005,8 @@ async function saveFile(url, filename) {
         'note.copyBlock': 'Copy this block',
         'action.rename': 'Rename',
         'action.renamed': 'Renamed',
+        'note.duplicate': 'Duplicate this note',
+        'note.duplicated': 'Duplicated',
         'note.renameUnsaved': 'Save first, then rename',
         'action.copied': 'Copied',
         'action.retry': 'Retry',
@@ -1460,6 +1464,8 @@ async function saveFile(url, filename) {
         'note.copyBlock': 'Dit blok kopiëren',
         'action.rename': 'Naam wijzigen',
         'action.renamed': 'Naam gewijzigd',
+        'note.duplicate': 'Deze notitie dupliceren',
+        'note.duplicated': 'Gedupliceerd',
         'note.renameUnsaved': 'Sla eerst op en wijzig dan de naam',
         'action.copied': 'Gekopieerd',
         'action.retry': 'Opnieuw',
@@ -6648,6 +6654,49 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         [activeDir, openNote, refresh, showToast, t],
       )
 
+      // 复制这一篇：写周报时想拿上周那篇当骨架、做实验时想留着原稿再改，
+      // 以前只能「复制引用 → 新建 → 粘贴正文 → 自己补标题」。
+      // 直接读一份正文、以「原标题 + 副本」建一篇新的，落在同一个目录里，
+      // 建完当场打开——用户的下一步一定是在新篇上动手。
+      // 不改原文件，也不动当前草稿：这是「另起一篇」，不是「把这篇存成另一篇」。
+      const duplicateNote = React.useCallback(
+        async (path) => {
+          const target = String(path || '')
+          if (target === '') return
+          setBusy(true)
+          try {
+            const note = await api(`/read?path=${encodeURIComponent(target)}`)
+            const body = String(note.content || '')
+            const slash = target.lastIndexOf('/')
+            const dir = slash === -1 ? '' : target.slice(0, slash)
+            const file = slash === -1 ? target : target.slice(slash + 1)
+            const stem = file.replace(/\.md$/i, '')
+            const created = await api('/create', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({
+                dir,
+                title: `${stem} 副本`,
+                content: body,
+                // 副本照抄原篇的名字，不再叠一个今天的日期：原标题带日期前缀的
+                // （「2026-11-15-周报」）该叫「2026-11-15-周报 副本」，
+                // 不带前缀的也不该凭空多出「2026-11-21-」——用户认的是原来那个名字。
+                withDatePrefix: false,
+                requestId: requestId(),
+              }),
+            })
+            showToast(t('note.duplicated'))
+            await refresh()
+            await openNote(created.path)
+          } catch (err) {
+            setError(err && err.message ? err.message : String(err))
+          } finally {
+            setBusy(false)
+          }
+        },
+        [openNote, refresh, showToast, t],
+      )
+
       // B1 单篇同步：把当前这篇推上云端 / 从云端拉下来。
       // 整轮同步要翻页扫全库，而用户此刻只想让眼前这一篇对上，
       // 所以走 /sync/push-one 与 /sync/pull-one 这两个单篇端点。
@@ -7537,6 +7586,16 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                                 void openNote(entry.path, true).then(() => copyReference())
                               },
                             },
+                            // 复制这一篇：不动原文件，另建一篇「原标题 副本」。
+                            // 放在「复制引用」后面——两者都是「拿这一篇去用」，
+                            // 一个拿走的是链接，一个拿走的是整篇正文。
+                            {
+                              id: 'duplicate',
+                              label: t('note.duplicate'),
+                              run: () => {
+                                void duplicateNote(entry.path)
+                              },
+                            },
                             {
                               id: 'push-one',
                               label: t('sync.pushOne'),
@@ -7718,6 +7777,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             onDelete: deleteNote,
             onRename: renameNote,
             onCopyReference: copyReference,
+            onDuplicate: () => duplicateNote(current === null ? '' : current.path),
             onCopyText: copyText,
             // 正文里划选一段 → 存成新笔记（摘抄/摘录单独立篇）
             onCreateFromText: createFromText,
@@ -12009,6 +12069,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       const onJumpToLine = typeof props.onJumpToLine === 'function' ? props.onJumpToLine : null
       // 正文里划选一段 → 存成新笔记；没接上就只给「复制」，不摆一个按了没反应的按钮
       const onCreateFromText = typeof props.onCreateFromText === 'function' ? props.onCreateFromText : null
+    const onDuplicate = typeof props.onDuplicate === 'function' ? props.onDuplicate : null
       const anchorRequest = props.anchor
       const onAnchorDone = props.onAnchorDone
       // 嵌入 ![[另一篇笔记]] 时用它把名字解析成路径（与点双链共用一套口径）
@@ -12951,6 +13012,16 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                   { type: 'button', className: 'dshgn_iconBtn', title: t('action.copyRef'), onClick: onCopyReference },
                   h(Icon, { name: 'link', size: 15 }),
                 ),
+                // 复制这一篇：写周报时拿上周那篇当骨架、做实验时留着原稿再改，
+                // 以前得「复制引用 → 新建 → 粘贴正文 → 自己补标题」四步。
+                // 没接上这个去处时不摆按钮，点了没反应比没有更糟。
+                onDuplicate === null
+                  ? null
+                  : h(
+                      'button',
+                      { type: 'button', className: 'dshgn_iconBtn', title: t('note.duplicate'), onClick: onDuplicate },
+                      h(Icon, { name: 'file', size: 15 }),
+                    ),
                 // B1：单篇推云端 / 单篇拉云端。只有这篇确实在云端有 note_id 时
                 // 才有意义，所以没 note_id 就不显示——点了会报「这篇还没同步过」，
                 // 那还不如不给这个按钮。

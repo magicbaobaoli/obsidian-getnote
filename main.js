@@ -8245,6 +8245,8 @@ var LEX = {
     "note.copyBlock": "\u590D\u5236\u8FD9\u4E00\u6BB5",
     "action.rename": "\u91CD\u547D\u540D",
     "action.renamed": "\u6539\u597D\u4E86",
+    "note.duplicate": "\u590D\u5236\u8FD9\u4E00\u7BC7",
+    "note.duplicated": "\u5DF2\u590D\u5236\u4E00\u4EFD",
     "note.renameUnsaved": "\u5148\u4FDD\u5B58\u518D\u6539\u540D\uFF0C\u522B\u628A\u521A\u5199\u7684\u4E22\u4E86",
     "action.copied": "\u5DF2\u590D\u5236",
     "action.retry": "\u91CD\u8BD5",
@@ -8706,6 +8708,8 @@ var LEX = {
     "note.copyBlock": "Copy this block",
     "action.rename": "Rename",
     "action.renamed": "Renamed",
+    "note.duplicate": "Duplicate this note",
+    "note.duplicated": "Duplicated",
     "note.renameUnsaved": "Save first, then rename",
     "action.copied": "Copied",
     "action.retry": "Retry",
@@ -9159,6 +9163,8 @@ var LEX = {
     "note.copyBlock": "Dit blok kopi\xEBren",
     "action.rename": "Naam wijzigen",
     "action.renamed": "Naam gewijzigd",
+    "note.duplicate": "Deze notitie dupliceren",
+    "note.duplicated": "Gedupliceerd",
     "note.renameUnsaved": "Sla eerst op en wijzig dan de naam",
     "action.copied": "Gekopieerd",
     "action.retry": "Opnieuw",
@@ -13287,6 +13293,43 @@ ${insert}
     },
     [activeDir, openNote, refresh, showToast, t4]
   );
+  const duplicateNote = q2(
+    async (path) => {
+      const target = String(path || "");
+      if (target === "") return;
+      setBusy(true);
+      try {
+        const note = await api(`/read?path=${encodeURIComponent(target)}`);
+        const body2 = String(note.content || "");
+        const slash = target.lastIndexOf("/");
+        const dir = slash === -1 ? "" : target.slice(0, slash);
+        const file = slash === -1 ? target : target.slice(slash + 1);
+        const stem = file.replace(/\.md$/i, "");
+        const created = await api("/create", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            dir,
+            title: `${stem} \u526F\u672C`,
+            content: body2,
+            // 副本照抄原篇的名字，不再叠一个今天的日期：原标题带日期前缀的
+            // （「2026-11-15-周报」）该叫「2026-11-15-周报 副本」，
+            // 不带前缀的也不该凭空多出「2026-11-21-」——用户认的是原来那个名字。
+            withDatePrefix: false,
+            requestId: requestId()
+          })
+        });
+        showToast(t4("note.duplicated"));
+        await refresh();
+        await openNote(created.path);
+      } catch (err) {
+        setError(err && err.message ? err.message : String(err));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [openNote, refresh, showToast, t4]
+  );
   const syncCurrent = q2(
     async (direction) => {
       if (current === null) return;
@@ -14077,6 +14120,16 @@ ${insert}
                           void openNote(entry.path, true).then(() => copyReference());
                         }
                       },
+                      // 复制这一篇：不动原文件，另建一篇「原标题 副本」。
+                      // 放在「复制引用」后面——两者都是「拿这一篇去用」，
+                      // 一个拿走的是链接，一个拿走的是整篇正文。
+                      {
+                        id: "duplicate",
+                        label: t4("note.duplicate"),
+                        run: () => {
+                          void duplicateNote(entry.path);
+                        }
+                      },
                       {
                         id: "push-one",
                         label: t4("sync.pushOne"),
@@ -14241,6 +14294,7 @@ ${insert}
         onDelete: deleteNote,
         onRename: renameNote,
         onCopyReference: copyReference,
+        onDuplicate: () => duplicateNote(current === null ? "" : current.path),
         onCopyText: copyText,
         // 正文里划选一段 → 存成新笔记（摘抄/摘录单独立篇）
         onCreateFromText: createFromText,
@@ -17870,6 +17924,7 @@ function NotePane(props) {
   const onNavForward = typeof props.onNavForward === "function" ? props.onNavForward : null;
   const onJumpToLine = typeof props.onJumpToLine === "function" ? props.onJumpToLine : null;
   const onCreateFromText = typeof props.onCreateFromText === "function" ? props.onCreateFromText : null;
+  const onDuplicate = typeof props.onDuplicate === "function" ? props.onDuplicate : null;
   const anchorRequest = props.anchor;
   const onAnchorDone = props.onAnchorDone;
   const resolveNote = props.resolveNote;
@@ -18579,6 +18634,14 @@ function NotePane(props) {
           "button",
           { type: "button", className: "dshgn_iconBtn", title: t4("action.copyRef"), onClick: onCopyReference },
           h4(Icon, { name: "link", size: 15 })
+        ),
+        // 复制这一篇：写周报时拿上周那篇当骨架、做实验时留着原稿再改，
+        // 以前得「复制引用 → 新建 → 粘贴正文 → 自己补标题」四步。
+        // 没接上这个去处时不摆按钮，点了没反应比没有更糟。
+        onDuplicate === null ? null : h4(
+          "button",
+          { type: "button", className: "dshgn_iconBtn", title: t4("note.duplicate"), onClick: onDuplicate },
+          h4(Icon, { name: "file", size: 15 })
         ),
         // B1：单篇推云端 / 单篇拉云端。只有这篇确实在云端有 note_id 时
         // 才有意义，所以没 note_id 就不显示——点了会报「这篇还没同步过」，
