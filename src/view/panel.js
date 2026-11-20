@@ -714,7 +714,7 @@ async function saveFile(url, filename) {
         'note.embedBroken': '这一篇没读出来',
         'callout.expand': '展开',
  'editor.words': '{n} 字',
- 'editor.saveHint': 'Ctrl+S 保存 · Esc 取消',
+ 'editor.saveHint': 'Ctrl+S 保存 · Esc 取消 · Ctrl+B 加粗 · Ctrl+I 斜体',
         'callout.collapse': '收起',
         'note.image': '图片',
         'action.close': '关闭',
@@ -1136,7 +1136,7 @@ async function saveFile(url, filename) {
         'note.embedBroken': 'Could not read this note',
         'callout.expand': 'Expand',
  'editor.words': '{n} words',
- 'editor.saveHint': 'Ctrl+S to save · Esc to cancel',
+ 'editor.saveHint': 'Ctrl+S to save · Esc to cancel · Ctrl+B bold · Ctrl+I italic',
         'callout.collapse': 'Collapse',
         'note.image': 'Image',
         'action.close': 'Close',
@@ -1557,7 +1557,7 @@ async function saveFile(url, filename) {
         'note.embedBroken': 'Deze notitie kon niet gelezen worden',
         'callout.expand': 'Uitvouwen',
  'editor.words': '{n} woorden',
- 'editor.saveHint': 'Ctrl+S om op te slaan · Esc om te annuleren',
+ 'editor.saveHint': 'Ctrl+S om op te slaan · Esc om te annuleren · Ctrl+B vet · Ctrl+I cursief',
         'callout.collapse': 'Invouwen',
         'note.image': 'Afbeelding',
         'action.close': 'Sluiten',
@@ -3401,6 +3401,66 @@ async function saveFile(url, filename) {
         text: source.slice(0, lineStart) + shifted.join('\n') + source.slice(lineEnd),
         start: Math.max(lineStart, from + firstDelta),
         end: Math.max(lineStart, to + delta),
+      }
+    }
+
+    /**
+     * 给选中的那一段套上行内记号（加粗 / 斜体 / 删除线）。
+     *
+     * 宿主里 Ctrl+B、Ctrl+I、Ctrl+Shift+X 是肌肉记忆，面板的编辑区是个裸
+     * textarea，按下去什么都不发生——用户在别处按习惯了，回来会以为「这个
+     * 面板不支持加粗」，然后自己手打星号。
+     *
+     * 记号套在选区外面，选区跟着记号一起挪，所以连按两次等于取消：第二次
+     * 认得出「这一对已经包在外面了」，把它剥掉，而不是再套一层（套两层在
+     * Markdown 里不会变成更粗，只会变成字面的星号）。没选中任何字时插一对
+     * 记号、光标落在中间，接着敲的字就是加粗的。
+     *
+     * 返回 { text, start, end }。
+     */
+    function wrapInline(text, start, end, marker) {
+      const source = String(text === null || text === undefined ? '' : text)
+      const mark = String(marker === null || marker === undefined ? '' : marker)
+      if (mark === '') return { text: source, start, end }
+      const clamp = (value) => {
+        const n = Number.isInteger(value) ? value : source.length
+        return Math.max(0, Math.min(source.length, n))
+      }
+      let from = clamp(start)
+      let to = clamp(end)
+      if (from > to) {
+        const swap = from
+        from = to
+        to = swap
+      }
+      const size = mark.length
+
+      // 记号已经在选区外侧包着：这一下是「取消」
+      if (
+        from >= size &&
+        source.slice(from - size, from) === mark &&
+        source.slice(to, to + size) === mark
+      ) {
+        return {
+          text: source.slice(0, from - size) + source.slice(from, to) + source.slice(to + size),
+          start: from - size,
+          end: to - size,
+        }
+      }
+      // 选中的文字自己两头就是记号：剥掉它自己的那一对
+      const picked = source.slice(from, to)
+      if (picked.length >= size * 2 && picked.startsWith(mark) && picked.endsWith(mark)) {
+        return {
+          text: source.slice(0, from) + picked.slice(size, picked.length - size) + source.slice(to),
+          start: from,
+          end: to - size * 2,
+        }
+      }
+      // 其余情况：套上记号，选区跟着记号一起挪
+      return {
+        text: source.slice(0, from) + mark + picked + mark + source.slice(to),
+        start: from + size,
+        end: to + size,
       }
     }
 
@@ -11584,6 +11644,28 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
               // 在清单行末尾按回车，接着写下一行（有序列表自动加一）。
               // 只认行尾，行中间的回车仍然是「把这行拆成两条」，交给浏览器自己处理。
               onKeyDown: (event) => {
+                // Ctrl/Cmd + B / I / Shift+X：加粗、斜体、删除线。
+                // 宿主里这是肌肉记忆，在裸 textarea 上按下去原本什么都不发生。
+                const mod = (event.ctrlKey || event.metaKey) && !event.altKey
+                if (mod) {
+                  const lower = String(event.key || '').toLowerCase()
+                  const mark = lower === 'b' && !event.shiftKey ? '**'
+                    : lower === 'i' && !event.shiftKey ? '*'
+                      : lower === 'x' && event.shiftKey ? '~~'
+                        : ''
+                  if (mark !== '') {
+                    const live = editorRef.current
+                    if (live !== null && live !== undefined) {
+                      event.preventDefault()
+                      const caret = typeof live.selectionStart === 'number' ? live.selectionStart : 0
+                      const selEnd = typeof live.selectionEnd === 'number' ? live.selectionEnd : caret
+                      const wrapped = wrapInline(live.value, caret, selEnd, mark)
+                      setDraft(wrapped.text)
+                      placeCaret(wrapped.start, wrapped.end)
+                    }
+                    return
+                  }
+                }
                 if (event.ctrlKey || event.metaKey || event.altKey) return
                 const node = editorRef.current
                 if (node === null || node === undefined) return
@@ -12703,6 +12785,6 @@ export const __internals = {
   TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale,
   reportSync, dailyTemplateOf, frontmatterText, isTagKey, FollowCard, parseTable, countWords,
   isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote, parseImageSize, renderParagraph, blockTextOf, markdownLinkTarget,
-  tagBodyOf, ZoomOverlay, continueListLine, indentLines,
+  tagBodyOf, ZoomOverlay, continueListLine, indentLines, wrapInline,
   splitByTerms, highlightTerms, searchTermsOf,
 }

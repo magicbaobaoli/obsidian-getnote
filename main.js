@@ -8420,7 +8420,7 @@ var LEX = {
     "note.embedBroken": "\u8FD9\u4E00\u7BC7\u6CA1\u8BFB\u51FA\u6765",
     "callout.expand": "\u5C55\u5F00",
     "editor.words": "{n} \u5B57",
-    "editor.saveHint": "Ctrl+S \u4FDD\u5B58 \xB7 Esc \u53D6\u6D88",
+    "editor.saveHint": "Ctrl+S \u4FDD\u5B58 \xB7 Esc \u53D6\u6D88 \xB7 Ctrl+B \u52A0\u7C97 \xB7 Ctrl+I \u659C\u4F53",
     "callout.collapse": "\u6536\u8D77",
     "note.image": "\u56FE\u7247",
     "action.close": "\u5173\u95ED",
@@ -8838,7 +8838,7 @@ var LEX = {
     "note.embedBroken": "Could not read this note",
     "callout.expand": "Expand",
     "editor.words": "{n} words",
-    "editor.saveHint": "Ctrl+S to save \xB7 Esc to cancel",
+    "editor.saveHint": "Ctrl+S to save \xB7 Esc to cancel \xB7 Ctrl+B bold \xB7 Ctrl+I italic",
     "callout.collapse": "Collapse",
     "note.image": "Image",
     "action.close": "Close",
@@ -9256,7 +9256,7 @@ var LEX = {
     "note.embedBroken": "Deze notitie kon niet gelezen worden",
     "callout.expand": "Uitvouwen",
     "editor.words": "{n} woorden",
-    "editor.saveHint": "Ctrl+S om op te slaan \xB7 Esc om te annuleren",
+    "editor.saveHint": "Ctrl+S om op te slaan \xB7 Esc om te annuleren \xB7 Ctrl+B vet \xB7 Ctrl+I cursief",
     "callout.collapse": "Invouwen",
     "note.image": "Afbeelding",
     "action.close": "Sluiten",
@@ -10571,6 +10571,43 @@ function indentLines(text, start, end, outdent) {
     text: source.slice(0, lineStart) + shifted.join("\n") + source.slice(lineEnd),
     start: Math.max(lineStart, from + firstDelta),
     end: Math.max(lineStart, to + delta)
+  };
+}
+function wrapInline(text, start, end, marker) {
+  const source = String(text === null || text === void 0 ? "" : text);
+  const mark = String(marker === null || marker === void 0 ? "" : marker);
+  if (mark === "") return { text: source, start, end };
+  const clamp = (value) => {
+    const n2 = Number.isInteger(value) ? value : source.length;
+    return Math.max(0, Math.min(source.length, n2));
+  };
+  let from = clamp(start);
+  let to = clamp(end);
+  if (from > to) {
+    const swap = from;
+    from = to;
+    to = swap;
+  }
+  const size = mark.length;
+  if (from >= size && source.slice(from - size, from) === mark && source.slice(to, to + size) === mark) {
+    return {
+      text: source.slice(0, from - size) + source.slice(from, to) + source.slice(to + size),
+      start: from - size,
+      end: to - size
+    };
+  }
+  const picked = source.slice(from, to);
+  if (picked.length >= size * 2 && picked.startsWith(mark) && picked.endsWith(mark)) {
+    return {
+      text: source.slice(0, from) + picked.slice(size, picked.length - size) + source.slice(to),
+      start: from,
+      end: to - size * 2
+    };
+  }
+  return {
+    text: source.slice(0, from) + mark + picked + mark + source.slice(to),
+    start: from + size,
+    end: to + size
   };
 }
 function renderParagraph(text, keyPrefix, options) {
@@ -17550,6 +17587,23 @@ function NotePane(props) {
         // 在清单行末尾按回车，接着写下一行（有序列表自动加一）。
         // 只认行尾，行中间的回车仍然是「把这行拆成两条」，交给浏览器自己处理。
         onKeyDown: (event) => {
+          const mod = (event.ctrlKey || event.metaKey) && !event.altKey;
+          if (mod) {
+            const lower = String(event.key || "").toLowerCase();
+            const mark = lower === "b" && !event.shiftKey ? "**" : lower === "i" && !event.shiftKey ? "*" : lower === "x" && event.shiftKey ? "~~" : "";
+            if (mark !== "") {
+              const live = editorRef.current;
+              if (live !== null && live !== void 0) {
+                event.preventDefault();
+                const caret2 = typeof live.selectionStart === "number" ? live.selectionStart : 0;
+                const selEnd2 = typeof live.selectionEnd === "number" ? live.selectionEnd : caret2;
+                const wrapped = wrapInline(live.value, caret2, selEnd2, mark);
+                setDraft(wrapped.text);
+                placeCaret(wrapped.start, wrapped.end);
+              }
+              return;
+            }
+          }
           if (event.ctrlKey || event.metaKey || event.altKey) return;
           const node = editorRef.current;
           if (node === null || node === void 0) return;

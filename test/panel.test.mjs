@@ -4448,6 +4448,114 @@ test('清单里按回车接着写下一行，Tab 把整行挪两格，空条目�
   await waitFor(() => window.document.querySelector('.dshgn_editor') === null, 5000, 'Esc 退出编辑态')
 })
 
+test('编辑区里 Ctrl+B / Ctrl+I / Ctrl+Shift+X 给选中的字套上记号，再按一次取消', async () => {
+  const { wrapInline } = panel.__internals
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+
+  // 纯函数：套上、取消、没选中时插一对让光标落在中间
+  const bold = wrapInline('今天很好', 0, 2, '**')
+  assert.equal(bold.text, '**今天**很好')
+  assert.equal(bold.start, 2, '选区跟着记号一起挪')
+  assert.equal(bold.end, 4)
+  // 再按一次：认得出记号已经包在外面，剥掉而不是再套一层
+  const undone = wrapInline(bold.text, bold.start, bold.end, '**')
+  assert.equal(undone.text, '今天很好')
+  assert.equal(undone.start, 0)
+  assert.equal(undone.end, 2)
+  // 选中的文字自己两头就是记号时，剥掉它自己那一对
+  assert.equal(wrapInline('**甲**乙', 0, 5, '**').text, '甲乙')
+  // 没选中任何字：插一对记号，光标落在中间
+  const empty = wrapInline('abc', 1, 1, '*')
+  assert.equal(empty.text, 'a**bc')
+  assert.equal(empty.start, 2)
+  assert.equal(empty.end, 2)
+
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    const backBtn = window.document.querySelector('.dshgn_noteBack')
+    if (backBtn) {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    }
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  const res = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '加粗快捷键验收',
+      content: ['# 加粗快捷键验收', '', '今天很好', ''].join('\n'),
+      withDatePrefix: false,
+      // requestId 是服务端的去重号：撞上别的用例会直接把那一篇的路径还回来
+      requestId: 'seed-inline-mark-keys',
+    }),
+  })
+  const seeded = await res.json()
+  assert.equal(seeded.path, '随手记/加粗快捷键验收.md')
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  const card = await waitFor(
+    () => Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === seeded.path) || null,
+    8000,
+    '列表里应该有这一篇',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 5000, '打开这一篇')
+
+  const editBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '编辑')
+  editBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const editor = await waitFor(() => window.document.querySelector('.dshgn_editor'), 5000, '进编辑态')
+
+  const press = async (key, opts) => {
+    editor.dispatchEvent(
+      new window.KeyboardEvent('keydown', Object.assign({ key, bubbles: true }, opts || {})),
+    )
+    await sleep(80)
+  }
+
+  // 真在编辑区里按一遍：选中「今天」两个字，Ctrl+B
+  editor.value = '今天很好'
+  editor.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(40)
+  editor.setSelectionRange(0, 2)
+  await press('b', { ctrlKey: true })
+  assert.equal(editor.value, '**今天**很好', 'Ctrl+B 该把选中的字包起来')
+  assert.equal(editor.selectionStart, 2, '光标落在记号里面，接着还能改')
+
+  // 再按一次是取消
+  await press('b', { ctrlKey: true })
+  assert.equal(editor.value, '今天很好', '连按两次等于取消，不该套两层')
+
+  // Ctrl+I 斜体、Ctrl+Shift+X 删除线
+  editor.setSelectionRange(0, 2)
+  await press('i', { ctrlKey: true })
+  assert.equal(editor.value, '*今天*很好', 'Ctrl+I 是斜体')
+  editor.value = '今天很好'
+  editor.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(40)
+  editor.setSelectionRange(0, 2)
+  await press('x', { ctrlKey: true, shiftKey: true })
+  assert.equal(editor.value, '~~今天~~很好', 'Ctrl+Shift+X 是删除线')
+
+  // 编辑区底下那行提示里写得出这几个键，不然用户不知道有这回事
+  const hint = window.document.querySelector('.dshgn_editorHint')
+  assert.ok(hint !== null, '编辑区底下该有那行提示')
+  assert.ok(hint.textContent.includes('Ctrl+B'), '提示里要写上 Ctrl+B')
+
+  window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_editor') === null, 5000, 'Esc 退出编辑态')
+})
+
+
 test('大纲上亮着「现在读到哪一节」，点过去就换一条，自己往下翻也跟着换', async () => {
   const rootNode = () => window.document.querySelector('.dshgn_root')
 
