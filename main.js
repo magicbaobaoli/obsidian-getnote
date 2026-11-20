@@ -8367,6 +8367,7 @@ var LEX = {
     "note.localAudio": "\u672C\u5730\u5F55\u97F3",
     "note.outline": "\u672C\u6587\u5927\u7EB2",
     "note.openImage": "\u5728 Obsidian \u91CC\u6253\u5F00\u8FD9\u5F20\u56FE",
+    "note.zoomImage": "\u70B9\u5F00\u770B\u5927\u56FE",
     "note.attach": "\u63D2\u5165\u9644\u4EF6",
     "attach.added": "\u9644\u4EF6\u5DF2\u63D2\u5165",
     "attach.failed": "\u6709\u51E0\u4E2A\u9644\u4EF6\u6CA1\u4F20\u4E0A\u53BB",
@@ -8784,6 +8785,7 @@ var LEX = {
     "note.localAudio": "Local recording",
     "note.outline": "Outline",
     "note.openImage": "Open this image in Obsidian",
+    "note.zoomImage": "Click to enlarge",
     "note.attach": "Attach a file",
     "attach.added": "Attachment inserted",
     "attach.failed": "Some files could not be uploaded",
@@ -9201,6 +9203,7 @@ var LEX = {
     "note.localAudio": "Lokale opname",
     "note.outline": "Overzicht",
     "note.openImage": "Open deze afbeelding in Obsidian",
+    "note.zoomImage": "Klik om te vergroten",
     "note.attach": "Bestand toevoegen",
     "attach.added": "Bijlage ingevoegd",
     "attach.failed": "Sommige bestanden zijn niet ge\xFCpload",
@@ -10266,6 +10269,7 @@ function NoteEmbed(props) {
         // 再往下一层不再嵌笔记：两篇互相嵌入时递归没有尽头
         embedDepth: props.depth,
         resolveNote: props.resolveNote,
+        onPreviewImage: props.onPreviewImage,
         t: t4
       })
     );
@@ -10310,12 +10314,16 @@ function renderEmbed(target, key, options) {
       anchor: typeof opts.anchor === "string" ? opts.anchor : "",
       onOpen: opts.onOpenWikiLink,
       resolveNote: opts.resolveNote,
+      // 嵌进来的那篇里的图也能点开看：放大这件事属于面板，不属于某一层
+      onPreviewImage: opts.onPreviewImage,
       t: opts.t
     });
   }
   if (IMAGE_EXT_RE.test(path)) {
     const hosted = assetUrlOf(path);
-    const openable = hasOpenAsset();
+    const src = hosted !== "" ? hosted : withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(path)}`);
+    const preview = typeof opts.onPreviewImage === "function";
+    const openable = preview || hasOpenAsset();
     const size = parseImageSize(opts.label);
     const sized = size === null ? {} : {
       width: `${size.width}px`,
@@ -10326,11 +10334,16 @@ function renderEmbed(target, key, options) {
       key,
       className: "dshgn_img" + (openable ? " dshgn_imgOpen" : "") + (size === null ? "" : " dshgn_imgSized"),
       style: sized,
-      src: hosted !== "" ? hosted : withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(path)}`),
+      src,
       alt: base,
       loading: "lazy",
+      title: preview ? getT()("note.zoomImage") : openable ? getT()("note.openImage") : void 0,
       onClick: openable ? (event) => {
         if (event && typeof event.stopPropagation === "function") event.stopPropagation();
+        if (preview) {
+          opts.onPreviewImage({ src, name: base });
+          return;
+        }
         openAssetInHost(path);
       } : void 0
     });
@@ -11497,6 +11510,17 @@ var CSS = `
 .dshgn_imgSized{object-fit:contain}
     .dshgn_img{max-width:100%;max-height:200px;border-radius:8px;object-fit:contain;
   border:0.5px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-interactive-bg-hover)}
+/* \u653E\u5927\u67E5\u770B\uFF1A\u906E\u7F69\u538B\u6697\u5230\u63A5\u8FD1\u5168\u9ED1\uFF0C\u8BA9\u56FE\u672C\u8EAB\u6210\u4E3A\u552F\u4E00\u4EAE\u7684\u4E1C\u897F\u3002
+   z-index \u6BD4\u4E8C\u6B21\u786E\u8BA4\u5F39\u7A97\uFF0870\uFF09\u9AD8\u4E00\u6863\u2014\u2014\u7528\u6237\u662F\u5728\u770B\u56FE\u7684\u9014\u4E2D\uFF0C\u4E0D\u8BE5\u88AB\u9762\u677F\u81EA\u5DF1\u7684
+   \u6D6E\u5C42\u76D6\u4F4F\uFF1B\u540C\u65F6\u6BD4 toast\uFF0820\uFF09\u9AD8\uFF0C\u907F\u514D\u300C\u5DF2\u590D\u5236\u300D\u8FD9\u7C7B\u63D0\u793A\u98D8\u5728\u56FE\u4E0A\u3002 */
+.dshgn_zoomMask{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;
+  padding:24px;background:rgba(6,10,18,.82);cursor:zoom-out}
+.dshgn_zoomImg{max-width:100%;max-height:100%;object-fit:contain;border-radius:6px;cursor:default;
+  background:var(--dshgn-surface);box-shadow:0 12px 40px rgba(0,0,0,.45)}
+.dshgn_zoomClose{position:absolute;top:14px;right:14px;display:inline-flex;align-items:center;justify-content:center;
+  width:28px;height:28px;border:0;border-radius:8px;background:rgba(255,255,255,.14);
+  color:#fff;cursor:pointer}
+.dshgn_zoomClose:hover{background:rgba(255,255,255,.26)}
 /* Obsidian \u53CC\u94FE\uFF1A\u5916\u89C2\u8981\u50CF\u94FE\u63A5\u4F46\u4E0D\u80FD\u771F\u8DF3\uFF08\u5E93\u5185\u8DF3\u8F6C\u7531 JS \u5904\u7406\uFF09\uFF0C\u6240\u4EE5\u7528 button \u800C\u4E0D\u662F a\u3002 */
 .dshgn_wikilink{display:inline;padding:0;margin:0;border:0;background:transparent;font:inherit;
   color:var(--dsw-alias-brand-primary);cursor:pointer;text-decoration:none;
@@ -16952,7 +16976,21 @@ function NotePane(props) {
   const [historyPreview, setHistoryPreview] = h2(null);
   const [historyBusy, setHistoryBusy] = h2(false);
   const attachRef = A2(null);
+  const [zoom, setZoom] = h2(null);
+  const zoomRef = A2(null);
+  zoomRef.current = zoom;
   const canAttach = typeof onAttach === "function";
+  const closeZoom = q2(() => setZoom(null), []);
+  y2(() => {
+    const onKey = (event) => {
+      if (event.key !== "Escape" || zoomRef.current === null) return;
+      event.stopPropagation();
+      setZoom(null);
+    };
+    return attachOnPanelWindows("keydown", onKey);
+  }, []);
+  const currentPathOf = current === null || current === void 0 ? "" : String(current.path || "");
+  const zoomed = zoom !== null && zoom.path === currentPathOf ? zoom : null;
   const loadHistory = q2(async (path) => {
     if (path === null || path === "") {
       setHistoryItems(null);
@@ -17539,20 +17577,21 @@ function NotePane(props) {
       (current.assets || []).some((asset) => asset.kind === "image") ? h4(
         "div",
         { className: "dshgn_imgRow" },
-        (current.assets || []).filter((asset) => asset.kind === "image").map(
-          (asset, index) => h4("img", {
+        (current.assets || []).filter((asset) => asset.kind === "image").map((asset, index) => {
+          const assetSrc = assetUrlOf(asset.path) !== "" ? assetUrlOf(asset.path) : withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(asset.path)}`);
+          return h4("img", {
             key: `${asset.path}-${index}`,
-            className: "dshgn_img" + (hasOpenAsset() ? " dshgn_imgOpen" : ""),
-            src: assetUrlOf(asset.path) !== "" ? assetUrlOf(asset.path) : withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(asset.path)}`),
+            className: "dshgn_img dshgn_imgOpen",
+            src: assetSrc,
             alt: asset.name,
-            title: hasOpenAsset() ? `${t4("note.openImage")} \xB7 ${asset.name}` : asset.name,
+            title: `${t4("note.zoomImage")} \xB7 ${asset.name}`,
             loading: "lazy",
-            onClick: hasOpenAsset() ? (event) => {
+            onClick: (event) => {
               if (event && typeof event.stopPropagation === "function") event.stopPropagation();
-              openAssetInHost(asset.path);
-            } : void 0
-          })
-        )
+              setZoom({ src: assetSrc, name: asset.name, path: currentPathOf });
+            }
+          });
+        })
       ) : null,
       // 阅读时只渲染正文：`content` 带 YAML frontmatter，直接 renderBlocks 会把
       // `title: xxx` / `note_id: "..."` 当成正文段落一条条铺出来。编辑时仍用
@@ -17584,6 +17623,9 @@ function NotePane(props) {
             onPickTag,
             // 代码块右上角的「复制」：只给阅读态，编辑态看到的本来就是原文
             onCopyText: editing ? void 0 : onCopyText,
+            // 图片点一下放大：面板里只有 200px 高的缩略图，扫描件看不清楚。
+            // 编辑态不给——那时看到的是原文，点图也不该盖住编辑区。
+            onPreviewImage: editing ? void 0 : (item) => setZoom({ ...item, path: currentPathOf }),
             t: t4
           }
         )
@@ -17642,6 +17684,40 @@ function NotePane(props) {
           )
         )
       ) : null
+    ),
+    // 放大查看的遮罩。点空白处关掉（图片自己 stopPropagation，点图不关），
+    // 右上角那颗 × 是给「不知道该按 Esc」的人留的。
+    zoomed !== null ? h4(ZoomOverlay, { src: zoomed.src, name: zoomed.name, onClose: closeZoom }) : null
+  );
+}
+function ZoomOverlay(props) {
+  const { src, name, onClose } = props;
+  const t4 = getT();
+  const close = typeof onClose === "function" ? onClose : () => {
+  };
+  return h4(
+    "div",
+    { className: "dshgn_zoomMask", onClick: close },
+    h4("img", {
+      className: "dshgn_zoomImg",
+      src,
+      alt: typeof name === "string" ? name : "",
+      onClick: (event) => {
+        if (event && typeof event.stopPropagation === "function") event.stopPropagation();
+      }
+    }),
+    h4(
+      "button",
+      {
+        type: "button",
+        className: "dshgn_zoomClose",
+        title: t4("action.close"),
+        onClick: (event) => {
+          if (event && typeof event.stopPropagation === "function") event.stopPropagation();
+          close();
+        }
+      },
+      h4(Icon, { name: "close", size: 14 })
     )
   );
 }

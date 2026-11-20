@@ -661,6 +661,7 @@ async function saveFile(url, filename) {
         'note.localAudio': '本地录音',
         'note.outline': '本文大纲',
         'note.openImage': '在 Obsidian 里打开这张图',
+        'note.zoomImage': '点开看大图',
         'note.attach': '插入附件',
         'attach.added': '附件已插入',
         'attach.failed': '有几个附件没传上去',
@@ -1082,6 +1083,7 @@ async function saveFile(url, filename) {
         'note.localAudio': 'Local recording',
         'note.outline': 'Outline',
         'note.openImage': 'Open this image in Obsidian',
+        'note.zoomImage': 'Click to enlarge',
         'note.attach': 'Attach a file',
         'attach.added': 'Attachment inserted',
         'attach.failed': 'Some files could not be uploaded',
@@ -1502,6 +1504,7 @@ async function saveFile(url, filename) {
         'note.localAudio': 'Lokale opname',
         'note.outline': 'Overzicht',
         'note.openImage': 'Open deze afbeelding in Obsidian',
+        'note.zoomImage': 'Klik om te vergroten',
         'note.attach': 'Bestand toevoegen',
         'attach.added': 'Bijlage ingevoegd',
         'attach.failed': 'Sommige bestanden zijn niet geüpload',
@@ -2960,6 +2963,7 @@ async function saveFile(url, filename) {
             // 再往下一层不再嵌笔记：两篇互相嵌入时递归没有尽头
             embedDepth: props.depth,
             resolveNote: props.resolveNote,
+            onPreviewImage: props.onPreviewImage,
             t,
           }),
         )
@@ -3030,14 +3034,20 @@ async function saveFile(url, filename) {
           anchor: typeof opts.anchor === 'string' ? opts.anchor : '',
           onOpen: opts.onOpenWikiLink,
           resolveNote: opts.resolveNote,
+          // 嵌进来的那篇里的图也能点开看：放大这件事属于面板，不属于某一层
+          onPreviewImage: opts.onPreviewImage,
           t: opts.t,
         })
       }
       if (IMAGE_EXT_RE.test(path)) {
         const hosted = assetUrlOf(path)
-        // 点了交给宿主打开；没注入宿主时不给光标、不挂 onClick——挂一个点了
-        // 什么都不会发生的处理器，比不能点更让人困惑。
-        const openable = hasOpenAsset()
+        const src = hosted !== '' ? hosted : withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(path)}`)
+        // 点了先放大给自己看：面板里一张扫描件原来只有 200px 高，想看清字就得
+        // 把焦点交给编辑器、看完再切回来。没有放大去处时才退回「交给宿主打开」；
+        // 两样都没有就不给光标、不挂 onClick——挂一个点了什么都不会发生的处理器，
+        // 比不能点更让人困惑。
+        const preview = typeof opts.onPreviewImage === 'function'
+        const openable = preview || hasOpenAsset()
         const size = parseImageSize(opts.label)
         // 写了尺寸就按写的来：缩略图行那条 max-height 会把 300 高的图压成 200，
         // 用户写数字就是为了看图本身，这里得让开。
@@ -3050,12 +3060,17 @@ async function saveFile(url, filename) {
           key,
           className: 'dshgn_img' + (openable ? ' dshgn_imgOpen' : '') + (size === null ? '' : ' dshgn_imgSized'),
           style: sized,
-          src: hosted !== '' ? hosted : withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(path)}`),
+          src,
           alt: base,
           loading: 'lazy',
+          title: preview ? getT()('note.zoomImage') : openable ? getT()('note.openImage') : undefined,
           onClick: openable
             ? (event) => {
                 if (event && typeof event.stopPropagation === 'function') event.stopPropagation()
+                if (preview) {
+                  opts.onPreviewImage({ src, name: base })
+                  return
+                }
                 openAssetInHost(path)
               }
             : undefined,
@@ -4344,6 +4359,17 @@ async function saveFile(url, filename) {
 .dshgn_imgSized{object-fit:contain}
     .dshgn_img{max-width:100%;max-height:200px;border-radius:8px;object-fit:contain;
   border:0.5px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-interactive-bg-hover)}
+/* 放大查看：遮罩压暗到接近全黑，让图本身成为唯一亮的东西。
+   z-index 比二次确认弹窗（70）高一档——用户是在看图的途中，不该被面板自己的
+   浮层盖住；同时比 toast（20）高，避免「已复制」这类提示飘在图上。 */
+.dshgn_zoomMask{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;
+  padding:24px;background:rgba(6,10,18,.82);cursor:zoom-out}
+.dshgn_zoomImg{max-width:100%;max-height:100%;object-fit:contain;border-radius:6px;cursor:default;
+  background:var(--dshgn-surface);box-shadow:0 12px 40px rgba(0,0,0,.45)}
+.dshgn_zoomClose{position:absolute;top:14px;right:14px;display:inline-flex;align-items:center;justify-content:center;
+  width:28px;height:28px;border:0;border-radius:8px;background:rgba(255,255,255,.14);
+  color:#fff;cursor:pointer}
+.dshgn_zoomClose:hover{background:rgba(255,255,255,.26)}
 /* Obsidian 双链：外观要像链接但不能真跳（库内跳转由 JS 处理），所以用 button 而不是 a。 */
 .dshgn_wikilink{display:inline;padding:0;margin:0;border:0;background:transparent;font:inherit;
   color:var(--dsw-alias-brand-primary);cursor:pointer;text-decoration:none;
@@ -10801,7 +10827,33 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       const [historyBusy, setHistoryBusy] = React.useState(false)
       // 插入附件的文件选择器：按钮只是把它点开，真正干活的是 onAttach
       const attachRef = React.useRef(null)
+      // 图片放大查看：{ src, name } 或 null。面板里正文的图只有 200px 高，
+      // 一张扫描件想看清字就得把焦点交给编辑器，看完再切回来——这里给自己一个放大。
+      const [zoom, setZoom] = React.useState(null)
+      // 监听器要读「现在有没有放大」，但它本身得在挂载时就挂上：等到有图放大
+      // 才去挂，用户点开图之后立刻按 Esc 会落在这段空档里（效果是渲染提交之后
+      // 才跑的，遮罩已经出现在屏幕上了，监听却还没挂）。
+      const zoomRef = React.useRef(null)
+      zoomRef.current = zoom
+
       const canAttach = typeof onAttach === 'function'
+      const closeZoom = React.useCallback(() => setZoom(null), [])
+
+      // 放大态按 Esc 关掉。挂到面板窗口上而不是根节点上：焦点可能还在别处，
+      // 用户在遮罩上按 Esc 时事件未必从根节点冒上来。
+      React.useEffect(() => {
+        const onKey = (event) => {
+          if (event.key !== 'Escape' || zoomRef.current === null) return
+          event.stopPropagation()
+          setZoom(null)
+        }
+        return attachOnPanelWindows('keydown', onKey)
+      }, [])
+      // 换笔记时放大自动失效：放大态里记着「这是哪一篇的图」，渲染时对一下路径就行。
+      // 不用 effect 去清——那个 effect 每次挂载都会跑，点开图之后紧接着的一次
+      // 重渲染会把它立刻关掉（面板会随页签/窗口重挂载，路径一变就误判成换笔记）。
+      const currentPathOf = current === null || current === undefined ? '' : String(current.path || '')
+      const zoomed = zoom !== null && zoom.path === currentPathOf ? zoom : null
 
       const loadHistory = React.useCallback(async (path) => {
         if (path === null || path === '') {
@@ -11512,25 +11564,24 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                     { className: 'dshgn_imgRow' },
                     (current.assets || [])
                       .filter((asset) => asset.kind === 'image')
-                      .map((asset, index) =>
-                        h('img', {
+                      .map((asset, index) => {
+                        const assetSrc =
+                          assetUrlOf(asset.path) !== ''
+                            ? assetUrlOf(asset.path)
+                            : withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(asset.path)}`)
+                        return h('img', {
                           key: `${asset.path}-${index}`,
-                          className: 'dshgn_img' + (hasOpenAsset() ? ' dshgn_imgOpen' : ''),
-                          src:
-                            assetUrlOf(asset.path) !== ''
-                              ? assetUrlOf(asset.path)
-                              : withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(asset.path)}`),
+                          className: 'dshgn_img dshgn_imgOpen',
+                          src: assetSrc,
                           alt: asset.name,
-                          title: hasOpenAsset() ? `${t('note.openImage')} · ${asset.name}` : asset.name,
+                          title: `${t('note.zoomImage')} · ${asset.name}`,
                           loading: 'lazy',
-                          onClick: hasOpenAsset()
-                            ? (event) => {
-                                if (event && typeof event.stopPropagation === 'function') event.stopPropagation()
-                                openAssetInHost(asset.path)
-                              }
-                            : undefined,
-                        }),
-                      ),
+                          onClick: (event) => {
+                            if (event && typeof event.stopPropagation === 'function') event.stopPropagation()
+                            setZoom({ src: assetSrc, name: asset.name, path: currentPathOf })
+                          },
+                        })
+                      }),
                   )
                 : null,
               // 阅读时只渲染正文：`content` 带 YAML frontmatter，直接 renderBlocks 会把
@@ -11563,6 +11614,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                     onPickTag,
                     // 代码块右上角的「复制」：只给阅读态，编辑态看到的本来就是原文
                     onCopyText: editing ? undefined : onCopyText,
+                    // 图片点一下放大：面板里只有 200px 高的缩略图，扫描件看不清楚。
+                    // 编辑态不给——那时看到的是原文，点图也不该盖住编辑区。
+                    onPreviewImage: editing ? undefined : (item) => setZoom({ ...item, path: currentPathOf }),
                     t,
                   },
                 ),
@@ -11631,6 +11685,44 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                   )
                 : null,
             ),
+        // 放大查看的遮罩。点空白处关掉（图片自己 stopPropagation，点图不关），
+        // 右上角那颗 × 是给「不知道该按 Esc」的人留的。
+        zoomed !== null ? h(ZoomOverlay, { src: zoomed.src, name: zoomed.name, onClose: closeZoom }) : null,
+      )
+    }
+
+    /**
+     * 图片放大查看的遮罩。做成独立组件是为了让「点空白关、点图不关、按 Esc 也关」
+     * 这套行为只写一遍：正文里的图、附件区的图、嵌进来的那篇里的图都走同一个遮罩。
+     */
+    function ZoomOverlay(props) {
+      const { src, name, onClose } = props
+      const t = getT()
+      const close = typeof onClose === 'function' ? onClose : () => {}
+      return h(
+        'div',
+        { className: 'dshgn_zoomMask', onClick: close },
+        h('img', {
+          className: 'dshgn_zoomImg',
+          src,
+          alt: typeof name === 'string' ? name : '',
+          onClick: (event) => {
+            if (event && typeof event.stopPropagation === 'function') event.stopPropagation()
+          },
+        }),
+        h(
+          'button',
+          {
+            type: 'button',
+            className: 'dshgn_zoomClose',
+            title: t('action.close'),
+            onClick: (event) => {
+              if (event && typeof event.stopPropagation === 'function') event.stopPropagation()
+              close()
+            },
+          },
+          h(Icon, { name: 'close', size: 14 }),
+        ),
       )
     }
 
@@ -12350,5 +12442,5 @@ export const __internals = {
   TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale,
   reportSync, dailyTemplateOf, frontmatterText, isTagKey, FollowCard, parseTable, countWords,
   isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote, parseImageSize, renderParagraph, blockTextOf, markdownLinkTarget,
-  tagBodyOf,
+  tagBodyOf, ZoomOverlay,
 }

@@ -4210,3 +4210,115 @@ test('代码块右上角有个「复制」，点了搬走的是围栏里那一�
     '没有复制去处时不摆按钮',
   )
 })
+test('正文里的图片点一下先放大给自己看，不再非得交给编辑器', async () => {
+  // 一张扫描件在面板里只有 200px 高，想看清上面的字就得把焦点交给 Obsidian，
+  // 看完再切回来——为了读一行字来回切窗口。这里给自己一个放大。
+  const { renderEmbed, ZoomOverlay } = panel.__internals
+
+  const previews = []
+  const live = renderEmbed('随手记/图/放大验收.png', 'k1', { onPreviewImage: (item) => previews.push(item) })
+  assert.equal(live.props.className, 'dshgn_img dshgn_imgOpen', '能放大时也要给个「可以点」的样子')
+  // 标题跟着宿主语言走（测试环境没注入语言时是英文），只断言「有话说」而不是某个具体译法
+  assert.ok(typeof live.props.title === 'string' && live.props.title.length > 0, '该说明点了会放大')
+  live.props.onClick({ stopPropagation() {} })
+  assert.equal(previews.length, 1)
+  assert.equal(previews[0].name, '放大验收.png')
+  assert.ok(String(previews[0].src).includes('/getnote/asset?path='), '放大的得是同一张图：' + previews[0].src)
+
+  // 既没有放大去处、也没接上宿主：不给光标、不挂处理器
+  const bare = renderEmbed('随手记/图/放大验收.png', 'k2', {})
+  assert.equal(bare.props.className, 'dshgn_img')
+  assert.equal(bare.props.onClick, undefined)
+
+  // 有放大去处时不走「交给宿主打开」那条路——否则点一下就把编辑器拉起来了
+  const opened = []
+  panel.setOpenAsset((path) => {
+    opened.push(String(path))
+    return true
+  })
+  try {
+    const both = renderEmbed('随手记/图/放大验收.png', 'k3', { onPreviewImage: () => {} })
+    both.props.onClick({ stopPropagation() {} })
+    assert.deepEqual(opened, [], '面板自己能放大时不该再把焦点交给宿主')
+  } finally {
+    panel.setOpenAsset(null)
+  }
+
+  // 遮罩本身：点空白关、点图不关、右上角那颗 × 也关
+  let closed = 0
+  const overlay = ZoomOverlay({ src: 'http://x/a.png', name: 'a.png', onClose: () => { closed += 1 } })
+  assert.equal(overlay.props.className, 'dshgn_zoomMask')
+  const kids = Array.isArray(overlay.props.children) ? overlay.props.children : [overlay.props.children]
+  const pic = kids.find((node) => node && typeof node === 'object' && node.props && node.props.className === 'dshgn_zoomImg')
+  const cross = kids.find((node) => node && typeof node === 'object' && node.props && node.props.className === 'dshgn_zoomClose')
+  assert.ok(pic !== undefined && cross !== undefined, '遮罩里该有图和一个关闭按钮')
+  pic.props.onClick({ stopPropagation() {} })
+  assert.equal(closed, 0, '点图本身不该把图关掉')
+  overlay.props.onClick({})
+  assert.equal(closed, 1, '点空白处关掉')
+  cross.props.onClick({ stopPropagation() {} })
+  assert.equal(closed, 2, '那颗 × 也关')
+})
+
+test('点开正文里的图就当场放大，按 Esc 收起来', async () => {
+  // 上面那条测的是渲染器给不给按钮；这条测真的点下去之后面板里发生了什么：
+  // 遮罩得真的出现，Esc 得真的把它收掉（挂到窗口上，焦点不在遮罩里也要管用）。
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const backBtn = window.document.querySelector('.dshgn_noteBack')
+  if (backBtn) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    try {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+  }
+
+  const res = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '放大查看验收',
+      content: ['# 放大查看验收', '', '![[放大验收.png]]', ''].join('\n'),
+      withDatePrefix: false,
+      requestId: 'seed-zoom-image',
+    }),
+  })
+  const seeded = await res.json()
+  assert.equal(seeded.path, '随手记/放大查看验收.md')
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  const card = await waitFor(
+    () => Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === seeded.path) || null,
+    8000,
+    '列表里应该有这一篇',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 5000, '打开这一篇')
+
+  const pic = await waitFor(
+    () => window.document.querySelector('.dshgn_md .dshgn_img'),
+    8000,
+    '正文里的图该画出来',
+  )
+  pic.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const mask = await waitFor(() => window.document.querySelector('.dshgn_zoomMask'), 5000, '点图该放大')
+  const big = mask.querySelector('.dshgn_zoomImg')
+  assert.ok(big !== null, '遮罩里得是那张图')
+  assert.ok(String(big.getAttribute('src') || '').includes('/getnote/asset?path='), '放大的还是同一张图')
+
+  window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_zoomMask') === null, 5000, 'Esc 该收起来')
+
+  // 收起来之后笔记还在读着，不该顺手把笔记也关掉
+  assert.equal(rootNode().getAttribute('data-has-note'), 'true', 'Esc 只关遮罩，不该退出笔记')
+})
