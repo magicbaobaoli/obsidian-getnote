@@ -6130,3 +6130,169 @@ test('按 ? 就摊开一张快捷键速查表，Esc 先收它、再按一次也�
   assert.equal(helpMask(), null, '在输入框里打问号不该弹出速查表')
 })
 
+/**
+ * 写到一半没了，下次打开还能捡回来。
+ *
+ * 面板的编辑器是草稿式的：正文只活在 React 的 state 里，切页签、关窗口、
+ * 宿主重载插件都会一起带走。用户写了一整段、手滑按了刷新，那是真丢了。
+ * 所以编辑态边写边往 localStorage 里留一份，下次打开同一篇时在正文上方
+ * 提一句「上次写到一半没存」，接着写会把草稿填回编辑区，丢掉就清掉；
+ * 存好了、或者按 Esc 取消，那份草稿也该跟着消失，不然下次白问一句。
+ */
+test('写到一半关掉窗口，下次打开那篇会问要不要接着写，存好了就不再问', async () => {
+  const { DRAFT_KEY, DRAFT_KEEP, DRAFT_MAX, readDrafts, draftOf, writeDraft, dropDraft } = panel.__internals
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const storageRaw = () => window.localStorage.getItem(DRAFT_KEY)
+
+  // ── 纯函数：写、读、丢、上限 ────────────────────────────────────────────
+  for (const item of readDrafts()) dropDraft(item.path)
+  assert.equal(storageRaw(), null, '一开始没有草稿')
+  assert.equal(draftOf('随便.md'), null, '没写过的就是没有')
+
+  writeDraft('草稿甲.md', '甲的内容')
+  assert.equal(draftOf('草稿甲.md').content, '甲的内容', '写进去就读得出来')
+  assert.ok(draftOf('草稿甲.md').at > 0, '要记下什么时候写的')
+
+  writeDraft('草稿乙.md', '乙的内容')
+  assert.equal(readDrafts()[0].path, '草稿乙.md', '最近写过的排在最前面')
+
+  writeDraft('草稿甲.md', '甲改过')
+  assert.equal(readDrafts().length, 2, '同一篇再写一次不该多出一条')
+  assert.equal(draftOf('草稿甲.md').content, '甲改过', '同一篇以最新那次为准')
+
+  // 超过上限的超长正文不存：那是救急用的，不是版本历史，别把配额吃光
+  writeDraft('太长.md', 'x'.repeat(DRAFT_MAX + 1))
+  assert.equal(draftOf('太长.md'), null, '超过上限的正文不落盘')
+
+  // 只留最近几篇，最早的自己让位
+  for (let i = 0; i < DRAFT_KEEP + 3; i += 1) writeDraft('批量' + i + '.md', '内容' + i)
+  assert.equal(readDrafts().length, DRAFT_KEEP, '最多只留 ' + DRAFT_KEEP + ' 篇')
+  assert.equal(draftOf('批量0.md'), null, '最早那几篇要被挤掉')
+  assert.equal(draftOf('批量' + (DRAFT_KEEP + 2) + '.md').content, '内容' + (DRAFT_KEEP + 2), '最新的还在')
+
+  for (const item of readDrafts()) dropDraft(item.path)
+  assert.equal(storageRaw(), null, '全丢光之后连键都不该留')
+
+  // ── 真渲染：写一半、关窗口、重新挂载 ────────────────────────────────────
+  const back = window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    if (back) back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox) {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setter.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(400)
+  }
+
+  const createRes = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '草稿救回验收',
+      content: ['# 草稿救回验收', '', '磁盘上原来这一句。', '', '最后一行。'].join('\n'),
+      withDatePrefix: false,
+      requestId: 'seed-draft-stash',
+    }),
+  })
+  const created = await createRes.json()
+  const targetPath = created.path
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+  const card = await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === targetPath) ||
+      null,
+    8000,
+    '列表里有这篇',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 8000, '笔记打开')
+
+  const editBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '编辑')
+  editBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const editor = await waitFor(() => window.document.querySelector('.dshgn_editor'), 5000, '进编辑态')
+  const half = ['# 草稿救回验收', '', '磁盘上原来这一句。', '', '最后一行。', '', '写到一半的第三段，还没保存。'].join('\n')
+  editor.value = half
+  editor.dispatchEvent(new window.Event('input', { bubbles: true }))
+
+  // 边写边存有 400ms 防抖：等它真的落进 localStorage
+  await waitFor(() => draftOf(targetPath) !== null, 8000, '写一半也要落进本地草稿')
+  assert.equal(draftOf(targetPath).content, half, '存的就是编辑区里那份')
+
+  // 模拟「关掉窗口」：直接把组件树卸掉再挂回来（不走 Esc，那条路是「不要了」）
+  root.unmount()
+  root = createRoot(rootEl)
+  root.render(React.createElement(panel.PanelRoot, {}))
+  await waitFor(() => rootNode() !== null && rootNode().getAttribute('data-has-note') === 'true', 10000, '重开之后回到那篇')
+
+  const draftBar = await waitFor(() => window.document.querySelector('.dshgn_draftBar'), 8000, '打开时要提一句')
+  assert.ok((draftBar.textContent || '').includes('上次写到一半没存'), '要说清是什么：' + draftBar.textContent)
+  const barBtns = () => Array.from(draftBar.querySelectorAll('.dshgn_draftBtn'))
+  assert.equal(barBtns().length, 2, '摆「接着写」和「丢掉」两个选择')
+  assert.equal((barBtns()[0].textContent || '').trim(), '接着写')
+  assert.equal((barBtns()[1].textContent || '').trim(), '丢掉')
+  assert.equal(window.document.querySelector('.dshgn_editor'), null, '提醒条只在阅读态摆')
+
+  // 接着写：草稿填回编辑区，提醒条自己收起来
+  barBtns()[0].dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const editorAgain = await waitFor(() => window.document.querySelector('.dshgn_editor'), 5000, '接着写要进编辑态')
+  assert.equal(editorAgain.value, half, '编辑区里就是没存完的那份')
+  assert.equal(window.document.querySelector('.dshgn_draftBar'), null, '进编辑态之后提醒条该收起')
+
+  // Esc 是「不要了」：草稿跟着清掉。
+  // 编辑态那个监听是 effect 挂的，刚点完「接着写」的同一个 tick 里按下去会落到
+  // 旧闭包上（那时 editing 还是 false，处理器根本不在），先让出一拍再按。
+  await sleep(200)
+  for (let attempt = 0; attempt < 3 && window.document.querySelector('.dshgn_editor') !== null; attempt += 1) {
+    window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await sleep(300)
+  }
+  await waitFor(() => window.document.querySelector('.dshgn_editor') === null, 5000, 'Esc 退出编辑态')
+  assert.equal(draftOf(targetPath), null, '取消之后草稿不该留着')
+
+  // ── 丢掉这条路 ──────────────────────────────────────────────────────────
+  editBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const editor2 = await waitFor(() => window.document.querySelector('.dshgn_editor'), 5000, '再进一次编辑态')
+  editor2.value = half + '\n再补一句。'
+  editor2.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await waitFor(() => draftOf(targetPath) !== null, 8000, '这次也要落进草稿')
+
+  root.unmount()
+  root = createRoot(rootEl)
+  root.render(React.createElement(panel.PanelRoot, {}))
+  await waitFor(() => rootNode() !== null && rootNode().getAttribute('data-has-note') === 'true', 10000, '再重开一次')
+  const bar2 = await waitFor(() => window.document.querySelector('.dshgn_draftBar'), 8000, '又该问一句')
+  const dropBtn = Array.from(bar2.querySelectorAll('.dshgn_draftBtn'))[1]
+  dropBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_draftBar') === null, 5000, '丢掉之后提醒条收起')
+  await waitFor(
+    () => ((window.document.querySelector('.dshgn_toast') || {}).textContent || '').includes('草稿已丢掉'),
+    5000,
+    '丢掉了要说一声',
+  )
+  assert.equal(draftOf(targetPath), null, '丢掉之后本地也不该留着')
+
+  // 清掉，别把草稿留给后面的用例
+  dropDraft(targetPath)
+  const tailBack = window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    if (tailBack) tailBack.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '收尾退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+})
+

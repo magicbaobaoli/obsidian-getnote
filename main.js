@@ -8386,6 +8386,11 @@ var LEX = {
     "note.saved": "\u5DF2\u4FDD\u5B58",
     "note.deleted": "\u5DF2\u79FB\u5165\u56DE\u6536\u7AD9",
     "note.unsaved": "\u6709\u672A\u4FDD\u5B58\u7684\u4FEE\u6539",
+    // 没存完的草稿救回来时用的三句。{when} 换成「几月几号几点」。
+    "draft.found": "\u4E0A\u6B21\u5199\u5230\u4E00\u534A\u6CA1\u5B58\uFF08{when}\uFF09",
+    "draft.resume": "\u63A5\u7740\u5199",
+    "draft.discard": "\u4E22\u6389",
+    "draft.discarded": "\u8349\u7A3F\u5DF2\u4E22\u6389",
     "note.menuOpen": "\u6253\u5F00\u8FD9\u7BC7",
     "note.localAudio": "\u672C\u5730\u5F55\u97F3",
     "note.outline": "\u672C\u6587\u5927\u7EB2",
@@ -8833,6 +8838,10 @@ var LEX = {
     "note.saved": "Saved",
     "note.deleted": "Moved to trash",
     "note.unsaved": "Unsaved changes",
+    "draft.found": "Unfinished draft from {when}",
+    "draft.resume": "Keep writing",
+    "draft.discard": "Discard",
+    "draft.discarded": "Draft discarded",
     "note.menuOpen": "Open this note",
     "note.localAudio": "Local recording",
     "note.outline": "Outline",
@@ -9280,6 +9289,10 @@ var LEX = {
     "note.saved": "Opgeslagen",
     "note.deleted": "Naar prullenbak",
     "note.unsaved": "Niet-opgeslagen wijzigingen",
+    "draft.found": "Onvoltooide tekst van {when}",
+    "draft.resume": "Verder schrijven",
+    "draft.discard": "Weggooien",
+    "draft.discarded": "Tekst weggegooid",
     "note.menuOpen": "Deze notitie openen",
     "note.localAudio": "Lokale opname",
     "note.outline": "Overzicht",
@@ -11723,6 +11736,15 @@ var CSS = `
   border-radius:6px;outline:none;background:var(--dsw-alias-bg-primary);font:inherit;font-size:12px;
   color:var(--dsw-alias-label-primary)}
 .dshgn_findInput:focus{border-color:var(--dsw-alias-brand-primary)}
+/* \u6551\u56DE\u6765\u7684\u8349\u7A3F\u63D0\u793A\u6761\uFF1A\u6BD4\u67E5\u627E\u6761\u66F4\u300C\u5B89\u9759\u300D\uFF0C\u5B83\u53EA\u662F\u63D0\u4E00\u53E5\uFF0C\u4E0D\u8BE5\u62A2\u9605\u8BFB\u7684\u6CE8\u610F\u529B */
+.dshgn_draftBar{display:flex;align-items:center;gap:8px;padding:5px clamp(16px,3vw,32px);
+  border-bottom:0.5px solid var(--dsw-alias-border-l1);
+  background:rgba(var(--dshgn-tintRgb),.06);color:var(--dsw-alias-label-secondary);flex:0 0 auto}
+.dshgn_draftText{flex:1;min-width:0;font-size:11.5px;line-height:1.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_draftBtn{flex:none;appearance:none;padding:1px 9px;border:0.5px solid var(--dsw-alias-border-l2);border-radius:999px;
+  background:var(--dsw-alias-bg-primary);font:inherit;font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary);cursor:pointer}
+.dshgn_draftBtn:hover{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-primary)}
+.dshgn_draftBtn:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dshgn_empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:8px;padding:32px;text-align:center;color:var(--dsw-alias-label-tertiary)}
 .dshgn_emptyTitle{font-size:13px;color:var(--dsw-alias-label-secondary)}
@@ -12784,6 +12806,7 @@ function GetnotePage() {
         body: JSON.stringify({ path: current.path, content: draft, requestId: requestId() })
       });
       setCurrent({ ...current, content: draft });
+      dropDraft(current.path);
       showToast(t4("note.saved"));
       void refresh();
     } catch (err) {
@@ -17134,6 +17157,47 @@ function writeScrollMark(path, top) {
   } catch {
   }
 }
+var DRAFT_KEY = "dshgn.drafts";
+var DRAFT_KEEP = 5;
+var DRAFT_MAX = 2e5;
+function readDrafts() {
+  try {
+    const raw = window.localStorage.getItem(DRAFT_KEY);
+    if (raw === null) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item) => item !== null && typeof item === "object" && typeof item.path === "string" && typeof item.content === "string").slice(0, DRAFT_KEEP);
+  } catch {
+    return [];
+  }
+}
+function draftOf(path) {
+  const rel = typeof path === "string" ? path : "";
+  if (rel === "") return null;
+  const hit = readDrafts().find((item) => item.path === rel);
+  return hit === void 0 ? null : hit;
+}
+function writeDraft(path, content) {
+  const rel = typeof path === "string" ? path : "";
+  if (rel === "" || typeof content !== "string") return;
+  if (content.length > DRAFT_MAX) return;
+  try {
+    const rest = readDrafts().filter((item) => item.path !== rel);
+    const next = [{ path: rel, content, at: Date.now() }, ...rest].slice(0, DRAFT_KEEP);
+    window.localStorage.setItem(DRAFT_KEY, JSON.stringify(next));
+  } catch {
+  }
+}
+function dropDraft(path) {
+  const rel = typeof path === "string" ? path : "";
+  if (rel === "") return;
+  try {
+    const rest = readDrafts().filter((item) => item.path !== rel);
+    if (rest.length === 0) window.localStorage.removeItem(DRAFT_KEY);
+    else window.localStorage.setItem(DRAFT_KEY, JSON.stringify(rest));
+  } catch {
+  }
+}
 function ColSplitter(props) {
   const { label, value, min, max, onChange } = props;
   const clamp = (n2) => Math.max(min, Math.min(max, Math.round(n2)));
@@ -17845,6 +17909,34 @@ function NotePane(props) {
     setFindOpen(false);
     setFindText("");
   }, [currentPathOf]);
+  const [stashFound, setStashFound] = h2(null);
+  const [stashHandled, setStashHandled] = h2("");
+  y2(() => {
+    const path = currentPathOf;
+    if (path === "") return void 0;
+    const timer = window.setTimeout(() => {
+      if (stashHandled === path) return;
+      const stashed = draftOf(path);
+      const onDisk = current !== null ? String(current.content || "") : "";
+      if (stashed === null || stashed.content === onDisk) {
+        setStashFound(null);
+        return;
+      }
+      setStashFound({ path, content: stashed.content, at: Number(stashed.at) || 0 });
+    }, 260);
+    return () => window.clearTimeout(timer);
+  }, [currentPathOf, current, stashHandled]);
+  y2(() => {
+    if (!editing) return void 0;
+    const path = currentPathOf;
+    if (path === "" || draft === null) return void 0;
+    const timer = window.setTimeout(() => {
+      const onDisk = current !== null ? String(current.content || "") : "";
+      if (draft === onDisk) dropDraft(path);
+      else writeDraft(path, draft);
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [currentPathOf, current, draft, editing]);
   const [activeHeading, setActiveHeading] = h2(-1);
   const restoringRef = A2(false);
   const scrollTopRef = A2(0);
@@ -17919,6 +18011,7 @@ function NotePane(props) {
         event.preventDefault();
         setDraft(current !== null ? current.content : null);
         setEditing(false);
+        dropDraft(current !== null ? String(current.path || "") : "");
       }
     };
     return attachOnPanelWindows("keydown", onKey);
@@ -18253,10 +18346,16 @@ function NotePane(props) {
         ),
         h4(
           "button",
-          { type: "button", className: "dshgn_btn", onClick: () => {
-            setDraft(current.content);
-            setEditing(false);
-          }, disabled: busy },
+          {
+            type: "button",
+            className: "dshgn_btn",
+            onClick: () => {
+              setDraft(current.content);
+              setEditing(false);
+              dropDraft(currentPathOf);
+            },
+            disabled: busy
+          },
           t4("action.cancel")
         )
       ) : h4(
@@ -18270,7 +18369,10 @@ function NotePane(props) {
             title: t4("action.edit"),
             // 宿主里 Ctrl/Cmd+E 就是这个动作，悬停时让浏览器把它显出来
             "aria-keyshortcuts": "Control+E Meta+E",
-            onClick: () => setEditing(true)
+            onClick: () => {
+              setStashHandled(currentPathOf);
+              setEditing(true);
+            }
           },
           h4(Icon, { name: "edit", size: 15 })
         ),
@@ -18444,6 +18546,49 @@ function NotePane(props) {
           onClick: () => closeFind()
         },
         h4(Icon, { name: "close", size: 13 })
+      )
+    ) : null,
+    // 上次写到一半没存：切页签、关窗口、宿主重载插件都会把草稿一起带走，
+    // 所以边写边在 localStorage 里留了一份。打开这篇时如果磁盘上的正文和
+    // 那份不一样，就在这儿提一句——接着写会把草稿填回编辑区，丢掉就清掉。
+    // 只在阅读态摆：编辑态已经在写了，再提一句只是噪音。
+    !editing && stashFound !== null && stashFound.path === currentPathOf ? h4(
+      "div",
+      { className: "dshgn_draftBar" },
+      h4(Icon, { name: "clock", size: 12 }),
+      h4(
+        "span",
+        { className: "dshgn_draftText" },
+        // 借 formatTime 那套「年-月-日 时:分」，用户一眼看得出是刚才还是昨天
+        t4("draft.found").replace("{when}", formatTime(new Date(stashFound.at).toISOString()))
+      ),
+      h4(
+        "button",
+        {
+          type: "button",
+          className: "dshgn_draftBtn",
+          onClick: () => {
+            setDraft(stashFound.content);
+            setStashHandled(currentPathOf);
+            setStashFound(null);
+            setEditing(true);
+          }
+        },
+        t4("draft.resume")
+      ),
+      h4(
+        "button",
+        {
+          type: "button",
+          className: "dshgn_draftBtn",
+          onClick: () => {
+            dropDraft(currentPathOf);
+            setStashHandled(currentPathOf);
+            setStashFound(null);
+            showToast(t4("draft.discarded"));
+          }
+        },
+        t4("draft.discard")
       )
     ) : null,
     editing ? h4(

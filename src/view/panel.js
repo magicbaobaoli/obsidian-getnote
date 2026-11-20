@@ -680,6 +680,11 @@ async function saveFile(url, filename) {
         'note.saved': '已保存',
         'note.deleted': '已移入回收站',
         'note.unsaved': '有未保存的修改',
+        // 没存完的草稿救回来时用的三句。{when} 换成「几月几号几点」。
+        'draft.found': '上次写到一半没存（{when}）',
+        'draft.resume': '接着写',
+        'draft.discard': '丢掉',
+        'draft.discarded': '草稿已丢掉',
         'note.menuOpen': '打开这篇',
         'note.localAudio': '本地录音',
         'note.outline': '本文大纲',
@@ -1131,6 +1136,10 @@ async function saveFile(url, filename) {
         'note.saved': 'Saved',
         'note.deleted': 'Moved to trash',
         'note.unsaved': 'Unsaved changes',
+        'draft.found': 'Unfinished draft from {when}',
+        'draft.resume': 'Keep writing',
+        'draft.discard': 'Discard',
+        'draft.discarded': 'Draft discarded',
         'note.menuOpen': 'Open this note',
         'note.localAudio': 'Local recording',
         'note.outline': 'Outline',
@@ -1581,6 +1590,10 @@ async function saveFile(url, filename) {
         'note.saved': 'Opgeslagen',
         'note.deleted': 'Naar prullenbak',
         'note.unsaved': 'Niet-opgeslagen wijzigingen',
+        'draft.found': 'Onvoltooide tekst van {when}',
+        'draft.resume': 'Verder schrijven',
+        'draft.discard': 'Weggooien',
+        'draft.discarded': 'Tekst weggegooid',
         'note.menuOpen': 'Deze notitie openen',
         'note.localAudio': 'Lokale opname',
         'note.outline': 'Overzicht',
@@ -4731,6 +4744,15 @@ async function saveFile(url, filename) {
   border-radius:6px;outline:none;background:var(--dsw-alias-bg-primary);font:inherit;font-size:12px;
   color:var(--dsw-alias-label-primary)}
 .dshgn_findInput:focus{border-color:var(--dsw-alias-brand-primary)}
+/* 救回来的草稿提示条：比查找条更「安静」，它只是提一句，不该抢阅读的注意力 */
+.dshgn_draftBar{display:flex;align-items:center;gap:8px;padding:5px clamp(16px,3vw,32px);
+  border-bottom:0.5px solid var(--dsw-alias-border-l1);
+  background:rgba(var(--dshgn-tintRgb),.06);color:var(--dsw-alias-label-secondary);flex:0 0 auto}
+.dshgn_draftText{flex:1;min-width:0;font-size:11.5px;line-height:1.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_draftBtn{flex:none;appearance:none;padding:1px 9px;border:0.5px solid var(--dsw-alias-border-l2);border-radius:999px;
+  background:var(--dsw-alias-bg-primary);font:inherit;font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary);cursor:pointer}
+.dshgn_draftBtn:hover{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-primary)}
+.dshgn_draftBtn:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dshgn_empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:8px;padding:32px;text-align:center;color:var(--dsw-alias-label-tertiary)}
 .dshgn_emptyTitle{font-size:13px;color:var(--dsw-alias-label-secondary)}
@@ -6033,6 +6055,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             body: JSON.stringify({ path: current.path, content: draft, requestId: requestId() }),
           })
           setCurrent({ ...current, content: draft })
+          // 落盘了，那份救急草稿就没有存在的意义了；留着它，下次打开这篇
+          // 还会弹一句「上次写到一半没存」，而其实早就存好了。
+          dropDraft(current.path)
           showToast(t('note.saved'))
           void refresh()
         } catch (err) {
@@ -11126,6 +11151,66 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       }
     }
 
+    // 没存完的草稿：{ path, content, at } 的数组，最近改过的排前面，最多留 5 篇。
+    //
+    // 面板的编辑器是草稿式的——关窗口、切页签、宿主重载插件，正文都还在 React
+    // 的 state 里，一卸载就没了。用户写了一整段、手滑按了刷新，那是真丢了。
+    // 所以边写边往 localStorage 里塞一份，下次打开同一篇时问一句要不要接着写。
+    //
+    // 只留 5 篇、每篇封顶 20 万字：这是「救急」用的，不是版本历史；不封顶的话
+    // 一篇长笔记就能把 localStorage 的 5MB 配额吃掉大半，反而让别的偏好存不进去。
+    const DRAFT_KEY = 'dshgn.drafts'
+    const DRAFT_KEEP = 5
+    const DRAFT_MAX = 200000
+
+    function readDrafts() {
+      try {
+        const raw = window.localStorage.getItem(DRAFT_KEY)
+        if (raw === null) return []
+        const parsed = JSON.parse(raw)
+        if (!Array.isArray(parsed)) return []
+        return parsed
+          .filter((item) => item !== null && typeof item === 'object' && typeof item.path === 'string' && typeof item.content === 'string')
+          .slice(0, DRAFT_KEEP)
+      } catch {
+        // 隐私模式 / 上一版的旧结构：当作没记过
+        return []
+      }
+    }
+
+    /** 这一篇有没有没存完的草稿；没有就返回 null。 */
+    function draftOf(path) {
+      const rel = typeof path === 'string' ? path : ''
+      if (rel === '') return null
+      const hit = readDrafts().find((item) => item.path === rel)
+      return hit === undefined ? null : hit
+    }
+
+    function writeDraft(path, content) {
+      const rel = typeof path === 'string' ? path : ''
+      if (rel === '' || typeof content !== 'string') return
+      if (content.length > DRAFT_MAX) return
+      try {
+        const rest = readDrafts().filter((item) => item.path !== rel)
+        const next = [{ path: rel, content, at: Date.now() }, ...rest].slice(0, DRAFT_KEEP)
+        window.localStorage.setItem(DRAFT_KEY, JSON.stringify(next))
+      } catch {
+        // 配额满了 / 隐私模式：这次没救回来也不该拦住用户继续写
+      }
+    }
+
+    function dropDraft(path) {
+      const rel = typeof path === 'string' ? path : ''
+      if (rel === '') return
+      try {
+        const rest = readDrafts().filter((item) => item.path !== rel)
+        if (rest.length === 0) window.localStorage.removeItem(DRAFT_KEY)
+        else window.localStorage.setItem(DRAFT_KEY, JSON.stringify(rest))
+      } catch {
+        // 存不了就下次再说
+      }
+    }
+
     /**
      * 三栏之间的拖拽手柄。
      *
@@ -12010,6 +12095,49 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         setFindOpen(false)
         setFindText('')
       }, [currentPathOf])
+
+      // 没存完的草稿：切页签、关窗口、宿主重载插件都会把 React 的 state 一起丢掉，
+      // 草稿只活在内存里就等于没救。编辑态边写边往 localStorage 里存一份，下次
+      // 打开同一篇时在正文上面提一句，用户自己决定接着写还是丢掉。
+      //
+      // 只在编辑态存：阅读态那份 draft 就是磁盘上的正文，存它没意义，还会让
+      // 「上次没存完」在每一篇上都冒出来。
+      const [stashFound, setStashFound] = React.useState(null)
+      // 提醒条上按过「接着写」或「丢掉」的那一篇：同一次挂载里不再追问。
+      // 只记路径不记内容，换一篇回来又该重新问。
+      const [stashHandled, setStashHandled] = React.useState('')
+      React.useEffect(() => {
+        const path = currentPathOf
+        if (path === '') return undefined
+        // 等一拍再问：/read 还没回来时 current 是 null，这时比出来的「不一样」
+        // 是假的，一打开就弹提示条会让人以为草稿被覆盖了。
+        const timer = window.setTimeout(() => {
+          if (stashHandled === path) return
+          const stashed = draftOf(path)
+          const onDisk = current !== null ? String(current.content || '') : ''
+          if (stashed === null || stashed.content === onDisk) {
+            setStashFound(null)
+            return
+          }
+          setStashFound({ path, content: stashed.content, at: Number(stashed.at) || 0 })
+        }, 260)
+        return () => window.clearTimeout(timer)
+      }, [currentPathOf, current, stashHandled])
+
+      // 边写边存：400ms 没再敲才落一次盘。每按一个字写一次 localStorage 会在
+      // 长文上明显发涩（它是同步 IO，还带着整份 JSON 的序列化）。
+      React.useEffect(() => {
+        if (!editing) return undefined
+        const path = currentPathOf
+        if (path === '' || draft === null) return undefined
+        const timer = window.setTimeout(() => {
+          const onDisk = current !== null ? String(current.content || '') : ''
+          // 改回了原样就等于没改过，别留一份跟磁盘一模一样的「草稿」
+          if (draft === onDisk) dropDraft(path)
+          else writeDraft(path, draft)
+        }, 400)
+        return () => window.clearTimeout(timer)
+      }, [currentPathOf, current, draft, editing])
       // 大纲里「现在读到哪一节」：点大纲跳过去算，自己往下翻也算。
       // 存的是标题序号（见 jumpToHeading 的注释：序号比行号稳），换一篇就归零。
       const [activeHeading, setActiveHeading] = React.useState(-1)
@@ -12101,6 +12229,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             event.preventDefault()
             setDraft(current !== null ? current.content : null)
             setEditing(false)
+            // 与「取消」同一个口径：退出去就是不要了
+            dropDraft(current !== null ? String(current.path || '') : '')
           }
         }
         return attachOnPanelWindows('keydown', onKey)
@@ -12534,7 +12664,17 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                 ),
                 h(
                   'button',
-                  { type: 'button', className: 'dshgn_btn', onClick: () => { setDraft(current.content); setEditing(false) }, disabled: busy },
+                  {
+                    type: 'button',
+                    className: 'dshgn_btn',
+                    onClick: () => {
+                      setDraft(current.content)
+                      setEditing(false)
+                      // 取消就是不要了，救急草稿一起丢掉——不然下次打开还会问
+                      dropDraft(currentPathOf)
+                    },
+                    disabled: busy,
+                  },
                   t('action.cancel'),
                 ),
               )
@@ -12549,7 +12689,12 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                     title: t('action.edit'),
                     // 宿主里 Ctrl/Cmd+E 就是这个动作，悬停时让浏览器把它显出来
                     'aria-keyshortcuts': 'Control+E Meta+E',
-                    onClick: () => setEditing(true),
+                    onClick: () => {
+                      // 用户在提醒条上点了「接着写」，或者自己点了编辑：这一篇
+                      // 就别再问了，同一次挂载里只提一次。
+                      setStashHandled(currentPathOf)
+                      setEditing(true)
+                    },
                   },
                   h(Icon, { name: 'edit', size: 15 }),
                 ),
@@ -12734,6 +12879,51 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                   onClick: () => closeFind(),
                 },
                 h(Icon, { name: 'close', size: 13 }),
+              ),
+            )
+          : null,
+        // 上次写到一半没存：切页签、关窗口、宿主重载插件都会把草稿一起带走，
+        // 所以边写边在 localStorage 里留了一份。打开这篇时如果磁盘上的正文和
+        // 那份不一样，就在这儿提一句——接着写会把草稿填回编辑区，丢掉就清掉。
+        // 只在阅读态摆：编辑态已经在写了，再提一句只是噪音。
+        !editing && stashFound !== null && stashFound.path === currentPathOf
+          ? h(
+              'div',
+              { className: 'dshgn_draftBar' },
+              h(Icon, { name: 'clock', size: 12 }),
+              h(
+                'span',
+                { className: 'dshgn_draftText' },
+                // 借 formatTime 那套「年-月-日 时:分」，用户一眼看得出是刚才还是昨天
+                t('draft.found').replace('{when}', formatTime(new Date(stashFound.at).toISOString())),
+              ),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dshgn_draftBtn',
+                  onClick: () => {
+                    setDraft(stashFound.content)
+                    setStashHandled(currentPathOf)
+                    setStashFound(null)
+                    setEditing(true)
+                  },
+                },
+                t('draft.resume'),
+              ),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dshgn_draftBtn',
+                  onClick: () => {
+                    dropDraft(currentPathOf)
+                    setStashHandled(currentPathOf)
+                    setStashFound(null)
+                    showToast(t('draft.discarded'))
+                  },
+                },
+                t('draft.discard'),
               ),
             )
           : null,
@@ -14006,5 +14196,6 @@ export const __internals = {
   isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote, parseImageSize, renderParagraph, blockTextOf, markdownLinkTarget,
   tagBodyOf, ZoomOverlay, continueListLine, indentLines, wrapInline, wikilinkQueryAt, wikilinkMatches, tagQueryAt, tagMatches, findInBody, findInBodyMatch, findInText, textHasParts,
       readScrollMarks, writeScrollMark, scrollMarkOf, SCROLL_KEY,
+  readDrafts, draftOf, writeDraft, dropDraft, DRAFT_KEY, DRAFT_KEEP, DRAFT_MAX,
   splitByTerms, highlightTerms, searchTermsOf,
 }
