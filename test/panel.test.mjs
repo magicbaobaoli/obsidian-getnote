@@ -9424,3 +9424,154 @@ test('左栏目录右键改名，整棵子树连同笔记一起搬到新名字�
   const oldRes = await readAt(inside)
   assert.notEqual(oldRes.status, 200, '旧位置不该还留着')
 })
+
+test('批量加标签时标签框也摆出库里已有的标签，敲到一半挑一条补进去', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+  await clickTab('笔记')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+  const pathA = '批量标签甲/批量标签-这一篇.md'
+  const seed = await post('/getnote/create', {
+    dir: '批量标签甲',
+    title: '批量标签-这一篇',
+    content: ['---', 'tags: [批量标签一, 批量标签二]', '---', '', '# 批量标签', '', '正文第一句。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-batch-tag-suggest',
+  })
+  assert.equal(seed.path, pathA)
+
+  const backBtn0 = () => window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(async () => true)
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = backBtn0()
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(220)
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox !== null) {
+    const setValue0 = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setValue0.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(300)
+  }
+  const rowOf = (name) =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+      const label = el.querySelector('.dshgn_treeName')
+      return label !== null && (label.textContent || '').trim() === name
+    })
+  const allRow = rowOf('全部笔记')
+  if (allRow !== undefined) {
+    allRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rowOf('批量标签甲') !== undefined, 8000, '左栏里出现这一篇的目录')
+
+  const cardOf = (path) =>
+    Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === path) || null
+  const card = await waitFor(() => cardOf(pathA), 8000, '要加标签的那一篇')
+  card.querySelector('.dshgn_pickBox').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_batchBar') !== null, 3000, '批量栏出现')
+  const batchBtn = Array.from(window.document.querySelectorAll('.dshgn_batchBtn')).find(
+    (el) => (el.textContent || '').trim() === '批量操作',
+  )
+  assert.ok(batchBtn, '应该有「批量操作」按钮')
+  batchBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_batchMenu') !== null, 3000, '批量菜单展开')
+
+  // 第一行那个输入框是「标签」
+  const tagInput = () => window.document.querySelectorAll('.dshgn_batchInput')[0]
+  assert.ok(tagInput(), '应该有一个标签输入框')
+  // 上一条用例在目录框里敲过字，目录候选可能还摆着——这里只数标签那一档。
+  const chips = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_batchMenu .dshgn_suggestItem')).filter(
+      (el) => el.getAttribute('data-kind') === 'tag',
+    )
+  const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  const type = async (text) => {
+    setValue.call(tagInput(), text)
+    tagInput().dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(140)
+  }
+  // 前面那条「去标签」用例在同一颗输入框里敲过字、面板状态还留着，
+  // 先清空再看「空框上不摆候选」。
+  await type('')
+  assert.equal(chips().length, 0, '没敲字之前不摆候选')
+  const press = (key) =>
+    tagInput().dispatchEvent(new window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }))
+  const names = () => chips().map((el) => (el.querySelector('.dshgn_suggestName') || { textContent: '' }).textContent)
+
+  // 敲到一半就把库里已有的标签摆出来
+  await type('批量标签')
+  assert.ok(chips().length >= 2, '应该摆出至少两个候选，实际 ' + JSON.stringify(names()))
+  assert.ok(names().includes('批量标签一'), '候选里要有这一篇贴过的标签，实际 ' + JSON.stringify(names()))
+  assert.ok(names().includes('批量标签二'), '候选里要两个都在，实际 ' + JSON.stringify(names()))
+  assert.ok(
+    String(chips()[0].getAttribute('title') || '').includes('填进标签框'),
+    '悬停要说清点一下会怎样，实际 ' + chips()[0].getAttribute('title'),
+  )
+
+  // 上下键挑、回车填进去；填完候选收掉，标签还没加上
+  press('ArrowDown')
+  await sleep(120)
+  assert.ok(chips().find((el) => el.getAttribute('data-on') === 'true'), '按一下下键应该有一项被选中')
+  press('Enter')
+  await sleep(160)
+  assert.ok(
+    ['批量标签一', '批量标签二'].includes(tagInput().value),
+    '回车应该把挑中的那一条填进去，实际 ' + tagInput().value,
+  )
+  assert.equal(chips().length, 0, '填进去之后候选要收掉')
+
+  // Esc 先收候选，不把已经填好的标签清掉
+  await type('批量标签')
+  await waitFor(() => chips().length > 0, 3000, '再敲一次又摆出候选')
+  press('Escape')
+  await sleep(140)
+  assert.equal(chips().length, 0, 'Esc 先把候选收起来')
+  assert.equal(tagInput().value, '批量标签', 'Esc 不该把输入框里的字清掉')
+
+  // 挑一条填好再按「加标签」才真的加
+  await type('批量标签二')
+  const addBtn = Array.from(window.document.querySelectorAll('.dshgn_batchMenu .dshgn_btn')).find(
+    (el) => (el.textContent || '').trim() === '加标签',
+  )
+  assert.ok(addBtn, '应该有「加标签」按钮')
+  addBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(
+    () => (window.document.querySelector('.dshgn_toast') || { textContent: '' }).textContent.includes('已处理'),
+    8000,
+    '说一声处理了几篇',
+  )
+  const readAt = async (p) =>
+    realFetch(server.origin + '/getnote/read?path=' + encodeURIComponent(p), {
+      headers: { 'x-getnote-token': server.token },
+    })
+  let text = ''
+  for (let i = 0; i < 40; i += 1) {
+    const res = await readAt(pathA)
+    if (res.status === 200) {
+      const json = await res.json()
+      text = String(json.content || '')
+      break
+    }
+    await sleep(200)
+  }
+  assert.ok(text.includes('批量标签二'), '头部应该有这个标签，实际 ' + text.split('\n').slice(0, 4).join(' / '))
+})

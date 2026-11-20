@@ -8402,6 +8402,7 @@ var LEX = {
     "batch.removeTag": "\u53BB\u6807\u7B7E",
     "batch.tagRemovePlaceholder": "\u8981\u53BB\u6389\u7684\u6807\u7B7E",
     "batch.dirPlaceholder": "\u76EE\u6807\u76EE\u5F55",
+    "batch.tagPick": "\u586B\u8FDB\u6807\u7B7E\u6846",
     "batch.dirPick": "\u586B\u8FDB\u76EE\u6807\u76EE\u5F55",
     "batch.move": "\u79FB\u52A8",
     "batch.delete": "\u79FB\u5230\u56DE\u6536\u7AD9",
@@ -8884,6 +8885,7 @@ var LEX = {
     "batch.removeTag": "Remove tag",
     "batch.tagRemovePlaceholder": "Tag to remove",
     "batch.dirPlaceholder": "Target folder",
+    "batch.tagPick": "Use this tag",
     "batch.dirPick": "Use this folder",
     "batch.move": "Move",
     "batch.delete": "Move to trash",
@@ -9358,6 +9360,7 @@ var LEX = {
     "batch.removeTag": "Tag verwijderen",
     "batch.tagRemovePlaceholder": "Tag om te verwijderen",
     "batch.dirPlaceholder": "Doelmap",
+    "batch.tagPick": "Deze tag gebruiken",
     "batch.dirPick": "Deze map gebruiken",
     "batch.move": "Verplaatsen",
     "batch.delete": "Naar prullenbak",
@@ -13788,6 +13791,8 @@ ${insert}
   const [batchDir, setBatchDir] = h2("");
   const [batchDirAt, setBatchDirAt] = h2(null);
   const [batchDirIndex, setBatchDirIndex] = h2(null);
+  const [batchTagAt, setBatchTagAt] = h2(null);
+  const [batchTagIndex, setBatchTagIndex] = h2(null);
   const [batchOpen, setBatchOpen] = h2(false);
   const pickedCount = picked.size;
   const togglePick = q2((path) => {
@@ -13811,11 +13816,21 @@ ${insert}
     () => batchDirAt === null ? [] : searchSuggestions(dirs, [], "dir", batchDirAt),
     [dirs, batchDirAt]
   );
+  const batchTagHits = T2(
+    () => batchTagAt === null ? [] : searchSuggestions([], searchTags, "tag", batchTagAt),
+    [searchTags, batchTagAt]
+  );
   const applyBatchDir = q2((item) => {
     if (item === null || item === void 0) return;
     setBatchDir(String(item.value || ""));
     setBatchDirAt(null);
     setBatchDirIndex(null);
+  }, []);
+  const applyBatchTag = q2((item) => {
+    if (item === null || item === void 0) return;
+    setBatchTag(String(item.value || ""));
+    setBatchTagAt(null);
+    setBatchTagIndex(null);
   }, []);
   const runBatch = q2(
     async (kind) => {
@@ -14580,7 +14595,38 @@ ${insert}
                 type: "text",
                 value: batchTag,
                 placeholder: t4("batch.tagPlaceholder"),
-                onChange: (event) => setBatchTag(event.target.value)
+                onChange: (event) => {
+                  const value = event.target.value;
+                  setBatchTag(value);
+                  setBatchTagAt(value.trim() === "" ? null : value);
+                  setBatchTagIndex(null);
+                },
+                onKeyDown: (event) => {
+                  if (batchTagHits.length === 0) return;
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setBatchTagAt(null);
+                    setBatchTagIndex(null);
+                    return;
+                  }
+                  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                    event.preventDefault();
+                    const down = event.key === "ArrowDown";
+                    setBatchTagIndex((prev) => {
+                      if (prev === null) return down ? 0 : batchTagHits.length - 1;
+                      const next = down ? prev + 1 : prev - 1;
+                      if (next < 0) return batchTagHits.length - 1;
+                      if (next >= batchTagHits.length) return 0;
+                      return next;
+                    });
+                    return;
+                  }
+                  if (event.key === "Enter" && batchTagIndex !== null) {
+                    event.preventDefault();
+                    applyBatchTag(batchTagHits[batchTagIndex]);
+                  }
+                }
               }),
               h4(
                 "button",
@@ -14604,6 +14650,33 @@ ${insert}
                   onClick: () => void runBatch("untag")
                 },
                 t4("batch.removeTag")
+              )
+            ),
+            // 标签候选：和搜索框、目录框同一套纯函数，挑一条只填名字，
+            // 加/去还是要再点一下那颗按钮。
+            batchTagHits.length === 0 ? null : h4(
+              "div",
+              { className: "dshgn_suggest", role: "listbox" },
+              batchTagHits.map(
+                (item, index) => h4(
+                  "button",
+                  {
+                    key: item.value,
+                    type: "button",
+                    className: "dshgn_suggestItem",
+                    "data-kind": "tag",
+                    "data-on": batchTagIndex === index ? "true" : "false",
+                    role: "option",
+                    "aria-selected": batchTagIndex === index ? "true" : "false",
+                    title: t4("batch.tagPick"),
+                    onMouseDown: (event) => {
+                      event.preventDefault();
+                      applyBatchTag(item);
+                    }
+                  },
+                  h4(Icon, { name: "hash", size: 11 }),
+                  h4("span", { className: "dshgn_suggestName" }, item.value)
+                )
               )
             ),
             h4(

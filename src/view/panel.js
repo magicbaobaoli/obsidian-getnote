@@ -579,6 +579,7 @@ async function saveFile(url, filename) {
     'batch.removeTag': '去标签',
     'batch.tagRemovePlaceholder': '要去掉的标签',
         'batch.dirPlaceholder': '目标目录',
+        'batch.tagPick': '填进标签框',
         'batch.dirPick': '填进目标目录',
         'batch.move': '移动',
         'batch.delete': '移到回收站',
@@ -1065,6 +1066,7 @@ async function saveFile(url, filename) {
     'batch.removeTag': 'Remove tag',
     'batch.tagRemovePlaceholder': 'Tag to remove',
         'batch.dirPlaceholder': 'Target folder',
+        'batch.tagPick': 'Use this tag',
         'batch.dirPick': 'Use this folder',
         'batch.move': 'Move',
         'batch.delete': 'Move to trash',
@@ -1543,6 +1545,7 @@ async function saveFile(url, filename) {
     'batch.removeTag': 'Tag verwijderen',
     'batch.tagRemovePlaceholder': 'Tag om te verwijderen',
         'batch.dirPlaceholder': 'Doelmap',
+        'batch.tagPick': 'Deze tag gebruiken',
         'batch.dirPick': 'Deze map gebruiken',
         'batch.move': 'Verplaatsen',
         'batch.delete': 'Naar prullenbak',
@@ -7086,6 +7089,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 而是当场新建一个目录。所以把库里已有的目录名摆出来让人挑。
       const [batchDirAt, setBatchDirAt] = React.useState(null)
       const [batchDirIndex, setBatchDirIndex] = React.useState(null)
+      // 标签框也一样：库里的标签是斜杠套斜杠的，凭记忆手打一个「读书/笔记」而库里
+      // 叫「读书/摘抄」，结果是给几篇一起贴上一个新标签、旧的还在——两处都要改。
+      const [batchTagAt, setBatchTagAt] = React.useState(null)
+      const [batchTagIndex, setBatchTagIndex] = React.useState(null)
       const [batchOpen, setBatchOpen] = React.useState(false)
       const pickedCount = picked.size
 
@@ -7120,11 +7127,23 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         [dirs, batchDirAt],
       )
 
+      const batchTagHits = React.useMemo(
+        () => (batchTagAt === null ? [] : searchSuggestions([], searchTags, 'tag', batchTagAt)),
+        [searchTags, batchTagAt],
+      )
+
       const applyBatchDir = React.useCallback((item) => {
         if (item === null || item === undefined) return
         setBatchDir(String(item.value || ''))
         setBatchDirAt(null)
         setBatchDirIndex(null)
+      }, [])
+
+      const applyBatchTag = React.useCallback((item) => {
+        if (item === null || item === undefined) return
+        setBatchTag(String(item.value || ''))
+        setBatchTagAt(null)
+        setBatchTagIndex(null)
       }, [])
 
       const runBatch = React.useCallback(
@@ -7990,7 +8009,40 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                             type: 'text',
                             value: batchTag,
                             placeholder: t('batch.tagPlaceholder'),
-                            onChange: (event) => setBatchTag(event.target.value),
+                            onChange: (event) => {
+                              const value = event.target.value
+                              setBatchTag(value)
+                              setBatchTagAt(value.trim() === '' ? null : value)
+                              setBatchTagIndex(null)
+                            },
+                            onKeyDown: (event) => {
+                              if (batchTagHits.length === 0) return
+                              if (event.key === 'Escape') {
+                                // 同目录框：这一下 Esc 只收候选，不能让它冒到页面级
+                                // 那个 Esc 上把整批选中一起清掉。
+                                event.preventDefault()
+                                event.stopPropagation()
+                                setBatchTagAt(null)
+                                setBatchTagIndex(null)
+                                return
+                              }
+                              if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                                event.preventDefault()
+                                const down = event.key === 'ArrowDown'
+                                setBatchTagIndex((prev) => {
+                                  if (prev === null) return down ? 0 : batchTagHits.length - 1
+                                  const next = down ? prev + 1 : prev - 1
+                                  if (next < 0) return batchTagHits.length - 1
+                                  if (next >= batchTagHits.length) return 0
+                                  return next
+                                })
+                                return
+                              }
+                              if (event.key === 'Enter' && batchTagIndex !== null) {
+                                event.preventDefault()
+                                applyBatchTag(batchTagHits[batchTagIndex])
+                              }
+                            },
                           }),
                           h(
                             'button',
@@ -8016,6 +8068,35 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                             t('batch.removeTag'),
                           ),
                         ),
+                        // 标签候选：和搜索框、目录框同一套纯函数，挑一条只填名字，
+                        // 加/去还是要再点一下那颗按钮。
+                        batchTagHits.length === 0
+                          ? null
+                          : h(
+                              'div',
+                              { className: 'dshgn_suggest', role: 'listbox' },
+                              batchTagHits.map((item, index) =>
+                                h(
+                                  'button',
+                                  {
+                                    key: item.value,
+                                    type: 'button',
+                                    className: 'dshgn_suggestItem',
+                                    'data-kind': 'tag',
+                                    'data-on': batchTagIndex === index ? 'true' : 'false',
+                                    role: 'option',
+                                    'aria-selected': batchTagIndex === index ? 'true' : 'false',
+                                    title: t('batch.tagPick'),
+                                    onMouseDown: (event) => {
+                                      event.preventDefault()
+                                      applyBatchTag(item)
+                                    },
+                                  },
+                                  h(Icon, { name: 'hash', size: 11 }),
+                                  h('span', { className: 'dshgn_suggestName' }, item.value),
+                                ),
+                              ),
+                            ),
                         h(
                           'div',
                           { className: 'dshgn_batchRow' },
