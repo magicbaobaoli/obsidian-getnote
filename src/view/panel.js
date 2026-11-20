@@ -20,6 +20,28 @@ function apiOrigin() {
   return __apiBase
 }
 
+// 面板内部拖动的载荷类型。
+//
+// 卡片拖到宿主编辑器里要变成一条链接，那是拖给「外面」的，用 text/plain；
+// 而拖到左栏某个目录上只在本面板内部有意义（把这一篇挪进那个目录），
+// 所以走一个私有 MIME。两种拖法共用同一次 dragstart，靠类型区分意图，
+// 免得「拖到目录上」被宿主当成「往编辑器里插一条链接」。
+const DRAG_MIME = 'application/x-getnote-path'
+
+// 拖到半路时（dragover）读不到内容，只能看类型清单。
+// 有的环境给的是 DOMStringList（有 contains），有的给数组，两种都认。
+function dragCarriesNote(dataTransfer) {
+  if (dataTransfer === null || dataTransfer === undefined) return false
+  const types = dataTransfer.types
+  if (types === null || types === undefined) return false
+  if (typeof types.contains === 'function') return types.contains(DRAG_MIME) === true
+  try {
+    return Array.prototype.indexOf.call(types, DRAG_MIME) !== -1
+  } catch {
+    return false
+  }
+}
+
 // 本机服务的访问令牌，由 main.js 在服务监听成功后写入。
 // CORS 头是 `*`（渲染进程的源是 app://obsidian.md，预知不了），所以门禁靠这个
 // 令牌：没有它，本机任何网页都能 fetch 这个端口、把整个笔记库读走。
@@ -612,6 +634,7 @@ async function saveFile(url, filename) {
         'tree.deletedTag': '标签已移除',
         'tree.dirNotEmpty': '这个目录里还有笔记，先把它们移走',
         'tree.dirCreated': '目录已创建（空目录暂时不显示在列表里）',
+        'tree.movedTo': '已挪到 {dir}',
         'tree.tagCreated': '标签已添加到当前笔记',
         'tree.tagNeedNote': '先打开一篇笔记再建标签',
         'tree.menuDelete': '删除',
@@ -1075,6 +1098,7 @@ async function saveFile(url, filename) {
         'tree.deletedTag': 'Tag removed',
         'tree.dirNotEmpty': 'This folder still has notes — move them out first',
         'tree.dirCreated': 'Folder created (empty folders stay hidden)',
+        'tree.movedTo': 'Moved to {dir}',
         'tree.tagCreated': 'Tag added to the open note',
         'tree.tagNeedNote': 'Open a note first to add a tag',
         'tree.menuDelete': 'Delete',
@@ -1537,6 +1561,7 @@ async function saveFile(url, filename) {
         'tree.deletedTag': 'Tag verwijderd',
         'tree.dirNotEmpty': 'Er staan nog notities in deze map — verplaats ze eerst',
         'tree.dirCreated': 'Map aangemaakt (lege mappen blijven verborgen)',
+        'tree.movedTo': 'Verplaatst naar {dir}',
         'tree.tagCreated': 'Tag toegevoegd aan de geopende notitie',
         'tree.tagNeedNote': 'Open eerst een notitie om een tag toe te voegen',
         'tree.menuDelete': 'Verwijderen',
@@ -4636,6 +4661,10 @@ async function saveFile(url, filename) {
   text-overflow:ellipsis;user-select:none}
 .dshgn_treeRow:hover{background:var(--dsw-alias-interactive-bg-hover)}
 .dshgn_treeRow[data-on="true"]{background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-label-primary)}
+/* 卡片正拖到这一行上面：虚线框 + 品牌色，和「当前选中的目录」那种实底区分开，
+   否则拖到已选中的目录上会看不出有没有接住。 */
+.dshgn_treeRow[data-drop="true"]{background:rgba(var(--dshgn-tintRgb),.10);color:var(--dsw-alias-brand-primary);
+  box-shadow:inset 0 0 0 1px var(--dsw-alias-brand-primary)}
 .dshgn_treeName{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;font-size:12px}
 .dshgn_treeCount{flex:none;font-size:10px;color:var(--dsw-alias-label-dimmed)}
 /* max-width + 省略号是承重的：标签名是用户随手起的，一个长标签在 190px 的左栏里
@@ -6883,6 +6912,47 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         [activeDir, refresh, setBusy, setError, showToast, status, t],
       )
 
+      // 把一篇笔记挪进某个目录（卡片拖到左栏那一行上）。
+      //
+      // 和 dropIntoDir 走同一个 /batch 端点，区别只在于目标目录是拖放时
+      // 指定的那一个，而不是当前筛选的目录——所以不需要先切筛选。
+      // 挪完得把笔记头里的路径换掉：正开着的那篇被挪走后，再按保存会写回
+      // 旧位置，旧目录里凭空多出一个副本。
+      const moveNoteTo = React.useCallback(
+        async (path, dir) => {
+          const from = typeof path === 'string' ? path : ''
+          const target = typeof dir === 'string' ? dir : ''
+          if (from === '' || target === '') return
+          const slash = from.lastIndexOf('/')
+          const fromDir = slash === -1 ? '' : from.slice(0, slash)
+          if (fromDir === target) return
+          setBusy(true)
+          try {
+            const json = await api('/batch', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ action: 'move', paths: [from], dir: target }),
+            })
+            const changed = Number(json.changed) || 0
+            // 挪到哪儿得说出来：拖过去之后列表会跟着刷新，用户得确认这一篇
+            // 真的进了那个目录，而不是被弹回了原来的地方。
+            showToast(changed > 0 ? t('tree.movedTo').replace('{dir}', target) : `${t('batch.done')} 0`)
+            const list = Array.isArray(json.moved) ? json.moved : []
+            const hit = list.find((item) => item !== null && item !== undefined && item.from === from)
+            const landed = hit !== undefined && hit !== null && typeof hit.to === 'string' ? hit.to : ''
+            await refresh()
+            if (landed !== '' && current !== null && current !== undefined && current.path === from) {
+              setCurrent({ ...current, path: landed })
+            }
+          } catch (err) {
+            setError(err && err.message ? err.message : String(err))
+          } finally {
+            setBusy(false)
+          }
+        },
+        [current, refresh, setBusy, setError, showToast, t],
+      )
+
       // vaultMissing 正常时是 null（不是 false）：这里原本写 === false，
       // 于是「+」和刷新按钮永远处于 disabled 状态，用户点了以为没反应。
       // 只要 status 拿到了、且没报缺失，就算就绪。
@@ -6981,6 +7051,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         const onDragOver = (event) => {
           if (!inPanel(event)) return
           event.preventDefault()
+          // 面板自己的笔记卡片拖到左栏目录上时，落点已经把 dropEffect 设成 move 了；
+          // 这里再盖一次 copy，光标会显示成「复制」，而实际动作是挪动。
+          if (dragCarriesNote(event.dataTransfer)) return
           if (event.dataTransfer) {
             try {
               event.dataTransfer.dropEffect = 'copy'
@@ -7284,6 +7357,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             onPickTag: (tag) => {
               setActiveTag(tag)
               setActiveDir('')
+            },
+            onMoveNoteTo: (path, dir) => {
+              void moveNoteTo(path, dir)
             },
             onCreateDir: async (name) => {
               try {
@@ -7614,7 +7690,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                           if (event.dataTransfer === null || event.dataTransfer === undefined) return
                           try {
                             event.dataTransfer.setData('text/plain', text)
-                            event.dataTransfer.effectAllowed = 'copy'
+                            // 同一次拖动还带一份面板口径的路径：拖到左栏某个目录上时
+                            // 面板按它把这一篇挪过去（见 TreePane 的目录行）。
+                            event.dataTransfer.setData(DRAG_MIME, entry.path)
+                            event.dataTransfer.effectAllowed = 'copyMove'
                           } catch {
                             // 某些环境不让写 dataTransfer，拖动就退化成没反应，不该炸
                           }
@@ -11617,6 +11696,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         heatmap,
         currentNoteId,
         onNarrowPick,
+        onMoveNoteTo,
       } = props
       const total = Array.isArray(entries) ? entries.length : 0
       // 窄窗口里左栏是浮在列表上的抽屉，选完就该消失，不然它一直盖着结果。
@@ -11637,6 +11717,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 标签改名：{from, to} 非空时那一行变成输入框。
       // 不做成弹窗是因为改名要边看原名边打字，弹窗会挡住标签云本身。
       const [renaming, setRenaming] = React.useState(null)
+      // 正有卡片被拖到哪一行上面（目录路径）。只在拖到目录行上时非空，
+      // 拖到别处（列表、正文、栏外）一律清掉——高亮是一种承诺，
+      // 高亮着却没接住比不高亮更糟。
+      const [dropOn, setDropOn] = React.useState('')
 
       // 点空白处关菜单：右键菜单不会自己消失是最烦人的一类小毛病
       React.useEffect(() => {
@@ -12003,9 +12087,38 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
               key: node.path,
               className: 'dshgn_treeRow',
               'data-on': activeDir === node.path ? 'true' : 'false',
+              'data-drop': dropOn === node.path ? 'true' : 'false',
               style: { paddingLeft: `${7 + node.depth * 11}px` },
               onClick: picked(() => onPickDir(node.path)),
               onContextMenu: (event) => openMenu(event, 'dir', node.path),
+              // 卡片拖到这一行上就把它挪进这个目录。只认面板自己带的私有类型：
+              // 从宿主文件树拖过来的文件也走 dragover，但那是「导入」，不是「挪」。
+              onDragOver: (event) => {
+                if (typeof onMoveNoteTo !== 'function') return
+                if (!dragCarriesNote(event.dataTransfer)) return
+                event.preventDefault()
+                event.stopPropagation()
+                try {
+                  event.dataTransfer.dropEffect = 'move'
+                } catch {}
+                if (dropOn !== node.path) setDropOn(node.path)
+              },
+              onDragLeave: () => {
+                if (dropOn === node.path) setDropOn('')
+              },
+              onDrop: (event) => {
+                setDropOn('')
+                if (typeof onMoveNoteTo !== 'function') return
+                if (!dragCarriesNote(event.dataTransfer)) return
+                event.preventDefault()
+                event.stopPropagation()
+                let dragged = ''
+                try {
+                  dragged = String(event.dataTransfer.getData(DRAG_MIME) || '')
+                } catch {}
+                if (dragged === '') return
+                onMoveNoteTo(dragged, node.path)
+              },
               title: `${node.path}\n${t('tree.menuDelete')}：右键`,
             },
             h(Icon, { name: 'folder', size: 13 }),

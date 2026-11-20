@@ -5744,6 +5744,7 @@ function createHandler(config) {
     if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
     let changed = 0;
     const failed = [];
+    const moved = [];
     for (const path of paths) {
       try {
         if (action === "delete") {
@@ -5794,13 +5795,14 @@ function createHandler(config) {
             }
           }
           await rename2(srcAbs, targetAbs);
+          moved.push({ from: path, to: `${dir}/${finalName}` });
           changed += 1;
         }
       } catch (err) {
         failed.push({ path, error: err && err.message ? err.message : String(err) });
       }
     }
-    send(res, 200, { ok: true, changed, failed, total: paths.length });
+    send(res, 200, { ok: true, changed, failed, moved, total: paths.length });
   }
   async function handleCreate(req, res) {
     const body = await readJsonBody(req, MAX_BODY);
@@ -7923,6 +7925,18 @@ function setApiOrigin(origin) {
 function apiOrigin() {
   return __apiBase;
 }
+var DRAG_MIME = "application/x-getnote-path";
+function dragCarriesNote(dataTransfer) {
+  if (dataTransfer === null || dataTransfer === void 0) return false;
+  const types = dataTransfer.types;
+  if (types === null || types === void 0) return false;
+  if (typeof types.contains === "function") return types.contains(DRAG_MIME) === true;
+  try {
+    return Array.prototype.indexOf.call(types, DRAG_MIME) !== -1;
+  } catch {
+    return false;
+  }
+}
 var __apiToken = "";
 function setApiToken(token) {
   __apiToken = String(token || "");
@@ -8336,6 +8350,7 @@ var LEX = {
     "tree.deletedTag": "\u6807\u7B7E\u5DF2\u79FB\u9664",
     "tree.dirNotEmpty": "\u8FD9\u4E2A\u76EE\u5F55\u91CC\u8FD8\u6709\u7B14\u8BB0\uFF0C\u5148\u628A\u5B83\u4EEC\u79FB\u8D70",
     "tree.dirCreated": "\u76EE\u5F55\u5DF2\u521B\u5EFA\uFF08\u7A7A\u76EE\u5F55\u6682\u65F6\u4E0D\u663E\u793A\u5728\u5217\u8868\u91CC\uFF09",
+    "tree.movedTo": "\u5DF2\u632A\u5230 {dir}",
     "tree.tagCreated": "\u6807\u7B7E\u5DF2\u6DFB\u52A0\u5230\u5F53\u524D\u7B14\u8BB0",
     "tree.tagNeedNote": "\u5148\u6253\u5F00\u4E00\u7BC7\u7B14\u8BB0\u518D\u5EFA\u6807\u7B7E",
     "tree.menuDelete": "\u5220\u9664",
@@ -8795,6 +8810,7 @@ var LEX = {
     "tree.deletedTag": "Tag removed",
     "tree.dirNotEmpty": "This folder still has notes \u2014 move them out first",
     "tree.dirCreated": "Folder created (empty folders stay hidden)",
+    "tree.movedTo": "Moved to {dir}",
     "tree.tagCreated": "Tag added to the open note",
     "tree.tagNeedNote": "Open a note first to add a tag",
     "tree.menuDelete": "Delete",
@@ -9253,6 +9269,7 @@ var LEX = {
     "tree.deletedTag": "Tag verwijderd",
     "tree.dirNotEmpty": "Er staan nog notities in deze map \u2014 verplaats ze eerst",
     "tree.dirCreated": "Map aangemaakt (lege mappen blijven verborgen)",
+    "tree.movedTo": "Verplaatst naar {dir}",
     "tree.tagCreated": "Tag toegevoegd aan de geopende notitie",
     "tree.tagNeedNote": "Open eerst een notitie om een tag toe te voegen",
     "tree.menuDelete": "Verwijderen",
@@ -11620,6 +11637,10 @@ var CSS = `
   text-overflow:ellipsis;user-select:none}
 .dshgn_treeRow:hover{background:var(--dsw-alias-interactive-bg-hover)}
 .dshgn_treeRow[data-on="true"]{background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-label-primary)}
+/* \u5361\u7247\u6B63\u62D6\u5230\u8FD9\u4E00\u884C\u4E0A\u9762\uFF1A\u865A\u7EBF\u6846 + \u54C1\u724C\u8272\uFF0C\u548C\u300C\u5F53\u524D\u9009\u4E2D\u7684\u76EE\u5F55\u300D\u90A3\u79CD\u5B9E\u5E95\u533A\u5206\u5F00\uFF0C
+   \u5426\u5219\u62D6\u5230\u5DF2\u9009\u4E2D\u7684\u76EE\u5F55\u4E0A\u4F1A\u770B\u4E0D\u51FA\u6709\u6CA1\u6709\u63A5\u4F4F\u3002 */
+.dshgn_treeRow[data-drop="true"]{background:rgba(var(--dshgn-tintRgb),.10);color:var(--dsw-alias-brand-primary);
+  box-shadow:inset 0 0 0 1px var(--dsw-alias-brand-primary)}
 .dshgn_treeName{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;font-size:12px}
 .dshgn_treeCount{flex:none;font-size:10px;color:var(--dsw-alias-label-dimmed)}
 /* max-width + \u7701\u7565\u53F7\u662F\u627F\u91CD\u7684\uFF1A\u6807\u7B7E\u540D\u662F\u7528\u6237\u968F\u624B\u8D77\u7684\uFF0C\u4E00\u4E2A\u957F\u6807\u7B7E\u5728 190px \u7684\u5DE6\u680F\u91CC
@@ -13499,6 +13520,38 @@ ${insert}
     },
     [activeDir, refresh, setBusy, setError, showToast, status, t4]
   );
+  const moveNoteTo = q2(
+    async (path, dir) => {
+      const from = typeof path === "string" ? path : "";
+      const target = typeof dir === "string" ? dir : "";
+      if (from === "" || target === "") return;
+      const slash = from.lastIndexOf("/");
+      const fromDir = slash === -1 ? "" : from.slice(0, slash);
+      if (fromDir === target) return;
+      setBusy(true);
+      try {
+        const json = await api("/batch", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "move", paths: [from], dir: target })
+        });
+        const changed = Number(json.changed) || 0;
+        showToast(changed > 0 ? t4("tree.movedTo").replace("{dir}", target) : `${t4("batch.done")} 0`);
+        const list = Array.isArray(json.moved) ? json.moved : [];
+        const hit = list.find((item) => item !== null && item !== void 0 && item.from === from);
+        const landed = hit !== void 0 && hit !== null && typeof hit.to === "string" ? hit.to : "";
+        await refresh();
+        if (landed !== "" && current !== null && current !== void 0 && current.path === from) {
+          setCurrent({ ...current, path: landed });
+        }
+      } catch (err) {
+        setError(err && err.message ? err.message : String(err));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [current, refresh, setBusy, setError, showToast, t4]
+  );
   const vaultReady = status !== null && !status.vaultMissing;
   y2(() => {
     const onKey = (event) => {
@@ -13571,6 +13624,7 @@ ${insert}
     const onDragOver = (event) => {
       if (!inPanel(event)) return;
       event.preventDefault();
+      if (dragCarriesNote(event.dataTransfer)) return;
       if (event.dataTransfer) {
         try {
           event.dataTransfer.dropEffect = "copy";
@@ -13855,6 +13909,9 @@ ${insert}
         onPickTag: (tag) => {
           setActiveTag(tag);
           setActiveDir("");
+        },
+        onMoveNoteTo: (path, dir) => {
+          void moveNoteTo(path, dir);
         },
         onCreateDir: async (name) => {
           try {
@@ -14157,7 +14214,8 @@ ${insert}
                     if (event.dataTransfer === null || event.dataTransfer === void 0) return;
                     try {
                       event.dataTransfer.setData("text/plain", text);
-                      event.dataTransfer.effectAllowed = "copy";
+                      event.dataTransfer.setData(DRAG_MIME, entry.path);
+                      event.dataTransfer.effectAllowed = "copyMove";
                     } catch {
                     }
                   },
@@ -17548,7 +17606,8 @@ function TreePane(props) {
     onRenameTag,
     heatmap,
     currentNoteId,
-    onNarrowPick
+    onNarrowPick,
+    onMoveNoteTo
   } = props;
   const total = Array.isArray(entries) ? entries.length : 0;
   const picked = (fn2) => (arg) => {
@@ -17561,6 +17620,7 @@ function TreePane(props) {
   const [draft, setDraft] = h2("");
   const [busy, setBusy] = h2(false);
   const [renaming, setRenaming] = h2(null);
+  const [dropOn, setDropOn] = h2("");
   y2(() => {
     if (menu === null) return void 0;
     const close = () => setMenu(null);
@@ -17876,9 +17936,40 @@ function TreePane(props) {
           key: node.path,
           className: "dshgn_treeRow",
           "data-on": activeDir === node.path ? "true" : "false",
+          "data-drop": dropOn === node.path ? "true" : "false",
           style: { paddingLeft: `${7 + node.depth * 11}px` },
           onClick: picked(() => onPickDir(node.path)),
           onContextMenu: (event) => openMenu(event, "dir", node.path),
+          // 卡片拖到这一行上就把它挪进这个目录。只认面板自己带的私有类型：
+          // 从宿主文件树拖过来的文件也走 dragover，但那是「导入」，不是「挪」。
+          onDragOver: (event) => {
+            if (typeof onMoveNoteTo !== "function") return;
+            if (!dragCarriesNote(event.dataTransfer)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            try {
+              event.dataTransfer.dropEffect = "move";
+            } catch {
+            }
+            if (dropOn !== node.path) setDropOn(node.path);
+          },
+          onDragLeave: () => {
+            if (dropOn === node.path) setDropOn("");
+          },
+          onDrop: (event) => {
+            setDropOn("");
+            if (typeof onMoveNoteTo !== "function") return;
+            if (!dragCarriesNote(event.dataTransfer)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            let dragged = "";
+            try {
+              dragged = String(event.dataTransfer.getData(DRAG_MIME) || "");
+            } catch {
+            }
+            if (dragged === "") return;
+            onMoveNoteTo(dragged, node.path);
+          },
           title: `${node.path}
 ${t4("tree.menuDelete")}\uFF1A\u53F3\u952E`
         },

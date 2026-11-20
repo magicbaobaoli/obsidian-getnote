@@ -440,7 +440,15 @@ test('笔记卡片能拖出去，带的是宿主自己的链接格式', async ()
     configurable: true,
   })
   card.dispatchEvent(event)
-  assert.deepEqual(written, [['text/plain', '[[宿主给的链接]]']], '拖出去的内容应当是宿主给的链接')
+  // 同一次拖动带两份载荷：text/plain 是拖给外面（宿主编辑器）的链接，
+  // 私有 MIME 是拖给面板自己左栏目录用的路径。见 DRAG_MIME。
+  const plain = written.filter((item) => item[0] === 'text/plain')
+  assert.deepEqual(plain, [['text/plain', '[[宿主给的链接]]']], '拖出去的内容应当是宿主给的链接')
+  assert.equal(
+    written.filter((item) => item[0] === 'application/x-getnote-path').length,
+    1,
+    '还要带一份面板口径的路径，拖到左栏目录上才认得出是哪一篇',
+  )
   assert.match(asked[0], /右键菜单验收\.md$/, '问宿主格式时给的是这篇的路径')
 
   // 宿主没接上（或者拿不到链接格式）时退回库内相对路径，至少粘过去是能认的路径
@@ -452,8 +460,12 @@ test('笔记卡片能拖出去，带的是宿主自己的链接格式', async ()
     configurable: true,
   })
   card.dispatchEvent(event2)
-  assert.equal(second.length, 1, '拿不到链接格式也要给出一份可用的文本')
-  assert.match(second[0][1], /右键菜单验收\.md$/, '退回的是这篇的路径，实际 ' + second[0][1])
+  assert.equal(second.filter((item) => item[0] === 'text/plain').length, 1, '拿不到链接格式也要给出一份可用的文本')
+  assert.match(
+    second.find((item) => item[0] === 'text/plain')[1],
+    /右键菜单验收\.md$/,
+    '退回的是这篇的路径，实际 ' + second[0][1],
+  )
 
   // 没有 dataTransfer 的环境不该炸
   card.dispatchEvent(new window.MouseEvent('dragstart', { bubbles: true, cancelable: true }))
@@ -7267,4 +7279,152 @@ test('大纲里那一节能抄一条指向它的链接，怎么拼先问宿主�
   assert.equal(written.length, before, '点标题只跳转，不该抄链接')
 
   panel.setMarkdownLink(null)
+})
+/**
+ * 把列表里的卡片拖到左栏某个目录上 = 把这一篇挪进那个目录。
+ *
+ * 卡片本来就能拖（拖出去变成宿主链接），但那是「拿到别处去用」。想真正把一篇
+ * 从 A 目录挪到 B 目录，以前得先勾选再走批量条；而拖动本身已经把目标指得很清楚了。
+ * 这里验三件事：拖到目录行上真的挪了、笔记头跟着改到新路径（否则再按保存会写回
+ * 旧位置、旧目录里凭空多个副本）、以及没带面板载荷的拖动（宿主文件树那种）不被当成挪。
+ */
+test('卡片拖到左栏目录上就挪进那个目录，笔记头也跟着换成新路径', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+  await clickTab('笔记')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+  const seedA = await post('/getnote/create', {
+    dir: '拖动挪目录甲',
+    title: '拖动挪目录-这一篇',
+    content: ['# 拖动挪目录', '', '正文第一句。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-drag-move-note',
+  })
+  assert.equal(seedA.path, '拖动挪目录甲/拖动挪目录-这一篇.md')
+  // 目标目录里先放一篇，左栏才会出现这个目录
+  await post('/getnote/create', {
+    dir: '拖动挪目录乙',
+    title: '拖动挪目录-占位',
+    content: '正文',
+    withDatePrefix: false,
+    requestId: 'seed-drag-move-placeholder',
+  })
+
+  const rowOf = (name) =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+      const label = el.querySelector('.dshgn_treeName')
+      return label !== null && (label.textContent || '').trim() === name
+    })
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rowOf('拖动挪目录乙') !== undefined, 8000, '左栏里出现目标目录')
+  await waitFor(() => rowOf('拖动挪目录甲') !== undefined, 8000, '左栏里出现来源目录')
+
+  // 前面的用例可能把搜索框填着、或者筛在某个目录上，先把列表退回全量，
+  // 否则这一篇根本不在卡片里。
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox !== null) {
+    const setInput = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setInput.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(300)
+  }
+  const allRow = rowOf('全部笔记')
+  if (allRow !== undefined) {
+    allRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+
+  // 点开这一篇，后面要验笔记头里的路径跟着改。
+  // 按 title（也就是整条路径）找，不按卡片上的字找：卡片标题取的是正文第一行
+  // 那个 H1，和文件名并不一样。
+  const card = await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_card')).find(
+        (el) => el.getAttribute('title') === '拖动挪目录甲/拖动挪目录-这一篇.md',
+      ) || null,
+    8000,
+    '列表里的那一篇',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 8000, '打开这一篇')
+  await waitFor(
+    () => (window.document.querySelector('.dshgn_notePath') || { textContent: '' }).textContent === '拖动挪目录甲/拖动挪目录-这一篇.md',
+    8000,
+    '笔记头显示原路径',
+  )
+  await sleep(250)
+
+  // 拖到目标目录行上：先 dragover（要看到高亮），再 drop
+  const target = rowOf('拖动挪目录乙')
+  const carried = '拖动挪目录甲/拖动挪目录-这一篇.md'
+  const makeTransfer = (withPanelPath) => ({
+    types: withPanelPath ? ['text/plain', 'application/x-getnote-path'] : ['text/plain'],
+    dropEffect: '',
+    effectAllowed: '',
+    setData: () => {},
+    getData: (kind) => (withPanelPath && kind === 'application/x-getnote-path' ? carried : ''),
+  })
+  const fire = (kind, transfer, el) => {
+    const event = new window.Event(kind, { bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'dataTransfer', { value: transfer, configurable: true })
+    el.dispatchEvent(event)
+    return event
+  }
+
+  // 宿主文件树那种拖动只有 text/plain：左栏不该接住，也不该亮
+  const foreign = makeTransfer(false)
+  fire('dragover', foreign, target)
+  await sleep(80)
+  assert.notEqual(rowOf('拖动挪目录乙').getAttribute('data-drop'), 'true', '不该为别人的拖动亮起来')
+  assert.equal(foreign.dropEffect, 'copy', '别人的拖动还是走「拖进来导入」那条路')
+
+  // 面板自己的拖动：dragover 要拦下来（否则浏览器不认这是合法落点）并亮起来
+  const transfer = makeTransfer(true)
+  const over = fire('dragover', transfer, target)
+  assert.equal(over.defaultPrevented, true, '面板自己的拖动要认下来')
+  await waitFor(() => rowOf('拖动挪目录乙').getAttribute('data-drop') === 'true', 5000, '目录行亮起来')
+
+  const dropped = fire('drop', transfer, rowOf('拖动挪目录乙'))
+  assert.equal(dropped.defaultPrevented, true, '放下之后不该再交给浏览器')
+  await waitFor(
+    () => (window.document.querySelector('.dshgn_toast') || { textContent: '' }).textContent.includes('已挪到 拖动挪目录乙'),
+    8000,
+    '说一声挪到哪儿了',
+  )
+
+  // 笔记头得跟着换成新路径：不然下一次保存会写回旧位置
+  await waitFor(
+    () => (window.document.querySelector('.dshgn_notePath') || { textContent: '' }).textContent === '拖动挪目录乙/拖动挪目录-这一篇.md',
+    8000,
+    '笔记头换成新路径',
+  )
+  assert.notEqual(rowOf('拖动挪目录乙').getAttribute('data-drop'), 'true', '放下之后高亮要收掉')
+
+  // 文件真的挪过去了：新位置读得到，旧位置读不到
+  const readAt = async (p) => {
+    const res = await realFetch(server.origin + '/getnote/read?path=' + encodeURIComponent(p), {
+      headers: { 'x-getnote-token': server.token },
+    })
+    return res.status
+  }
+  assert.equal(await readAt('拖动挪目录乙/拖动挪目录-这一篇.md'), 200, '新位置应该读得到')
+  assert.notEqual(await readAt('拖动挪目录甲/拖动挪目录-这一篇.md'), 200, '旧位置不该还留着')
+
+  // 正文还是原来那份（挪目录不该动内容）
+  const after = await realFetch(
+    server.origin + '/getnote/read?path=' + encodeURIComponent('拖动挪目录乙/拖动挪目录-这一篇.md'),
+    { headers: { 'x-getnote-token': server.token } },
+  )
+  const afterBody = await after.json()
+  assert.ok(String(afterBody.content || '').includes('正文第一句。'), '挪完正文不该变，实际 ' + afterBody.content)
 })

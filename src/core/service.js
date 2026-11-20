@@ -1232,6 +1232,9 @@ export function createHandler(config) {
 
     let changed = 0
     const failed = []
+    // 挪目录时顺手记下「从哪到哪」：面板正开着被挪的那篇时，得知道新路径
+    // 才能把笔记头改过来，否则再点保存会写回旧位置、在旧目录里留个副本。
+    const moved = []
     for (const path of paths) {
       try {
         if (action === 'delete') {
@@ -1293,13 +1296,14 @@ export function createHandler(config) {
             }
           }
           await rename(srcAbs, targetAbs)
+          moved.push({ from: path, to: `${dir}/${finalName}` })
           changed += 1
         }
       } catch (err) {
         failed.push({ path, error: err && err.message ? err.message : String(err) })
       }
     }
-    send(res, 200, { ok: true, changed, failed, total: paths.length })
+    send(res, 200, { ok: true, changed, failed, moved, total: paths.length })
   }
 
   async function handleCreate(req, res) {
