@@ -8293,6 +8293,7 @@ var LEX = {
     "batch.tagPlaceholder": "\u8981\u6DFB\u52A0\u7684\u6807\u7B7E",
     "batch.addTag": "\u52A0\u6807\u7B7E",
     "batch.dirPlaceholder": "\u76EE\u6807\u76EE\u5F55",
+    "batch.dirPick": "\u586B\u8FDB\u76EE\u6807\u76EE\u5F55",
     "batch.move": "\u79FB\u52A8",
     "batch.delete": "\u79FB\u5230\u56DE\u6536\u7AD9",
     "batch.confirmDelete": "\u786E\u5B9A\u628A\u8FD9 \u7BC7\u79FB\u5230\u56DE\u6536\u7AD9\uFF1F",
@@ -8760,6 +8761,7 @@ var LEX = {
     "batch.tagPlaceholder": "Tag to add",
     "batch.addTag": "Add tag",
     "batch.dirPlaceholder": "Target folder",
+    "batch.dirPick": "Use this folder",
     "batch.move": "Move",
     "batch.delete": "Move to trash",
     "batch.confirmDelete": "Move these notes to trash?",
@@ -9219,6 +9221,7 @@ var LEX = {
     "batch.tagPlaceholder": "Tag om toe te voegen",
     "batch.addTag": "Tag toevoegen",
     "batch.dirPlaceholder": "Doelmap",
+    "batch.dirPick": "Deze map gebruiken",
     "batch.move": "Verplaatsen",
     "batch.delete": "Naar prullenbak",
     "batch.confirmDelete": "Deze notities naar de prullenbak verplaatsen?",
@@ -13543,6 +13546,8 @@ ${insert}
   const [picked, setPicked] = h2(() => /* @__PURE__ */ new Set());
   const [batchTag, setBatchTag] = h2("");
   const [batchDir, setBatchDir] = h2("");
+  const [batchDirAt, setBatchDirAt] = h2(null);
+  const [batchDirIndex, setBatchDirIndex] = h2(null);
   const [batchOpen, setBatchOpen] = h2(false);
   const pickedCount = picked.size;
   const togglePick = q2((path) => {
@@ -13561,6 +13566,16 @@ ${insert}
     const target = event.currentTarget;
     if (!target) return;
     hoverLink(event, target, path, "");
+  }, []);
+  const batchDirHits = T2(
+    () => batchDirAt === null ? [] : searchSuggestions(dirs, [], "dir", batchDirAt),
+    [dirs, batchDirAt]
+  );
+  const applyBatchDir = q2((item) => {
+    if (item === null || item === void 0) return;
+    setBatchDir(String(item.value || ""));
+    setBatchDirAt(null);
+    setBatchDirIndex(null);
   }, []);
   const runBatch = q2(
     async (kind) => {
@@ -14297,7 +14312,38 @@ ${insert}
                 type: "text",
                 value: batchDir,
                 placeholder: t4("batch.dirPlaceholder"),
-                onChange: (event) => setBatchDir(event.target.value)
+                onChange: (event) => {
+                  const value = event.target.value;
+                  setBatchDir(value);
+                  setBatchDirAt(value.trim() === "" ? null : value);
+                  setBatchDirIndex(null);
+                },
+                onKeyDown: (event) => {
+                  if (batchDirHits.length === 0) return;
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setBatchDirAt(null);
+                    setBatchDirIndex(null);
+                    return;
+                  }
+                  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                    event.preventDefault();
+                    const down = event.key === "ArrowDown";
+                    setBatchDirIndex((prev) => {
+                      if (prev === null) return down ? 0 : batchDirHits.length - 1;
+                      const next = down ? prev + 1 : prev - 1;
+                      if (next < 0) return batchDirHits.length - 1;
+                      if (next >= batchDirHits.length) return 0;
+                      return next;
+                    });
+                    return;
+                  }
+                  if (event.key === "Enter" && batchDirIndex !== null) {
+                    event.preventDefault();
+                    applyBatchDir(batchDirHits[batchDirIndex]);
+                  }
+                }
               }),
               h4(
                 "button",
@@ -14308,6 +14354,35 @@ ${insert}
                   onClick: () => void runBatch("move")
                 },
                 t4("batch.move")
+              )
+            ),
+            // 目录候选：和搜索框那套同一个纯函数，挑一条就填进输入框，
+            // 再按「移动」才真的动文件——点一下就挪走太容易手滑。
+            batchDirHits.length === 0 ? null : h4(
+              "div",
+              { className: "dshgn_suggest", role: "listbox" },
+              batchDirHits.map(
+                (item, index) => h4(
+                  "button",
+                  {
+                    key: item.value,
+                    type: "button",
+                    className: "dshgn_suggestItem",
+                    "data-kind": "dir",
+                    "data-on": batchDirIndex === index ? "true" : "false",
+                    role: "option",
+                    "aria-selected": batchDirIndex === index ? "true" : "false",
+                    title: t4("batch.dirPick"),
+                    // 用 onMouseDown 不用 onClick：click 要等鼠标松开，
+                    // 那时输入框已经失焦，光标和候选都对不上了。
+                    onMouseDown: (event) => {
+                      event.preventDefault();
+                      applyBatchDir(item);
+                    }
+                  },
+                  h4(Icon, { name: "folder", size: 11 }),
+                  h4("span", { className: "dshgn_suggestName" }, item.value)
+                )
               )
             ),
             h4(

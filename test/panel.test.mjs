@@ -7908,3 +7908,182 @@ test('卡片上摆着这一篇的标签，点一颗就按它筛，多出来的�
     await sleep(300)
   }
 })
+/**
+ * 批量移目录的目标目录原来是个空输入框：目录名得凭记忆手打，打错一个字不是
+ * 「没找到」而是当场新建一个目录。这里验三件事：敲字就把库里已有的目录摆出来、
+ * 挑一条只填进输入框（不直接动文件）、填好再按「移动」才真的挪。
+ */
+test('批量移动的目标目录能挑，不用凭记忆手打一个名字出来', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+  await clickTab('笔记')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+  const pathA = '批量移动甲/批量移动-这一篇.md'
+  const seed = await post('/getnote/create', {
+    dir: '批量移动甲',
+    title: '批量移动-这一篇',
+    content: ['# 批量移动', '', '正文第一句。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-batch-move-dir',
+  })
+  assert.equal(seed.path, pathA)
+  // 目标目录里先放一篇，左栏与候选里才会出现它
+  await post('/getnote/create', {
+    dir: '批量移动乙',
+    title: '批量移动-占位',
+    content: '正文',
+    withDatePrefix: false,
+    requestId: 'seed-batch-move-placeholder',
+  })
+
+  // 退回空态、清搜索、退回全量，前面用例留下的状态别带进来
+  const backBtn0 = () => window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(async () => true)
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = backBtn0()
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(220)
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox !== null) {
+    const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setValue.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(300)
+  }
+  const rowOf = (name) =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+      const label = el.querySelector('.dshgn_treeName')
+      return label !== null && (label.textContent || '').trim() === name
+    })
+  const allRow = rowOf('全部笔记')
+  if (allRow !== undefined) {
+    allRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rowOf('批量移动乙') !== undefined, 8000, '左栏里出现目标目录')
+
+  // 勾一篇，展开批量操作
+  const cardOf = (path) =>
+    Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === path) || null
+  const card = await waitFor(() => cardOf(pathA), 8000, '要挪的那一篇')
+  card.querySelector('.dshgn_pickBox').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_batchBar') !== null, 3000, '批量栏出现')
+  const batchBtn = Array.from(window.document.querySelectorAll('.dshgn_batchBtn')).find(
+    (el) => (el.textContent || '').trim() === '批量操作',
+  )
+  assert.ok(batchBtn, '应该有「批量操作」按钮')
+  batchBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_batchMenu') !== null, 3000, '批量菜单展开')
+
+  // 第二行那个输入框是「目标目录」
+  const dirInput = () => window.document.querySelectorAll('.dshgn_batchInput')[1]
+  assert.ok(dirInput(), '应该有一个目标目录输入框')
+  const chips = () => Array.from(window.document.querySelectorAll('.dshgn_batchMenu .dshgn_suggestItem'))
+  assert.equal(chips().length, 0, '没敲字之前不摆候选')
+
+  const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  const type = async (text) => {
+    setValue.call(dirInput(), text)
+    dirInput().dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(140)
+  }
+  const press = (key) =>
+    dirInput().dispatchEvent(new window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }))
+
+  // 敲到一半就把库里已有的目录摆出来
+  await type('批量移动')
+  const names = () => chips().map((el) => (el.querySelector('.dshgn_suggestName') || { textContent: '' }).textContent)
+  assert.ok(chips().length >= 2, '应该摆出至少两个候选，实际 ' + JSON.stringify(names()))
+  assert.ok(names().includes('批量移动甲'), '候选里要有来源目录，实际 ' + JSON.stringify(names()))
+  assert.ok(names().includes('批量移动乙'), '候选里要有目标目录，实际 ' + JSON.stringify(names()))
+  assert.ok(
+    String(chips()[0].getAttribute('title') || '').includes('填进目标目录'),
+    '悬停要说清点一下会怎样，实际 ' + chips()[0].getAttribute('title'),
+  )
+
+  // 上下键挑、回车填进去；填完候选收掉，文件还没动
+  press('ArrowDown')
+  await sleep(120)
+  const onChip = chips().find((el) => el.getAttribute('data-on') === 'true')
+  assert.ok(onChip, '按一下下键应该有一项被选中')
+  press('Enter')
+  await sleep(160)
+  assert.ok(
+    ['批量移动甲', '批量移动乙'].includes(dirInput().value),
+    '回车应该把挑中的那一条填进去，实际 ' + dirInput().value,
+  )
+  assert.equal(chips().length, 0, '填进去之后候选要收掉')
+  const before = await realFetch(server.origin + '/getnote/read?path=' + encodeURIComponent(pathA), {
+    headers: { 'x-getnote-token': server.token },
+  })
+  assert.equal(before.status, 200, '挑候选不该动文件，原位置还得读得到')
+
+  // 换一条：敲字之后点候选，也只填不挪
+  await type('批量移动乙')
+  const target = await waitFor(
+    () => chips().find((el) => (el.textContent || '').includes('批量移动乙')) || null,
+    3000,
+    '目标目录的候选',
+  )
+  target.dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true, cancelable: true }))
+  await sleep(160)
+  assert.equal(dirInput().value, '批量移动乙', '点候选应该把目录名填进去')
+  assert.equal(chips().length, 0, '点完候选要收掉')
+
+  // Esc 先收候选，不把已经填好的目录清掉
+  await type('批量移动')
+  await waitFor(() => chips().length > 0, 3000, '再敲一次又摆出候选')
+  press('Escape')
+  await sleep(140)
+  assert.equal(chips().length, 0, 'Esc 先把候选收起来')
+  assert.equal(dirInput().value, '批量移动', 'Esc 不该把输入框里的字清掉')
+
+  // 填好目标目录，再按「移动」才真的挪
+  await type('批量移动乙')
+  const moveBtn = Array.from(window.document.querySelectorAll('.dshgn_batchMenu .dshgn_btn')).find(
+    (el) => (el.textContent || '').trim() === '移动',
+  )
+  assert.ok(moveBtn, '应该有「移动」按钮')
+  assert.equal(moveBtn.disabled, false, '填了目录就该能按')
+  moveBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(
+    () => (window.document.querySelector('.dshgn_toast') || { textContent: '' }).textContent.includes('已处理'),
+    8000,
+    '说一声处理了几篇',
+  )
+
+  const movedPath = '批量移动乙/批量移动-这一篇.md'
+  const readAt = async (p) =>
+    realFetch(server.origin + '/getnote/read?path=' + encodeURIComponent(p), {
+      headers: { 'x-getnote-token': server.token },
+    })
+  // waitFor 的判定是同步的，这里自己轮询：挪动是异步落盘的，读一次可能还看不到。
+  let atNew = null
+  for (let i = 0; i < 40 && atNew === null; i += 1) {
+    const res = await readAt(movedPath)
+    if (res.status === 200) atNew = res
+    else await sleep(200)
+  }
+  assert.ok(atNew !== null, '文件应该挪到新目录')
+  const body = await atNew.json()
+  assert.ok(String(body.content || '').includes('正文第一句。'), '正文一个字都不该动')
+  assert.notEqual((await readAt(pathA)).status, 200, '旧位置不该还留着')
+})

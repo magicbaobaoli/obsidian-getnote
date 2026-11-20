@@ -577,6 +577,7 @@ async function saveFile(url, filename) {
         'batch.tagPlaceholder': '要添加的标签',
         'batch.addTag': '加标签',
         'batch.dirPlaceholder': '目标目录',
+        'batch.dirPick': '填进目标目录',
         'batch.move': '移动',
         'batch.delete': '移到回收站',
         'batch.confirmDelete': '确定把这 篇移到回收站？',
@@ -1048,6 +1049,7 @@ async function saveFile(url, filename) {
         'batch.tagPlaceholder': 'Tag to add',
         'batch.addTag': 'Add tag',
         'batch.dirPlaceholder': 'Target folder',
+        'batch.dirPick': 'Use this folder',
         'batch.move': 'Move',
         'batch.delete': 'Move to trash',
         'batch.confirmDelete': 'Move these notes to trash?',
@@ -1511,6 +1513,7 @@ async function saveFile(url, filename) {
         'batch.tagPlaceholder': 'Tag om toe te voegen',
         'batch.addTag': 'Tag toevoegen',
         'batch.dirPlaceholder': 'Doelmap',
+        'batch.dirPick': 'Deze map gebruiken',
         'batch.move': 'Verplaatsen',
         'batch.delete': 'Naar prullenbak',
         'batch.confirmDelete': 'Deze notities naar de prullenbak verplaatsen?',
@@ -6935,6 +6938,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       const [picked, setPicked] = React.useState(() => new Set())
       const [batchTag, setBatchTag] = React.useState('')
       const [batchDir, setBatchDir] = React.useState('')
+      // 移目录的目标原来是个空输入框，全靠记忆手打：打错一个字不是「没找到」，
+      // 而是当场新建一个目录。所以把库里已有的目录名摆出来让人挑。
+      const [batchDirAt, setBatchDirAt] = React.useState(null)
+      const [batchDirIndex, setBatchDirIndex] = React.useState(null)
       const [batchOpen, setBatchOpen] = React.useState(false)
       const pickedCount = picked.size
 
@@ -6962,6 +6969,18 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         const target = event.currentTarget
         if (!target) return
         hoverLink(event, target, path, '')
+      }, [])
+
+      const batchDirHits = React.useMemo(
+        () => (batchDirAt === null ? [] : searchSuggestions(dirs, [], 'dir', batchDirAt)),
+        [dirs, batchDirAt],
+      )
+
+      const applyBatchDir = React.useCallback((item) => {
+        if (item === null || item === undefined) return
+        setBatchDir(String(item.value || ''))
+        setBatchDirAt(null)
+        setBatchDirIndex(null)
       }, [])
 
       const runBatch = React.useCallback(
@@ -7794,7 +7813,42 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                             type: 'text',
                             value: batchDir,
                             placeholder: t('batch.dirPlaceholder'),
-                            onChange: (event) => setBatchDir(event.target.value),
+                            onChange: (event) => {
+                              const value = event.target.value
+                              setBatchDir(value)
+                              // 敲了字就摆候选；整行清空（或者只剩空白）时收起来，
+                              // 否则空着也挂着六颗胶囊，看着像在催人挑。
+                              setBatchDirAt(value.trim() === '' ? null : value)
+                              setBatchDirIndex(null)
+                            },
+                            onKeyDown: (event) => {
+                              if (batchDirHits.length === 0) return
+                              if (event.key === 'Escape') {
+                                // 这一下 Esc 是「收起候选」，不是「把整批选中都清掉」——
+                                // 页面级那个 Esc 会 clearPicked()，不拦住的话候选和批量条一起消失。
+                                event.preventDefault()
+                                event.stopPropagation()
+                                setBatchDirAt(null)
+                                setBatchDirIndex(null)
+                                return
+                              }
+                              if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                                event.preventDefault()
+                                const down = event.key === 'ArrowDown'
+                                setBatchDirIndex((prev) => {
+                                  if (prev === null) return down ? 0 : batchDirHits.length - 1
+                                  const next = down ? prev + 1 : prev - 1
+                                  if (next < 0) return batchDirHits.length - 1
+                                  if (next >= batchDirHits.length) return 0
+                                  return next
+                                })
+                                return
+                              }
+                              if (event.key === 'Enter' && batchDirIndex !== null) {
+                                event.preventDefault()
+                                applyBatchDir(batchDirHits[batchDirIndex])
+                              }
+                            },
                           }),
                           h(
                             'button',
@@ -7807,6 +7861,37 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                             t('batch.move'),
                           ),
                         ),
+                        // 目录候选：和搜索框那套同一个纯函数，挑一条就填进输入框，
+                        // 再按「移动」才真的动文件——点一下就挪走太容易手滑。
+                        batchDirHits.length === 0
+                          ? null
+                          : h(
+                              'div',
+                              { className: 'dshgn_suggest', role: 'listbox' },
+                              batchDirHits.map((item, index) =>
+                                h(
+                                  'button',
+                                  {
+                                    key: item.value,
+                                    type: 'button',
+                                    className: 'dshgn_suggestItem',
+                                    'data-kind': 'dir',
+                                    'data-on': batchDirIndex === index ? 'true' : 'false',
+                                    role: 'option',
+                                    'aria-selected': batchDirIndex === index ? 'true' : 'false',
+                                    title: t('batch.dirPick'),
+                                    // 用 onMouseDown 不用 onClick：click 要等鼠标松开，
+                                    // 那时输入框已经失焦，光标和候选都对不上了。
+                                    onMouseDown: (event) => {
+                                      event.preventDefault()
+                                      applyBatchDir(item)
+                                    },
+                                  },
+                                  h(Icon, { name: 'folder', size: 11 }),
+                                  h('span', { className: 'dshgn_suggestName' }, item.value),
+                                ),
+                              ),
+                            ),
                         h(
                           'button',
                           {
