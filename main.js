@@ -8554,6 +8554,7 @@ var LEX = {
     "broken.found": "\u626B\u4E86 {scanned} \u7BC7\uFF0C\u6709 {n} \u5904\u6307\u4E0D\u5230\u3002",
     "broken.truncated": "\u592A\u591A\u4E86\uFF0C\u53EA\u5217\u524D 500 \u5904\u3002\u5148\u4FEE\u6389\u4E00\u4E9B\u518D\u5237\u65B0\u3002",
     "broken.line": "\u7B2C",
+    "broken.jump": "\u53BB\u8FD9\u4E00\u53E5",
     "tab.todos": "\u5F85\u529E",
     "todos.desc": "\u5168\u5E93\u8FD8\u6CA1\u52FE\u6389\u7684\u65B9\u6846\u90FD\u5728\u8FD9\u91CC\u3002\u70B9\u65B9\u6846\u5F53\u573A\u52FE\u6389\uFF0C\u70B9\u6587\u5B57\u6253\u5F00\u90A3\u4E00\u7BC7\u3002",
     "todos.empty": "\u6CA1\u6709\u5F85\u529E",
@@ -9014,6 +9015,7 @@ var LEX = {
     "broken.found": "Scanned {scanned} notes, {n} links go nowhere.",
     "broken.truncated": "That is a lot \u2014 only the first 500 are listed. Fix some and refresh.",
     "broken.line": "line",
+    "broken.jump": "Jump to this line",
     "tab.todos": "To-dos",
     "todos.desc": "Every unticked box in the vault. Click a box to tick it off, click the text to open the note.",
     "todos.empty": "Nothing to do",
@@ -9474,6 +9476,7 @@ var LEX = {
     "broken.found": "{scanned} notities gescand, {n} links wijzen nergens heen.",
     "broken.truncated": "Dat zijn er veel \u2014 alleen de eerste 500 staan er. Herstel er een paar en vernieuw.",
     "broken.line": "regel",
+    "broken.jump": "Naar deze regel",
     "tab.todos": "Taken",
     "todos.desc": "Elk niet-aangevinkt vakje in de map. Klik op een vakje om af te vinken, klik op de tekst om de notitie te openen.",
     "todos.empty": "Niets te doen",
@@ -11471,6 +11474,16 @@ var CSS = `
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_brokenSnip{font-size:11px;line-height:1.5;color:var(--dsw-alias-label-secondary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* \u4E00\u884C\u65AD\u94FE = \u4E3B\u4F53\uFF08\u70B9\u4E86\u6253\u5F00\u90A3\u4E00\u7BC7\uFF09+ \u4E00\u9897\u300C\u53BB\u8FD9\u4E00\u53E5\u300D\u3002\u62C6\u6210\u4E24\u4E2A\u53EF\u70B9\u533A\u57DF\u662F\u56E0\u4E3A
+   \u300C\u6253\u5F00\u8FD9\u7BC7\u300D\u548C\u300C\u6EDA\u5230\u90A3\u4E00\u884C\u300D\u662F\u4E24\u4E2A\u52A8\u4F5C\uFF0C\u800C\u6309\u94AE\u91CC\u518D\u5957\u6309\u94AE\u4E0D\u662F\u5408\u6CD5\u7ED3\u6784\u3002 */
+.dshgn_brokenLine{display:flex;align-items:stretch;gap:6px;width:100%}
+.dshgn_brokenLine .dshgn_brokenRow{flex:1 1 auto;min-width:0}
+.dshgn_brokenJump{flex:none;align-self:center;appearance:none;padding:2px 8px;
+  border:0.5px solid var(--dsw-alias-border-l2);border-radius:999px;background:transparent;
+  color:var(--dsw-alias-label-secondary);font:inherit;font-size:10.5px;line-height:1.7;
+  white-space:nowrap;cursor:pointer}
+.dshgn_brokenJump:hover{color:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary)}
+.dshgn_brokenJump:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 /* \u5F85\u529E\u6E05\u5355\uFF1A\u4E00\u884C\u4E00\u6761\u3002\u65B9\u6846\u590D\u7528\u9605\u8BFB\u533A\u90A3\u4E2A\uFF08\u540C\u6837\u5927\u5C0F\u3001\u540C\u6837\u80FD\u70B9\uFF09\uFF0C\u53F3\u8FB9\u662F\u6B63\u6587\u4E0E\u51FA\u5904\u3002
    \u65B9\u6846\u5916\u9762\u5957\u4E00\u5C42\u900F\u660E\u6309\u94AE\uFF0C\u662F\u4E3A\u4E86\u8BA9\u6574\u5757\u65B9\u6846\u8FDE\u5468\u8FB9\u7684\u70B9\u51FB\u70ED\u533A\u4E00\u8D77\u53EF\u70B9\u2014\u201412px \u7684\u65B9\u6846
    \u76F4\u63A5\u70B9\u5F88\u96BE\u70B9\u4E2D\uFF0C\u624B\u673A\u4E0A\u5C24\u5176\u3002 */
@@ -13968,6 +13981,13 @@ ${insert}
       onOpen: (path) => {
         setTab("notes");
         void openNote(path);
+      },
+      // 断链清单最常用的动作是「去把那个名字改掉」，而名字在长笔记的第 40 行。
+      // 只打开篇首等于让用户自己在整篇里再找一遍；上下文末尾可能带省略号，
+      // 拿它比对不上正文，先削掉再当锚点。
+      onOpenLine: (path, text) => {
+        setTab("notes");
+        jumpToMatch(path, { text: String(text || "").replace(/…$/, "") });
       }
     });
   } else if (tab === "todos") {
@@ -16995,7 +17015,7 @@ function ConflictPane(props) {
   );
 }
 function BrokenPane(props) {
-  const { t: t4, status, onError, onOpen } = props;
+  const { t: t4, status, onError, onOpen, onOpenLine } = props;
   const [hits, setHits] = h2(null);
   const [scanned, setScanned] = h2(0);
   const [truncated, setTruncated] = h2(false);
@@ -17050,19 +17070,32 @@ function BrokenPane(props) {
       { className: "dshgn_cardBox" },
       list.map(
         (hit) => h4(
-          "button",
-          {
-            key: `${hit.path}#${hit.line}#${hit.target}`,
-            type: "button",
-            className: "dshgn_brokenRow",
-            title: hit.path,
-            onClick: () => {
-              if (typeof onOpen === "function") onOpen(hit.path);
-            }
-          },
-          h4("span", { className: "dshgn_brokenTarget" }, hit.target),
-          h4("span", { className: "dshgn_brokenWhere" }, `${hit.title || hit.path} \xB7 ${t4("broken.line")} ${hit.line}`),
-          hit.text === "" ? null : h4("span", { className: "dshgn_brokenSnip" }, hit.text)
+          "div",
+          { key: `${hit.path}#${hit.line}#${hit.target}`, className: "dshgn_brokenLine" },
+          h4(
+            "button",
+            {
+              type: "button",
+              className: "dshgn_brokenRow",
+              title: hit.path,
+              onClick: () => {
+                if (typeof onOpen === "function") onOpen(hit.path);
+              }
+            },
+            h4("span", { className: "dshgn_brokenTarget" }, hit.target),
+            h4("span", { className: "dshgn_brokenWhere" }, `${hit.title || hit.path} \xB7 ${t4("broken.line")} ${hit.line}`),
+            hit.text === "" ? null : h4("span", { className: "dshgn_brokenSnip" }, hit.text)
+          ),
+          typeof onOpenLine === "function" && hit.text !== "" ? h4(
+            "button",
+            {
+              type: "button",
+              className: "dshgn_brokenJump",
+              title: t4("broken.jump"),
+              onClick: () => onOpenLine(hit.path, hit.text)
+            },
+            t4("broken.jump")
+          ) : null
         )
       )
     )

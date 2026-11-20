@@ -8087,3 +8087,109 @@ test('批量移动的目标目录能挑，不用凭记忆手打一个名字出�
   assert.ok(String(body.content || '').includes('正文第一句。'), '正文一个字都不该动')
   assert.notEqual((await readAt(pathA)).status, 200, '旧位置不该还留着')
 })
+
+test('断链那一行点「去这一句」就落到正文里写错的那一行，不是只送到篇首', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const liveScroller = () => window.document.querySelector('.dshgn_note .dshgn_scroll')
+  const jumpBtnOf = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_brokenLine')).find((line) => {
+      const name = line.querySelector('.dshgn_brokenTarget')
+      return name !== null && name.textContent === '跳行验收-不存在的那篇'
+    }) || null
+
+  // 退回空态，并把搜索框清干净（前面用例可能还筛着某个目录）
+  const back = window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    if (back) back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox) {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setter.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(400)
+  }
+
+  // 那一条写错的双链放在十几行之后：只打开篇首的话，用户还得自己往下翻
+  const filler = []
+  for (let i = 0; i < 10; i += 1) filler.push('第 ' + (i + 1) + ' 段废话，跟这次跳转无关。')
+  const body = ['# 断链跳行验收', ''].concat(filler).concat(['', '坏的 [[跳行验收-不存在的那篇]]。', ''])
+  const createRes = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '断链跳行验收',
+      content: body.join('\n'),
+      withDatePrefix: false,
+      requestId: 'seed-broken-jump',
+    }),
+  })
+  assert.equal(createRes.ok, true, '造笔记失败：' + createRes.status)
+  const targetPath = '随手记/断链跳行验收.md'
+
+  await clickTab('断链')
+  const jumpRow = await waitFor(jumpBtnOf, 8000, '断链页里应该有我们这一条')
+  const jumpBtn = jumpRow.querySelector('.dshgn_brokenJump')
+  assert.ok(jumpBtn, '这一行应该有一颗「去这一句」')
+  assert.equal(jumpBtn.getAttribute('title'), '去这一句')
+  assert.equal(jumpBtn.textContent, '去这一句')
+
+  // jsdom 没有排版：按块序造一份假的纵向坐标，滚动容器自己从 0 起
+  const realRect = window.HTMLElement.prototype.getBoundingClientRect
+  const realScrollTo = window.HTMLElement.prototype.scrollTo
+  const BLOCKS = 'p, li, h1, h2, h3, h4, h5, h6, blockquote, pre, td, th'
+  const blockTopOf = (node) => {
+    const note = node.closest('.dshgn_note .dshgn_scroll')
+    if (!note) return 0
+    const all = Array.from(note.querySelectorAll(BLOCKS))
+    let hit = node
+    while (hit && all.indexOf(hit) === -1) hit = hit.parentElement
+    const index = hit ? all.indexOf(hit) : -1
+    return (index < 0 ? all.length : index) * 100
+  }
+  let fakeTop = -1
+  window.HTMLElement.prototype.getBoundingClientRect = function () {
+    if (this.classList && this.classList.contains('dshgn_scroll')) {
+      return { top: 0, left: 0, width: 600, height: 400, bottom: 400, right: 600, x: 0, y: 0 }
+    }
+    const host = this.closest ? this.closest('.dshgn_scroll') : null
+    if (!host) return realRect.call(this)
+    const top = blockTopOf(this) - (host.scrollTop || 0)
+    return { top, left: 0, width: 600, height: 20, bottom: top + 20, right: 600, x: 0, y: top }
+  }
+  window.HTMLElement.prototype.scrollTo = function (options) {
+    const top = options && typeof options.top === 'number' ? options.top : 0
+    this.scrollTop = top
+    fakeTop = top
+  }
+  try {
+    jumpBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 8000, '点「去这一句」应该打开那一篇')
+    const scroller = await waitFor(liveScroller, 5000, '正文滚动容器')
+    const pathEl = window.document.querySelector('.dshgn_notePath')
+    assert.equal(pathEl.textContent, targetPath)
+    // 写错的那一行在十几行之后：落点必须真的往下滚了，不是停在篇首
+    await waitFor(() => scroller.scrollTop > 0, 3000, '落到写错的那一行')
+    assert.ok(fakeTop > 0, '滚的是正文滚动容器，不是窗口')
+    const noteText = window.document.querySelector('.dshgn_note').textContent
+    assert.ok(noteText.includes('跳行验收-不存在的那篇'), '打开的确实是写错的那一篇')
+  } finally {
+    window.HTMLElement.prototype.getBoundingClientRect = realRect
+    window.HTMLElement.prototype.scrollTo = realScrollTo
+  }
+
+  // 收尾退回空态，免得把状态留给下一条用例
+  const back2 = window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    if (back2) back2.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '收尾退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+})

@@ -839,6 +839,7 @@ async function saveFile(url, filename) {
         'broken.found': '扫了 {scanned} 篇，有 {n} 处指不到。',
         'broken.truncated': '太多了，只列前 500 处。先修掉一些再刷新。',
         'broken.line': '第',
+        'broken.jump': '去这一句',
         'tab.todos': '待办',
         'todos.desc': '全库还没勾掉的方框都在这里。点方框当场勾掉，点文字打开那一篇。',
         'todos.empty': '没有待办',
@@ -1303,6 +1304,7 @@ async function saveFile(url, filename) {
         'broken.found': 'Scanned {scanned} notes, {n} links go nowhere.',
         'broken.truncated': 'That is a lot — only the first 500 are listed. Fix some and refresh.',
         'broken.line': 'line',
+        'broken.jump': 'Jump to this line',
         'tab.todos': 'To-dos',
         'todos.desc': 'Every unticked box in the vault. Click a box to tick it off, click the text to open the note.',
         'todos.empty': 'Nothing to do',
@@ -1766,6 +1768,7 @@ async function saveFile(url, filename) {
         'broken.found': '{scanned} notities gescand, {n} links wijzen nergens heen.',
         'broken.truncated': 'Dat zijn er veel — alleen de eerste 500 staan er. Herstel er een paar en vernieuw.',
         'broken.line': 'regel',
+        'broken.jump': 'Naar deze regel',
         'tab.todos': 'Taken',
         'todos.desc': 'Elk niet-aangevinkt vakje in de map. Klik op een vakje om af te vinken, klik op de tekst om de notitie te openen.',
         'todos.empty': 'Niets te doen',
@@ -4511,6 +4514,16 @@ async function saveFile(url, filename) {
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_brokenSnip{font-size:11px;line-height:1.5;color:var(--dsw-alias-label-secondary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 一行断链 = 主体（点了打开那一篇）+ 一颗「去这一句」。拆成两个可点区域是因为
+   「打开这篇」和「滚到那一行」是两个动作，而按钮里再套按钮不是合法结构。 */
+.dshgn_brokenLine{display:flex;align-items:stretch;gap:6px;width:100%}
+.dshgn_brokenLine .dshgn_brokenRow{flex:1 1 auto;min-width:0}
+.dshgn_brokenJump{flex:none;align-self:center;appearance:none;padding:2px 8px;
+  border:0.5px solid var(--dsw-alias-border-l2);border-radius:999px;background:transparent;
+  color:var(--dsw-alias-label-secondary);font:inherit;font-size:10.5px;line-height:1.7;
+  white-space:nowrap;cursor:pointer}
+.dshgn_brokenJump:hover{color:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary)}
+.dshgn_brokenJump:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 /* 待办清单：一行一条。方框复用阅读区那个（同样大小、同样能点），右边是正文与出处。
    方框外面套一层透明按钮，是为了让整块方框连周边的点击热区一起可点——12px 的方框
    直接点很难点中，手机上尤其。 */
@@ -7438,6 +7451,13 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           onOpen: (path) => {
             setTab('notes')
             void openNote(path)
+          },
+          // 断链清单最常用的动作是「去把那个名字改掉」，而名字在长笔记的第 40 行。
+          // 只打开篇首等于让用户自己在整篇里再找一遍；上下文末尾可能带省略号，
+          // 拿它比对不上正文，先削掉再当锚点。
+          onOpenLine: (path, text) => {
+            setTab('notes')
+            jumpToMatch(path, { text: String(text || '').replace(/…$/, '') })
           },
         })
       } else if (tab === 'todos') {
@@ -10967,7 +10987,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
      * 所以把它当路标写在旁边）。
      */
     function BrokenPane(props) {
-      const { t, status, onError, onOpen } = props
+      const { t, status, onError, onOpen, onOpenLine } = props
       const [hits, setHits] = React.useState(null)
       const [scanned, setScanned] = React.useState(0)
       const [truncated, setTruncated] = React.useState(false)
@@ -11030,19 +11050,34 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                 { className: 'dshgn_cardBox' },
                 list.map((hit) =>
                   h(
-                    'button',
-                    {
-                      key: `${hit.path}#${hit.line}#${hit.target}`,
-                      type: 'button',
-                      className: 'dshgn_brokenRow',
-                      title: hit.path,
-                      onClick: () => {
-                        if (typeof onOpen === 'function') onOpen(hit.path)
+                    'div',
+                    { key: `${hit.path}#${hit.line}#${hit.target}`, className: 'dshgn_brokenLine' },
+                    h(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'dshgn_brokenRow',
+                        title: hit.path,
+                        onClick: () => {
+                          if (typeof onOpen === 'function') onOpen(hit.path)
+                        },
                       },
-                    },
-                    h('span', { className: 'dshgn_brokenTarget' }, hit.target),
-                    h('span', { className: 'dshgn_brokenWhere' }, `${hit.title || hit.path} · ${t('broken.line')} ${hit.line}`),
-                    hit.text === '' ? null : h('span', { className: 'dshgn_brokenSnip' }, hit.text),
+                      h('span', { className: 'dshgn_brokenTarget' }, hit.target),
+                      h('span', { className: 'dshgn_brokenWhere' }, `${hit.title || hit.path} · ${t('broken.line')} ${hit.line}`),
+                      hit.text === '' ? null : h('span', { className: 'dshgn_brokenSnip' }, hit.text),
+                    ),
+                    typeof onOpenLine === 'function' && hit.text !== ''
+                      ? h(
+                          'button',
+                          {
+                            type: 'button',
+                            className: 'dshgn_brokenJump',
+                            title: t('broken.jump'),
+                            onClick: () => onOpenLine(hit.path, hit.text),
+                          },
+                          t('broken.jump'),
+                        )
+                      : null,
                   ),
                 ),
               ),
