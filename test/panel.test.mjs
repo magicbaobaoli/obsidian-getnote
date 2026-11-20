@@ -4867,3 +4867,132 @@ test('编辑区里敲 [[ 就把库里的笔记名摆出来，挑一条补成双�
   await waitFor(() => window.document.querySelector('.dshgn_editor') === null, 5000, 'Esc 退出编辑态')
 })
 
+/**
+ * 读到一半关掉，回来要还在原来那一行。
+ *
+ * 长笔记读到第三节、切去回个消息，回来又从第一行开始——得自己再翻一遍。
+ * 这里守三件事：位置真的记下来了、回来真的放回去了、没记过的那篇从头开始
+ * （正文容器是同一个 DOM 节点，不清的话会停在上一篇读到的地方）。
+ */
+test('读到哪儿记到哪儿，回来还停在那儿；没记过的那篇从头开始', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const { readScrollMarks, writeScrollMark, scrollMarkOf, SCROLL_KEY } = panel.__internals
+
+  // 先验存取本身：最近翻过的排前面、同一篇只留一条、坏数据当没记过
+  window.localStorage.removeItem(SCROLL_KEY)
+  assert.deepEqual(readScrollMarks(), [], '没记过时是空的')
+  assert.equal(scrollMarkOf('随手记/甲.md'), 0, '没记过的那篇当作从头开始')
+  assert.equal(scrollMarkOf(''), 0)
+  writeScrollMark('随手记/甲.md', 640)
+  writeScrollMark('随手记/乙.md', 120)
+  assert.equal(scrollMarkOf('随手记/甲.md'), 640)
+  assert.equal(readScrollMarks().length, 2)
+  assert.equal(readScrollMarks()[0].path, '随手记/乙.md', '最近翻过的排前面')
+  writeScrollMark('随手记/甲.md', 900)
+  assert.equal(readScrollMarks().length, 2, '同一篇只留一条')
+  assert.equal(readScrollMarks()[0].path, '随手记/甲.md')
+  assert.equal(scrollMarkOf('随手记/甲.md'), 900, '再记一次是覆盖不是追加')
+  writeScrollMark('', 100)
+  assert.equal(readScrollMarks().length, 2, '空路径不记')
+  writeScrollMark('随手记/丙.md', -5)
+  assert.equal(scrollMarkOf('随手记/丙.md'), 0, '负数按 0 算')
+  // 存的东西坏了当作没记过，而不是抛错
+  window.localStorage.setItem(SCROLL_KEY, '{ 这不是 JSON')
+  assert.deepEqual(readScrollMarks(), [])
+  window.localStorage.setItem(SCROLL_KEY, JSON.stringify([{ path: 3, top: 'x' }, { path: '好的.md', top: 10 }]))
+  assert.deepEqual(readScrollMarks().map((item) => item.path), ['好的.md'], '形状不对的条目剔掉')
+  // 不封顶的话这份表会一直长下去
+  window.localStorage.removeItem(SCROLL_KEY)
+  for (let i = 0; i < 45; i += 1) writeScrollMark('第' + i + '篇.md', i)
+  assert.equal(readScrollMarks().length, 40, '只留最近 40 篇')
+  window.localStorage.removeItem(SCROLL_KEY)
+
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    const backBtn = window.document.querySelector('.dshgn_noteBack')
+    if (backBtn) {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    }
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  const res = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '滚动位置验收',
+      content: ['# 滚动位置验收', '', '第一段。', '', '第二段。', '', '第三段。', ''].join('\n'),
+      withDatePrefix: false,
+      requestId: 'seed-scroll-restore',
+    }),
+  })
+  const seeded = await res.json()
+  assert.equal(seeded.path, '随手记/滚动位置验收.md')
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  const openCard = async (path) => {
+    const card = await waitFor(
+      () => Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === path) || null,
+      8000,
+      '列表里应该有 ' + path,
+    )
+    card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 5000, '打开 ' + path)
+    // 面板里不止一个 .dshgn_scroll（左栏列表也是），要的是正文那一层
+    return waitFor(() => window.document.querySelector('.dshgn_note .dshgn_scroll'), 5000, '正文容器')
+  }
+  const back = async () => {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    try {
+      const btn = window.document.querySelector('.dshgn_noteBack')
+      if (btn) btn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回列表')
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+  }
+
+  // 打开、往下翻到 720，等防抖把它记下来
+  const liveScroller = () => window.document.querySelector('.dshgn_note .dshgn_scroll')
+  let scroller = await openCard(seeded.path)
+  await sleep(150)
+  assert.equal(liveScroller().scrollTop, 0, '没记过的那篇从头开始')
+  liveScroller().scrollTop = 720
+  liveScroller().dispatchEvent(new window.Event('scroll', { bubbles: false }))
+  await sleep(600)
+  assert.equal(scrollMarkOf(seeded.path), 720, '翻过的地方要记下来')
+
+  // 切到别的一篇再回来：位置要放回去
+  await back()
+  const other = await waitFor(
+    () => Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') !== seeded.path) || null,
+    8000,
+    '列表里还有别的笔记',
+  )
+  other.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 5000, '打开另一篇')
+  await waitFor(() => window.document.querySelector('.dshgn_note .dshgn_scroll'), 5000, '正文容器')
+  await sleep(150)
+  assert.equal(liveScroller().scrollTop, 0, '没记过的那篇从头开始，不能停在上一篇读到的地方')
+  await back()
+
+  scroller = await openCard(seeded.path)
+  await sleep(250)
+  assert.equal(liveScroller().scrollTop, 720, '回来还停在上次读到的地方')
+
+  // 回到顶上也算「读到哪儿」：再翻回 0，记的应该是 0
+  liveScroller().scrollTop = 0
+  liveScroller().dispatchEvent(new window.Event('scroll', { bubbles: false }))
+  await sleep(600)
+  assert.equal(scrollMarkOf(seeded.path), 0, '翻回顶上就记 0，别留着上一次的位置')
+  window.localStorage.removeItem(SCROLL_KEY)
+})
+

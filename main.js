@@ -16665,6 +16665,35 @@ function writeSession(patch) {
   } catch {
   }
 }
+var SCROLL_KEY = "dshgn.scroll";
+var SCROLL_KEEP = 40;
+function readScrollMarks() {
+  try {
+    const raw = window.localStorage.getItem(SCROLL_KEY);
+    if (raw === null) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item) => item !== null && typeof item === "object" && typeof item.path === "string" && typeof item.top === "number" && item.top >= 0).slice(0, SCROLL_KEEP);
+  } catch {
+    return [];
+  }
+}
+function scrollMarkOf(path) {
+  const rel = typeof path === "string" ? path : "";
+  if (rel === "") return 0;
+  const hit = readScrollMarks().find((item) => item.path === rel);
+  return hit === void 0 ? 0 : hit.top;
+}
+function writeScrollMark(path, top) {
+  const rel = typeof path === "string" ? path : "";
+  if (rel === "") return;
+  const value = Math.max(0, Math.round(Number(top) || 0));
+  try {
+    const rest = readScrollMarks().filter((item) => item.path !== rel);
+    window.localStorage.setItem(SCROLL_KEY, JSON.stringify([{ path: rel, top: value }, ...rest].slice(0, SCROLL_KEEP)));
+  } catch {
+  }
+}
 function ColSplitter(props) {
   const { label, value, min, max, onChange } = props;
   const clamp = (n2) => Math.max(min, Math.min(max, Math.round(n2)));
@@ -17224,6 +17253,9 @@ function NotePane(props) {
   }, []);
   const currentPathOf = current === null || current === void 0 ? "" : String(current.path || "");
   const [activeHeading, setActiveHeading] = h2(-1);
+  const restoringRef = A2(false);
+  const scrollTopRef = A2(0);
+  const saveTimerRef = A2(0);
   const zoomed = zoom !== null && zoom.path === currentPathOf ? zoom : null;
   const loadHistory = q2(async (path) => {
     if (path === null || path === "") {
@@ -17396,6 +17428,50 @@ function NotePane(props) {
     const offset = target.getBoundingClientRect().top - host.getBoundingClientRect().top + host.scrollTop - 8;
     host.scrollTo({ top: Math.max(0, offset), behavior: "smooth" });
   }, []);
+  y2(() => {
+    const host = scrollRef.current;
+    if (!host || currentPathOf === "") return void 0;
+    const want = scrollMarkOf(currentPathOf);
+    scrollTopRef.current = want;
+    if (want <= 0) {
+      host.scrollTop = 0;
+      return void 0;
+    }
+    restoringRef.current = true;
+    host.scrollTop = want;
+    const frame = window.requestAnimationFrame(() => {
+      const live = scrollRef.current;
+      if (live) live.scrollTop = want;
+      restoringRef.current = false;
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      restoringRef.current = false;
+    };
+  }, [currentPathOf]);
+  y2(() => {
+    const host = scrollRef.current;
+    if (!host || currentPathOf === "") return void 0;
+    const flush = () => writeScrollMark(currentPathOf, scrollTopRef.current);
+    const onScroll = () => {
+      if (restoringRef.current) return;
+      scrollTopRef.current = host.scrollTop;
+      if (saveTimerRef.current !== 0) return;
+      saveTimerRef.current = window.setTimeout(() => {
+        saveTimerRef.current = 0;
+        flush();
+      }, 400);
+    };
+    host.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      host.removeEventListener("scroll", onScroll);
+      if (saveTimerRef.current !== 0) {
+        window.clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = 0;
+      }
+      flush();
+    };
+  }, [currentPathOf]);
   y2(() => {
     const host = scrollRef.current;
     if (!host) return void 0;

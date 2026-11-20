@@ -10525,6 +10525,49 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       }
     }
 
+    // 每篇读到哪儿了：{ path, top } 的数组，最近翻过的排前面，最多留 40 篇。
+    //
+    // 和上面那份「上次开着哪一篇」是同一类东西——纯界面状态，存 localStorage 就够。
+    // 只存滚动位置不存正文：正文可能已经被别处改过，回来时还是要走一遍 /read。
+    // 为什么要限条数：翻过的笔记只会越攒越多，不封顶的话这份表会一直长下去，
+    // 而真正会回去接着读的也就是最近这几十篇。
+    const SCROLL_KEY = 'dshgn.scroll'
+    const SCROLL_KEEP = 40
+
+    function readScrollMarks() {
+      try {
+        const raw = window.localStorage.getItem(SCROLL_KEY)
+        if (raw === null) return []
+        const parsed = JSON.parse(raw)
+        if (!Array.isArray(parsed)) return []
+        return parsed
+          .filter((item) => item !== null && typeof item === 'object' && typeof item.path === 'string' && typeof item.top === 'number' && item.top >= 0)
+          .slice(0, SCROLL_KEEP)
+      } catch {
+        // 隐私模式 / 存的是上一版的旧结构：当作没记过
+        return []
+      }
+    }
+
+    function scrollMarkOf(path) {
+      const rel = typeof path === 'string' ? path : ''
+      if (rel === '') return 0
+      const hit = readScrollMarks().find((item) => item.path === rel)
+      return hit === undefined ? 0 : hit.top
+    }
+
+    function writeScrollMark(path, top) {
+      const rel = typeof path === 'string' ? path : ''
+      if (rel === '') return
+      const value = Math.max(0, Math.round(Number(top) || 0))
+      try {
+        const rest = readScrollMarks().filter((item) => item.path !== rel)
+        window.localStorage.setItem(SCROLL_KEY, JSON.stringify([{ path: rel, top: value }, ...rest].slice(0, SCROLL_KEEP)))
+      } catch {
+        // 存不了就这次先用着
+      }
+    }
+
     /**
      * 三栏之间的拖拽手柄。
      *
@@ -11201,6 +11244,11 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 大纲里「现在读到哪一节」：点大纲跳过去算，自己往下翻也算。
       // 存的是标题序号（见 jumpToHeading 的注释：序号比行号稳），换一篇就归零。
       const [activeHeading, setActiveHeading] = React.useState(-1)
+      // 上次读到哪儿：换到这一篇时把滚动位置放回去。
+      // 记位置和「上次开着哪一篇」是同一类事——纯界面状态，存 localStorage。
+      const restoringRef = React.useRef(false)
+      const scrollTopRef = React.useRef(0)
+      const saveTimerRef = React.useRef(0)
       const zoomed = zoom !== null && zoom.path === currentPathOf ? zoom : null
 
       const loadHistory = React.useCallback(async (path) => {
@@ -11443,6 +11491,62 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         const offset = target.getBoundingClientRect().top - host.getBoundingClientRect().top + host.scrollTop - 8
         host.scrollTo({ top: Math.max(0, offset), behavior: 'smooth' })
       }, [])
+
+      // 换到一篇时把上次的滚动位置放回去。
+      //
+      // 只放一次是不够的：正文里的图是后加载的，刚渲染完时那一屏还很矮，
+      // 想滚到 3000px 会被浏览器夹回能滚到的最大值。所以量完一遍再补一次，
+      // 而且补的时候要挡住「滚动即保存」，否则会把夹回来的那个位置记成新的。
+      React.useEffect(() => {
+        const host = scrollRef.current
+        if (!host || currentPathOf === '') return undefined
+        const want = scrollMarkOf(currentPathOf)
+        scrollTopRef.current = want
+        // 没记过（或者上次就停在顶上）的这一篇从头开始。必须显式归零：
+        // 正文容器是同一个 DOM 节点，不清的话会停在上一篇读到的地方。
+        if (want <= 0) {
+          host.scrollTop = 0
+          return undefined
+        }
+        restoringRef.current = true
+        host.scrollTop = want
+        const frame = window.requestAnimationFrame(() => {
+          const live = scrollRef.current
+          if (live) live.scrollTop = want
+          restoringRef.current = false
+        })
+        return () => {
+          window.cancelAnimationFrame(frame)
+          restoringRef.current = false
+        }
+      }, [currentPathOf])
+
+      // 翻动时记下位置：按一下滚轮就会来一串 scroll 事件，所以合并着写。
+      // 离开这一篇时（切到别的笔记、面板关掉）把最后那一下补写进去——
+      // 只靠防抖的话，用户翻完立刻切走这一下就丢了。
+      React.useEffect(() => {
+        const host = scrollRef.current
+        if (!host || currentPathOf === '') return undefined
+        const flush = () => writeScrollMark(currentPathOf, scrollTopRef.current)
+        const onScroll = () => {
+          if (restoringRef.current) return
+          scrollTopRef.current = host.scrollTop
+          if (saveTimerRef.current !== 0) return
+          saveTimerRef.current = window.setTimeout(() => {
+            saveTimerRef.current = 0
+            flush()
+          }, 400)
+        }
+        host.addEventListener('scroll', onScroll, { passive: true })
+        return () => {
+          host.removeEventListener('scroll', onScroll)
+          if (saveTimerRef.current !== 0) {
+            window.clearTimeout(saveTimerRef.current)
+            saveTimerRef.current = 0
+          }
+          flush()
+        }
+      }, [currentPathOf])
 
       // 自己往下翻时大纲也要跟着亮：读者不会只用大纲跳。
       // 「当前这一节」= 最后一个已经滚过容器顶部的那节标题，也就是他眼睛上方
@@ -12940,5 +13044,6 @@ export const __internals = {
   reportSync, dailyTemplateOf, frontmatterText, isTagKey, FollowCard, parseTable, countWords,
   isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote, parseImageSize, renderParagraph, blockTextOf, markdownLinkTarget,
   tagBodyOf, ZoomOverlay, continueListLine, indentLines, wrapInline, wikilinkQueryAt, wikilinkMatches,
+      readScrollMarks, writeScrollMark, scrollMarkOf, SCROLL_KEY,
   splitByTerms, highlightTerms, searchTermsOf,
 }
