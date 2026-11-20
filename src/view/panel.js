@@ -3306,6 +3306,49 @@ async function saveFile(url, filename) {
     }
 
     /**
+     * Tab / Shift+Tab：把选中的整行往右挪两格、或往左收两格。
+     *
+     * 编辑区原来按 Tab 是「焦点跳走」——在清单里想缩进一条，一按 Tab 光标就没了，
+     * 得再用鼠标点回那一行。这里把它接住。
+     *
+     * 缩进的是整行而不是光标处：在清单里缩进的意思就是「这一条挂到上一条底下」，
+     * 在句子中间插两个空格只会把那句话顶出一个洞。空行不补空格——缩进之后它会
+     * 变成一串看不见的空格，下次打开还以为那里有内容。
+     *
+     * 返回 { text, start, end }：选区跟着移动，连着按几下也不会把光标落在错的地方。
+     */
+    function indentLines(text, start, end, outdent) {
+      const source = String(text === null || text === undefined ? '' : text)
+      const from = Number.isInteger(start) ? Math.max(0, Math.min(start, source.length)) : 0
+      const to = Number.isInteger(end) ? Math.max(from, Math.min(end, source.length)) : from
+      const lineStart = source.lastIndexOf('\n', from - 1) + 1
+      const nextBreak = source.indexOf('\n', to)
+      const lineEnd = nextBreak === -1 ? source.length : nextBreak
+      const lines = source.slice(lineStart, lineEnd).split('\n')
+      let delta = 0
+      let firstDelta = 0
+      const shifted = lines.map((line, index) => {
+        if (outdent) {
+          const lead = /^[ \t]{1,2}/.exec(line)
+          if (lead === null) return line
+          const removed = lead[0].length
+          delta -= removed
+          if (index === 0) firstDelta = -removed
+          return line.slice(removed)
+        }
+        if (line.trim() === '') return line
+        delta += 2
+        if (index === 0) firstDelta = 2
+        return '  ' + line
+      })
+      return {
+        text: source.slice(0, lineStart) + shifted.join('\n') + source.slice(lineEnd),
+        start: Math.max(lineStart, from + firstDelta),
+        end: Math.max(lineStart, to + delta),
+      }
+    }
+
+    /**
      * 段落里的换行按宿主的口径处理：单独一个换行是「软换行」，接成一句话；
      * 行尾两个空格或者一个反斜杠才是「硬换行」，真的断行。
      *
@@ -10905,6 +10948,21 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
 
       const canAttach = typeof onAttach === 'function'
       const closeZoom = React.useCallback(() => setZoom(null), [])
+      // 改完正文要把光标放回去：受控 textarea 重渲染之后光标会被甩到末尾。
+      // 先放一次、下一帧再放一次兜住——第一次可能落在还没提交的那份 DOM 上。
+      const placeCaret = React.useCallback((start, end) => {
+        const place = () => {
+          const live = editorRef.current
+          if (live === null || live === undefined) return
+          try {
+            live.setSelectionRange(start, end)
+          } catch {
+            // 某些环境（无焦点/已卸载）不允许设置选区，忽略即可
+          }
+        }
+        place()
+        if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(place)
+      }, [])
 
       // 放大态按 Esc 关掉。挂到面板窗口上而不是根节点上：焦点可能还在别处，
       // 用户在遮罩上按 Esc 时事件未必从根节点冒上来。
@@ -11424,28 +11482,31 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
               // 在清单行末尾按回车，接着写下一行（有序列表自动加一）。
               // 只认行尾，行中间的回车仍然是「把这行拆成两条」，交给浏览器自己处理。
               onKeyDown: (event) => {
-                if (event.key !== 'Enter' || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return
-                // 输入法正在拼字时的回车是「选字」，不是换行
-                if (event.isComposing || event.keyCode === 229) return
+                if (event.ctrlKey || event.metaKey || event.altKey) return
                 const node = editorRef.current
                 if (node === null || node === undefined) return
+                // 输入法正在拼字时的回车是「选字」，不是换行
+                if (event.isComposing || event.keyCode === 229) return
                 const caret = typeof node.selectionStart === 'number' ? node.selectionStart : null
-                const next = continueListLine(node.value, caret)
-                if (next === null) return
-                event.preventDefault()
-                setDraft(next.text)
-                // 重渲染之后光标会被甩到末尾，先放一次、下一帧再放一次兜住
-                const place = () => {
-                  const live = editorRef.current
-                  if (live === null || live === undefined) return
-                  try {
-                    live.setSelectionRange(next.caret, next.caret)
-                  } catch {
-                    // 某些环境（无焦点/已卸载）不允许设置选区，忽略即可
-                  }
+                const selEnd = typeof node.selectionEnd === 'number' ? node.selectionEnd : caret
+
+                // 回车：在清单行末尾接着写下一行
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  const next = continueListLine(node.value, caret)
+                  if (next === null) return
+                  event.preventDefault()
+                  setDraft(next.text)
+                  placeCaret(next.caret, next.caret)
+                  return
                 }
-                place()
-                if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(place)
+
+                // Tab / Shift+Tab：把整行往右挪两格、或往左收两格（不挪焦点）
+                if (event.key === 'Tab') {
+                  const shifted = indentLines(node.value, caret, selEnd, event.shiftKey)
+                  event.preventDefault()
+                  setDraft(shifted.text)
+                  placeCaret(shifted.start, shifted.end)
+                }
               },
               // 截图之后 Ctrl+V 是最顺手的插图方式。宿主接住了，面板以前什么都不做，
               // 剪贴板里的图就悄悄没了。
@@ -12536,5 +12597,5 @@ export const __internals = {
   TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale,
   reportSync, dailyTemplateOf, frontmatterText, isTagKey, FollowCard, parseTable, countWords,
   isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote, parseImageSize, renderParagraph, blockTextOf, markdownLinkTarget,
-  tagBodyOf, ZoomOverlay, continueListLine,
+  tagBodyOf, ZoomOverlay, continueListLine, indentLines,
 }

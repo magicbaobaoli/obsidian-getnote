@@ -10510,6 +10510,36 @@ function continueListLine(text, caret) {
   if (quotePrefix !== "") return body === "" ? drop() : next("");
   return null;
 }
+function indentLines(text, start, end, outdent) {
+  const source = String(text === null || text === void 0 ? "" : text);
+  const from = Number.isInteger(start) ? Math.max(0, Math.min(start, source.length)) : 0;
+  const to = Number.isInteger(end) ? Math.max(from, Math.min(end, source.length)) : from;
+  const lineStart = source.lastIndexOf("\n", from - 1) + 1;
+  const nextBreak = source.indexOf("\n", to);
+  const lineEnd = nextBreak === -1 ? source.length : nextBreak;
+  const lines = source.slice(lineStart, lineEnd).split("\n");
+  let delta = 0;
+  let firstDelta = 0;
+  const shifted = lines.map((line, index) => {
+    if (outdent) {
+      const lead = /^[ \t]{1,2}/.exec(line);
+      if (lead === null) return line;
+      const removed = lead[0].length;
+      delta -= removed;
+      if (index === 0) firstDelta = -removed;
+      return line.slice(removed);
+    }
+    if (line.trim() === "") return line;
+    delta += 2;
+    if (index === 0) firstDelta = 2;
+    return "  " + line;
+  });
+  return {
+    text: source.slice(0, lineStart) + shifted.join("\n") + source.slice(lineEnd),
+    start: Math.max(lineStart, from + firstDelta),
+    end: Math.max(lineStart, to + delta)
+  };
+}
 function renderParagraph(text, keyPrefix, options) {
   const lines = String(text === void 0 || text === null ? "" : text).split("\n");
   const nodes = [];
@@ -17025,6 +17055,18 @@ function NotePane(props) {
   const editorRef = A2(null);
   const canAttach = typeof onAttach === "function";
   const closeZoom = q2(() => setZoom(null), []);
+  const placeCaret = q2((start, end) => {
+    const place = () => {
+      const live = editorRef.current;
+      if (live === null || live === void 0) return;
+      try {
+        live.setSelectionRange(start, end);
+      } catch {
+      }
+    };
+    place();
+    if (typeof window.requestAnimationFrame === "function") window.requestAnimationFrame(place);
+  }, []);
   y2(() => {
     const onKey = (event) => {
       if (event.key !== "Escape" || zoomRef.current === null) return;
@@ -17440,25 +17482,26 @@ function NotePane(props) {
         // 在清单行末尾按回车，接着写下一行（有序列表自动加一）。
         // 只认行尾，行中间的回车仍然是「把这行拆成两条」，交给浏览器自己处理。
         onKeyDown: (event) => {
-          if (event.key !== "Enter" || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
-          if (event.isComposing || event.keyCode === 229) return;
+          if (event.ctrlKey || event.metaKey || event.altKey) return;
           const node = editorRef.current;
           if (node === null || node === void 0) return;
+          if (event.isComposing || event.keyCode === 229) return;
           const caret = typeof node.selectionStart === "number" ? node.selectionStart : null;
-          const next = continueListLine(node.value, caret);
-          if (next === null) return;
-          event.preventDefault();
-          setDraft(next.text);
-          const place = () => {
-            const live = editorRef.current;
-            if (live === null || live === void 0) return;
-            try {
-              live.setSelectionRange(next.caret, next.caret);
-            } catch {
-            }
-          };
-          place();
-          if (typeof window.requestAnimationFrame === "function") window.requestAnimationFrame(place);
+          const selEnd = typeof node.selectionEnd === "number" ? node.selectionEnd : caret;
+          if (event.key === "Enter" && !event.shiftKey) {
+            const next = continueListLine(node.value, caret);
+            if (next === null) return;
+            event.preventDefault();
+            setDraft(next.text);
+            placeCaret(next.caret, next.caret);
+            return;
+          }
+          if (event.key === "Tab") {
+            const shifted = indentLines(node.value, caret, selEnd, event.shiftKey);
+            event.preventDefault();
+            setDraft(shifted.text);
+            placeCaret(shifted.start, shifted.end);
+          }
         },
         // 截图之后 Ctrl+V 是最顺手的插图方式。宿主接住了，面板以前什么都不做，
         // 剪贴板里的图就悄悄没了。

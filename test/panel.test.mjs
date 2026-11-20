@@ -4323,8 +4323,8 @@ test('点开正文里的图就当场放大，按 Esc 收起来', async () => {
   assert.equal(rootNode().getAttribute('data-has-note'), 'true', 'Esc 只关遮罩，不该退出笔记')
 })
 
-test('清单里按回车接着写下一行，有序列表自动加一，空条目按回车就收掉', async () => {
-  const { continueListLine } = panel.__internals
+test('清单里按回车接着写下一行，Tab 把整行挪两格，空条目按回车就收掉', async () => {
+  const { continueListLine, indentLines } = panel.__internals
 
   // 先验这一下接管的范围：只认行尾，行中间的回车仍然是「把这行拆成两条」
   assert.equal(continueListLine('- 第一条', 5).text, '- 第一条\n- ')
@@ -4414,6 +4414,30 @@ test('清单里按回车接着写下一行，有序列表自动加一，空条�
   // 行中间的回车不接管：这一下要让浏览器自己插换行，别补记号把句子劈开
   await typeInto('- 半句话', 2)
   assert.equal(editor.value, '- 半句话', '行中间的回车不该被接管')
+
+  // Tab 把整行往右挪两格、Shift+Tab 收回来；焦点不许跳走（preventDefault 之后
+  // jsdom 里再派发一次 keydown 仍然落在这个节点上，说明没被浏览器抢走）。
+  const pressTab = async (shift) => {
+    editor.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Tab', shiftKey: Boolean(shift), bubbles: true }))
+    await sleep(80)
+  }
+  editor.setSelectionRange(3, 3)
+  await pressTab(false)
+  assert.equal(editor.value, '  - 半句话', 'Tab 该把整行挪两格')
+  await pressTab(false)
+  assert.equal(editor.value, '    - 半句话', '连着按两下就是四格')
+  await pressTab(true)
+  assert.equal(editor.value, '  - 半句话', 'Shift+Tab 该收回来')
+  await pressTab(true)
+  await pressTab(true)
+  assert.equal(editor.value, '- 半句话', '已经顶格时再收也不该吃掉字')
+
+  // 缩进的是整行：光标在句子中间按 Tab，那句话不该被顶出一个洞
+  const one = indentLines('- 一条', 3, 3, false)
+  assert.equal(one.text, '  - 一条')
+  assert.equal(one.start, 5, '选区跟着挪，光标不会落在错的地方')
+  // 空行不补空格：缩进之后它会变成一串看不见的空格
+  assert.equal(indentLines('- 甲\n\n- 乙', 0, 9, false).text, '  - 甲\n\n  - 乙')
 
   window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
   await waitFor(() => window.document.querySelector('.dshgn_editor') === null, 5000, 'Esc 退出编辑态')
