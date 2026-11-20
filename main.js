@@ -8280,6 +8280,23 @@ var LEX = {
     "list.sortName": "\u6309\u540D\u79F0",
     // 筛选条：左栏点了目录或标签之后，中栏得说清「现在筛的是什么」
     "filter.clear": "\u53BB\u6389\u8FD9\u4E2A\u7B5B\u9009",
+    // 快捷键速查表：面板里能按的键散在编辑区提示、按钮 title 里，
+    // 谁也不会一个个去发现，得有一张能随时翻开的表
+    "help.open": "\u952E\u76D8\u5FEB\u6377\u952E",
+    "help.title": "\u952E\u76D8\u5FEB\u6377\u952E",
+    "help.hint": "\u9762\u677F\u91CC\u7684\u952E\u90FD\u80FD\u7528 Ctrl\uFF0CMac \u4E0A\u6362\u6210 Cmd\u3002",
+    "help.search": "\u805A\u7126\u641C\u7D22\u6846",
+    "help.new": "\u65B0\u5EFA\u7B14\u8BB0",
+    "help.move": "\u4E0A\u4E0B\u4E00\u7BC7",
+    "help.nav": "\u56DE\u4E0A\u4E00\u7BC7 / \u53BB\u4E0B\u4E00\u7BC7",
+    "help.find": "\u5C31\u5730\u67E5\u627E",
+    "help.edit": "\u8FDB\u7F16\u8F91 / \u5B58\u597D\u9000\u51FA",
+    "help.save": "\u4FDD\u5B58",
+    "help.esc": "\u53D6\u6D88\u7F16\u8F91\u3001\u6536\u8D77\u67E5\u627E\u6761",
+    "help.format": "\u52A0\u7C97 / \u659C\u4F53 / \u5220\u9664\u7EBF",
+    "help.indent": "\u6E05\u5355\u7F29\u8FDB",
+    "help.complete": "\u53CC\u94FE\u3001\u6807\u7B7E\u8865\u5168",
+    "help.help": "\u6253\u5F00\u8FD9\u5F20\u8868",
     // 三栏拖拽手柄的无障碍名字（视觉上是一条发丝线，读屏要能说出它是什么）
     "col.treeWidth": "\u8C03\u6574\u5DE6\u680F\u5BBD\u5EA6",
     "col.listWidth": "\u8C03\u6574\u4E2D\u680F\u5BBD\u5EA6",
@@ -8714,6 +8731,21 @@ var LEX = {
     "list.sortTime": "Recently edited first",
     "list.sortName": "By name",
     "filter.clear": "Remove this filter",
+    "help.open": "Keyboard shortcuts",
+    "help.title": "Keyboard shortcuts",
+    "help.hint": "Ctrl works everywhere; on a Mac use Cmd.",
+    "help.search": "Focus the search box",
+    "help.new": "New note",
+    "help.move": "Next / previous note in the list",
+    "help.nav": "Back / forward between notes",
+    "help.find": "Find in the note",
+    "help.edit": "Start editing / save and leave",
+    "help.save": "Save",
+    "help.esc": "Cancel editing, close the find bar",
+    "help.format": "Bold / italic / strikethrough",
+    "help.indent": "Indent list lines",
+    "help.complete": "Complete links and tags",
+    "help.help": "Open this sheet",
     "col.treeWidth": "Resize left column",
     "col.listWidth": "Resize middle column",
     "tree.newDir": "New folder",
@@ -9146,6 +9178,21 @@ var LEX = {
     "list.sortTime": "Recentst gewijzigd eerst",
     "list.sortName": "Op naam",
     "filter.clear": "Deze filter weghalen",
+    "help.open": "Sneltoetsen",
+    "help.title": "Sneltoetsen",
+    "help.hint": "Ctrl werkt overal; gebruik op een Mac Cmd.",
+    "help.search": "Zoekvak focus geven",
+    "help.new": "Nieuwe notitie",
+    "help.move": "Volgende / vorige notitie in de lijst",
+    "help.nav": "Terug / vooruit tussen notities",
+    "help.find": "Zoeken in de notitie",
+    "help.edit": "Bewerken starten / opslaan en verlaten",
+    "help.save": "Opslaan",
+    "help.esc": "Bewerken annuleren, zoekbalk sluiten",
+    "help.format": "Vet / cursief / doorhalen",
+    "help.indent": "Lijstregels inspringen",
+    "help.complete": "Links en tags aanvullen",
+    "help.help": "Dit overzicht openen",
     "col.treeWidth": "Linkerkolom breder of smaller maken",
     "col.listWidth": "Middenkolom breder of smaller maken",
     "tree.newDir": "Nieuwe map",
@@ -12119,6 +12166,17 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
 .dshgn_modalTitle{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary)}
 .dshgn_modalBody{font-size:12px;line-height:1.7;color:var(--dsw-alias-label-secondary);word-break:break-word}
 .dshgn_modalActions{display:flex;justify-content:flex-end;gap:8px;margin-top:2px}
+/* \u5FEB\u6377\u952E\u901F\u67E5\u8868\uFF1A\u4E24\u5217\uFF08\u952E\u4F4D + \u5E72\u4EC0\u4E48\uFF09\uFF0C\u952E\u4F4D\u7528\u7B49\u5BBD\u5B57\u5BF9\u9F50\uFF0C\u626B\u4E00\u773C\u5C31\u627E\u5F97\u5230 */
+.dshgn_helpModal{width:100%;max-width:420px;max-height:min(70vh,520px);overflow:auto}
+.dshgn_helpHint{font-size:11px;line-height:1.6;color:var(--dsw-alias-label-tertiary)}
+.dshgn_helpList{display:flex;flex-direction:column;gap:2px}
+.dshgn_helpRow{display:flex;align-items:baseline;gap:10px;padding:3px 0}
+.dshgn_helpKeys{flex:none;min-width:104px;display:inline-flex;flex-wrap:wrap;gap:3px}
+.dshgn_helpKey{display:inline-block;padding:0 5px;border:0.5px solid var(--dsw-alias-border-l2);
+  border-radius:4px;background:var(--dsw-alias-interactive-bg-hover);
+  font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);
+  font-size:10px;line-height:1.7;color:var(--dsw-alias-label-secondary);white-space:nowrap}
+.dshgn_helpWhat{min-width:0;font-size:12px;line-height:1.6;color:var(--dsw-alias-label-secondary)}
 
 /* \u2500\u2500 \u4E2D\u680F\uFF1A\u6D45\u84DD\u3002\u7559\u4E00\u6761\u7A0D\u6DF1\u7684\u53F3\u8FB9\u7EBF\u628A\u5B83\u548C\u9605\u8BFB\u533A\u533A\u5206\u5F00 \u2500\u2500 */
 .dshgn_list{
@@ -12341,6 +12399,9 @@ function GetnotePage() {
     });
   }, [entries, current]);
   const [templatesOpen, setTemplatesOpen] = h2(false);
+  const [helpOpen, setHelpOpen] = h2(false);
+  const helpOpenRef = A2(false);
+  helpOpenRef.current = helpOpen;
   const showToast = q2((text) => {
     setToast(text);
     window.setTimeout(() => setToast(null), 2400);
@@ -13205,9 +13266,18 @@ ${insert}
       }
       if (event.key === "Escape") {
         setTemplatesOpen(false);
+        if (helpOpenRef.current) {
+          setHelpOpen(false);
+          return;
+        }
         return;
       }
       if (typing) return;
+      if (event.key === "?" && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        event.preventDefault();
+        setHelpOpen((prev) => !prev);
+        return;
+      }
       const meta = event.ctrlKey || event.metaKey;
       if (meta && event.key.toLowerCase() === "k") {
         event.preventDefault();
@@ -13250,6 +13320,20 @@ ${insert}
     };
     return attachOnPanelWindows("dragover", onDragOver);
   }, []);
+  const helpRows = [
+    { keys: ["Ctrl", "K"], what: "help.search" },
+    { keys: ["Ctrl", "N"], what: "help.new" },
+    { keys: ["J", "K"], what: "help.move" },
+    { keys: ["Alt", "\u2190"], what: "help.nav" },
+    { keys: ["Ctrl", "F"], what: "help.find" },
+    { keys: ["Ctrl", "E"], what: "help.edit" },
+    { keys: ["Ctrl", "S"], what: "help.save" },
+    { keys: ["Esc"], what: "help.esc" },
+    { keys: ["Ctrl", "B"], what: "help.format" },
+    { keys: ["Tab"], what: "help.indent" },
+    { keys: ["[["], what: "help.complete" },
+    { keys: ["?"], what: "help.help" }
+  ];
   const tabButton = (id, label, badge) => h4(
     "button",
     { type: "button", className: "dshgn_tab", "data-on": tab === id ? "true" : "false", onClick: () => setTab(id) },
@@ -13374,6 +13458,20 @@ ${insert}
       tabButton("todos", t4("tab.todos")),
       tabButton("settings", t4("tab.settings")),
       tabButton("trash", t4("tab.trash"))
+    ),
+    // 速查表入口。放在页签右边而不是挤进动作区：动作是「对当前这页做什么」，
+    // 这张表是全局面板都一样的，跟在哪一页无关。
+    h4(
+      "button",
+      {
+        type: "button",
+        className: "dshgn_iconBtn dshgn_helpBtn",
+        title: `${t4("help.open")}\uFF08?\uFF09`,
+        "aria-keyshortcuts": "Shift+Slash",
+        onClick: () => setHelpOpen((prev) => !prev),
+        "data-on": helpOpen ? "true" : "false"
+      },
+      h4(Icon, { name: "info", size: 15 })
     )
   );
   let body;
@@ -14084,7 +14182,43 @@ ${insert}
       // 表现就是切页签时内容硬跳一下。
       h4("div", { key: tab, className: "dshgn_body" }, body)
     ),
-    toast !== null ? h4("div", { className: "dshgn_toast" }, h4(Icon, { name: "check", size: 13 }), toast) : null
+    toast !== null ? h4("div", { className: "dshgn_toast" }, h4(Icon, { name: "check", size: 13 }), toast) : null,
+    // 快捷键速查表。点遮罩、按 Esc、或者再按一次 ? 都收起来。
+    helpOpen ? h4(
+      "div",
+      { className: "dshgn_modalMask", onClick: () => setHelpOpen(false) },
+      h4(
+        "div",
+        { className: "dshgn_modal dshgn_helpModal", role: "dialog", "aria-modal": "true", onClick: (event) => event.stopPropagation() },
+        h4("div", { className: "dshgn_modalTitle" }, t4("help.title")),
+        h4("div", { className: "dshgn_helpHint" }, t4("help.hint")),
+        h4(
+          "div",
+          { className: "dshgn_helpList" },
+          helpRows.map(
+            (row) => h4(
+              "div",
+              { key: row.what, className: "dshgn_helpRow" },
+              h4(
+                "span",
+                { className: "dshgn_helpKeys" },
+                row.keys.map((key) => h4("kbd", { key, className: "dshgn_helpKey" }, key))
+              ),
+              h4("span", { className: "dshgn_helpWhat" }, t4(row.what))
+            )
+          )
+        ),
+        h4(
+          "div",
+          { className: "dshgn_modalActions" },
+          h4(
+            "button",
+            { type: "button", className: "dshgn_btn dshgn_btnPrimary", onClick: () => setHelpOpen(false) },
+            t4("action.close")
+          )
+        )
+      )
+    ) : null
   );
 }
 function AudioPlayer(props) {

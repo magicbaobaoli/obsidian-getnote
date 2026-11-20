@@ -573,6 +573,23 @@ async function saveFile(url, filename) {
         'list.sortName': '按名称',
         // 筛选条：左栏点了目录或标签之后，中栏得说清「现在筛的是什么」
         'filter.clear': '去掉这个筛选',
+        // 快捷键速查表：面板里能按的键散在编辑区提示、按钮 title 里，
+        // 谁也不会一个个去发现，得有一张能随时翻开的表
+        'help.open': '键盘快捷键',
+        'help.title': '键盘快捷键',
+        'help.hint': '面板里的键都能用 Ctrl，Mac 上换成 Cmd。',
+        'help.search': '聚焦搜索框',
+        'help.new': '新建笔记',
+        'help.move': '上下一篇',
+        'help.nav': '回上一篇 / 去下一篇',
+        'help.find': '就地查找',
+        'help.edit': '进编辑 / 存好退出',
+        'help.save': '保存',
+        'help.esc': '取消编辑、收起查找条',
+        'help.format': '加粗 / 斜体 / 删除线',
+        'help.indent': '清单缩进',
+        'help.complete': '双链、标签补全',
+        'help.help': '打开这张表',
         // 三栏拖拽手柄的无障碍名字（视觉上是一条发丝线，读屏要能说出它是什么）
         'col.treeWidth': '调整左栏宽度',
         'col.listWidth': '调整中栏宽度',
@@ -1011,6 +1028,21 @@ async function saveFile(url, filename) {
         'list.sortTime': 'Recently edited first',
         'list.sortName': 'By name',
         'filter.clear': 'Remove this filter',
+        'help.open': 'Keyboard shortcuts',
+        'help.title': 'Keyboard shortcuts',
+        'help.hint': 'Ctrl works everywhere; on a Mac use Cmd.',
+        'help.search': 'Focus the search box',
+        'help.new': 'New note',
+        'help.move': 'Next / previous note in the list',
+        'help.nav': 'Back / forward between notes',
+        'help.find': 'Find in the note',
+        'help.edit': 'Start editing / save and leave',
+        'help.save': 'Save',
+        'help.esc': 'Cancel editing, close the find bar',
+        'help.format': 'Bold / italic / strikethrough',
+        'help.indent': 'Indent list lines',
+        'help.complete': 'Complete links and tags',
+        'help.help': 'Open this sheet',
         'col.treeWidth': 'Resize left column',
         'col.listWidth': 'Resize middle column',
         'tree.newDir': 'New folder',
@@ -1447,6 +1479,21 @@ async function saveFile(url, filename) {
         'list.sortTime': 'Recentst gewijzigd eerst',
         'list.sortName': 'Op naam',
         'filter.clear': 'Deze filter weghalen',
+        'help.open': 'Sneltoetsen',
+        'help.title': 'Sneltoetsen',
+        'help.hint': 'Ctrl werkt overal; gebruik op een Mac Cmd.',
+        'help.search': 'Zoekvak focus geven',
+        'help.new': 'Nieuwe notitie',
+        'help.move': 'Volgende / vorige notitie in de lijst',
+        'help.nav': 'Terug / vooruit tussen notities',
+        'help.find': 'Zoeken in de notitie',
+        'help.edit': 'Bewerken starten / opslaan en verlaten',
+        'help.save': 'Opslaan',
+        'help.esc': 'Bewerken annuleren, zoekbalk sluiten',
+        'help.format': 'Vet / cursief / doorhalen',
+        'help.indent': 'Lijstregels inspringen',
+        'help.complete': 'Links en tags aanvullen',
+        'help.help': 'Dit overzicht openen',
         'col.treeWidth': 'Linkerkolom breder of smaller maken',
         'col.listWidth': 'Middenkolom breder of smaller maken',
         'tree.newDir': 'Nieuwe map',
@@ -5127,6 +5174,17 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
 .dshgn_modalTitle{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary)}
 .dshgn_modalBody{font-size:12px;line-height:1.7;color:var(--dsw-alias-label-secondary);word-break:break-word}
 .dshgn_modalActions{display:flex;justify-content:flex-end;gap:8px;margin-top:2px}
+/* 快捷键速查表：两列（键位 + 干什么），键位用等宽字对齐，扫一眼就找得到 */
+.dshgn_helpModal{width:100%;max-width:420px;max-height:min(70vh,520px);overflow:auto}
+.dshgn_helpHint{font-size:11px;line-height:1.6;color:var(--dsw-alias-label-tertiary)}
+.dshgn_helpList{display:flex;flex-direction:column;gap:2px}
+.dshgn_helpRow{display:flex;align-items:baseline;gap:10px;padding:3px 0}
+.dshgn_helpKeys{flex:none;min-width:104px;display:inline-flex;flex-wrap:wrap;gap:3px}
+.dshgn_helpKey{display:inline-block;padding:0 5px;border:0.5px solid var(--dsw-alias-border-l2);
+  border-radius:4px;background:var(--dsw-alias-interactive-bg-hover);
+  font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);
+  font-size:10px;line-height:1.7;color:var(--dsw-alias-label-secondary);white-space:nowrap}
+.dshgn_helpWhat{min-width:0;font-size:12px;line-height:1.6;color:var(--dsw-alias-label-secondary)}
 
 /* ── 中栏：浅蓝。留一条稍深的右边线把它和阅读区区分开 ── */
 .dshgn_list{
@@ -5426,6 +5484,15 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 新建模板菜单的开关。点「+」不再直接建空笔记，而是先让用户选一类——
       // 日记/读书/会议/随手记的日期与结构都是固定的，每次手写是重复劳动。
       const [templatesOpen, setTemplatesOpen] = React.useState(false)
+
+      // 快捷键速查表。面板里能按的键散在编辑区提示行和按钮 title 里，
+      // 谁也不会一个个去发现：这张表把散落的键位收在一处，按 ? 或点顶栏那个问号就能翻。
+      const [helpOpen, setHelpOpen] = React.useState(false)
+      // 快捷键监听是 effect 挂的，闭包里的 helpOpen 要等 React 把 effect 排到才更新。
+      // 用户按「?」摊开、立刻按 Esc 想收起来，两次按键可能落在同一个 tick 里，
+      // 那时旧闭包还以为表是关着的，Esc 就被放过去了——所以这里读 ref 里的现值。
+      const helpOpenRef = React.useRef(false)
+      helpOpenRef.current = helpOpen
 
       const showToast = React.useCallback((text) => {
         setToast(text)
@@ -6559,9 +6626,21 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           }
           if (event.key === 'Escape') {
             setTemplatesOpen(false)
+            // 速查表开着时，Esc 先收它：这是用户按下 Esc 时最想关的那一层
+            if (helpOpenRef.current) {
+              setHelpOpen(false)
+              return
+            }
             return
           }
           if (typing) return
+          // 「?」叫出速查表。Shift+/ 打出来的就是这个键，不认它的话
+          // 用户得先知道有这张表才点得到那颗问号。
+          if (event.key === '?' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+            event.preventDefault()
+            setHelpOpen((prev) => !prev)
+            return
+          }
           const meta = event.ctrlKey || event.metaKey
           if (meta && event.key.toLowerCase() === 'k') {
             event.preventDefault()
@@ -6617,6 +6696,23 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
 
       // badge 是文字右边的小胶囊（像邮件未读那种），不是骑在页签右上角的角标——
       // 角标会压住页签本身的边距，还会让相邻页签的间距看起来不齐。
+      // 速查表的内容。键位用字符串数组，渲染时一颗一颗摆成按键的样子；
+      // 不写死成 HTML，三种语言各自查自己的说法。
+      const helpRows = [
+        { keys: ['Ctrl', 'K'], what: 'help.search' },
+        { keys: ['Ctrl', 'N'], what: 'help.new' },
+        { keys: ['J', 'K'], what: 'help.move' },
+        { keys: ['Alt', '←'], what: 'help.nav' },
+        { keys: ['Ctrl', 'F'], what: 'help.find' },
+        { keys: ['Ctrl', 'E'], what: 'help.edit' },
+        { keys: ['Ctrl', 'S'], what: 'help.save' },
+        { keys: ['Esc'], what: 'help.esc' },
+        { keys: ['Ctrl', 'B'], what: 'help.format' },
+        { keys: ['Tab'], what: 'help.indent' },
+        { keys: ['[['], what: 'help.complete' },
+        { keys: ['?'], what: 'help.help' },
+      ]
+
       const tabButton = (id, label, badge) =>
         h(
           'button',
@@ -6751,6 +6847,20 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           tabButton('todos', t('tab.todos')),
           tabButton('settings', t('tab.settings')),
           tabButton('trash', t('tab.trash')),
+        ),
+        // 速查表入口。放在页签右边而不是挤进动作区：动作是「对当前这页做什么」，
+        // 这张表是全局面板都一样的，跟在哪一页无关。
+        h(
+          'button',
+          {
+            type: 'button',
+            className: 'dshgn_iconBtn dshgn_helpBtn',
+            title: `${t('help.open')}（?）`,
+            'aria-keyshortcuts': 'Shift+Slash',
+            onClick: () => setHelpOpen((prev) => !prev),
+            'data-on': helpOpen ? 'true' : 'false',
+          },
+          h(Icon, { name: 'info', size: 15 }),
         ),
       )
 
@@ -7530,6 +7640,44 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           h('div', { key: tab, className: 'dshgn_body' }, body),
         ),
         toast !== null ? h('div', { className: 'dshgn_toast' }, h(Icon, { name: 'check', size: 13 }), toast) : null,
+        // 快捷键速查表。点遮罩、按 Esc、或者再按一次 ? 都收起来。
+        helpOpen
+          ? h(
+              'div',
+              { className: 'dshgn_modalMask', onClick: () => setHelpOpen(false) },
+              h(
+                'div',
+                { className: 'dshgn_modal dshgn_helpModal', role: 'dialog', 'aria-modal': 'true', onClick: (event) => event.stopPropagation() },
+                h('div', { className: 'dshgn_modalTitle' }, t('help.title')),
+                h('div', { className: 'dshgn_helpHint' }, t('help.hint')),
+                h(
+                  'div',
+                  { className: 'dshgn_helpList' },
+                  helpRows.map((row) =>
+                    h(
+                      'div',
+                      { key: row.what, className: 'dshgn_helpRow' },
+                      h(
+                        'span',
+                        { className: 'dshgn_helpKeys' },
+                        row.keys.map((key) => h('kbd', { key, className: 'dshgn_helpKey' }, key)),
+                      ),
+                      h('span', { className: 'dshgn_helpWhat' }, t(row.what)),
+                    ),
+                  ),
+                ),
+                h(
+                  'div',
+                  { className: 'dshgn_modalActions' },
+                  h(
+                    'button',
+                    { type: 'button', className: 'dshgn_btn dshgn_btnPrimary', onClick: () => setHelpOpen(false) },
+                    t('action.close'),
+                  ),
+                ),
+              ),
+            )
+          : null,
       )
     }
 

@@ -6060,3 +6060,73 @@ test('中栏顶上会摆出「现在筛的是什么」，点一下就退出去',
   await waitFor(() => window.document.querySelector('.dshgn_filterBar') === null, 5000, '收尾清掉筛选')
 })
 
+test('按 ? 就摊开一张快捷键速查表，Esc 先收它、再按一次也收', async () => {
+  const helpMask = () => window.document.querySelector('.dshgn_helpModal')
+  const rows = () => Array.from(window.document.querySelectorAll('.dshgn_helpRow'))
+  const press = (key, extra) =>
+    window.dispatchEvent(new window.KeyboardEvent('keydown', Object.assign({ key, bubbles: true }, extra || {})))
+
+  // 先收掉别的：上一个用例可能把某篇开着，速查表在任何一页都该叫得出来
+  const back = window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    if (back) back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(200)
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  assert.equal(helpMask(), null, '平时不占位置')
+
+  // 顶栏那颗问号：点一下摊开
+  const helpBtn = await waitFor(
+    () => window.document.querySelector('.dshgn_helpBtn'),
+    5000,
+    '顶栏要有速查表入口',
+  )
+  assert.equal(helpBtn.getAttribute('aria-keyshortcuts'), 'Shift+Slash', '按钮上要写得出按什么键')
+  helpBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => helpMask() !== null, 5000, '点一下就该摊开')
+
+  // 表里得有干货：至少十来条，键位和说明都不能空
+  const list = rows()
+  assert.ok(list.length >= 10, '速查表不该只有两三条，实际 ' + list.length)
+  const keyText = (row) =>
+    Array.from(row.querySelectorAll('.dshgn_helpKey')).map((el) => (el.textContent || '').trim())
+  const whatText = (row) => ((row.querySelector('.dshgn_helpWhat') || {}).textContent || '').trim()
+  for (const row of list) {
+    assert.ok(keyText(row).length > 0, '每一行都要写出按什么键')
+    assert.ok(whatText(row) !== '', '每一行都要说清按了会怎样')
+  }
+  // 这几条是面板里最容易踩空的，必须在表里
+  const allKeys = list.map((row) => keyText(row).join('+')).join(' | ')
+  for (const want of ['Ctrl+K', 'Ctrl+N', 'Ctrl+F', 'Ctrl+E', 'Ctrl+S', 'Alt+←', 'Esc', 'Tab']) {
+    assert.ok(allKeys.includes(want), '速查表里该有 ' + want + '，实际 ' + allKeys)
+  }
+
+  // 再点一次按钮收起
+  helpBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => helpMask() === null, 5000, '再点一次就收起')
+
+  // 按 ? 也能叫出来（Shift+/ 打出来的就是它）
+  press('?', { shiftKey: true })
+  await waitFor(() => helpMask() !== null, 5000, '按 ? 也要摊开')
+  // 再按一次 ? 收起
+  press('?', { shiftKey: true })
+  await waitFor(() => helpMask() === null, 5000, '再按一次 ? 就收起')
+
+  // Esc 收：它比页签里那一层更靠上，按下 Esc 最想关的就是它
+  press('?', { shiftKey: true })
+  await waitFor(() => helpMask() !== null, 5000, '再叫一次')
+  press('Escape')
+  await waitFor(() => helpMask() === null, 5000, 'Esc 先收速查表')
+
+  // 焦点在输入框里时不该被抢走：那时 ? 是要打的字
+  const searchBox = window.document.querySelector('.dshgn_search')
+  assert.ok(searchBox !== null, '中栏有搜索框')
+  searchBox.focus()
+  searchBox.dispatchEvent(new window.KeyboardEvent('keydown', { key: '?', shiftKey: true, bubbles: true }))
+  await sleep(200)
+  assert.equal(helpMask(), null, '在输入框里打问号不该弹出速查表')
+})
+
