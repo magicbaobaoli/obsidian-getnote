@@ -102,7 +102,9 @@ const SECRET_PATTERNS = [
 ]
 
 const SKIP_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.zip', '.ogg', '.mp3'])
-const files = execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' })
+// 连还没 git add 的新文件一起扫：只扫已跟踪的话，本地跑一遍全绿、提交上去
+// CI 才红（新写的测试文件里正好有一把「像真的」钥匙就是这么漏的）。
+const files = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard'], { cwd: ROOT, encoding: 'utf8' })
   .split('\n')
   .filter((f) => f !== '' && !SKIP_EXT.has(f.slice(f.lastIndexOf('.'))))
 const leaks = []

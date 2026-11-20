@@ -57,7 +57,9 @@ const SECRET = /gk_live_(?![.x]|TEST)[A-Za-z0-9_-]{8,}/
 check('gk_live_xxx 不算泄露', !SECRET.test('形如 gk_live_xxx 的 Key'))
 check('gk_live_... 不算泄露', !SECRET.test("'api.keyPlaceholder': 'gk_live_...'"))
 check('gk_live_TESTKEY 不算泄露', !SECRET.test('gk_live_TESTKEY_TESTKEY_0001'))
-check('一长串随机字符算泄露', SECRET.test('gk_live_15d9a8b7c6d5e4f3'))
+// 这条样本必须拼出来：自检脚本会扫整个仓库，把它写成字面量等于自己往仓库里
+// 塞一把「像真的」钥匙，CI 上第一个红的就是这个文件自己。
+check('一长串随机字符算泄露', SECRET.test('gk_live_' + '15d9a8b7c6d5e4f3'))
 
 console.log('')
 const failed = results.filter((r) => !r.ok)
