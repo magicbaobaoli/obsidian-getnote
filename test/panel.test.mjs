@@ -9273,3 +9273,66 @@ test('读到篇尾看得见这一篇多少字、大概读几分钟', async () =>
     panel.setConfirmDialog(null)
   }
 })
+
+test('待办页能把整份清单一次抄走，按篇分组、按行号排', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const backToList = async () => {
+    const back = rootNode().querySelector('.dshgn_noteBack')
+    if (back !== null) {
+      panel.setConfirmDialog(() => Promise.resolve(true))
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false')
+  }
+  await backToList()
+  const search = rootNode().querySelector('.dshgn_search')
+  Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(search, '')
+  search.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(400)
+
+  const make = async (dir, title, content, requestId) => {
+    const res = await realFetch(`${server.origin}/getnote/create`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({ dir, title, content, withDatePrefix: false, requestId }),
+    })
+    const json = await res.json()
+    return json.path
+  }
+  await make('随手记', '待办复制验收甲', ['# 待办复制验收甲', '', '- [ ] 先买桂圆', '- [x] 已经做完的那条', '- [ ] 再买莲子', ''].join('\n'), 'seed-todo-copy-a')
+  await make('随手记', '待办复制验收乙', ['# 待办复制验收乙', '', '- [ ] 乙那边的第一条', ''].join('\n'), 'seed-todo-copy-b')
+
+  clickTab('待办')
+  const rowOf = (text) => {
+    const rows = Array.from(rootNode().querySelectorAll('.dshgn_todoRow'))
+    return rows.find((row) => String(row.textContent || '').includes(text)) || null
+  }
+  await waitFor(() => rowOf('先买桂圆'))
+
+  const written = []
+  clipboard.writeText = async (text) => { written.push(String(text)) }
+
+  const head = rootNode().querySelector('.dshgn_sectionHead')
+  const copyBtn = Array.from(head.querySelectorAll('.dshgn_btn')).find((btn) => String(btn.textContent || '').includes('复制这份清单'))
+  assert.ok(copyBtn, '待办页顶上该有一颗「复制这份清单」')
+  copyBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => written.length > 0)
+  const copied = written[0]
+
+  assert.ok(copied.includes('## 待办复制验收甲'), '按篇分组，标题当小标题')
+  assert.ok(copied.includes('## 待办复制验收乙'))
+  assert.ok(copied.includes('- [ ] 先买桂圆'))
+  assert.ok(copied.includes('- [ ] 再买莲子'))
+  assert.ok(!copied.includes('已经做完的那条'), '已经勾掉的不会再抄进去')
+  assert.ok(copied.indexOf('先买桂圆') < copied.indexOf('再买莲子'), '同一篇里按行号排')
+  // 剪贴板写入先返回、提示是紧接着那一步才弹的，别在这一瞬间就去读 DOM
+  // 提示条挂在 .dshgn_root 外面的兄弟节点上，得从 document 上找
+  const toastText = await waitFor(() => {
+    const node = window.document.querySelector('.dshgn_toast')
+    return node === null ? null : String(node.textContent || '')
+  })
+  assert.ok(toastText.includes('条待办'), '抄完给一句「已复制 N 条待办」')
+  // 库里可能还有前面用例留下的待办，条数按抄出来的那几行数
+  const counted = copied.split('\n').filter((line) => line.startsWith('- [ ] ')).length
+  assert.ok(toastText.includes(String(counted)), '抄了几条就说几条')
+})

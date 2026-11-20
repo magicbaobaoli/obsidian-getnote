@@ -850,6 +850,8 @@ async function saveFile(url, filename) {
         'broken.line': '第',
         'broken.jump': '去这一句',
         'todo.jump': '去这一条',
+        'todo.copyAll': '复制这份清单',
+        'todo.copied': '已复制 {n} 条待办',
         'tab.todos': '待办',
         'todos.desc': '全库还没勾掉的方框都在这里。点方框当场勾掉，点文字打开那一篇。',
         'todos.empty': '没有待办',
@@ -1325,6 +1327,8 @@ async function saveFile(url, filename) {
         'broken.line': 'line',
         'broken.jump': 'Jump to this line',
         'todo.jump': 'Jump to this item',
+        'todo.copyAll': 'Copy this list',
+        'todo.copied': 'Copied {n} to-dos',
         'tab.todos': 'To-dos',
         'todos.desc': 'Every unticked box in the vault. Click a box to tick it off, click the text to open the note.',
         'todos.empty': 'Nothing to do',
@@ -1799,6 +1803,8 @@ async function saveFile(url, filename) {
         'broken.line': 'regel',
         'broken.jump': 'Naar deze regel',
         'todo.jump': 'Naar dit punt',
+        'todo.copyAll': 'Deze lijst kopiëren',
+        'todo.copied': '{n} taken gekopieerd',
         'tab.todos': 'Taken',
         'todos.desc': 'Elk niet-aangevinkt vakje in de map. Klik op een vakje om af te vinken, klik op de tekst om de notitie te openen.',
         'todos.empty': 'Niets te doen',
@@ -2504,6 +2510,7 @@ async function saveFile(url, filename) {
       left: 'M19 12H5 M12 5l-7 7 7 7',
       right: 'M5 12h14 M12 5l7 7-7 7',
       hash: 'M9.5 4 7.5 20 M16.5 4l-2 16 M4 9.5h16 M3.5 14.5h16',
+      copy: 'M9 9h11v11H9Z M15 9V4H4v11h5',
     }
 
     function Icon(props) {
@@ -11301,6 +11308,35 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         [onChanged, onError, showToast, t],
       )
 
+      // 把整份清单抄成一段 Markdown：周报、群里同步、贴进另一个工具都要它。
+      // 按篇分组、按行号排，顺序跟屏幕上一致；抄走的是「- [ ] 正文」加一行出处，
+      // 而不是屏幕上那几段被 CSS 截断的省略号。
+      const copyAll = React.useCallback(async () => {
+        const rows = items === null ? [] : items
+        if (rows.length === 0) return
+        const byNote = new Map()
+        for (const item of rows) {
+          const key = item.path
+          if (!byNote.has(key)) byNote.set(key, [])
+          byNote.get(key).push(item)
+        }
+        const lines = []
+        for (const [path, group] of byNote) {
+          const first = group[0]
+          lines.push(`## ${first.title || path}`)
+          for (const item of group) lines.push(`- [ ] ${item.text}`)
+          lines.push('')
+        }
+        const text = lines.join('\n').trim()
+        try {
+          await navigator.clipboard.writeText(text)
+          if (typeof showToast === 'function') showToast(t('todo.copied').replace('{n}', String(rows.length)))
+        } catch {
+          // 没有剪贴板权限时把正文摊出来让用户自己选，总比点了没反应强
+          if (typeof showToast === 'function') showToast(text)
+        }
+      }, [items, showToast, t])
+
       const list = items === null ? [] : items
       const summary = t('todos.found').replace('{n}', String(list.length)).replace('{scanned}', String(scanned))
 
@@ -11314,6 +11350,16 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             'div',
             { className: 'dshgn_sectionHead' },
             h('div', { className: 'dshgn_sectionTitle' }, t('tab.todos')),
+            // 这一整份清单经常要抄去别处（周报、群里同步、贴进另一个工具）。
+            // 一条条复制等于重新抄一遍，这里按屏幕上这个顺序整份抄走。
+            list.length === 0
+              ? null
+              : h(
+                  'button',
+                  { type: 'button', className: 'dshgn_btn', title: t('todo.copyAll'), onClick: () => void copyAll() },
+                  h(Icon, { name: 'copy', size: 12 }),
+                  t('todo.copyAll'),
+                ),
             h(
               'button',
               { type: 'button', className: 'dshgn_btn', onClick: () => void load(), disabled: loading },

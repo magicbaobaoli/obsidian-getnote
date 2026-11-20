@@ -8584,6 +8584,8 @@ var LEX = {
     "broken.line": "\u7B2C",
     "broken.jump": "\u53BB\u8FD9\u4E00\u53E5",
     "todo.jump": "\u53BB\u8FD9\u4E00\u6761",
+    "todo.copyAll": "\u590D\u5236\u8FD9\u4EFD\u6E05\u5355",
+    "todo.copied": "\u5DF2\u590D\u5236 {n} \u6761\u5F85\u529E",
     "tab.todos": "\u5F85\u529E",
     "todos.desc": "\u5168\u5E93\u8FD8\u6CA1\u52FE\u6389\u7684\u65B9\u6846\u90FD\u5728\u8FD9\u91CC\u3002\u70B9\u65B9\u6846\u5F53\u573A\u52FE\u6389\uFF0C\u70B9\u6587\u5B57\u6253\u5F00\u90A3\u4E00\u7BC7\u3002",
     "todos.empty": "\u6CA1\u6709\u5F85\u529E",
@@ -9055,6 +9057,8 @@ var LEX = {
     "broken.line": "line",
     "broken.jump": "Jump to this line",
     "todo.jump": "Jump to this item",
+    "todo.copyAll": "Copy this list",
+    "todo.copied": "Copied {n} to-dos",
     "tab.todos": "To-dos",
     "todos.desc": "Every unticked box in the vault. Click a box to tick it off, click the text to open the note.",
     "todos.empty": "Nothing to do",
@@ -9526,6 +9530,8 @@ var LEX = {
     "broken.line": "regel",
     "broken.jump": "Naar deze regel",
     "todo.jump": "Naar dit punt",
+    "todo.copyAll": "Deze lijst kopi\xEBren",
+    "todo.copied": "{n} taken gekopieerd",
     "tab.todos": "Taken",
     "todos.desc": "Elk niet-aangevinkt vakje in de map. Klik op een vakje om af te vinken, klik op de tekst om de notitie te openen.",
     "todos.empty": "Niets te doen",
@@ -10067,7 +10073,8 @@ var ICONS = {
   down: "M12 5v14 M5 12l7 7 7-7",
   left: "M19 12H5 M12 5l-7 7 7 7",
   right: "M5 12h14 M12 5l7 7-7 7",
-  hash: "M9.5 4 7.5 20 M16.5 4l-2 16 M4 9.5h16 M3.5 14.5h16"
+  hash: "M9.5 4 7.5 20 M16.5 4l-2 16 M4 9.5h16 M3.5 14.5h16",
+  copy: "M9 9h11v11H9Z M15 9V4H4v11h5"
 };
 function Icon(props) {
   const size = props && typeof props.size === "number" ? props.size : 16;
@@ -17311,6 +17318,30 @@ function TodoPane(props) {
     },
     [onChanged, onError, showToast, t4]
   );
+  const copyAll = q2(async () => {
+    const rows = items === null ? [] : items;
+    if (rows.length === 0) return;
+    const byNote = /* @__PURE__ */ new Map();
+    for (const item of rows) {
+      const key = item.path;
+      if (!byNote.has(key)) byNote.set(key, []);
+      byNote.get(key).push(item);
+    }
+    const lines = [];
+    for (const [path, group] of byNote) {
+      const first = group[0];
+      lines.push(`## ${first.title || path}`);
+      for (const item of group) lines.push(`- [ ] ${item.text}`);
+      lines.push("");
+    }
+    const text = lines.join("\n").trim();
+    try {
+      await navigator.clipboard.writeText(text);
+      if (typeof showToast === "function") showToast(t4("todo.copied").replace("{n}", String(rows.length)));
+    } catch {
+      if (typeof showToast === "function") showToast(text);
+    }
+  }, [items, showToast, t4]);
   const list = items === null ? [] : items;
   const summary = t4("todos.found").replace("{n}", String(list.length)).replace("{scanned}", String(scanned));
   return h4(
@@ -17323,6 +17354,14 @@ function TodoPane(props) {
         "div",
         { className: "dshgn_sectionHead" },
         h4("div", { className: "dshgn_sectionTitle" }, t4("tab.todos")),
+        // 这一整份清单经常要抄去别处（周报、群里同步、贴进另一个工具）。
+        // 一条条复制等于重新抄一遍，这里按屏幕上这个顺序整份抄走。
+        list.length === 0 ? null : h4(
+          "button",
+          { type: "button", className: "dshgn_btn", title: t4("todo.copyAll"), onClick: () => void copyAll() },
+          h4(Icon, { name: "copy", size: 12 }),
+          t4("todo.copyAll")
+        ),
         h4(
           "button",
           { type: "button", className: "dshgn_btn", onClick: () => void load(), disabled: loading },
