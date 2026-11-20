@@ -3693,6 +3693,46 @@ async function saveFile(url, filename) {
     }
 
     /**
+     * 选中一段字再粘贴一个网址：变成 `[选中的字](网址)`。
+     *
+     * 宿主编辑器里这是默认行为，面板的裸 textarea 会把它整个替换成那串网址——
+     * 用户刚选好的那段话没了，还得重新打一遍当链接文字。
+     *
+     * 只接「剪贴板里整个就是一个网址」这一种：粘贴一段带网址的文章、
+     * 或者没选字，都照旧走浏览器默认行为，别自作主张。
+     * 选中的字里带 `]` 或换行时也不接——那样拼出来的链接是坏的。
+     */
+    function linkPaste(text, start, end, clip) {
+      const source = String(text === null || text === undefined ? '' : text)
+      const raw = String(clip === null || clip === undefined ? '' : clip).trim()
+      if (!/^https?:\/\/\S+$/i.test(raw)) return null
+      const clamp = (value) => {
+        const n = Number.isInteger(value) ? value : source.length
+        return Math.max(0, Math.min(source.length, n))
+      }
+      let from = clamp(start)
+      let to = clamp(end)
+      if (from > to) {
+        const swap = from
+        from = to
+        to = swap
+      }
+      // 没选字：用户只是想把网址贴进来，别替他造链接文字
+      if (from === to) return null
+      const picked = source.slice(from, to)
+      if (picked.trim() === '') return null
+      // 选中的本来就是一条 Markdown 链接：再包一层会变成链接里套链接
+      if (/\[[^\]\n]*\]\([^)\n]*\)/.test(picked)) return null
+      if (/[\]\n]/.test(picked)) return null
+      const link = `[${picked}](${raw})`
+      return {
+        text: source.slice(0, from) + link + source.slice(to),
+        start: from + 1,
+        end: from + 1 + picked.length,
+      }
+    }
+
+    /**
      * 光标正停在一个没写完的双链里吗？返回 { query, start }。
      *
      * 用户敲 `[[` 的时候是想「引用库里的某一篇」，可他能记住的是名字，不是
@@ -13263,15 +13303,31 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
               },
               // 截图之后 Ctrl+V 是最顺手的插图方式。宿主接住了，面板以前什么都不做，
               // 剪贴板里的图就悄悄没了。
-              onPaste: canAttach
-                ? (event) => {
-                    const files = event.clipboardData && event.clipboardData.files
-                    if (files && files.length > 0) {
-                      event.preventDefault()
-                      void onAttach(files)
-                    }
-                  }
-                : undefined,
+              // 粘贴两种：剪贴板里是文件就存成附件（截图后 Ctrl+V 是最顺手的插图
+              // 方式）；是网址而正文里又选了一段字，就把它变成 [选中的字](网址)
+              // ——宿主里这是默认行为，裸 textarea 会把选好的那段话整个换成网址。
+              onPaste: (event) => {
+                const files = event.clipboardData && event.clipboardData.files
+                if (files && files.length > 0) {
+                  if (!canAttach) return
+                  event.preventDefault()
+                  void onAttach(files)
+                  return
+                }
+                const node = editorRef.current
+                if (node === null || node === undefined) return
+                const clip =
+                  event.clipboardData && typeof event.clipboardData.getData === 'function'
+                    ? event.clipboardData.getData('text/plain')
+                    : ''
+                const caret = typeof node.selectionStart === 'number' ? node.selectionStart : 0
+                const selEnd = typeof node.selectionEnd === 'number' ? node.selectionEnd : caret
+                const linked = linkPaste(node.value, caret, selEnd, clip)
+                if (linked === null) return
+                event.preventDefault()
+                setDraft(linked.text)
+                placeCaret(linked.start, linked.end)
+              },
             }),
             // 双链候选：紧贴编辑区下沿摆一排，鼠标点也行、键盘上下+回车也行。
             // 一条候选都没搜到时整块不出现——弹一个空盒子比不弹更让人困惑。
@@ -14415,7 +14471,7 @@ export const __internals = {
   TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale,
   reportSync, dailyTemplateOf, frontmatterText, isTagKey, FollowCard, parseTable, countWords,
   isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote, scrollToFootnoteRef, parseImageSize, renderParagraph, blockTextOf, markdownLinkTarget,
-  tagBodyOf, ZoomOverlay, continueListLine, indentLines, wrapInline, wikilinkQueryAt, wikilinkMatches, tagQueryAt, tagMatches, findInBody, findInBodyMatch, findInText, textHasParts,
+  tagBodyOf, ZoomOverlay, continueListLine, indentLines, wrapInline, linkPaste, wikilinkQueryAt, wikilinkMatches, tagQueryAt, tagMatches, findInBody, findInBodyMatch, findInText, textHasParts,
       readScrollMarks, writeScrollMark, scrollMarkOf, SCROLL_KEY,
   readDrafts, draftOf, writeDraft, dropDraft, DRAFT_KEY, DRAFT_KEEP, DRAFT_MAX,
   splitByTerms, highlightTerms, searchTermsOf,

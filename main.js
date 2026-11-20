@@ -10789,6 +10789,33 @@ function wrapInline(text, start, end, marker) {
     end: to + size
   };
 }
+function linkPaste(text, start, end, clip) {
+  const source = String(text === null || text === void 0 ? "" : text);
+  const raw = String(clip === null || clip === void 0 ? "" : clip).trim();
+  if (!/^https?:\/\/\S+$/i.test(raw)) return null;
+  const clamp = (value) => {
+    const n2 = Number.isInteger(value) ? value : source.length;
+    return Math.max(0, Math.min(source.length, n2));
+  };
+  let from = clamp(start);
+  let to = clamp(end);
+  if (from > to) {
+    const swap = from;
+    from = to;
+    to = swap;
+  }
+  if (from === to) return null;
+  const picked = source.slice(from, to);
+  if (picked.trim() === "") return null;
+  if (/\[[^\]\n]*\]\([^)\n]*\)/.test(picked)) return null;
+  if (/[\]\n]/.test(picked)) return null;
+  const link = `[${picked}](${raw})`;
+  return {
+    text: source.slice(0, from) + link + source.slice(to),
+    start: from + 1,
+    end: from + 1 + picked.length
+  };
+}
 function wikilinkQueryAt(text, caret) {
   const source = String(text === null || text === void 0 ? "" : text);
   const at = Number.isInteger(caret) ? caret : source.length;
@@ -18870,13 +18897,28 @@ function NotePane(props) {
         },
         // 截图之后 Ctrl+V 是最顺手的插图方式。宿主接住了，面板以前什么都不做，
         // 剪贴板里的图就悄悄没了。
-        onPaste: canAttach ? (event) => {
+        // 粘贴两种：剪贴板里是文件就存成附件（截图后 Ctrl+V 是最顺手的插图
+        // 方式）；是网址而正文里又选了一段字，就把它变成 [选中的字](网址)
+        // ——宿主里这是默认行为，裸 textarea 会把选好的那段话整个换成网址。
+        onPaste: (event) => {
           const files = event.clipboardData && event.clipboardData.files;
           if (files && files.length > 0) {
+            if (!canAttach) return;
             event.preventDefault();
             void onAttach(files);
+            return;
           }
-        } : void 0
+          const node = editorRef.current;
+          if (node === null || node === void 0) return;
+          const clip = event.clipboardData && typeof event.clipboardData.getData === "function" ? event.clipboardData.getData("text/plain") : "";
+          const caret = typeof node.selectionStart === "number" ? node.selectionStart : 0;
+          const selEnd = typeof node.selectionEnd === "number" ? node.selectionEnd : caret;
+          const linked = linkPaste(node.value, caret, selEnd, clip);
+          if (linked === null) return;
+          event.preventDefault();
+          setDraft(linked.text);
+          placeCaret(linked.start, linked.end);
+        }
       }),
       // 双链候选：紧贴编辑区下沿摆一排，鼠标点也行、键盘上下+回车也行。
       // 一条候选都没搜到时整块不出现——弹一个空盒子比不弹更让人困惑。

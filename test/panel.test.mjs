@@ -6644,3 +6644,146 @@ test('篇尾那条脚注点一下就回到正文里引用它的那一句，别�
   }
 })
 
+
+test('编辑区里选中一段字再粘贴网址，变成「那段字」当链接文字，没选字就照旧贴网址', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const linkPaste = panel.__internals.linkPaste
+
+  // 纯函数：选中的那段字当链接文字，网址进括号，选区停在链接文字上
+  const one = linkPaste('见这里', 1, 3, 'https://a.com/x')
+  assert.equal(one.text, '见[这里](https://a.com/x)')
+  assert.equal(one.start, 2)
+  assert.equal(one.end, 4)
+  // 没选字：不替他造链接文字，交回浏览器默认行为
+  assert.equal(linkPaste('abc', 1, 1, 'https://a.com'), null)
+  // 选中的是空白：同上
+  assert.equal(linkPaste('a   b', 1, 4, 'https://a.com'), null)
+  // 剪贴板里不是网址：不动
+  assert.equal(linkPaste('abc', 0, 3, 'hello world'), null)
+  assert.equal(linkPaste('abc', 0, 3, 'ftp://a.com'), null)
+  // 选中的字里有 ] 或换行：拼出来的链接是坏的，宁可不动
+  assert.equal(linkPaste('a]b', 0, 3, 'https://a.com'), null)
+  assert.equal(linkPaste('a\nb', 0, 3, 'https://a.com'), null)
+  // 选中的本来就是一条链接：再包一层就成了链接里套链接
+  assert.equal(linkPaste('[文字](x.md)', 0, 11, 'https://a.com'), null)
+  // 反着选的区间也照做
+  const reversed = linkPaste('见这里', 3, 1, 'https://a.com')
+  assert.equal(reversed.text, '见[这里](https://a.com)')
+  // 网址两头的空白不算数
+  assert.equal(linkPaste('见这里', 1, 3, '  https://a.com  ').text, '见[这里](https://a.com)')
+
+  // 退回空态，并把搜索框清干净
+  const back = window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    if (back) back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox) {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setter.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(400)
+  }
+
+  const body = ['# 粘贴链接验收', '', '这一段话是要拿去当链接文字的。', '', '最后一行。'].join('\n')
+  const createRes = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '粘贴链接验收',
+      content: body,
+      withDatePrefix: false,
+      requestId: 'seed-paste-link',
+    }),
+  })
+  assert.equal(createRes.ok, true, '造笔记失败：' + createRes.status)
+  const targetPath = '随手记/粘贴链接验收.md'
+
+  await clickTab('笔记')
+  const refresh = Array.from(window.document.querySelectorAll('button')).find((el) => (el.getAttribute('title') || '') === '刷新')
+  assert.ok(refresh, '找不到刷新按钮')
+  refresh.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+  const card = await waitFor(
+    () => Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === targetPath),
+    5000,
+    '列表里出现这一篇',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 5000, '打开这一篇')
+
+  const editBtn = await waitFor(
+    () => Array.from(window.document.querySelectorAll('button')).find((el) => (el.getAttribute('title') || '') === '编辑'),
+    5000,
+    '编辑按钮',
+  )
+  editBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const editor = await waitFor(() => window.document.querySelector('.dshgn_editor'), 5000, '编辑区')
+  // 快捷键与划选监听都是 effect 挂的，点开编辑态的同一拍里派发会落到旧闭包
+  await sleep(250)
+
+  const setValue = (el, value) => {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set
+    setter.call(el, value)
+    el.dispatchEvent(new window.Event('input', { bubbles: true }))
+  }
+  const pasteOf = (text) => {
+    const event = new window.Event('paste', { bubbles: true, cancelable: true })
+    event.clipboardData = { files: [], getData: (kind) => (kind === 'text/plain' ? text : '') }
+    return event
+  }
+
+  const seed = '# 粘贴链接验收\n\n这一段话是要拿去当链接文字的。\n\n最后一行。'
+  setValue(editor, seed)
+  await sleep(120)
+  // 选中「这一段话是要拿去当链接文字的」这一段，再粘贴网址
+  const from = seed.indexOf('这一段话')
+  const to = from + '这一段话是要拿去当链接文字的'.length
+  editor.setSelectionRange(from, to)
+  const linkEvent = pasteOf('https://example.com/post')
+  editor.dispatchEvent(linkEvent)
+  await sleep(120)
+  assert.equal(linkEvent.defaultPrevented, true, '选中一段字再粘网址时应当由面板接手')
+  const afterLink = window.document.querySelector('.dshgn_editor')
+  assert.ok(
+    afterLink.value.includes('[这一段话是要拿去当链接文字的](https://example.com/post)'),
+    '粘贴之后应当是「选中的字」当链接文字，实际：' + afterLink.value,
+  )
+  // 选区停在链接文字上，接着打字是改链接文字而不是改网址
+  assert.equal(afterLink.selectionStart, from + 1)
+  assert.equal(afterLink.selectionEnd, from + 1 + '这一段话是要拿去当链接文字的'.length)
+
+  // 没选字：不该被面板截走，交回浏览器
+  const plain = window.document.querySelector('.dshgn_editor')
+  plain.setSelectionRange(0, 0)
+  const plainEvent = pasteOf('https://example.com/post')
+  plain.dispatchEvent(plainEvent)
+  await sleep(120)
+  assert.equal(plainEvent.defaultPrevented, false, '没选字时不要自作主张')
+
+  // 剪贴板里不是网址：也不截
+  const plain2 = window.document.querySelector('.dshgn_editor')
+  plain2.setSelectionRange(from, to)
+  const textEvent = pasteOf('一段普通文字')
+  plain2.dispatchEvent(textEvent)
+  await sleep(120)
+  assert.equal(textEvent.defaultPrevented, false, '粘贴普通文字时不要接手')
+
+  // 收尾：Esc 退出编辑态，再退回空态
+  const quit = window.document.querySelector('.dshgn_editor')
+  quit.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  await sleep(200)
+  const back2 = window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    if (back2) back2.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '收尾退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+})
