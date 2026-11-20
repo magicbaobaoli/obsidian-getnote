@@ -8974,3 +8974,106 @@ test('左栏目录能收起来：点箭头把这一支折下去，再点展开�
   await sleep(220)
   assert.ok(rowOf('更深一层') !== undefined, '再点一次又回来')
 })
+
+
+test('出链里指向还不存在的笔记暗一档、悬停说清是哪一篇，写得出的不受影响', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+  await clickTab('笔记')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+  const made = await post('/getnote/create', {
+    dir: '随手记',
+    title: '出链验收-写得出的那一篇',
+    content: ['# 出链验收甲', '', '这一篇已经写好了。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-outlink-known',
+  })
+  assert.ok(made && made.path, '造笔记失败：' + JSON.stringify(made))
+  const src = await post('/getnote/create', {
+    dir: '随手记',
+    title: '出链验收-引用方',
+    content: ['# 出链验收乙', '', '见 [[出链验收-写得出的那一篇]]。', '', '还想写 [[出链验收-根本没写过的那一篇]]。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-outlink-source',
+  })
+  assert.ok(src && src.path, '造笔记失败：' + JSON.stringify(src))
+
+  // 退回空态、清搜索、退回全量
+  const backBtn = () => window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(async () => true)
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = backBtn()
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(220)
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox !== null) {
+    const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setValue.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(300)
+  }
+  const allRow = Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+    const label = el.querySelector('.dshgn_treeName')
+    return label !== null && (label.textContent || '').trim() === '全部笔记'
+  })
+  if (allRow !== undefined) {
+    allRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const cardOf = (path) =>
+    Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === path)
+  await waitFor(() => cardOf(src.path) !== undefined, 8000, '列表里出现引用方那一篇')
+  cardOf(src.path).dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 8000, '打开引用方那一篇')
+  await waitFor(() => window.document.querySelector('.dshgn_notePath') !== null, 5000, '笔记头出现')
+
+  const chips = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_outlinks .dshgn_outlinkChip'))
+  await waitFor(() => chips().length === 2, 8000, '出链里摆出两条')
+  const known = chips().find((el) => (el.textContent || '').trim() === '出链验收-写得出的那一篇')
+  const dead = chips().find((el) => (el.textContent || '').trim() === '出链验收-根本没写过的那一篇')
+  assert.ok(known !== undefined && dead !== undefined, '两条出链都该在')
+  assert.equal(known.className.includes('dshgn_outlinkDead'), false, '写得出的那一条不该暗下去')
+  assert.equal(known.getAttribute('title'), '出链验收-写得出的那一篇', '写得出的那一条悬停就是名字本身')
+  assert.equal(dead.className.includes('dshgn_outlinkDead'), true, '还没写的那一条要暗下去')
+  assert.ok((dead.getAttribute('title') || '').includes('出链验收-根本没写过的那一篇'), '悬停要说清是哪一篇找不到')
+
+  // 暗下去只是外观，点下去仍走原来那条路：明说一句库里找不到
+  dead.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+  const errorBox = window.document.querySelector('.dshgn_error')
+  assert.ok(errorBox !== null, '点死链该明说一句')
+  assert.ok((errorBox.textContent || '').includes('找不到'), '要说清找不到，实际：' + (errorBox.textContent || ''))
+
+  // 收尾：退回空态，别把错误条留在那儿给后面的用例
+  panel.setConfirmDialog(async () => true)
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = backBtn()
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(220)
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '收尾退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+})

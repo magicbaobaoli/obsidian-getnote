@@ -4628,6 +4628,12 @@ async function saveFile(url, filename) {
   max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;
   background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-brand-primary)}
 .dshgn_outlinkChip:hover{background:var(--dsw-alias-interactive-bg-hover-accent)}
+/* 出链里指向还不存在的笔记：和正文里的死链同一套观感（灰下去、边框虚线），
+   而不是整条藏起来——「我想写但还没写」本身就是要看见的信息。 */
+.dshgn_outlinkDead{background:transparent;color:var(--dsw-alias-label-tertiary);
+  box-shadow:inset 0 0 0 0.5px var(--dsw-alias-border-l2)}
+.dshgn_outlinkDead:hover{background:var(--dsw-alias-interactive-bg-hover);
+  color:var(--dsw-alias-label-secondary)}
 /* 搜索增强：命中次数用一个小胶囊标在标题右边，命中行带行号——
    用户判断「这篇是不是我要的」靠的就是这两样东西。 */
 .dshgn_pickBox{flex:none;width:14px;height:14px;border-radius:4px;display:flex;
@@ -13423,6 +13429,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
 
       // 出链去重 + 去掉空串。宿主那边已经把 links 和 embeds 合过一遍，但同一篇
       // 里写两遍 `[[甲]]` 很常见，排成一排胶囊时重复项只是噪音。
+      // 顺手把「库里有没有这一篇」也判出来：出链是这一篇自己写下的名字，
+      // 写错一个字（或者那篇还没开始写）在这一排胶囊上和真链接长得一模一样，
+      // 点下去才知道是空的。判定口径与正文里的双链完全一致——同一个
+      // resolveNote，认不出来就是没有。
       const outlinkChips = React.useMemo(() => {
         const list = Array.isArray(outlinks) ? outlinks : []
         const seen = new Set()
@@ -13431,10 +13441,11 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           const text = String(raw === null || raw === undefined ? '' : raw).trim()
           if (text === '' || seen.has(text)) continue
           seen.add(text)
-          out.push(text)
+          const dead = typeof resolveNote === 'function' ? resolveNote(text) === '' : false
+          out.push({ text, dead })
         }
         return out
-      }, [outlinks])
+      }, [outlinks, resolveNote])
 
       // 属性区：把 frontmatter 摊成「键 → 值」几行。
       //
@@ -14624,13 +14635,13 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                         h(
                           'button',
                           {
-                            key: link,
+                            key: link.text,
                             type: 'button',
-                            className: 'dshgn_outlinkChip',
-                            title: link,
-                            onClick: () => onOpenWikiLink(link),
+                            className: link.dead ? 'dshgn_outlinkChip dshgn_outlinkDead' : 'dshgn_outlinkChip',
+                            title: link.dead ? t('note.wikilinkMissing').replace('{name}', link.text) : link.text,
+                            onClick: () => onOpenWikiLink(link.text),
                           },
-                          link,
+                          link.text,
                         ),
                       ),
                     ),

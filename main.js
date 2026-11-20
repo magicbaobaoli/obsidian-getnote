@@ -11603,6 +11603,12 @@ var CSS = `
   max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;
   background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-brand-primary)}
 .dshgn_outlinkChip:hover{background:var(--dsw-alias-interactive-bg-hover-accent)}
+/* \u51FA\u94FE\u91CC\u6307\u5411\u8FD8\u4E0D\u5B58\u5728\u7684\u7B14\u8BB0\uFF1A\u548C\u6B63\u6587\u91CC\u7684\u6B7B\u94FE\u540C\u4E00\u5957\u89C2\u611F\uFF08\u7070\u4E0B\u53BB\u3001\u8FB9\u6846\u865A\u7EBF\uFF09\uFF0C
+   \u800C\u4E0D\u662F\u6574\u6761\u85CF\u8D77\u6765\u2014\u2014\u300C\u6211\u60F3\u5199\u4F46\u8FD8\u6CA1\u5199\u300D\u672C\u8EAB\u5C31\u662F\u8981\u770B\u89C1\u7684\u4FE1\u606F\u3002 */
+.dshgn_outlinkDead{background:transparent;color:var(--dsw-alias-label-tertiary);
+  box-shadow:inset 0 0 0 0.5px var(--dsw-alias-border-l2)}
+.dshgn_outlinkDead:hover{background:var(--dsw-alias-interactive-bg-hover);
+  color:var(--dsw-alias-label-secondary)}
 /* \u641C\u7D22\u589E\u5F3A\uFF1A\u547D\u4E2D\u6B21\u6570\u7528\u4E00\u4E2A\u5C0F\u80F6\u56CA\u6807\u5728\u6807\u9898\u53F3\u8FB9\uFF0C\u547D\u4E2D\u884C\u5E26\u884C\u53F7\u2014\u2014
    \u7528\u6237\u5224\u65AD\u300C\u8FD9\u7BC7\u662F\u4E0D\u662F\u6211\u8981\u7684\u300D\u9760\u7684\u5C31\u662F\u8FD9\u4E24\u6837\u4E1C\u897F\u3002 */
 .dshgn_pickBox{flex:none;width:14px;height:14px;border-radius:4px;display:flex;
@@ -19039,10 +19045,11 @@ function NotePane(props) {
       const text = String(raw === null || raw === void 0 ? "" : raw).trim();
       if (text === "" || seen.has(text)) continue;
       seen.add(text);
-      out.push(text);
+      const dead = typeof resolveNote === "function" ? resolveNote(text) === "" : false;
+      out.push({ text, dead });
     }
     return out;
-  }, [outlinks]);
+  }, [outlinks, resolveNote]);
   const propRows = T2(() => {
     const data = current !== null && current.frontmatter !== null && typeof current.frontmatter === "object" ? current.frontmatter : {};
     const rows = [];
@@ -20068,13 +20075,13 @@ ${t4("tree.menuReveal")}` : absolute,
             (link) => h4(
               "button",
               {
-                key: link,
+                key: link.text,
                 type: "button",
-                className: "dshgn_outlinkChip",
-                title: link,
-                onClick: () => onOpenWikiLink2(link)
+                className: link.dead ? "dshgn_outlinkChip dshgn_outlinkDead" : "dshgn_outlinkChip",
+                title: link.dead ? t4("note.wikilinkMissing").replace("{name}", link.text) : link.text,
+                onClick: () => onOpenWikiLink2(link.text)
               },
-              link
+              link.text
             )
           )
         )
