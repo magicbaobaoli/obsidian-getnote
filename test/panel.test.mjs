@@ -4762,3 +4762,108 @@ test('搜索卡片上把用户敲的词标出来，tag:/dir: 限定词不去染�
   await sleep(260)
 })
 
+test('编辑区里敲 [[ 就把库里的笔记名摆出来，挑一条补成双链', async () => {
+  const { wikilinkQueryAt, wikilinkMatches } = panel.__internals
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+
+  // 纯函数：什么时候算「在补全」
+  assert.deepEqual(wikilinkQueryAt('看 [[随手', 6), { query: '随手', start: 4 })
+  assert.deepEqual(wikilinkQueryAt('看 [[', 4), { query: '', start: 4 })
+  assert.equal(wikilinkQueryAt('看 [[随手]] 了', 10), null, '已经闭合的不算在补全')
+  assert.equal(wikilinkQueryAt('看 [[随手\n接着', 8), null, '跨行的不算')
+  assert.equal(wikilinkQueryAt('没有方括号', 5), null)
+
+  // 纯函数：挑哪几条、插什么进去
+  const names = ['随手记/周报.md', '归档/周报.md', '随手记/随手一记.md', '随手记/别的.md']
+  const hits = wikilinkMatches(names, '随手')
+  assert.equal(hits.length, 1, '只留名字里带「随手」的：目录名不算，否则整个目录都会被列出来')
+  assert.equal(hits[0].insert, '随手一记', '名字打头的排在前面，重名的才用整条路径')
+  const dup = wikilinkMatches(names, '周报')
+  assert.equal(dup.length, 2)
+  assert.ok(dup.every((item) => item.insert.includes('/')), '两篇重名时要带上目录，否则插进去指错篇')
+  assert.equal(wikilinkMatches(names, '根本没有').length, 0)
+
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    const backBtn = window.document.querySelector('.dshgn_noteBack')
+    if (backBtn) {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    }
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  for (const [title, requestId] of [['补全目标甲', 'seed-wikilink-a'], ['补全目标乙', 'seed-wikilink-b']]) {
+    const res = await realFetch(server.origin + '/getnote/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({
+        dir: '随手记',
+        title,
+        content: ['# ' + title, '', '正文。', ''].join('\n'),
+        withDatePrefix: false,
+        requestId,
+      }),
+    })
+    await res.json()
+  }
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  const card = await waitFor(
+    () => Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === '随手记/补全目标甲.md') || null,
+    8000,
+    '列表里应该有这一篇',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 5000, '打开这一篇')
+
+  const editBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '编辑')
+  editBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const editor = await waitFor(() => window.document.querySelector('.dshgn_editor'), 5000, '进编辑态')
+
+  // 敲到「[[补全目标」为止：候选该出来了
+  editor.value = '# 补全目标甲\n\n看这里 [[补全目标'
+  editor.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(120)
+  const picks = () => Array.from(window.document.querySelectorAll('.dshgn_linkPickItem'))
+  const shown = await waitFor(() => (picks().length > 0 ? picks() : null), 5000, '候选该摆出来')
+  assert.equal(shown.length, 2, '库里两篇名字都对得上')
+  assert.equal(shown[0].getAttribute('data-on'), 'true', '第一条默认选中')
+  assert.ok(shown[0].textContent.includes('补全目标甲'))
+
+  // 键盘往下挪一格再回车：插进去的是第二条，且补上了 ]]
+  editor.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
+  await sleep(60)
+  assert.equal(picks()[1].getAttribute('data-on'), 'true', '往下键该挪到第二条')
+  editor.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  await sleep(120)
+  assert.equal(editor.value, '# 补全目标甲\n\n看这里 [[补全目标乙]]', '挑中的那条补上 ]] 落在光标处')
+  assert.equal(editor.selectionStart, editor.value.length, '光标停在新补的双链后面')
+  assert.equal(picks().length, 0, '补完就该收起来')
+
+  // 再用鼠标点一次：从「[[补」开始重新选
+  editor.value = '引一下 [[补'
+  editor.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(120)
+  const again = await waitFor(() => (picks().length > 0 ? picks() : null), 5000, '候选该再摆一次')
+  again[0].dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(120)
+  assert.equal(editor.value, '引一下 [[补全目标甲]]', '鼠标点第一条也能补上')
+
+  // 一条都对不上时不摆空盒子
+  editor.value = '写点 [[完全没有的篇名'
+  editor.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(120)
+  assert.equal(picks().length, 0, '一条都没有时不该摆一个空列表')
+
+  window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_editor') === null, 5000, 'Esc 退出编辑态')
+})
+

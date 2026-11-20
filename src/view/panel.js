@@ -3465,6 +3465,71 @@ async function saveFile(url, filename) {
     }
 
     /**
+     * 光标正停在一个没写完的双链里吗？返回 { query, start }。
+     *
+     * 用户敲 `[[` 的时候是想「引用库里的某一篇」，可他能记住的是名字，不是
+     * 「随手记/某年某月某日 那篇」这种路径。这里只负责判断「现在是不是在补全」：
+     * 从光标往回找最近的 `[[`，中间既没有 `]]` 也没有换行才算数。
+     */
+    function wikilinkQueryAt(text, caret) {
+      const source = String(text === null || text === undefined ? '' : text)
+      const at = Number.isInteger(caret) ? caret : source.length
+      if (at < 0 || at > source.length) return null
+      const before = source.slice(0, at)
+      const open = before.lastIndexOf('[[')
+      if (open === -1) return null
+      const between = before.slice(open + 2)
+      // 已经闭合、或者跨到下一行去了，都不是在补全这一条
+      if (between.indexOf(']]') !== -1 || between.indexOf('\n') !== -1) return null
+      return { query: between, start: open + 2 }
+    }
+
+    /**
+     * 从库里的笔记路径里挑出补得上的那几条。
+     *
+     * 比的是名字而不是整条路径：用户想的是「那篇叫什么的」，不是「它躺在哪一层」。
+     * 重名的（两个目录下各有一篇「周报」）用整条路径插进去，否则 `[[周报]]` 会
+     * 指到另一篇去，用户点开才发现拿错了。名字打头的排在前面，其余按名字排序。
+     */
+    function wikilinkMatches(names, query, limit = 8) {
+      const list = Array.isArray(names) ? names : []
+      const q = String(query === null || query === undefined ? '' : query).trim().toLowerCase()
+      const all = []
+      for (const raw of list) {
+        const path = String(raw === null || raw === undefined ? '' : raw).replace(/^\/+/, '')
+        if (path === '') continue
+        const base = path.split('/').pop().replace(/\.md$/i, '')
+        if (base === '') continue
+        all.push({ path, name: base })
+      }
+      const counts = new Map()
+      for (const item of all) counts.set(item.name, (counts.get(item.name) || 0) + 1)
+      // 先只比名字；一条都对不上才退回比整条路径。目录名也参与匹配的话，
+      // 打「随手」会把「随手记/」下面每一篇都列出来，等于没筛。
+      const matchOf = (item, usePath) => {
+        if (q === '') return true
+        const nameLower = item.name.toLowerCase()
+        if (nameLower.indexOf(q) !== -1) return true
+        return usePath && item.path.toLowerCase().indexOf(q) !== -1
+      }
+      const nameHits = all.filter((item) => matchOf(item, false))
+      const picked = nameHits.length > 0 ? nameHits : all.filter((item) => matchOf(item, true))
+      const hits = []
+      for (const item of picked) {
+        const nameLower = item.name.toLowerCase()
+        const insert = counts.get(item.name) > 1 ? item.path.replace(/\.md$/i, '') : item.name
+        hits.push({
+          path: item.path,
+          name: item.name,
+          insert,
+          label: insert,
+          rank: q !== '' && nameLower.startsWith(q) ? 0 : 1,
+        })
+      }
+      hits.sort((a, b) => a.rank - b.rank || a.label.localeCompare(b.label, 'zh'))
+      return hits.slice(0, Math.max(0, limit))
+    }
+    /**
      * 段落里的换行按宿主的口径处理：单独一个换行是「软换行」，接成一句话；
      * 行尾两个空格或者一个反斜杠才是「硬换行」，真的断行。
      *
@@ -4380,6 +4445,11 @@ async function saveFile(url, filename) {
   border-top:0.5px solid var(--dsw-alias-border-l1);font-size:10.5px;
   color:var(--dsw-alias-label-tertiary);flex:0 0 auto}
 .dshgn_editorHint{margin-left:auto;opacity:.75}
+.dshgn_linkPick{display:flex;flex-wrap:wrap;gap:6px;padding:6px clamp(16px,3vw,32px);border-top:0.5px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-secondary);max-height:112px;overflow-y:auto}
+.dshgn_linkPickItem{display:inline-flex;align-items:center;gap:5px;appearance:none;max-width:100%;padding:2px 9px;border:0.5px solid var(--dsw-alias-border-l1);border-radius:999px;background:var(--dsw-alias-bg-primary);font:inherit;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary);cursor:pointer}
+.dshgn_linkPickItem:hover{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-primary)}
+.dshgn_linkPickItem[data-on='true']{border-color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-label-primary)}
+.dshgn_linkPickName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:8px;padding:32px;text-align:center;color:var(--dsw-alias-label-tertiary)}
 .dshgn_emptyTitle{font-size:13px;color:var(--dsw-alias-label-secondary)}
@@ -6978,6 +7048,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             anchor: pendingAnchor,
             onAnchorDone: () => setPendingAnchor(null),
             resolveNote: resolveNotePath,
+            // 双链补全要「库里有哪些笔记」：名字打一半时从这上面挑
+            noteNames: entries.map((entry) => entry.path),
             onAttach: attachFiles,
             // 属性区里的标签胶囊：与左栏标签区同一个动作（筛这个标签）
             onPickTag: (tag) => {
@@ -11024,6 +11096,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       const resolveNote = props.resolveNote
       // 属性区里的标签胶囊点一下，等于在左栏筛这个标签（与左栏标签区同一个动作）
       const onPickTag = props.onPickTag
+      // 双链补全用的名单：库里所有笔记的相对路径。名字认不出来时只能靠它。
+      const noteNames = Array.isArray(props.noteNames) ? props.noteNames : []
       // 渲染器要的是「库内相对路径」：status.vaultRoot 是绝对路径，笔记在库里
       // 真正的位置是「<子目录>/<笔记相对路径>」。相对链接、图片、嵌入块都靠它解析。
       const subfolder = status !== null && typeof status.subfolder === 'string' ? status.subfolder.replace(/^\/+|\/+$/g, '') : ''
@@ -11069,6 +11143,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       zoomRef.current = zoom
       // 编辑区本身：列表续行之后要把光标放回新行末尾，得拿到这个节点
       const editorRef = React.useRef(null)
+      // 双链补全：光标停在一个没写完的 [[ 里时弹一份候选（{ query, start, active }）。
+      // 以前在面板里写双链得凭记忆把路径一字不差打对，打错一个斜杠就变成断链。
+      const [linkPick, setLinkPick] = React.useState(null)
+      const linkHits = linkPick === null ? [] : wikilinkMatches(noteNames, linkPick.query)
 
       const canAttach = typeof onAttach === 'function'
       const closeZoom = React.useCallback(() => setZoom(null), [])
@@ -11087,6 +11165,24 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         place()
         if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(place)
       }, [])
+
+      // 选中一条候选：把用户已经敲了一半的那个名字换成这一条，补上 `]]`，
+      // 光标停在后头。注意换掉的是从 `[[` 之后到光标之间的那一段——用户可能
+      // 只敲了两个字，也可能敲了一串，两种都该被整段替换掉。
+      const applyLinkPick = React.useCallback((hit) => {
+        const live = editorRef.current
+        if (live === null || live === undefined || hit === null || hit === undefined) return
+        const caret = typeof live.selectionStart === 'number' ? live.selectionStart : live.value.length
+        setLinkPick((current) => {
+          if (current === null) return null
+          const head = live.value.slice(0, current.start)
+          const tail = live.value.slice(caret)
+          const inserted = `${hit.insert}]]`
+          setDraft(head + inserted + tail)
+          placeCaret(head.length + inserted.length, head.length + inserted.length)
+          return null
+        })
+      }, [placeCaret, setDraft])
 
       // 放大态按 Esc 关掉。挂到面板窗口上而不是根节点上：焦点可能还在别处，
       // 用户在遮罩上按 Esc 时事件未必从根节点冒上来。
@@ -11640,10 +11736,42 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
               className: 'dshgn_editor',
               value: draft === null ? '' : draft,
               spellCheck: false,
-              onChange: (event) => setDraft(event.target.value),
+              onChange: (event) => {
+                const value = event.target.value
+                setDraft(value)
+                // 光标是不是正停在一个没写完的 [[ 里：是就把候选摆出来。
+                // 每敲一个字都要重算，否则候选会停在第一次敲的那个字上。
+                const at = typeof event.target.selectionStart === 'number' ? event.target.selectionStart : value.length
+                const open = wikilinkQueryAt(value, at)
+                setLinkPick(open === null ? null : { query: open.query, start: open.start, active: 0 })
+              },
               // 在清单行末尾按回车，接着写下一行（有序列表自动加一）。
               // 只认行尾，行中间的回车仍然是「把这行拆成两条」，交给浏览器自己处理。
               onKeyDown: (event) => {
+                // 补全开着的时候，上下键和回车先归它用：用户在候选列表里挑，
+                // 而不是在正文里挪光标。
+                if (linkPick !== null && linkHits.length > 0) {
+                  if (event.key === 'Escape') {
+                    event.preventDefault()
+                    setLinkPick(null)
+                    return
+                  }
+                  if (event.key === 'ArrowDown') {
+                    event.preventDefault()
+                    setLinkPick({ ...linkPick, active: Math.min(linkHits.length - 1, linkPick.active + 1) })
+                    return
+                  }
+                  if (event.key === 'ArrowUp') {
+                    event.preventDefault()
+                    setLinkPick({ ...linkPick, active: Math.max(0, linkPick.active - 1) })
+                    return
+                  }
+                  if (event.key === 'Enter' || event.key === 'Tab') {
+                    event.preventDefault()
+                    applyLinkPick(linkHits[Math.min(linkPick.active, linkHits.length - 1)])
+                    return
+                  }
+                }
                 // Ctrl/Cmd + B / I / Shift+X：加粗、斜体、删除线。
                 // 宿主里这是肌肉记忆，在裸 textarea 上按下去原本什么都不发生。
                 const mod = (event.ctrlKey || event.metaKey) && !event.altKey
@@ -11704,6 +11832,32 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                   }
                 : undefined,
             }),
+            // 双链候选：紧贴编辑区下沿摆一排，鼠标点也行、键盘上下+回车也行。
+            // 一条候选都没搜到时整块不出现——弹一个空盒子比不弹更让人困惑。
+            linkHits.length === 0
+              ? null
+              : h(
+                'div',
+                { className: 'dshgn_linkPick' },
+                linkHits.map((hit, index) =>
+                  h(
+                    'button',
+                    {
+                      key: hit.path,
+                      type: 'button',
+                      className: 'dshgn_linkPickItem',
+                      'data-on': index === Math.min(linkPick.active, linkHits.length - 1) ? 'true' : 'false',
+                      title: hit.path,
+                      // 别让按钮抢走焦点：焦点一离开 textarea，光标位置就没了，
+                      // 接下来的输入会落到别处。
+                      onMouseDown: (event) => event.preventDefault(),
+                      onClick: () => applyLinkPick(hit),
+                    },
+                    h(Icon, { name: 'link', size: 12 }),
+                    h('span', { className: 'dshgn_linkPickName' }, hit.label),
+                  ),
+                ),
+              ),
             // 编辑时脚下那一条：字数 + 快捷键提示。原来编辑态一个字的反馈都没有，
             // 用户不知道按什么保存、也不知道自己写了多少。
             h(
@@ -12785,6 +12939,6 @@ export const __internals = {
   TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale,
   reportSync, dailyTemplateOf, frontmatterText, isTagKey, FollowCard, parseTable, countWords,
   isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote, parseImageSize, renderParagraph, blockTextOf, markdownLinkTarget,
-  tagBodyOf, ZoomOverlay, continueListLine, indentLines, wrapInline,
+  tagBodyOf, ZoomOverlay, continueListLine, indentLines, wrapInline, wikilinkQueryAt, wikilinkMatches,
   splitByTerms, highlightTerms, searchTermsOf,
 }

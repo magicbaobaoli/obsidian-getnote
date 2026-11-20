@@ -10610,6 +10610,53 @@ function wrapInline(text, start, end, marker) {
     end: to + size
   };
 }
+function wikilinkQueryAt(text, caret) {
+  const source = String(text === null || text === void 0 ? "" : text);
+  const at = Number.isInteger(caret) ? caret : source.length;
+  if (at < 0 || at > source.length) return null;
+  const before = source.slice(0, at);
+  const open = before.lastIndexOf("[[");
+  if (open === -1) return null;
+  const between = before.slice(open + 2);
+  if (between.indexOf("]]") !== -1 || between.indexOf("\n") !== -1) return null;
+  return { query: between, start: open + 2 };
+}
+function wikilinkMatches(names, query, limit = 8) {
+  const list = Array.isArray(names) ? names : [];
+  const q4 = String(query === null || query === void 0 ? "" : query).trim().toLowerCase();
+  const all = [];
+  for (const raw of list) {
+    const path = String(raw === null || raw === void 0 ? "" : raw).replace(/^\/+/, "");
+    if (path === "") continue;
+    const base = path.split("/").pop().replace(/\.md$/i, "");
+    if (base === "") continue;
+    all.push({ path, name: base });
+  }
+  const counts = /* @__PURE__ */ new Map();
+  for (const item of all) counts.set(item.name, (counts.get(item.name) || 0) + 1);
+  const matchOf = (item, usePath) => {
+    if (q4 === "") return true;
+    const nameLower = item.name.toLowerCase();
+    if (nameLower.indexOf(q4) !== -1) return true;
+    return usePath && item.path.toLowerCase().indexOf(q4) !== -1;
+  };
+  const nameHits = all.filter((item) => matchOf(item, false));
+  const picked = nameHits.length > 0 ? nameHits : all.filter((item) => matchOf(item, true));
+  const hits = [];
+  for (const item of picked) {
+    const nameLower = item.name.toLowerCase();
+    const insert = counts.get(item.name) > 1 ? item.path.replace(/\.md$/i, "") : item.name;
+    hits.push({
+      path: item.path,
+      name: item.name,
+      insert,
+      label: insert,
+      rank: q4 !== "" && nameLower.startsWith(q4) ? 0 : 1
+    });
+  }
+  hits.sort((a3, b3) => a3.rank - b3.rank || a3.label.localeCompare(b3.label, "zh"));
+  return hits.slice(0, Math.max(0, limit));
+}
 function renderParagraph(text, keyPrefix, options) {
   const lines = String(text === void 0 || text === null ? "" : text).split("\n");
   const nodes = [];
@@ -11450,6 +11497,11 @@ var CSS = `
   border-top:0.5px solid var(--dsw-alias-border-l1);font-size:10.5px;
   color:var(--dsw-alias-label-tertiary);flex:0 0 auto}
 .dshgn_editorHint{margin-left:auto;opacity:.75}
+.dshgn_linkPick{display:flex;flex-wrap:wrap;gap:6px;padding:6px clamp(16px,3vw,32px);border-top:0.5px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-secondary);max-height:112px;overflow-y:auto}
+.dshgn_linkPickItem{display:inline-flex;align-items:center;gap:5px;appearance:none;max-width:100%;padding:2px 9px;border:0.5px solid var(--dsw-alias-border-l1);border-radius:999px;background:var(--dsw-alias-bg-primary);font:inherit;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary);cursor:pointer}
+.dshgn_linkPickItem:hover{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-primary)}
+.dshgn_linkPickItem[data-on='true']{border-color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-label-primary)}
+.dshgn_linkPickName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:8px;padding:32px;text-align:center;color:var(--dsw-alias-label-tertiary)}
 .dshgn_emptyTitle{font-size:13px;color:var(--dsw-alias-label-secondary)}
@@ -13666,6 +13718,8 @@ ${insert}
         anchor: pendingAnchor,
         onAnchorDone: () => setPendingAnchor(null),
         resolveNote: resolveNotePath,
+        // 双链补全要「库里有哪些笔记」：名字打一半时从这上面挑
+        noteNames: entries.map((entry) => entry.path),
         onAttach: attachFiles,
         // 属性区里的标签胶囊：与左栏标签区同一个动作（筛这个标签）
         onPickTag: (tag) => {
@@ -17100,6 +17154,7 @@ function NotePane(props) {
   const onAnchorDone = props.onAnchorDone;
   const resolveNote = props.resolveNote;
   const onPickTag = props.onPickTag;
+  const noteNames = Array.isArray(props.noteNames) ? props.noteNames : [];
   const subfolder = status !== null && typeof status.subfolder === "string" ? status.subfolder.replace(/^\/+|\/+$/g, "") : "";
   const vaultPathOf = (note) => {
     const rel = note !== null && typeof note.path === "string" ? note.path : "";
@@ -17129,6 +17184,8 @@ function NotePane(props) {
   const zoomRef = A2(null);
   zoomRef.current = zoom;
   const editorRef = A2(null);
+  const [linkPick, setLinkPick] = h2(null);
+  const linkHits = linkPick === null ? [] : wikilinkMatches(noteNames, linkPick.query);
   const canAttach = typeof onAttach === "function";
   const closeZoom = q2(() => setZoom(null), []);
   const placeCaret = q2((start, end) => {
@@ -17143,6 +17200,20 @@ function NotePane(props) {
     place();
     if (typeof window.requestAnimationFrame === "function") window.requestAnimationFrame(place);
   }, []);
+  const applyLinkPick = q2((hit) => {
+    const live = editorRef.current;
+    if (live === null || live === void 0 || hit === null || hit === void 0) return;
+    const caret = typeof live.selectionStart === "number" ? live.selectionStart : live.value.length;
+    setLinkPick((current2) => {
+      if (current2 === null) return null;
+      const head = live.value.slice(0, current2.start);
+      const tail = live.value.slice(caret);
+      const inserted = `${hit.insert}]]`;
+      setDraft(head + inserted + tail);
+      placeCaret(head.length + inserted.length, head.length + inserted.length);
+      return null;
+    });
+  }, [placeCaret, setDraft]);
   y2(() => {
     const onKey = (event) => {
       if (event.key !== "Escape" || zoomRef.current === null) return;
@@ -17583,10 +17654,38 @@ function NotePane(props) {
         className: "dshgn_editor",
         value: draft === null ? "" : draft,
         spellCheck: false,
-        onChange: (event) => setDraft(event.target.value),
+        onChange: (event) => {
+          const value = event.target.value;
+          setDraft(value);
+          const at = typeof event.target.selectionStart === "number" ? event.target.selectionStart : value.length;
+          const open = wikilinkQueryAt(value, at);
+          setLinkPick(open === null ? null : { query: open.query, start: open.start, active: 0 });
+        },
         // 在清单行末尾按回车，接着写下一行（有序列表自动加一）。
         // 只认行尾，行中间的回车仍然是「把这行拆成两条」，交给浏览器自己处理。
         onKeyDown: (event) => {
+          if (linkPick !== null && linkHits.length > 0) {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              setLinkPick(null);
+              return;
+            }
+            if (event.key === "ArrowDown") {
+              event.preventDefault();
+              setLinkPick({ ...linkPick, active: Math.min(linkHits.length - 1, linkPick.active + 1) });
+              return;
+            }
+            if (event.key === "ArrowUp") {
+              event.preventDefault();
+              setLinkPick({ ...linkPick, active: Math.max(0, linkPick.active - 1) });
+              return;
+            }
+            if (event.key === "Enter" || event.key === "Tab") {
+              event.preventDefault();
+              applyLinkPick(linkHits[Math.min(linkPick.active, linkHits.length - 1)]);
+              return;
+            }
+          }
           const mod = (event.ctrlKey || event.metaKey) && !event.altKey;
           if (mod) {
             const lower = String(event.key || "").toLowerCase();
@@ -17635,6 +17734,30 @@ function NotePane(props) {
           }
         } : void 0
       }),
+      // 双链候选：紧贴编辑区下沿摆一排，鼠标点也行、键盘上下+回车也行。
+      // 一条候选都没搜到时整块不出现——弹一个空盒子比不弹更让人困惑。
+      linkHits.length === 0 ? null : h4(
+        "div",
+        { className: "dshgn_linkPick" },
+        linkHits.map(
+          (hit, index) => h4(
+            "button",
+            {
+              key: hit.path,
+              type: "button",
+              className: "dshgn_linkPickItem",
+              "data-on": index === Math.min(linkPick.active, linkHits.length - 1) ? "true" : "false",
+              title: hit.path,
+              // 别让按钮抢走焦点：焦点一离开 textarea，光标位置就没了，
+              // 接下来的输入会落到别处。
+              onMouseDown: (event) => event.preventDefault(),
+              onClick: () => applyLinkPick(hit)
+            },
+            h4(Icon, { name: "link", size: 12 }),
+            h4("span", { className: "dshgn_linkPickName" }, hit.label)
+          )
+        )
+      ),
       // 编辑时脚下那一条：字数 + 快捷键提示。原来编辑态一个字的反馈都没有，
       // 用户不知道按什么保存、也不知道自己写了多少。
       h4(
