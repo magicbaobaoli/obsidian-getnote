@@ -4182,3 +4182,31 @@ test('正文里写到的 #标签 是个能点的胶囊，不像一串普通字',
   assert.equal(tagBodyOf('a/'), false, '结尾挂斜杠的不算标签')
   assert.equal(tagBodyOf(''), false)
 })
+test('代码块右上角有个「复制」，点了搬走的是围栏里那一份原文', async () => {
+  // 读笔记时想把一段示例命令搬走，鼠标划选很容易漏掉首尾、还会带上旁边的
+  // 语言标签；这里给的是围栏里那一整段，一个字不多一个字不少。
+  const { renderBlocks } = panel.__internals
+  const markdown = ['先看这段：', '', '```bash', 'npm test -- --watch', '  echo "缩进也要留着"', '```', '', '后面还有话。'].join('\n')
+
+  const picked = []
+  const nodes = renderBlocks(markdown, { onCopyText: (text) => picked.push(text) })
+  const pre = nodes.find((node) => node && typeof node === 'object' && node.props && node.props.className === 'dshgn_pre')
+  assert.ok(pre !== undefined, '应该有一个代码块')
+  const kids = Array.isArray(pre.props.children) ? pre.props.children : [pre.props.children]
+  const button = kids.find((node) => node && typeof node === 'object' && node.props && node.props.className === 'dshgn_preCopy')
+  assert.ok(button !== undefined, '代码块上应该有个复制按钮')
+  assert.equal(button.type, 'button')
+  assert.equal(button.props.title, '复制这一段')
+  button.props.onClick({ stopPropagation() {} })
+  assert.deepEqual(picked, ['npm test -- --watch\n  echo "缩进也要留着"'], '复制的是围栏里的原文，缩进与引号都得原样')
+
+  // 没接去处时（卡片摘要、嵌进来的正文）不该摆一个点了没反应的按钮
+  const plain = renderBlocks(markdown, {})
+  const plainPre = plain.find((node) => node && typeof node === 'object' && node.props && node.props.className === 'dshgn_pre')
+  const plainKids = Array.isArray(plainPre.props.children) ? plainPre.props.children : [plainPre.props.children]
+  assert.equal(
+    plainKids.some((node) => node && typeof node === 'object' && node.props && node.props.className === 'dshgn_preCopy'),
+    false,
+    '没有复制去处时不摆按钮',
+  )
+})

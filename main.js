@@ -8241,6 +8241,8 @@ var LEX = {
     "action.openInEditor": "\u5728 Obsidian \u91CC\u6253\u5F00",
     "action.delete": "\u5220\u9664",
     "action.copyRef": "\u590D\u5236\u5F15\u7528",
+    "action.copy": "\u590D\u5236",
+    "note.copyBlock": "\u590D\u5236\u8FD9\u4E00\u6BB5",
     "action.rename": "\u91CD\u547D\u540D",
     "action.renamed": "\u6539\u597D\u4E86",
     "note.renameUnsaved": "\u5148\u4FDD\u5B58\u518D\u6539\u540D\uFF0C\u522B\u628A\u521A\u5199\u7684\u4E22\u4E86",
@@ -8659,6 +8661,8 @@ var LEX = {
     "action.openInEditor": "Open in Obsidian",
     "action.delete": "Delete",
     "action.copyRef": "Copy reference",
+    "action.copy": "Copy",
+    "note.copyBlock": "Copy this block",
     "action.rename": "Rename",
     "action.renamed": "Renamed",
     "note.renameUnsaved": "Save first, then rename",
@@ -9074,6 +9078,8 @@ var LEX = {
     "action.openInEditor": "Openen in Obsidian",
     "action.delete": "Verwijderen",
     "action.copyRef": "Referentie kopi\xEBren",
+    "action.copy": "Kopi\xEBren",
+    "note.copyBlock": "Dit blok kopi\xEBren",
     "action.rename": "Naam wijzigen",
     "action.renamed": "Naam gewijzigd",
     "note.renameUnsaved": "Sla eerst op en wijzig dan de naam",
@@ -10494,6 +10500,22 @@ function renderBlocks(markdown, options) {
           "pre",
           { key: `b${key++}`, className: "dshgn_pre" },
           lang ? h4("span", { className: "dshgn_preLang" }, lang) : null,
+          // 复制这一整段。读笔记时想把示例代码、命令、报错原文搬走，
+          // 鼠标划选一屏之外的内容很难选全，还会带上旁边的行号与缩进。
+          // 没接去处（卡片摘要、嵌进来的正文）时不给这个按钮。
+          typeof opts.onCopyText === "function" ? h4(
+            "button",
+            {
+              type: "button",
+              className: "dshgn_preCopy",
+              title: getT()("note.copyBlock"),
+              onClick: (event) => {
+                event.stopPropagation();
+                opts.onCopyText(fenceText);
+              }
+            },
+            getT()("action.copy")
+          ) : null,
           h4("code", null, fenceText)
         )
       );
@@ -11170,6 +11192,10 @@ var CSS = `
 .dshgn_pre code{font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);font-size:12px;
   line-height:1.65;white-space:pre;color:var(--dsw-alias-label-primary)}
 .dshgn_preLang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--dsw-alias-label-dimmed)}
+/* \u6709\u300C\u590D\u5236\u300D\u6309\u94AE\u65F6\u628A\u8BED\u8A00\u6807\u7B7E\u8BA9\u5F00\u4E00\u70B9\uFF0C\u4E24\u4E2A\u90FD\u6324\u5728\u53F3\u4E0A\u89D2\u4F1A\u53E0\u5728\u4E00\u8D77 */
+.dshgn_pre:has(.dshgn_preCopy) .dshgn_preLang{right:58px}
+.dshgn_preCopy{position:absolute;top:4px;right:8px;appearance:none;padding:1px 7px;border:0.5px solid var(--dsw-alias-border-l1);border-radius:6px;background:var(--dsw-alias-bg-primary);font:inherit;font-size:10px;line-height:16px;color:var(--dsw-alias-label-tertiary);cursor:pointer;opacity:.7}
+.dshgn_preCopy:hover{opacity:1;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}
 /* \u9010\u5B57\u7A3F\u5355\u72EC\u4E00\u5957\u6392\u7248\uFF1A\u5B83\u662F\u4E00\u6BB5\u6BB5\u4E2D\u6587\u53E3\u8BED\uFF0C\u4E0D\u662F\u4EE3\u7801\u3002
    \u4EE5\u524D\u590D\u7528 .dshgn_pre \u7684\u7B49\u5BBD\u5B57\u4F53\uFF0C\u4E2D\u6587\u5168\u90E8\u56DE\u843D\u5230\u5B8B\u4F53/\u96C5\u9ED1\uFF0C\u7B49\u5BBD\u5BF9\u4E2D\u6587\u6BEB\u65E0\u4F5C\u7528\uFF0C
    \u52A0\u4E0A white-space:pre \u4E0D\u6298\u884C\uFF0C\u957F\u53E5\u5728\u7A84\u680F\u91CC\u88AB\u6A2A\u5411\u88C1\u6389\uFF0C\u53EA\u80FD\u62D6\u6EDA\u52A8\u6761\u770B\u2014\u2014\u8FD9\u5C31\u662F\u300C\u5B57\u4F53\u592A\u4E11\u300D\u7684\u7531\u6765\u3002
@@ -12593,6 +12619,19 @@ ${insert}
       showToast(text);
     }
   }, [current, status, showToast, t4]);
+  const copyText = q2(
+    async (text) => {
+      const body2 = typeof text === "string" ? text : "";
+      if (body2 === "") return;
+      try {
+        await navigator.clipboard.writeText(body2);
+        showToast(t4("action.copied"));
+      } catch {
+        showToast(body2);
+      }
+    },
+    [showToast, t4]
+  );
   const syncCurrent = q2(
     async (direction) => {
       if (current === null) return;
@@ -13445,6 +13484,7 @@ ${insert}
         onDelete: deleteNote,
         onRename: renameNote,
         onCopyReference: copyReference,
+        onCopyText: copyText,
         onOpenWikiLink: openWikiLink,
         onSyncOne: syncCurrent,
         onRestored: async () => {
@@ -16882,7 +16922,7 @@ ${t4("tree.menuDelete")}\uFF1A\u53F3\u952E`
   );
 }
 function NotePane(props) {
-  const { t: t4, status, current, draft, setDraft, dirty, busy, onSave, onRename, onDelete, onCopyReference, onOpenWikiLink: onOpenWikiLink2, onSyncOne, onRestored, onError, onToggleTodo, onClose, onAttach } = props;
+  const { t: t4, status, current, draft, setDraft, dirty, busy, onSave, onRename, onDelete, onCopyReference, onCopyText, onOpenWikiLink: onOpenWikiLink2, onSyncOne, onRestored, onError, onToggleTodo, onClose, onAttach } = props;
   const anchorRequest = props.anchor;
   const onAnchorDone = props.onAnchorDone;
   const resolveNote = props.resolveNote;
@@ -17542,6 +17582,8 @@ function NotePane(props) {
             // 正文里的 #标签：点一下就在左栏筛这个标签，与笔记头属性区
             // 那几颗胶囊同一个动作。卡片摘要那边不给，那里点了会跳走。
             onPickTag,
+            // 代码块右上角的「复制」：只给阅读态，编辑态看到的本来就是原文
+            onCopyText: editing ? void 0 : onCopyText,
             t: t4
           }
         )

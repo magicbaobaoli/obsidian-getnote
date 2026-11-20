@@ -534,6 +534,8 @@ async function saveFile(url, filename) {
         'action.openInEditor': '在 Obsidian 里打开',
         'action.delete': '删除',
         'action.copyRef': '复制引用',
+        'action.copy': '复制',
+        'note.copyBlock': '复制这一段',
         'action.rename': '重命名',
         'action.renamed': '改好了',
         'note.renameUnsaved': '先保存再改名，别把刚写的丢了',
@@ -956,6 +958,8 @@ async function saveFile(url, filename) {
         'action.openInEditor': 'Open in Obsidian',
         'action.delete': 'Delete',
         'action.copyRef': 'Copy reference',
+        'action.copy': 'Copy',
+        'note.copyBlock': 'Copy this block',
         'action.rename': 'Rename',
         'action.renamed': 'Renamed',
         'note.renameUnsaved': 'Save first, then rename',
@@ -1375,6 +1379,8 @@ async function saveFile(url, filename) {
         'action.openInEditor': 'Openen in Obsidian',
         'action.delete': 'Verwijderen',
         'action.copyRef': 'Referentie kopiëren',
+        'action.copy': 'Kopiëren',
+        'note.copyBlock': 'Dit blok kopiëren',
         'action.rename': 'Naam wijzigen',
         'action.renamed': 'Naam gewijzigd',
         'note.renameUnsaved': 'Sla eerst op en wijzig dan de naam',
@@ -3289,6 +3295,24 @@ async function saveFile(url, filename) {
                   'pre',
                   { key: `b${key++}`, className: 'dshgn_pre' },
                   lang ? h('span', { className: 'dshgn_preLang' }, lang) : null,
+                  // 复制这一整段。读笔记时想把示例代码、命令、报错原文搬走，
+                  // 鼠标划选一屏之外的内容很难选全，还会带上旁边的行号与缩进。
+                  // 没接去处（卡片摘要、嵌进来的正文）时不给这个按钮。
+                  typeof opts.onCopyText === 'function'
+                    ? h(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'dshgn_preCopy',
+                          title: getT()('note.copyBlock'),
+                          onClick: (event) => {
+                            event.stopPropagation()
+                            opts.onCopyText(fenceText)
+                          },
+                        },
+                        getT()('action.copy'),
+                      )
+                    : null,
                   h('code', null, fenceText),
                 ),
           )
@@ -4015,6 +4039,10 @@ async function saveFile(url, filename) {
 .dshgn_pre code{font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);font-size:12px;
   line-height:1.65;white-space:pre;color:var(--dsw-alias-label-primary)}
 .dshgn_preLang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--dsw-alias-label-dimmed)}
+/* 有「复制」按钮时把语言标签让开一点，两个都挤在右上角会叠在一起 */
+.dshgn_pre:has(.dshgn_preCopy) .dshgn_preLang{right:58px}
+.dshgn_preCopy{position:absolute;top:4px;right:8px;appearance:none;padding:1px 7px;border:0.5px solid var(--dsw-alias-border-l1);border-radius:6px;background:var(--dsw-alias-bg-primary);font:inherit;font-size:10px;line-height:16px;color:var(--dsw-alias-label-tertiary);cursor:pointer;opacity:.7}
+.dshgn_preCopy:hover{opacity:1;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}
 /* 逐字稿单独一套排版：它是一段段中文口语，不是代码。
    以前复用 .dshgn_pre 的等宽字体，中文全部回落到宋体/雅黑，等宽对中文毫无作用，
    加上 white-space:pre 不折行，长句在窄栏里被横向裁掉，只能拖滚动条看——这就是「字体太丑」的由来。
@@ -5718,6 +5746,24 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         }
       }, [current, status, showToast, t])
 
+      // 代码块上的「复制」：把那一整段原样搬走。
+      // 读笔记时想抄一段示例命令/报错，用鼠标划选很容易漏掉首尾，
+      // 还会把旁边的语言标签和缩进一起带上；这里给的是围栏里那一份原文。
+      const copyText = React.useCallback(
+        async (text) => {
+          const body = typeof text === 'string' ? text : ''
+          if (body === '') return
+          try {
+            await navigator.clipboard.writeText(body)
+            showToast(t('action.copied'))
+          } catch {
+            // 没有剪贴板权限时把正文摊出来让用户自己选，总比点了没反应强
+            showToast(body)
+          }
+        },
+        [showToast, t],
+      )
+
       // B1 单篇同步：把当前这篇推上云端 / 从云端拉下来。
       // 整轮同步要翻页扫全库，而用户此刻只想让眼前这一篇对上，
       // 所以走 /sync/push-one 与 /sync/pull-one 这两个单篇端点。
@@ -6663,6 +6709,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             onDelete: deleteNote,
             onRename: renameNote,
             onCopyReference: copyReference,
+            onCopyText: copyText,
             onOpenWikiLink: openWikiLink,
             onSyncOne: syncCurrent,
             onRestored: async () => {
@@ -10712,7 +10759,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
     // ── 阅读 / 编辑 ───────────────────────────────────────────────────────────
 
     function NotePane(props) {
-      const { t, status, current, draft, setDraft, dirty, busy, onSave, onRename, onDelete, onCopyReference, onOpenWikiLink, onSyncOne, onRestored, onError, onToggleTodo, onClose, onAttach } = props
+      const { t, status, current, draft, setDraft, dirty, busy, onSave, onRename, onDelete, onCopyReference, onCopyText, onOpenWikiLink, onSyncOne, onRestored, onError, onToggleTodo, onClose, onAttach } = props
       const anchorRequest = props.anchor
       const onAnchorDone = props.onAnchorDone
       // 嵌入 ![[另一篇笔记]] 时用它把名字解析成路径（与点双链共用一套口径）
@@ -11514,6 +11561,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                     // 正文里的 #标签：点一下就在左栏筛这个标签，与笔记头属性区
                     // 那几颗胶囊同一个动作。卡片摘要那边不给，那里点了会跳走。
                     onPickTag,
+                    // 代码块右上角的「复制」：只给阅读态，编辑态看到的本来就是原文
+                    onCopyText: editing ? undefined : onCopyText,
                     t,
                   },
                 ),
