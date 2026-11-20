@@ -7428,3 +7428,117 @@ test('卡片拖到左栏目录上就挪进那个目录，笔记头也跟着换�
   const afterBody = await after.json()
   assert.ok(String(afterBody.content || '').includes('正文第一句。'), '挪完正文不该变，实际 ' + afterBody.content)
 })
+/**
+ * 笔记头那一行路径顺手也能点：读到一半想知道「这一篇在库里的哪儿」，
+ * 以前得回列表、右键、再找「在文件列表里定位」。这里验：接上宿主之后
+ * 路径变成可点的、点一下把路径交给宿主一次、回车和空格也行；
+ * 没接上宿主时退回纯文字，不留一个点了没反应的可点外观。
+ */
+test('笔记头那行路径点一下就请宿主在文件列表里定位，没接上宿主就退回纯文字', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+  await clickTab('笔记')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+  const seeded = await post('/getnote/create', {
+    dir: '随手记',
+    title: '笔记头路径验收',
+    content: ['# 笔记头路径验收', '', '正文一句。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-note-path-reveal',
+  })
+  const targetPath = seeded.path
+
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+
+  // 前面的用例可能把搜索框填着、或者筛在某个目录上，先退回全量
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox !== null) {
+    const setInput = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setInput.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(300)
+  }
+  const allRow = Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+    const label = el.querySelector('.dshgn_treeName')
+    return label !== null && (label.textContent || '').trim() === '全部笔记'
+  })
+  if (allRow !== undefined) {
+    allRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+
+  const cardOf = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === targetPath) || null
+  const openCard = async () => {
+    const card = await waitFor(cardOf, 8000, '列表里的那一篇')
+    card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 8000, '打开这一篇')
+    await waitFor(
+      () => (window.document.querySelector('.dshgn_notePath') || { textContent: '' }).textContent === targetPath,
+      8000,
+      '笔记头显示这一篇的路径',
+    )
+  }
+  const pathEl = () => window.document.querySelector('.dshgn_notePath')
+  const backBtn = () => window.document.querySelector('.dshgn_noteBack')
+
+  // 1) 没接上宿主：就是一行字，不该看起来能点
+  panel.setRevealInVault(null)
+  await openCard()
+  assert.equal(pathEl().className.includes('dshgn_notePathLink'), false, '没接上宿主时不该有可点外观')
+  assert.equal(pathEl().getAttribute('role'), null, '没接上宿主时不是按钮')
+
+  // 2) 接上宿主：路径变成按钮，点一下把路径交出去一次
+  const revealed = []
+  panel.setRevealInVault((path) => {
+    revealed.push(String(path))
+    return true
+  })
+  backBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 8000, '退回列表')
+  await openCard()
+  assert.equal(pathEl().className.includes('dshgn_notePathLink'), true, '接上宿主之后路径该能点')
+  assert.equal(pathEl().getAttribute('role'), 'button', '能点的路径对读屏是按钮')
+  assert.equal(pathEl().getAttribute('tabindex'), '0', '键盘也够得着')
+  assert.ok(
+    String(pathEl().getAttribute('title') || '').includes('在文件列表里定位'),
+    '悬停要说清点一下会怎样，实际 ' + pathEl().getAttribute('title'),
+  )
+
+  pathEl().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(80)
+  assert.equal(revealed.length, 1, '点一下该把路径交给宿主一次')
+  assert.equal(revealed[0], targetPath, '交出去的就是这一篇的路径，实际 ' + revealed[0])
+
+  // 回车和空格同样能触发：能点的东西键盘上也得能用
+  pathEl().dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+  await sleep(80)
+  assert.equal(revealed.length, 2, '回车也该定位')
+  pathEl().dispatchEvent(new window.KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }))
+  await sleep(80)
+  assert.equal(revealed.length, 3, '空格也该定位')
+
+  // 3) 宿主撤掉接口：重新渲染之后退回纯文字，点也不该再交出去
+  panel.setRevealInVault(null)
+  backBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 8000, '再退回列表')
+  await openCard()
+  assert.equal(pathEl().className.includes('dshgn_notePathLink'), false, '撤掉接口之后不该还留着可点外观')
+  assert.equal(pathEl().getAttribute('role'), null, '撤掉接口之后不再是按钮')
+  pathEl().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(80)
+  assert.equal(revealed.length, 3, '没有接口时点了什么都不该发生')
+
+  panel.setRevealInVault(null)
+})

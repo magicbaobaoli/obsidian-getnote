@@ -4766,6 +4766,12 @@ async function saveFile(url, filename) {
   border-bottom:0.5px solid var(--dsw-alias-border-l2)}
 .dshgn_notePath{flex:1;min-width:0;font-size:11px;color:var(--dsw-alias-label-tertiary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 能点的那一版：下划虚线是「这里可以点」的最小代价，不占宽度也不改字号 */
+.dshgn_notePathLink{cursor:pointer;text-decoration:underline;text-decoration-style:dotted;
+  text-underline-offset:2px}
+.dshgn_notePathLink:hover{color:var(--dsw-alias-brand-primary)}
+.dshgn_notePathLink:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);
+  outline-offset:1px;border-radius:3px}
 .dshgn_scroll{flex:1;overflow-y:auto;padding:16px clamp(16px,3vw,32px) 48px}
 .dshgn_md{max-width:760px;margin:0 auto;color:var(--dsw-alias-label-primary);
   font-family:var(--font-text,var(--dsw-font-sans,inherit));font-size:var(--font-text-size,13px);
@@ -13128,7 +13134,31 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             },
             h(Icon, { name: 'chevron', size: 15 }),
           ),
-          h('div', { className: 'dshgn_notePath', title: absolute }, current.path),
+          // 路径这一行顺手也能点：读到一半想知道「这一篇在库里的哪儿、旁边还有哪些」，
+          // 跑到右键菜单里找「在文件列表里定位」是绕远路。宿主没这个接口时退回纯文字，
+          // 不留一个点了没反应的可点外观。
+          h(
+            'div',
+            {
+              className: hasRevealInVault() ? 'dshgn_notePath dshgn_notePathLink' : 'dshgn_notePath',
+              title: hasRevealInVault() ? `${absolute}\n${t('tree.menuReveal')}` : absolute,
+              role: hasRevealInVault() ? 'button' : undefined,
+              tabIndex: hasRevealInVault() ? 0 : undefined,
+              onClick: hasRevealInVault()
+                ? () => {
+                    revealInVault(current.path)
+                  }
+                : undefined,
+              onKeyDown: hasRevealInVault()
+                ? (event) => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return
+                    event.preventDefault()
+                    revealInVault(current.path)
+                  }
+                : undefined,
+            },
+            current.path,
+          ),
           // 字号三档。放在笔记头而不是设置页：用户是在「读这篇字太小」的那一刻
           // 想调它，跑到设置页去调完再回来，会打断阅读。
           h(
