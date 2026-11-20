@@ -3222,3 +3222,104 @@ test('引用块写成宿主那种 callout 时，图标标题正文各归各位',
   assert.equal(CALLOUT_TONES.自造类型, undefined)
 })
 
+
+test('搜索结果点一行就跳到正文里那一行，不从头开始读', async () => {
+  // 搜索卡片以前只把命中行列出来给人看，点下去等于点整张卡片——跳到篇首，
+  // 用户还得自己在正文里再搜一遍那个词。宿主搜索是直接落到那一行的。
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const backBtn = window.document.querySelector('.dshgn_noteBack')
+  if (backBtn) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    try {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+  }
+
+  // 前一个用例可能在搜索框里留了词，先清空，否则下面的搜索看不出效果
+  const box = await waitFor(() => window.document.querySelector('.dshgn_search'), 5000, '搜索框')
+  const setInput = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  setInput.call(box, '')
+  box.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(260)
+
+  const res = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '命中行验收',
+      content: '# 命中行验收\n\n开头一段，跟关键词无关。\n\n中间还有一段，也无关。\n\n## 小节\n\n这里写着 桂圆 两个字，它才是要跳过去的那一行。\n',
+      withDatePrefix: false,
+      requestId: 'seed-jump-line',
+    }),
+  })
+  const created = await res.json()
+  assert.equal(created.path, '随手记/命中行验收.md')
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  const searchBox = await waitFor(() => window.document.querySelector('.dshgn_search'), 5000, '搜索框')
+  setInput.call(searchBox, '桂圆')
+  searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+
+  // 命中行必须是能点的按钮，不是一段死文字
+  const lineBtn = await waitFor(
+    () => {
+      const all = Array.from(window.document.querySelectorAll('.dshgn_matchLine'))
+      return all.find((el) => el.tagName === 'BUTTON' && (el.textContent || '').includes('桂圆')) || null
+    },
+    8000,
+    '搜索卡片上的命中行应该是一个按钮',
+  )
+  assert.equal(lineBtn.getAttribute('title'), '跳到这一行', '按钮上要说清点了会发生什么')
+
+  // 记下滚动：jsdom 的 scrollTo 是空函数，不记就什么都验证不了
+  const scrollCalls = []
+  const proto = window.HTMLElement.prototype
+  const original = proto.scrollTo
+  proto.scrollTo = function scrollTo(arg) {
+    scrollCalls.push(arg || {})
+  }
+  try {
+    lineBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 8000, '点命中行应该打开那一篇')
+    await waitFor(() => scrollCalls.length > 0, 8000, '点命中行应该滚到那一行')
+    assert.equal(typeof scrollCalls[0].top, 'number', '滚的是纵向位置：' + JSON.stringify(scrollCalls[0]))
+    // jsdom 里所有 getBoundingClientRect 都是 0，算出来的偏移也就恒为 0，
+    // 靠位置分不出「滚到篇首」还是「滚到那一行」。改成直接问「那一行找得到吗」：
+    // 找得到说明滚的是正文里那一块，而不是随手滚了一下容器。
+    const { scrollToText } = panel.__internals
+    const scroller = window.document.querySelector('.dshgn_scroll')
+    assert.ok(scroller !== null, '正文外面应该有滚动容器')
+    assert.equal(scrollToText(scroller, '这里写着 桂圆 两个字'), true, '按命中行文字应该找得到那一块')
+    assert.equal(scrollToText(scroller, '正文里根本没有这句话'), false, '找不到时要老实返回 false')
+  } finally {
+    proto.scrollTo = original
+  }
+
+  const note = await waitFor(
+    () => {
+      const el = window.document.querySelector('.dshgn_note')
+      return el !== null && (el.textContent || '').includes('桂圆') ? el : null
+    },
+    8000,
+    '正文里应该有那一行',
+  )
+  assert.ok(note !== null)
+
+  // 渲染器层：原始 Markdown 那一行要先削成能在正文里找到的几个字
+  const { lineNeedle } = panel.__internals
+  assert.equal(lineNeedle('## 小节'), '小节', '标题标记要削掉')
+  assert.equal(lineNeedle('- [x] 买 桂圆'), '买 桂圆', '任务框要削掉')
+  assert.equal(lineNeedle('见 [[另一篇|别名]] 那段'), '见 别名 那段', '双链要换成它的显示文字')
+  assert.equal(lineNeedle('**加粗**的 _斜体_'), '加粗的 斜体', '强调标记要削掉')
+  assert.equal(lineNeedle(''), '')
+})
+

@@ -538,6 +538,7 @@ async function saveFile(url, filename) {
         'action.retry': '重试',
         'search.placeholder': '搜索标题、正文、标签…',
         'search.hint': '可以加限定：tag:录音卡 · dir:随手记 · #私密。多个词要同时命中。',
+        'search.jumpToLine': '跳到这一行',
         'batch.pick': '选择这篇',
         'batch.picked': '篇已选',
         'batch.actions': '批量操作',
@@ -948,6 +949,7 @@ async function saveFile(url, filename) {
         'action.retry': 'Retry',
         'search.placeholder': 'Search title, body, tags…',
         'search.hint': 'Narrow it down: tag:voice · dir:notes · #private. All words must match.',
+        'search.jumpToLine': 'Jump to this line',
         'batch.pick': 'Select this note',
         'batch.picked': 'selected',
         'batch.actions': 'Batch actions',
@@ -1355,6 +1357,7 @@ async function saveFile(url, filename) {
         'action.retry': 'Opnieuw',
         'search.placeholder': 'Zoek titel, tekst, tags…',
         'search.hint': 'Verfijn: tag:spraak · dir:notities · #privé. Alle woorden moeten voorkomen.',
+        'search.jumpToLine': 'Naar deze regel',
         'batch.pick': 'Deze notitie selecteren',
         'batch.picked': 'geselecteerd',
         'batch.actions': 'Bulkacties',
@@ -2494,14 +2497,76 @@ async function saveFile(url, filename) {
           break
         }
       }
-      if (hit === null) return false
+      const host = scrollHostOf(box)
+      if (!host) return false
+      scrollHostTo(host, hit)
+      return true
+    }
+
+    /**
+     * 找正文的滚动容器（那一层 `.dshgn_scroll`，不是窗口）。
+     *
+     * 传进来的可能是正文里的某一块（嵌入框、段落），也可能本身就是那个滚动容器
+     * ——NotePane 手里的 scrollRef 指的就是它。两种都认，否则从 scrollRef 找起来
+     * 会一路找到文档根上去，什么都滚不动。
+     */
+    function scrollHostOf(box) {
+      if (!box) return null
+      if (box.classList && box.classList.contains('dshgn_scroll')) return box
       let host = box.parentElement
       while (host && !(host.classList && host.classList.contains('dshgn_scroll'))) host = host.parentElement
-      if (!host) return false
-      // 与大纲跳转同一套算法：只改滚动容器自己的 scrollTop，横向一点不动
+      return host || null
+    }
+
+    /** 与大纲跳转同一套算法：只改滚动容器自己的 scrollTop，横向一点不动。 */
+    function scrollHostTo(host, hit) {
+      if (!host || !hit) return false
       const offset = hit.getBoundingClientRect().top - host.getBoundingClientRect().top + host.scrollTop - 8
       host.scrollTo({ top: Math.max(0, offset), behavior: 'smooth' })
       return true
+    }
+
+    /**
+     * 把搜索命中行那一行文字，还原成「渲染后正文里大概长什么样」。
+     *
+     * 搜索结果里的那一行是**原始 Markdown**（带 `##`、`- `、`[[双链]]`、`**粗体**`），
+     * 而正文渲染之后这些标记都不见了。直接拿原文去正文里找永远找不到，所以先把
+     * 标记削掉，只留几个字做锚——行号会变（用户刚编辑过），文字才是稳的那个。
+     */
+    function lineNeedle(text) {
+      let line = String(text || '')
+      line = line.replace(/^\s*(?:>\s*)+/, '')
+      line = line.replace(/^\s*#{1,6}\s*/, '')
+      line = line.replace(/^\s*(?:[-*+]|\d+[.)])\s+/, '')
+      line = line.replace(/^\s*\[[ xX]\]\s+/, '')
+      line = line.replace(/!?\[\[([^\]\n|]+)(?:\|([^\]\n]+))?\]\]/g, (all, target, label) => label || target || '')
+      line = line.replace(/\[([^\]\n]*)\]\([^)\s]+\)/g, '$1')
+      line = line.replace(/[*_`~]+/g, '')
+      line = line.replace(/\s+/g, ' ').trim()
+      return line.slice(0, 40)
+    }
+
+    /**
+     * 滚到正文里包含某段文字的块上。
+     *
+     * 只认「块级」元素（段落、列表项、标题、引用、表格单元、代码块），不认
+     * 外层的容器——容器也包含这段文字，但滚到容器等于没滚。挑文档顺序里
+     * 第一个命中的块：同一段文字出现多次时，用户是从搜索结果点进来的，
+     * 他看到的第一个就是列表里第一条。
+     */
+    function scrollToText(box, text) {
+      const needle = lineNeedle(text)
+      if (needle === '') return false
+      const host = scrollHostOf(box)
+      if (!host) return false
+      const blocks = host.querySelectorAll('p, li, h1, h2, h3, h4, h5, h6, blockquote, pre, td, th')
+      for (let i = 0; i < blocks.length; i += 1) {
+        const node = blocks[i]
+        // 只认最小的那一个：列表项里还有段落时，滚到段落比滚到整条列表更准
+        if (node.querySelector('p, li, blockquote, pre')) continue
+        if (String(node.textContent || '').replace(/\s+/g, ' ').includes(needle)) return scrollHostTo(host, node)
+      }
+      return false
     }
 
     /** 图像扩展名判定：只认浏览器能直接显示的格式。 */
@@ -3231,7 +3296,8 @@ async function saveFile(url, filename) {
   background:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-primary-foreground);
   font-size:10px;line-height:15px;font-weight:600}
 .dshgn_cardMatches{margin-top:3px;display:flex;flex-direction:column;gap:2px}
-.dshgn_matchLine{display:flex;gap:5px;font-size:11px;line-height:1.45;color:var(--dsw-alias-label-secondary)}
+.dshgn_matchLine{display:flex;gap:5px;align-items:baseline;width:100%;appearance:none;border:0;background:transparent;padding:1px 3px;margin:0 -3px;border-radius:4px;font:inherit;font-size:11px;line-height:1.45;color:var(--dsw-alias-label-secondary);text-align:left;cursor:pointer}
+.dshgn_matchLine:hover{background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-label-primary)}
 .dshgn_matchNo{flex:none;min-width:18px;text-align:right;font-variant-numeric:tabular-nums;
   color:var(--dsw-alias-label-dimmed);font-size:10px;padding-top:1px}
 .dshgn_matchText{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -4561,11 +4627,18 @@ async function saveFile(url, filename) {
        * 的标题，拿它去比对只会得出「这一节不存在」。带上路径之后，等那一篇真的
        * 渲染出来再滚。
        */
-      const requestAnchor = React.useCallback((text, path) => {
+      const requestAnchor = React.useCallback((text, path, kind) => {
         const clean = String(text || '').trim()
         if (clean === '') return
         anchorSeq.current += 1
-        setPendingAnchor({ text: clean, path: String(path || ''), seq: anchorSeq.current })
+        setPendingAnchor({
+          text: clean,
+          path: String(path || ''),
+          // 'heading' 是「跳到某一节」，'line' 是「跳到正文里写着这行字的地方」。
+          // 搜索卡片上的命中行走后者：那一行往往是普通段落，不是标题。
+          kind: kind === 'line' ? 'line' : 'heading',
+          seq: anchorSeq.current,
+        })
       }, [])
 
       /**
@@ -4672,6 +4745,34 @@ async function saveFile(url, filename) {
       )
 
       const dirty = current !== null && draft !== null && draft !== current.content
+
+      /**
+       * 从搜索结果点一行，跳到正文里那一行。
+       *
+       * 用命中行的**文字**当锚，不用行号：搜索是磁盘上那一刻算出来的，用户可能
+       * 刚在别处改过这篇，行号一挪就指到别的段落去了，而那一行字通常还在。
+       * 有没保存的草稿时也要先问一句——直接 openNote 会把草稿冲掉，用户只是想
+       * 去看一眼搜到的那句话。
+       */
+      const jumpToMatch = React.useCallback(
+        (path, match) => {
+          const target = String(path || '')
+          const text = match !== null && match !== undefined ? String(match.text || '') : ''
+          if (target === '' || text.trim() === '') return
+          const go = () => {
+            requestAnchor(text, target, 'line')
+            void openNote(target)
+          }
+          if (!dirty) {
+            go()
+            return
+          }
+          void confirmDialog(t('note.unsaved')).then((ok) => {
+            if (ok) go()
+          })
+        },
+        [dirty, openNote, requestAnchor, t],
+      )
 
       const saveNote = React.useCallback(async () => {
         if (current === null || draft === null) return
@@ -5941,8 +6042,20 @@ async function saveFile(url, filename) {
                             { className: 'dshgn_cardMatches' },
                             entry.matches.slice(0, 2).map((match, index) =>
                               h(
-                                'div',
-                                { key: `${index}-${match.line}`, className: 'dshgn_matchLine' },
+                                'button',
+                                {
+                                  key: `${index}-${match.line}`,
+                                  type: 'button',
+                                  className: 'dshgn_matchLine',
+                                  title: t('search.jumpToLine'),
+                                  onClick: (event) => {
+                                    // 点命中行是「去这一行」，不是「打开这篇」：
+                                    // 不拦住的话外层卡片的 onClick 会再跑一遍，
+                                    // 先按「打开」跳到篇首，再按「跳行」滚下去
+                                    event.stopPropagation()
+                                    jumpToMatch(entry.path, match)
+                                  },
+                                },
                                 h('span', { className: 'dshgn_matchNo' }, String(match.line)),
                                 h('span', { className: 'dshgn_matchText' }, match.text),
                               ),
@@ -10222,6 +10335,15 @@ async function saveFile(url, filename) {
         // 还在上一篇上：等目标那一篇读回来再说。这里不清 pendingAnchor，
         // 清了就等于把用户的这次跳转丢掉了。
         if (String(anchorRequest.path || '') !== '' && String(anchorRequest.path) !== String(currentPath || '')) return
+        // 搜索卡片点进来的那一行：正文里那一行通常是普通段落，按标题找永远找不到，
+        // 得按文字找。找不到时**不报错**——搜索用的是磁盘上那一刻的内容，用户
+        // 可能刚改过那一行；为这个弹一条错误条，比「安静地停在篇首」更吵。
+        if (anchorRequest.kind === 'line') {
+          const lineHost = scrollRef.current
+          if (lineHost) scrollToText(lineHost, anchorRequest.text)
+          if (typeof onAnchorDone === 'function') onAnchorDone()
+          return
+        }
         const want = normalizeHeading(anchorRequest.text)
         const host = scrollRef.current
         if (want !== '' && host) {
@@ -11477,7 +11599,8 @@ export {
 
 // 离线测试直接验渲染结构用，运行时无影响
 export const __internals = {
-  renderBlocks, renderInline, stripLeadingHeading, BrokenPane, CalloutBlock, CALLOUT_TONES, LEX, ICONS, AudioPlayer, CloudPane,
+  renderBlocks, renderInline, stripLeadingHeading, BrokenPane, CalloutBlock, CALLOUT_TONES,
+  lineNeedle, scrollToText, LEX, ICONS, AudioPlayer, CloudPane,
   SyncPane, CloudCredCard, SettingsPane, GetnotePage, NotePane, TranscriptBlock,
   looksLikeTranscript, formatMoment, parseTranscript, stampToSeconds, activeTranscriptIndex,
   TrashPane, renderEmbed, assetLabel, ThemeCard, readSession, writeSession, SESSION_KEY,

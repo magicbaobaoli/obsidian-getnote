@@ -8163,6 +8163,7 @@ var LEX = {
     "action.retry": "\u91CD\u8BD5",
     "search.placeholder": "\u641C\u7D22\u6807\u9898\u3001\u6B63\u6587\u3001\u6807\u7B7E\u2026",
     "search.hint": "\u53EF\u4EE5\u52A0\u9650\u5B9A\uFF1Atag:\u5F55\u97F3\u5361 \xB7 dir:\u968F\u624B\u8BB0 \xB7 #\u79C1\u5BC6\u3002\u591A\u4E2A\u8BCD\u8981\u540C\u65F6\u547D\u4E2D\u3002",
+    "search.jumpToLine": "\u8DF3\u5230\u8FD9\u4E00\u884C",
     "batch.pick": "\u9009\u62E9\u8FD9\u7BC7",
     "batch.picked": "\u7BC7\u5DF2\u9009",
     "batch.actions": "\u6279\u91CF\u64CD\u4F5C",
@@ -8569,6 +8570,7 @@ var LEX = {
     "action.retry": "Retry",
     "search.placeholder": "Search title, body, tags\u2026",
     "search.hint": "Narrow it down: tag:voice \xB7 dir:notes \xB7 #private. All words must match.",
+    "search.jumpToLine": "Jump to this line",
     "batch.pick": "Select this note",
     "batch.picked": "selected",
     "batch.actions": "Batch actions",
@@ -8972,6 +8974,7 @@ var LEX = {
     "action.retry": "Opnieuw",
     "search.placeholder": "Zoek titel, tekst, tags\u2026",
     "search.hint": "Verfijn: tag:spraak \xB7 dir:notities \xB7 #priv\xE9. Alle woorden moeten voorkomen.",
+    "search.jumpToLine": "Naar deze regel",
     "batch.pick": "Deze notitie selecteren",
     "batch.picked": "geselecteerd",
     "batch.actions": "Bulkacties",
@@ -9876,13 +9879,48 @@ function scrollToHeading(box, text) {
       break;
     }
   }
-  if (hit === null) return false;
+  const host = scrollHostOf(box);
+  if (!host) return false;
+  scrollHostTo(host, hit);
+  return true;
+}
+function scrollHostOf(box) {
+  if (!box) return null;
+  if (box.classList && box.classList.contains("dshgn_scroll")) return box;
   let host = box.parentElement;
   while (host && !(host.classList && host.classList.contains("dshgn_scroll"))) host = host.parentElement;
-  if (!host) return false;
+  return host || null;
+}
+function scrollHostTo(host, hit) {
+  if (!host || !hit) return false;
   const offset = hit.getBoundingClientRect().top - host.getBoundingClientRect().top + host.scrollTop - 8;
   host.scrollTo({ top: Math.max(0, offset), behavior: "smooth" });
   return true;
+}
+function lineNeedle(text) {
+  let line = String(text || "");
+  line = line.replace(/^\s*(?:>\s*)+/, "");
+  line = line.replace(/^\s*#{1,6}\s*/, "");
+  line = line.replace(/^\s*(?:[-*+]|\d+[.)])\s+/, "");
+  line = line.replace(/^\s*\[[ xX]\]\s+/, "");
+  line = line.replace(/!?\[\[([^\]\n|]+)(?:\|([^\]\n]+))?\]\]/g, (all, target, label) => label || target || "");
+  line = line.replace(/\[([^\]\n]*)\]\([^)\s]+\)/g, "$1");
+  line = line.replace(/[*_`~]+/g, "");
+  line = line.replace(/\s+/g, " ").trim();
+  return line.slice(0, 40);
+}
+function scrollToText(box, text) {
+  const needle = lineNeedle(text);
+  if (needle === "") return false;
+  const host = scrollHostOf(box);
+  if (!host) return false;
+  const blocks = host.querySelectorAll("p, li, h1, h2, h3, h4, h5, h6, blockquote, pre, td, th");
+  for (let i3 = 0; i3 < blocks.length; i3 += 1) {
+    const node = blocks[i3];
+    if (node.querySelector("p, li, blockquote, pre")) continue;
+    if (String(node.textContent || "").replace(/\s+/g, " ").includes(needle)) return scrollHostTo(host, node);
+  }
+  return false;
 }
 var IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|avif|svg|bmp)$/i;
 var FILE_EXT_RE = /\.(pdf|docx?|xlsx?|pptx?|zip|rar|7z|tar|gz|mp3|wav|m4a|aac|ogg|flac|mp4|mov|webm|mkv|canvas|excalidraw|txt|csv|tsv|json|html?|js|css)$/i;
@@ -10468,7 +10506,8 @@ var CSS = `
   background:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-primary-foreground);
   font-size:10px;line-height:15px;font-weight:600}
 .dshgn_cardMatches{margin-top:3px;display:flex;flex-direction:column;gap:2px}
-.dshgn_matchLine{display:flex;gap:5px;font-size:11px;line-height:1.45;color:var(--dsw-alias-label-secondary)}
+.dshgn_matchLine{display:flex;gap:5px;align-items:baseline;width:100%;appearance:none;border:0;background:transparent;padding:1px 3px;margin:0 -3px;border-radius:4px;font:inherit;font-size:11px;line-height:1.45;color:var(--dsw-alias-label-secondary);text-align:left;cursor:pointer}
+.dshgn_matchLine:hover{background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-label-primary)}
 .dshgn_matchNo{flex:none;min-width:18px;text-align:right;font-variant-numeric:tabular-nums;
   color:var(--dsw-alias-label-dimmed);font-size:10px;padding-top:1px}
 .dshgn_matchText{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -11633,11 +11672,18 @@ function GetnotePage() {
     if (!restoredRef.current) return;
     writeSession({ path: current !== null ? String(current.path || "") : "" });
   }, [current]);
-  const requestAnchor = q2((text, path) => {
+  const requestAnchor = q2((text, path, kind) => {
     const clean = String(text || "").trim();
     if (clean === "") return;
     anchorSeq.current += 1;
-    setPendingAnchor({ text: clean, path: String(path || ""), seq: anchorSeq.current });
+    setPendingAnchor({
+      text: clean,
+      path: String(path || ""),
+      // 'heading' 是「跳到某一节」，'line' 是「跳到正文里写着这行字的地方」。
+      // 搜索卡片上的命中行走后者：那一行往往是普通段落，不是标题。
+      kind: kind === "line" ? "line" : "heading",
+      seq: anchorSeq.current
+    });
   }, []);
   const openWikiLink = q2(
     (target, anchor) => {
@@ -11719,6 +11765,25 @@ function GetnotePage() {
     [current, entries, status]
   );
   const dirty = current !== null && draft !== null && draft !== current.content;
+  const jumpToMatch = q2(
+    (path, match) => {
+      const target = String(path || "");
+      const text = match !== null && match !== void 0 ? String(match.text || "") : "";
+      if (target === "" || text.trim() === "") return;
+      const go = () => {
+        requestAnchor(text, target, "line");
+        void openNote(target);
+      };
+      if (!dirty) {
+        go();
+        return;
+      }
+      void confirmDialog(t3("note.unsaved")).then((ok) => {
+        if (ok) go();
+      });
+    },
+    [dirty, openNote, requestAnchor, t3]
+  );
   const saveNote = q2(async () => {
     if (current === null || draft === null) return;
     setBusy(true);
@@ -12827,8 +12892,17 @@ ${insert}
                   { className: "dshgn_cardMatches" },
                   entry.matches.slice(0, 2).map(
                     (match, index) => h4(
-                      "div",
-                      { key: `${index}-${match.line}`, className: "dshgn_matchLine" },
+                      "button",
+                      {
+                        key: `${index}-${match.line}`,
+                        type: "button",
+                        className: "dshgn_matchLine",
+                        title: t3("search.jumpToLine"),
+                        onClick: (event) => {
+                          event.stopPropagation();
+                          jumpToMatch(entry.path, match);
+                        }
+                      },
                       h4("span", { className: "dshgn_matchNo" }, String(match.line)),
                       h4("span", { className: "dshgn_matchText" }, match.text)
                     )
@@ -16421,6 +16495,12 @@ function NotePane(props) {
   y2(() => {
     if (anchorRequest === null || anchorRequest === void 0) return;
     if (String(anchorRequest.path || "") !== "" && String(anchorRequest.path) !== String(currentPath || "")) return;
+    if (anchorRequest.kind === "line") {
+      const lineHost = scrollRef.current;
+      if (lineHost) scrollToText(lineHost, anchorRequest.text);
+      if (typeof onAnchorDone === "function") onAnchorDone();
+      return;
+    }
     const want = normalizeHeading(anchorRequest.text);
     const host = scrollRef.current;
     if (want !== "" && host) {
