@@ -665,6 +665,8 @@ async function saveFile(url, filename) {
         'meta.dirs': '个目录',
         'reader.missing': '文件不存在或已被移动',
         'reader.frontmatter': '属性',
+        'reader.words': '{n} 字',
+        'reader.minutes': '约 {n} 分钟读完',
         'import.title': '一次性导入',
         'import.desc':
           '趁得到大脑会员还有效，把云端笔记全量抓成本地 Markdown。之后会员到期、断网、甚至服务下线，这里的笔记都照常能读能改 —— 导入是本插件唯一会联网的动作。',
@@ -1139,6 +1141,8 @@ async function saveFile(url, filename) {
         'meta.dirs': 'folders',
         'reader.missing': 'File is missing or was moved',
         'reader.frontmatter': 'Properties',
+        'reader.words': '{n} words',
+        'reader.minutes': 'About {n} min read',
         'import.title': 'One-time import',
         'import.desc':
           'While your subscription still works, pull every cloud note down as local Markdown. Afterwards the notes stay readable and editable — this is the only action in the plugin that touches the network.',
@@ -1612,6 +1616,8 @@ async function saveFile(url, filename) {
         'meta.dirs': 'mappen',
         'reader.missing': 'Bestand ontbreekt of is verplaatst',
         'reader.frontmatter': 'Eigenschappen',
+        'reader.words': '{n} woorden',
+        'reader.minutes': 'Ongeveer {n} min leestijd',
         'import.title': 'Eenmalige import',
         'import.desc': 'Zolang je abonnement loopt, haal je elke cloudnotitie als lokale Markdown binnen. Daarna blijven de notities leesbaar en bewerkbaar — dit is de enige actie in de plug-in die het netwerk gebruikt.',
         'import.loggedIn': 'Verbonden',
@@ -3697,6 +3703,18 @@ async function saveFile(url, filename) {
       return (cjk === null ? 0 : cjk.length) + (latin === null ? 0 : latin.length)
     }
 
+    // 阅读时脚下那条统计：字数和「大约读几分钟」。
+    //
+    // 编辑时已经有一个字数，但那是草稿的字数；读一篇长逐字稿时想知道的是
+    // 「还有多久读完」。按每分钟 300 字算（中文默读的常见估计），至少报 1 分钟——
+    // 报「约 0 分钟」等于没报。英文按词算，300 词/分钟略快于中文，但这里
+    // 只是给个量级，没必要分两套。
+    function readingMinutes(words) {
+      const n = Number(words)
+      if (!Number.isFinite(n) || n <= 0) return 0
+      return Math.max(1, Math.round(n / 300))
+    }
+
     /**
      * 在列表里按回车，接着写下一行。
      *
@@ -5086,6 +5104,8 @@ async function saveFile(url, filename) {
   border-top:0.5px solid var(--dsw-alias-border-l1);font-size:10.5px;
   color:var(--dsw-alias-label-tertiary);flex:0 0 auto}
 .dshgn_editorHint{margin-left:auto;opacity:.75}
+.dshgn_readFoot{color:var(--dsw-alias-label-tertiary)}
+
 .dshgn_linkPick{display:flex;flex-wrap:wrap;gap:6px;padding:6px clamp(16px,3vw,32px);border-top:0.5px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-secondary);max-height:112px;overflow-y:auto}
 .dshgn_linkPickItem{display:inline-flex;align-items:center;gap:5px;appearance:none;max-width:100%;padding:2px 9px;border:0.5px solid var(--dsw-alias-border-l1);border-radius:999px;background:var(--dsw-alias-bg-primary);font:inherit;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary);cursor:pointer}
 .dshgn_linkPickItem:hover{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-primary)}
@@ -13510,6 +13530,15 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         return rows
       }, [current])
 
+
+      // 阅读态脚上那个字数：正文本身（不含 frontmatter 那几行），编辑态另有草稿字数。
+      // 换一篇才重算，滚来滚去不算。
+      const readWords = React.useMemo(() => {
+        if (current === null || current === undefined) return 0
+        const body = current.body !== undefined && current.body !== null ? current.body : current.content
+        return countWords(body)
+      }, [current])
+
       // 大纲跳转按「第几个标题」定位而不是按行号：renderBlocks 和 outlineOf 都跳过
       // 代码围栏里的 #，两者的标题顺序完全一致，序号是稳的；行号在正文被重新渲染
       // 后（比如编辑保存）就对不上了。
@@ -14677,6 +14706,21 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                     ),
                   )
                 : null,
+              // 阅读态脚下那一条：这一篇多少字、大概读多久。长逐字稿常常几千字，
+              // 读之前想知道「现在有没有时间读」，读的时候想知道「还剩多少」。
+              // 编辑态有自己那条（草稿字数 + 保存提示），两者不同时出现。
+              editing
+                ? null
+                : h(
+                  'div',
+                  { className: 'dshgn_editorFoot dshgn_readFoot' },
+                  h('span', null, t('reader.words').replace('{n}', String(readWords))),
+                  h(
+                    'span',
+                    { className: 'dshgn_editorHint' },
+                    readWords > 0 ? t('reader.minutes').replace('{n}', String(readingMinutes(readWords))) : '',
+                  ),
+                ),
             ),
         // 放大查看的遮罩。点空白处关掉（图片自己 stopPropagation，点图不关），
         // 右上角那颗 × 是给「不知道该按 Esc」的人留的。
@@ -15487,7 +15531,7 @@ export const __internals = {
   TrashPane, TodoPane, renderEmbed, assetLabel, ThemeCard, readSession, writeSession, SESSION_KEY,
   themeVars, parseHex, rgbToHsl, hslToHex, ConflictPane, ArchiveCard, CardPane,
   TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale,
-  reportSync, dailyTemplateOf, frontmatterText, isTagKey, FollowCard, parseTable, countWords,
+  reportSync, dailyTemplateOf, frontmatterText, isTagKey, FollowCard, parseTable, countWords, readingMinutes,
   isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote, scrollToFootnoteRef, parseImageSize, renderParagraph, blockTextOf, markdownLinkTarget,
   tagBodyOf, ZoomOverlay, continueListLine, indentLines, wrapInline, linkPaste, wikilinkQueryAt, wikilinkMatches, tagQueryAt, tagMatches, findInBody, findAllBodyMatches, countTextMatches, findInBodyMatch, findInText, textHasParts,
       readScrollMarks, writeScrollMark, scrollMarkOf, SCROLL_KEY,

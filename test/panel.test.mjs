@@ -9167,3 +9167,109 @@ test('搜索框里打了字就摆一颗清空，点一下退回整份列表、�
   assert.equal(box().value, '', 'Esc 仍然能把搜索词清掉')
   assert.equal(clearOf(), null, 'Esc 之后清空按钮也收掉')
 })
+
+
+test('读到篇尾看得见这一篇多少字、大概读几分钟', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+  await clickTab('笔记')
+
+  const { readingMinutes } = panel.__internals
+  assert.equal(readingMinutes(0), 0, '零字不报时间')
+  assert.equal(readingMinutes(120), 1, '不足一分钟也报 1 分钟，不报 0')
+  assert.equal(readingMinutes(300), 1)
+  assert.equal(readingMinutes(900), 3)
+  assert.equal(readingMinutes(3000), 10)
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+  const made = await post('/getnote/create', {
+    dir: '随手记',
+    title: '阅读统计验收',
+    content: ['# 阅读统计验收', '', '这一篇是用来量字数的。', '', '再写一句话凑够几个字。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-read-foot',
+  })
+  assert.ok(made && made.path, '造笔记失败：' + JSON.stringify(made))
+
+  // 退回空态
+  const backBtn = () => window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(async () => true)
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = backBtn()
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(220)
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox !== null) {
+    const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setValue.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(300)
+  }
+  const allRow = Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+    const label = el.querySelector('.dshgn_treeName')
+    return label !== null && (label.textContent || '').trim() === '全部笔记'
+  })
+  if (allRow !== undefined) {
+    allRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const cardOf = (path) =>
+    Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === path)
+  await waitFor(() => cardOf(made.path) !== undefined, 8000, '列表里出现这一篇')
+  cardOf(made.path).dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 8000, '打开这一篇')
+
+  const foot = () => window.document.querySelector('.dshgn_readFoot')
+  await waitFor(() => foot() !== null, 8000, '篇尾统计条出现')
+  const text = (foot().textContent || '').trim()
+  assert.ok(/\d+ 字/.test(text), '要报字数，实际：' + text)
+  assert.ok(text.includes('分钟读完'), '要报大概读多久，实际：' + text)
+  // 篇尾统计条在正文之后，不在笔记头
+  const scroll = window.document.querySelector('.dshgn_scroll')
+  assert.ok(scroll !== null && scroll.contains(foot()), '统计条该在滚动容器里（正文之后）')
+
+  // 编辑态不摆阅读统计：那时脚下是草稿字数 + 保存提示
+  const editBtn = Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '编辑')
+  assert.ok(editBtn !== undefined, '笔记头该有编辑按钮')
+  editBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+  assert.equal(foot(), null, '编辑态不摆阅读统计')
+  const editorFoot = window.document.querySelector('.dshgn_editorFoot')
+  assert.ok(editorFoot !== null && !editorFoot.className.includes('dshgn_readFoot'), '编辑态脚下是草稿字数那条')
+  const cancelBtn = Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '取消')
+  if (cancelBtn !== undefined) {
+    cancelBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+
+  // 收尾退回空态
+  panel.setConfirmDialog(async () => true)
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = backBtn()
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(220)
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '收尾退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+})

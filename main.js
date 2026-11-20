@@ -8400,6 +8400,8 @@ var LEX = {
     "meta.dirs": "\u4E2A\u76EE\u5F55",
     "reader.missing": "\u6587\u4EF6\u4E0D\u5B58\u5728\u6216\u5DF2\u88AB\u79FB\u52A8",
     "reader.frontmatter": "\u5C5E\u6027",
+    "reader.words": "{n} \u5B57",
+    "reader.minutes": "\u7EA6 {n} \u5206\u949F\u8BFB\u5B8C",
     "import.title": "\u4E00\u6B21\u6027\u5BFC\u5165",
     "import.desc": "\u8D81\u5F97\u5230\u5927\u8111\u4F1A\u5458\u8FD8\u6709\u6548\uFF0C\u628A\u4E91\u7AEF\u7B14\u8BB0\u5168\u91CF\u6293\u6210\u672C\u5730 Markdown\u3002\u4E4B\u540E\u4F1A\u5458\u5230\u671F\u3001\u65AD\u7F51\u3001\u751A\u81F3\u670D\u52A1\u4E0B\u7EBF\uFF0C\u8FD9\u91CC\u7684\u7B14\u8BB0\u90FD\u7167\u5E38\u80FD\u8BFB\u80FD\u6539 \u2014\u2014 \u5BFC\u5165\u662F\u672C\u63D2\u4EF6\u552F\u4E00\u4F1A\u8054\u7F51\u7684\u52A8\u4F5C\u3002",
     "import.loggedIn": "\u5DF2\u8FDE\u63A5\u5F97\u5230\u5927\u8111",
@@ -8870,6 +8872,8 @@ var LEX = {
     "meta.dirs": "folders",
     "reader.missing": "File is missing or was moved",
     "reader.frontmatter": "Properties",
+    "reader.words": "{n} words",
+    "reader.minutes": "About {n} min read",
     "import.title": "One-time import",
     "import.desc": "While your subscription still works, pull every cloud note down as local Markdown. Afterwards the notes stay readable and editable \u2014 this is the only action in the plugin that touches the network.",
     "import.loggedIn": "Connected",
@@ -9339,6 +9343,8 @@ var LEX = {
     "meta.dirs": "mappen",
     "reader.missing": "Bestand ontbreekt of is verplaatst",
     "reader.frontmatter": "Eigenschappen",
+    "reader.words": "{n} woorden",
+    "reader.minutes": "Ongeveer {n} min leestijd",
     "import.title": "Eenmalige import",
     "import.desc": "Zolang je abonnement loopt, haal je elke cloudnotitie als lokale Markdown binnen. Daarna blijven de notities leesbaar en bewerkbaar \u2014 dit is de enige actie in de plug-in die het netwerk gebruikt.",
     "import.loggedIn": "Verbonden",
@@ -10858,6 +10864,11 @@ function countWords(text) {
   const latin = source.match(/[A-Za-z0-9_'-]+/g);
   return (cjk === null ? 0 : cjk.length) + (latin === null ? 0 : latin.length);
 }
+function readingMinutes(words) {
+  const n2 = Number(words);
+  if (!Number.isFinite(n2) || n2 <= 0) return 0;
+  return Math.max(1, Math.round(n2 / 300));
+}
 function continueListLine(text, caret) {
   const source = String(text === null || text === void 0 ? "" : text);
   const at = Number.isInteger(caret) ? caret : source.length;
@@ -12061,6 +12072,8 @@ var CSS = `
   border-top:0.5px solid var(--dsw-alias-border-l1);font-size:10.5px;
   color:var(--dsw-alias-label-tertiary);flex:0 0 auto}
 .dshgn_editorHint{margin-left:auto;opacity:.75}
+.dshgn_readFoot{color:var(--dsw-alias-label-tertiary)}
+
 .dshgn_linkPick{display:flex;flex-wrap:wrap;gap:6px;padding:6px clamp(16px,3vw,32px);border-top:0.5px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-secondary);max-height:112px;overflow-y:auto}
 .dshgn_linkPickItem{display:inline-flex;align-items:center;gap:5px;appearance:none;max-width:100%;padding:2px 9px;border:0.5px solid var(--dsw-alias-border-l1);border-radius:999px;background:var(--dsw-alias-bg-primary);font:inherit;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary);cursor:pointer}
 .dshgn_linkPickItem:hover{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-primary)}
@@ -19095,6 +19108,11 @@ function NotePane(props) {
     }
     return rows;
   }, [current]);
+  const readWords = T2(() => {
+    if (current === null || current === void 0) return 0;
+    const body = current.body !== void 0 && current.body !== null ? current.body : current.content;
+    return countWords(body);
+  }, [current]);
   const jumpToHeading = q2((index) => {
     const host = scrollRef.current;
     if (!host) return;
@@ -20113,7 +20131,20 @@ ${t4("tree.menuReveal")}` : absolute,
             )
           )
         )
-      ) : null
+      ) : null,
+      // 阅读态脚下那一条：这一篇多少字、大概读多久。长逐字稿常常几千字，
+      // 读之前想知道「现在有没有时间读」，读的时候想知道「还剩多少」。
+      // 编辑态有自己那条（草稿字数 + 保存提示），两者不同时出现。
+      editing ? null : h4(
+        "div",
+        { className: "dshgn_editorFoot dshgn_readFoot" },
+        h4("span", null, t4("reader.words").replace("{n}", String(readWords))),
+        h4(
+          "span",
+          { className: "dshgn_editorHint" },
+          readWords > 0 ? t4("reader.minutes").replace("{n}", String(readingMinutes(readWords))) : ""
+        )
+      )
     ),
     // 放大查看的遮罩。点空白处关掉（图片自己 stopPropagation，点图不关），
     // 右上角那颗 × 是给「不知道该按 Esc」的人留的。
