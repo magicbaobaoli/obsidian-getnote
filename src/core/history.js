@@ -258,6 +258,47 @@ export async function listHistory(root, relPath, { limit = 50 } = {}) {
 }
 
 /**
+ * 目录改名时，把它名下的快照目录也跟着搬到新名字下。
+ *
+ * 快照目录名是「相对路径压平」得来的（`随手记__读书.md`），路径一改旧 key 就对不上，
+ * 用户改完目录名回头看历史，会觉得「刚才那几版全没了」。这里按 `旧key` 前缀找出
+ * 受影响的目录整体改名，快照文件本身不动（仍按原来的时间戳命名）。
+ *
+ * 只搬确实存在的目录；搬不动（占用、权限）就静默跳过——历史丢一版不影响笔记本身，
+ * 为它让整个改名失败反而更糟。
+ */
+export async function moveHistoryEntries(root, fromRel, toRel) {
+  const from = splitRel(fromRel).join('/')
+  const to = splitRel(toRel).join('/')
+  if (from === '' || to === '' || from === to) return 0
+  const base = join(root, HISTORY_DIR)
+  let names
+  try {
+    names = await readdir(base)
+  } catch {
+    return 0
+  }
+  const fromKey = historyKeyFor(from)
+  const toKey = historyKeyFor(to)
+  const plan = []
+  for (const name of names) {
+    // 目录自己那一篇（`旧__x.md`）和它底下所有笔记（`旧__子__x.md`）都算。
+    if (name !== fromKey && !name.startsWith(`${fromKey}__`)) continue
+    const next = `${toKey}${name.slice(fromKey.length)}`
+    if (next === name) continue
+    plan.push({ from: name, to: next })
+  }
+  let moved = 0
+  for (const item of plan) {
+    try {
+      await rename(join(base, item.from), join(base, item.to))
+      moved += 1
+    } catch {}
+  }
+  return moved
+}
+
+/**
  * 读某一版的内容。
  *
  * `name` 直接来自 listHistory，但它是从 HTTP 请求里回传的，所以必须当成不可信输入校验：

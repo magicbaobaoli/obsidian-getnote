@@ -217,6 +217,270 @@ var init_vfs = __esm({
   }
 });
 
+// src/core/history.js
+function sha1(text) {
+  return (0, import_node_crypto2.createHash)("sha1").update(String(text), "utf8").digest("hex");
+}
+function badInput(message) {
+  return Object.assign(new Error(message || "\u975E\u6CD5\u7684\u8DEF\u5F84"), { status: 400 });
+}
+function notFound() {
+  return Object.assign(new Error("\u8FD9\u4E00\u7248\u5FEB\u7167\u4E0D\u5728\u4E86"), { status: 404 });
+}
+function isMissing(error2) {
+  return Boolean(error2) && (error2.code === "ENOENT" || error2.code === "ENOTDIR");
+}
+function clampLimit(limit) {
+  const n2 = Number(limit);
+  if (!Number.isFinite(n2)) return HISTORY_LIMIT;
+  return Math.max(1, Math.floor(n2));
+}
+function splitRel(relPath) {
+  if (typeof relPath !== "string" || relPath.trim() === "") throw badInput("\u7B14\u8BB0\u8DEF\u5F84\u4E0D\u80FD\u4E3A\u7A7A");
+  const parts = relPath.replace(/\\/g, "/").replace(/^\/+/, "").split("/").filter((seg) => seg !== "" && seg !== ".");
+  if (parts.length === 0) throw badInput("\u7B14\u8BB0\u8DEF\u5F84\u4E0D\u80FD\u4E3A\u7A7A");
+  if (parts.some((seg) => seg === "..")) throw badInput("path escapes vault root");
+  if (/^[a-zA-Z]:$/.test(parts[0])) throw badInput("\u7B14\u8BB0\u8DEF\u5F84\u5FC5\u987B\u662F\u5E93\u5185\u76F8\u5BF9\u8DEF\u5F84");
+  return parts;
+}
+function historyKeyFor(relPath) {
+  const parts = String(relPath == null ? "" : relPath).replace(/\\/g, "/").replace(/^\/+/, "").split("/").filter((seg) => seg !== "" && seg !== "." && seg !== "..");
+  let key = parts.join("__");
+  const before = key;
+  key = key.replace(ILLEGAL_NAME, "");
+  if (key === "" || /^\.+$/.test(key)) {
+    key = `note-${sha1(before)}`.slice(0, KEY_MAX);
+  }
+  key = key.replace(/[. ]+$/, "");
+  if (key === "") key = `note-${sha1(before)}`;
+  const chars = Array.from(key);
+  if (chars.length > KEY_MAX) {
+    const head = chars.slice(0, KEY_MAX - KEY_HASH_LEN - 1).join("");
+    key = `${head}-${sha1(key).slice(0, KEY_HASH_LEN)}`;
+  }
+  return key;
+}
+function stampLabel(now) {
+  const ms = now instanceof Date ? now.getTime() : Number(now);
+  const t4 = Number.isFinite(ms) ? ms : Date.now();
+  return new Date(t4).toISOString().replace(/[:.]/g, "-");
+}
+function parseStamp(name) {
+  const m3 = STAMP_RE.exec(name);
+  if (!m3) return null;
+  const [, y3, mo, d3, h5, mi, s3, ms] = m3;
+  const iso = `${y3}-${mo}-${d3}T${h5}:${mi}:${s3}.${ms}Z`;
+  const t4 = Date.parse(iso);
+  if (!Number.isFinite(t4)) return null;
+  return { ms: t4, iso };
+}
+function seqOf(name) {
+  const m3 = /Z-(\d+)\.md$/i.exec(name);
+  return m3 ? Number(m3[1]) : 1;
+}
+async function readSnapshots(dirAbs) {
+  let names;
+  try {
+    names = await readdir2(dirAbs);
+  } catch (error2) {
+    if (isMissing(error2)) return [];
+    throw error2;
+  }
+  const items = [];
+  for (const name of names) {
+    if (!name.toLowerCase().endsWith(".md")) continue;
+    let st;
+    try {
+      st = await stat2((0, import_node_path3.join)(dirAbs, name));
+    } catch {
+      continue;
+    }
+    if (!st.isFile()) continue;
+    const stamp = parseStamp(name);
+    items.push({
+      name,
+      bytes: st.size,
+      mtimeMs: st.mtimeMs,
+      savedAt: stamp ? stamp.iso : new Date(st.mtimeMs).toISOString(),
+      _ms: stamp ? stamp.ms : st.mtimeMs,
+      _seq: seqOf(name)
+    });
+  }
+  items.sort((a3, b3) => b3._ms - a3._ms || b3._seq - a3._seq || (a3.name < b3.name ? 1 : a3.name > b3.name ? -1 : 0));
+  return items;
+}
+async function pruneDir(dirAbs, keep) {
+  const items = await readSnapshots(dirAbs);
+  const survivors = items.slice(0, keep);
+  let pruned = 0;
+  for (const item of items.slice(keep)) {
+    try {
+      await rm2((0, import_node_path3.join)(dirAbs, item.name), { force: true });
+      pruned += 1;
+    } catch {
+    }
+  }
+  return { pruned, kept: survivors.length };
+}
+async function snapshotNote(root, relPath, { now = Date.now(), limit = HISTORY_LIMIT } = {}) {
+  const parts = splitRel(relPath);
+  const abs = (0, import_node_path3.resolve)(root, ...parts);
+  let st;
+  try {
+    st = await stat2(abs);
+  } catch (error2) {
+    if (isMissing(error2)) return { saved: false, reason: "missing" };
+    throw error2;
+  }
+  if (!st.isFile()) return { saved: false, reason: "missing" };
+  if (st.size > MAX_SNAPSHOT_BYTES) return { saved: false, reason: "too-large" };
+  const buf = await readFile2(abs);
+  if (buf.length > MAX_SNAPSHOT_BYTES) return { saved: false, reason: "too-large" };
+  const key = historyKeyFor(parts.join("/"));
+  const dirAbs = (0, import_node_path3.join)(root, HISTORY_DIR, key);
+  await mkdir2(dirAbs, { recursive: true });
+  const base = stampLabel(now);
+  let name = "";
+  for (let i3 = 1; i3 <= 999; i3 += 1) {
+    const candidate = i3 === 1 ? `${base}.md` : `${base}-${i3}.md`;
+    try {
+      await writeFile2((0, import_node_path3.join)(dirAbs, candidate), buf, { flag: "wx" });
+      name = candidate;
+      break;
+    } catch (error2) {
+      if (error2 && error2.code === "EEXIST") continue;
+      throw error2;
+    }
+  }
+  if (name === "") throw Object.assign(new Error("\u540C\u4E00\u6BEB\u79D2\u7684\u5FEB\u7167\u8FC7\u591A"), { status: 409 });
+  await pruneDir(dirAbs, clampLimit(limit));
+  return { saved: true, path: `${HISTORY_DIR}/${key}/${name}`, bytes: buf.length };
+}
+async function listHistory(root, relPath, { limit = 50 } = {}) {
+  const parts = splitRel(relPath);
+  const key = historyKeyFor(parts.join("/"));
+  const dirAbs = (0, import_node_path3.join)(root, HISTORY_DIR, key);
+  const items = await readSnapshots(dirAbs);
+  const cap = Number.isFinite(Number(limit)) ? Math.max(0, Math.floor(Number(limit))) : 50;
+  return items.slice(0, cap).map((item) => ({
+    name: item.name,
+    path: `${HISTORY_DIR}/${key}/${item.name}`,
+    bytes: item.bytes,
+    mtimeMs: item.mtimeMs,
+    savedAt: item.savedAt
+  }));
+}
+async function moveHistoryEntries(root, fromRel, toRel) {
+  const from = splitRel(fromRel).join("/");
+  const to = splitRel(toRel).join("/");
+  if (from === "" || to === "" || from === to) return 0;
+  const base = (0, import_node_path3.join)(root, HISTORY_DIR);
+  let names;
+  try {
+    names = await readdir2(base);
+  } catch {
+    return 0;
+  }
+  const fromKey = historyKeyFor(from);
+  const toKey = historyKeyFor(to);
+  const plan = [];
+  for (const name of names) {
+    if (name !== fromKey && !name.startsWith(`${fromKey}__`)) continue;
+    const next = `${toKey}${name.slice(fromKey.length)}`;
+    if (next === name) continue;
+    plan.push({ from: name, to: next });
+  }
+  let moved = 0;
+  for (const item of plan) {
+    try {
+      await rename2((0, import_node_path3.join)(base, item.from), (0, import_node_path3.join)(base, item.to));
+      moved += 1;
+    } catch {
+    }
+  }
+  return moved;
+}
+async function readHistoryEntry(root, relPath, name) {
+  if (typeof name !== "string" || name === "" || name === "." || name === "..") {
+    throw badInput("\u975E\u6CD5\u7684\u5FEB\u7167\u540D");
+  }
+  if (name.includes("/") || name.includes("\\") || name.includes("..") || name.includes("\0")) {
+    throw badInput("\u975E\u6CD5\u7684\u5FEB\u7167\u540D");
+  }
+  const parts = splitRel(relPath);
+  const key = historyKeyFor(parts.join("/"));
+  const abs = (0, import_node_path3.join)(root, HISTORY_DIR, key, name);
+  let st;
+  try {
+    st = await stat2(abs);
+  } catch (error2) {
+    if (isMissing(error2)) throw notFound();
+    throw error2;
+  }
+  if (!st.isFile()) throw notFound();
+  let buf;
+  try {
+    buf = await readFile2(abs);
+  } catch (error2) {
+    if (isMissing(error2)) throw notFound();
+    throw error2;
+  }
+  const stamp = parseStamp(name);
+  return {
+    name,
+    path: `${HISTORY_DIR}/${key}/${name}`,
+    content: buf.toString("utf8"),
+    bytes: buf.length,
+    savedAt: stamp ? stamp.iso : new Date(st.mtimeMs).toISOString()
+  };
+}
+async function atomicWrite(abs, content) {
+  const tmp = `${abs}.${process.pid}.${Date.now().toString(36)}.${(0, import_node_crypto2.randomBytes)(3).toString("hex")}.tmp`;
+  await writeFile2(tmp, content, "utf8");
+  try {
+    await rename2(tmp, abs);
+    return;
+  } catch (first) {
+    try {
+      await rm2(abs, { force: true });
+      await rename2(tmp, abs);
+      return;
+    } catch {
+      await rm2(tmp, { force: true }).catch(() => {
+      });
+      throw first;
+    }
+  }
+}
+async function restoreHistoryEntry(root, relPath, name, { keepCurrent = true } = {}) {
+  const entry = await readHistoryEntry(root, relPath, name);
+  const parts = splitRel(relPath);
+  const abs = (0, import_node_path3.resolve)(root, ...parts);
+  let hadSnapshot = false;
+  if (keepCurrent !== false) {
+    const snap = await snapshotNote(root, parts.join("/"));
+    hadSnapshot = snap.saved === true;
+  }
+  await mkdir2((0, import_node_path3.dirname)(abs), { recursive: true });
+  await atomicWrite(abs, entry.content);
+  return { restored: true, path: parts.join("/"), from: name, hadSnapshot };
+}
+var import_node_path3, import_node_crypto2, HISTORY_DIR, HISTORY_LIMIT, MAX_SNAPSHOT_BYTES, KEY_MAX, KEY_HASH_LEN, ILLEGAL_NAME, STAMP_RE;
+var init_history = __esm({
+  "src/core/history.js"() {
+    init_vfs();
+    import_node_path3 = require("node:path");
+    import_node_crypto2 = require("node:crypto");
+    HISTORY_DIR = ".history";
+    HISTORY_LIMIT = 10;
+    MAX_SNAPSHOT_BYTES = 2 * 1024 * 1024;
+    KEY_MAX = 120;
+    KEY_HASH_LEN = 16;
+    ILLEGAL_NAME = /[<>:"\\|?*\u0000-\u001f\u007f]/g;
+    STAMP_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z/;
+  }
+});
+
 // src/core/vault.js
 var vault_exports = {};
 __export(vault_exports, {
@@ -258,6 +522,7 @@ __export(vault_exports, {
   readTags: () => readTags,
   removeDir: () => removeDir,
   removeTag: () => removeTag,
+  renameDir: () => renameDir,
   renameTag: () => renameTag,
   resolveConflict: () => resolveConflict,
   resolveInside: () => resolveInside,
@@ -276,12 +541,12 @@ __export(vault_exports, {
   writeNote: () => writeNote
 });
 function toPosix(p3) {
-  return p3.split(import_node_path3.sep).join("/");
+  return p3.split(import_node_path4.sep).join("/");
 }
 function normalizeRel(input) {
   if (typeof input !== "string") return "";
   const raw = input.replace(/\\/g, "/").replace(/^\/+/, "");
-  const normalized = import_node_path3.posix.normalize(raw);
+  const normalized = import_node_path4.posix.normalize(raw);
   if (normalized === "." || normalized === "./") return "";
   if (normalized.startsWith("../") || normalized === "..") {
     throw Object.assign(new Error("path escapes vault root"), { status: 400 });
@@ -290,9 +555,9 @@ function normalizeRel(input) {
 }
 function resolveInside(root, rel, { create = false } = {}) {
   const normalized = normalizeRel(rel);
-  const abs = normalized === "" ? (0, import_node_path3.resolve)(root) : (0, import_node_path3.resolve)(root, normalized.split("/").join(import_node_path3.sep));
-  const relCheck = (0, import_node_path3.relative)((0, import_node_path3.resolve)(root), abs);
-  if (relCheck.startsWith("..") || relCheck !== "" && (0, import_node_path3.resolve)(root, relCheck) !== abs) {
+  const abs = normalized === "" ? (0, import_node_path4.resolve)(root) : (0, import_node_path4.resolve)(root, normalized.split("/").join(import_node_path4.sep));
+  const relCheck = (0, import_node_path4.relative)((0, import_node_path4.resolve)(root), abs);
+  if (relCheck.startsWith("..") || relCheck !== "" && (0, import_node_path4.resolve)(root, relCheck) !== abs) {
     throw Object.assign(new Error("path escapes vault root"), { status: 400 });
   }
   return { abs, rel: normalized, create };
@@ -346,12 +611,12 @@ function unquote(s3) {
 function deriveTitle(body, relPath) {
   const m3 = /^#{1,3}\s+(.+)$/m.exec(body || "");
   if (m3) return m3[1].trim();
-  const base = import_node_path3.posix.basename(relPath || "", NOTE_EXT);
+  const base = import_node_path4.posix.basename(relPath || "", NOTE_EXT);
   const stripped = base.replace(/^\d{4}-\d{2}-\d{2}-/, "");
   return stripped || base || "\u672A\u547D\u540D";
 }
 function deriveDate(relPath, data, statMs) {
-  const base = import_node_path3.posix.basename(relPath || "", NOTE_EXT);
+  const base = import_node_path4.posix.basename(relPath || "", NOTE_EXT);
   const m3 = /^(\d{4}-\d{2}-\d{2})/.exec(base);
   if (m3) return m3[1];
   for (const key of ["\u5F52\u6863", "\u65E5\u671F", "date", "created", "\u521B\u5EFA\u65F6\u95F4"]) {
@@ -405,14 +670,14 @@ async function fingerprintVault(root) {
       const name = dirent2.name;
       if (dirent2.isDirectory()) {
         if (IGNORED_DIRS.has(name)) continue;
-        await walk((0, import_node_path3.join)(dir, name), relDir === "" ? name : `${relDir}/${name}`, depth + 1);
+        await walk((0, import_node_path4.join)(dir, name), relDir === "" ? name : `${relDir}/${name}`, depth + 1);
         continue;
       }
       if (!dirent2.isFile()) continue;
-      if ((0, import_node_path3.extname)(name).toLowerCase() !== NOTE_EXT) continue;
+      if ((0, import_node_path4.extname)(name).toLowerCase() !== NOTE_EXT) continue;
       const rel = relDir === "" ? name : `${relDir}/${name}`;
       try {
-        const st = await stat2((0, import_node_path3.join)(dir, name));
+        const st = await stat2((0, import_node_path4.join)(dir, name));
         names.push(`${rel}:${st.mtimeMs}:${st.size}`);
       } catch {
         names.push(`${rel}:?`);
@@ -456,13 +721,13 @@ async function scanVault(root, options = {}) {
       const name = dirent2.name;
       if (dirent2.isDirectory()) {
         if (IGNORED_DIRS.has(name)) continue;
-        await walk((0, import_node_path3.join)(dir, name), relDir === "" ? name : `${relDir}/${name}`, depth + 1);
+        await walk((0, import_node_path4.join)(dir, name), relDir === "" ? name : `${relDir}/${name}`, depth + 1);
         continue;
       }
       if (!dirent2.isFile()) continue;
-      if ((0, import_node_path3.extname)(name).toLowerCase() !== NOTE_EXT) continue;
+      if ((0, import_node_path4.extname)(name).toLowerCase() !== NOTE_EXT) continue;
       const rel = relDir === "" ? name : `${relDir}/${name}`;
-      const abs = (0, import_node_path3.join)(dir, name);
+      const abs = (0, import_node_path4.join)(dir, name);
       try {
         const st = await stat2(abs);
         if (st.size > MAX_READ) {
@@ -589,8 +854,8 @@ async function readNote(root, rel) {
 }
 async function listAssets(root, rel, noteId = "") {
   const { abs, rel: normalized } = resolveInside(root, rel);
-  const dir = import_node_path3.posix.dirname(normalized);
-  const stem = import_node_path3.posix.basename(normalized, NOTE_EXT);
+  const dir = import_node_path4.posix.dirname(normalized);
+  const stem = import_node_path4.posix.basename(normalized, NOTE_EXT);
   const assetRel = dir === "." || dir === "" ? "asset" : `${dir}/asset`;
   const assetAbs = resolveInside(root, assetRel).abs;
   let names;
@@ -639,8 +904,8 @@ async function saveAsset(root, relNote, name, data) {
   if (!Buffer.isBuffer(data) || data.length === 0) {
     throw Object.assign(new Error("\u6587\u4EF6\u662F\u7A7A\u7684"), { status: 400 });
   }
-  const dir = import_node_path3.posix.dirname(normalized);
-  const stem = import_node_path3.posix.basename(normalized, NOTE_EXT);
+  const dir = import_node_path4.posix.dirname(normalized);
+  const stem = import_node_path4.posix.basename(normalized, NOTE_EXT);
   const assetRel = dir === "." || dir === "" ? "asset" : `${dir}/asset`;
   const raw = String(name || "").replace(/\\/g, "/");
   const base = raw.slice(raw.lastIndexOf("/") + 1);
@@ -681,14 +946,14 @@ async function writeNote(root, rel, content, options = {}) {
   if (Buffer.byteLength(content, "utf8") > MAX_WRITE) {
     throw Object.assign(new Error("\u5185\u5BB9\u8D85\u8FC7 2MB \u4E0A\u9650"), { status: 413 });
   }
-  await mkdir2((0, import_node_path3.dirname)(abs), { recursive: true });
+  await mkdir2((0, import_node_path4.dirname)(abs), { recursive: true });
   if (backup) {
     try {
       await copyFile2(abs, `${abs}.bak`);
     } catch {
     }
   }
-  const tmp = `${abs}.${process.pid}.${(0, import_node_crypto2.randomBytes)(4).toString("hex")}.tmp`;
+  const tmp = `${abs}.${process.pid}.${(0, import_node_crypto3.randomBytes)(4).toString("hex")}.tmp`;
   await writeFile2(tmp, content, "utf8");
   await rename2(tmp, abs);
   const st = await stat2(abs);
@@ -731,13 +996,13 @@ async function createNote(root, { dir = "", title = "", content = "", date, with
 async function trashNote(root, rel) {
   const { abs, rel: normalized } = resolveInside(root, rel);
   if (normalized === "") throw Object.assign(new Error("\u4E0D\u80FD\u5220\u9664\u5E93\u6839"), { status: 400 });
-  const trashDir = (0, import_node_path3.join)(root, ".trash");
+  const trashDir = (0, import_node_path4.join)(root, ".trash");
   const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
-  const target = (0, import_node_path3.join)(trashDir, `${stamp}__${(0, import_node_path3.basename)(abs)}`);
+  const target = (0, import_node_path4.join)(trashDir, `${stamp}__${(0, import_node_path4.basename)(abs)}`);
   await mkdir2(trashDir, { recursive: true });
   await rename2(abs, target);
   invalidateScan(root);
-  return { path: normalized, trashedTo: toPosix((0, import_node_path3.relative)(root, target)) };
+  return { path: normalized, trashedTo: toPosix((0, import_node_path4.relative)(root, target)) };
 }
 function parseTrashName(name) {
   const m3 = TRASH_NAME_RE.exec(String(name || ""));
@@ -750,7 +1015,7 @@ function parseTrashName(name) {
   };
 }
 async function listTrash(root) {
-  const trashDir = (0, import_node_path3.join)(root, TRASH_DIR);
+  const trashDir = (0, import_node_path4.join)(root, TRASH_DIR);
   let dirents;
   try {
     dirents = await readdir2(trashDir, { withFileTypes: true });
@@ -760,8 +1025,8 @@ async function listTrash(root) {
   const items = [];
   for (const dirent2 of dirents) {
     if (!dirent2.isFile()) continue;
-    if ((0, import_node_path3.extname)(dirent2.name).toLowerCase() !== NOTE_EXT) continue;
-    const abs = (0, import_node_path3.join)(trashDir, dirent2.name);
+    if ((0, import_node_path4.extname)(dirent2.name).toLowerCase() !== NOTE_EXT) continue;
+    const abs = (0, import_node_path4.join)(trashDir, dirent2.name);
     let st;
     try {
       st = await stat2(abs);
@@ -771,7 +1036,7 @@ async function listTrash(root) {
     const meta = parseTrashName(dirent2.name);
     items.push({
       name: dirent2.name,
-      path: toPosix((0, import_node_path3.join)(TRASH_DIR, dirent2.name)),
+      path: toPosix((0, import_node_path4.join)(TRASH_DIR, dirent2.name)),
       originalName: meta.originalName,
       title: meta.originalName.replace(/\.md$/i, "").replace(/^\d{4}-\d{2}-\d{2}-/, ""),
       trashedAt: meta.trashedAt,
@@ -798,7 +1063,7 @@ async function restoreNote(root, trashPath, targetRel) {
     throw Object.assign(new Error("\u56DE\u6536\u7AD9\u91CC\u6CA1\u6709\u8FD9\u4E2A\u6587\u4EF6"), { status: 404 });
   }
   if (!st.isFile()) throw Object.assign(new Error("\u4E0D\u662F\u6587\u4EF6"), { status: 400 });
-  const meta = parseTrashName((0, import_node_path3.basename)(absTrash));
+  const meta = parseTrashName((0, import_node_path4.basename)(absTrash));
   const wanted = typeof targetRel === "string" && targetRel.trim() !== "" ? normalizeRel(targetRel.trim()) : "";
   const rel = wanted === "" ? meta.originalName : wanted;
   if (rel === "" || rel.endsWith("/")) {
@@ -812,24 +1077,24 @@ async function restoreNote(root, trashPath, targetRel) {
       await stat2(resolveInside(root, candidate).abs);
       counter += 1;
       if (counter > 99) throw Object.assign(new Error("\u540C\u540D\u7B14\u8BB0\u8FC7\u591A"), { status: 409 });
-      const dir = import_node_path3.posix.dirname(rel);
-      const stem = (0, import_node_path3.basename)(rel, (0, import_node_path3.extname)(rel));
-      const ext = (0, import_node_path3.extname)(rel);
+      const dir = import_node_path4.posix.dirname(rel);
+      const stem = (0, import_node_path4.basename)(rel, (0, import_node_path4.extname)(rel));
+      const ext = (0, import_node_path4.extname)(rel);
       const next = `${stem}-${counter}${ext}`;
-      candidate = dir === "." || dir === "" ? next : import_node_path3.posix.join(dir, next);
+      candidate = dir === "." || dir === "" ? next : import_node_path4.posix.join(dir, next);
     } catch (error2) {
       if (error2 && error2.status === 409) throw error2;
       break;
     }
   }
   const { abs: absFinal } = resolveInside(root, candidate, { create: true });
-  await mkdir2((0, import_node_path3.dirname)(absFinal), { recursive: true });
+  await mkdir2((0, import_node_path4.dirname)(absFinal), { recursive: true });
   await rename2(absTrash, absFinal);
   invalidateScan(root);
   return { path: candidate, restoredFrom: trashRel, title: meta.originalName };
 }
 async function purgeTrash(root, trashPath) {
-  const trashDir = (0, import_node_path3.join)(root, TRASH_DIR);
+  const trashDir = (0, import_node_path4.join)(root, TRASH_DIR);
   if (typeof trashPath === "string" && trashPath.trim() !== "") {
     const { abs, rel } = resolveInside(root, trashPath);
     if (!rel.startsWith(`${TRASH_DIR}/`)) {
@@ -847,8 +1112,8 @@ async function purgeTrash(root, trashPath) {
   const purged = [];
   for (const dirent2 of dirents) {
     if (!dirent2.isFile()) continue;
-    await rm2((0, import_node_path3.join)(trashDir, dirent2.name), { force: true });
-    purged.push(toPosix((0, import_node_path3.join)(TRASH_DIR, dirent2.name)));
+    await rm2((0, import_node_path4.join)(trashDir, dirent2.name), { force: true });
+    purged.push(toPosix((0, import_node_path4.join)(TRASH_DIR, dirent2.name)));
   }
   if (purged.length > 0) invalidateScan(root);
   return { purged };
@@ -913,10 +1178,10 @@ async function searchNotes(root, query, { limit = 60, perFile = 3, sort = "relev
       const name = dirent2.name;
       if (dirent2.isDirectory()) {
         if (IGNORED_DIRS.has(name) || name === ".trash") continue;
-        await walk((0, import_node_path3.join)(dir, name), relDir === "" ? name : `${relDir}/${name}`, depth + 1);
+        await walk((0, import_node_path4.join)(dir, name), relDir === "" ? name : `${relDir}/${name}`, depth + 1);
         continue;
       }
-      if (!dirent2.isFile() || (0, import_node_path3.extname)(name).toLowerCase() !== NOTE_EXT) continue;
+      if (!dirent2.isFile() || (0, import_node_path4.extname)(name).toLowerCase() !== NOTE_EXT) continue;
       const rel = relDir === "" ? name : `${relDir}/${name}`;
       if (dirNeedles.length > 0) {
         const relLower = rel.toLowerCase();
@@ -932,7 +1197,7 @@ async function searchNotes(root, query, { limit = 60, perFile = 3, sort = "relev
       scanned += 1;
       let text;
       try {
-        text = await readFile2((0, import_node_path3.join)(dir, name), "utf8");
+        text = await readFile2((0, import_node_path4.join)(dir, name), "utf8");
       } catch {
         continue;
       }
@@ -1217,18 +1482,18 @@ function outlineOf(body) {
   return items;
 }
 function conflictPathHash(relPath) {
-  return (0, import_node_crypto2.createHash)("sha1").update(String(relPath || "")).digest("hex").slice(0, 6);
+  return (0, import_node_crypto3.createHash)("sha1").update(String(relPath || "")).digest("hex").slice(0, 6);
 }
 function conflictArchiveName(relPath, options = {}) {
   const rel = normalizeRel(relPath);
   const when = options.at === void 0 ? /* @__PURE__ */ new Date() : new Date(options.at);
   const stamp = (Number.isNaN(when.getTime()) ? /* @__PURE__ */ new Date() : when).toISOString().replace(/[:.]/g, "-");
-  const name = (0, import_node_path3.basename)(rel) || "note.md";
+  const name = (0, import_node_path4.basename)(rel) || "note.md";
   return `${CONFLICT_DIR}/${stamp}__${conflictPathHash(rel)}__${options.cloud === true ? "cloud-" : ""}${name}`;
 }
 async function readConflictState(root) {
   try {
-    const text = await readFile2((0, import_node_path3.join)(root, CONFLICT_DIR, CONFLICT_STATE_FILE), "utf8");
+    const text = await readFile2((0, import_node_path4.join)(root, CONFLICT_DIR, CONFLICT_STATE_FILE), "utf8");
     const data = JSON.parse(text);
     if (data === null || typeof data !== "object" || Array.isArray(data)) return {};
     return data;
@@ -1237,10 +1502,10 @@ async function readConflictState(root) {
   }
 }
 async function writeConflictState(root, state) {
-  const dir = (0, import_node_path3.join)(root, CONFLICT_DIR);
+  const dir = (0, import_node_path4.join)(root, CONFLICT_DIR);
   await mkdir2(dir, { recursive: true });
-  const target = (0, import_node_path3.join)(dir, CONFLICT_STATE_FILE);
-  const tmp = `${target}.${(0, import_node_crypto2.randomBytes)(4).toString("hex")}.tmp`;
+  const target = (0, import_node_path4.join)(dir, CONFLICT_STATE_FILE);
+  const tmp = `${target}.${(0, import_node_crypto3.randomBytes)(4).toString("hex")}.tmp`;
   await writeFile2(tmp, JSON.stringify(state, null, 2), "utf8");
   await rename2(tmp, target);
 }
@@ -1258,7 +1523,7 @@ function parseConflictName(name) {
   };
 }
 async function listConflicts(root) {
-  const dir = (0, import_node_path3.join)(root, CONFLICT_DIR);
+  const dir = (0, import_node_path4.join)(root, CONFLICT_DIR);
   let names;
   try {
     names = await readdir2(dir);
@@ -1268,11 +1533,11 @@ async function listConflicts(root) {
   const state = await readConflictState(root);
   const items = [];
   for (const name of names) {
-    if ((0, import_node_path3.extname)(name).toLowerCase() !== NOTE_EXT) continue;
+    if ((0, import_node_path4.extname)(name).toLowerCase() !== NOTE_EXT) continue;
     if (name.endsWith(".bak")) continue;
     let st;
     try {
-      st = await stat2((0, import_node_path3.join)(dir, name));
+      st = await stat2((0, import_node_path4.join)(dir, name));
     } catch {
       continue;
     }
@@ -1416,7 +1681,7 @@ async function removeDir(root, dirInput) {
   } catch {
     throw Object.assign(new Error("\u8FD9\u4E2A\u76EE\u5F55\u4E0D\u5B58\u5728"), { status: 404 });
   }
-  const notes = dirents.filter((d3) => d3.isFile() && (0, import_node_path3.extname)(d3.name).toLowerCase() === NOTE_EXT);
+  const notes = dirents.filter((d3) => d3.isFile() && (0, import_node_path4.extname)(d3.name).toLowerCase() === NOTE_EXT);
   if (notes.length > 0) {
     throw Object.assign(new Error(`\u8FD9\u4E2A\u76EE\u5F55\u91CC\u8FD8\u6709 ${notes.length} \u7BC7\u7B14\u8BB0\uFF0C\u5148\u628A\u5B83\u4EEC\u79FB\u8D70\u518D\u5220\u76EE\u5F55`), {
       status: 409,
@@ -1437,6 +1702,44 @@ async function removeDir(root, dirInput) {
   }
   invalidateScan(root);
   return { ok: true, path: rel };
+}
+async function renameDir(root, fromInput, toInput) {
+  const from = normalizeRel(fromInput);
+  const to = normalizeRel(toInput);
+  if (from === "") throw Object.assign(new Error("\u8981\u6539\u540D\u7684\u76EE\u5F55\u4E0D\u80FD\u662F\u5E93\u6839"), { status: 400 });
+  if (to === "") throw Object.assign(new Error("\u65B0\u76EE\u5F55\u540D\u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+  if (from === to) return { ok: true, from, to, unchanged: true };
+  for (const segment of to.split("/")) {
+    if (IGNORED_DIRS.has(segment)) {
+      throw Object.assign(new Error(`\u300C${segment}\u300D\u662F\u63D2\u4EF6\u4FDD\u7559\u7684\u76EE\u5F55\u540D\uFF0C\u6362\u4E00\u4E2A`), { status: 400 });
+    }
+  }
+  const { abs: srcAbs } = resolveInside(root, from);
+  let srcStat;
+  try {
+    srcStat = await stat2(srcAbs);
+  } catch {
+    throw Object.assign(new Error("\u8FD9\u4E2A\u76EE\u5F55\u4E0D\u5B58\u5728"), { status: 404 });
+  }
+  if (!srcStat.isDirectory()) throw Object.assign(new Error("\u8FD9\u4E0D\u662F\u4E00\u4E2A\u76EE\u5F55"), { status: 400 });
+  const { abs: dstAbs, rel: dstRel } = resolveInside(root, to, { create: true });
+  try {
+    await stat2(dstAbs);
+    throw Object.assign(new Error(`\u300C${dstRel}\u300D\u5DF2\u7ECF\u5B58\u5728\uFF0C\u6362\u4E00\u4E2A\u540D\u5B57`), { status: 409 });
+  } catch (error2) {
+    if (error2 && error2.status === 409) throw error2;
+  }
+  try {
+    await mkdir2((0, import_node_path4.dirname)(dstAbs), { recursive: true });
+    await rename2(srcAbs, dstAbs);
+  } catch (error2) {
+    throw Object.assign(new Error(`\u6539\u76EE\u5F55\u540D\u5931\u8D25\uFF1A${error2 && error2.message ? error2.message : error2}`), {
+      status: 500
+    });
+  }
+  await moveHistoryEntries(root, from, to);
+  invalidateScan(root);
+  return { ok: true, from, to };
 }
 function rewriteTags(text, tags) {
   const list = Array.isArray(tags) ? tags.map((tag) => String(tag).trim()).filter((tag) => tag !== "") : [];
@@ -1808,7 +2111,7 @@ async function vaultStats(root, entries) {
   const dirs = /* @__PURE__ */ new Set();
   for (const entry of entries) {
     bytes += entry.bytes || 0;
-    const d3 = import_node_path3.posix.dirname(entry.path);
+    const d3 = import_node_path4.posix.dirname(entry.path);
     if (d3 !== "." && d3 !== "") dirs.add(d3);
   }
   return { notes: entries.length, dirs: dirs.size, bytes };
@@ -1825,12 +2128,13 @@ function listDirs(entries) {
   }
   return [...dirs].sort((a3, b3) => a3.localeCompare(b3, "zh"));
 }
-var import_node_crypto2, import_node_path3, NOTE_EXT, MAX_READ, MAX_WRITE, MAX_SCAN, MAX_DEPTH, IGNORED_DIRS, scanCache, SCAN_CACHE_MAX, entryMemo, ENTRY_MEMO_MAX, TRASH_DIR, TRASH_NAME_RE, CONFLICT_DIR, CONFLICT_NAME_RE, CONFLICT_STATE_FILE, TAG_TOKEN_RE;
+var import_node_crypto3, import_node_path4, NOTE_EXT, MAX_READ, MAX_WRITE, MAX_SCAN, MAX_DEPTH, IGNORED_DIRS, scanCache, SCAN_CACHE_MAX, entryMemo, ENTRY_MEMO_MAX, TRASH_DIR, TRASH_NAME_RE, CONFLICT_DIR, CONFLICT_NAME_RE, CONFLICT_STATE_FILE, TAG_TOKEN_RE;
 var init_vault = __esm({
   "src/core/vault.js"() {
     init_vfs();
-    import_node_crypto2 = require("node:crypto");
-    import_node_path3 = require("node:path");
+    import_node_crypto3 = require("node:crypto");
+    init_history();
+    import_node_path4 = require("node:path");
     NOTE_EXT = ".md";
     MAX_READ = 2 * 1024 * 1024;
     MAX_WRITE = 2 * 1024 * 1024;
@@ -3008,235 +3312,7 @@ function serializeCanvas(canvas) {
 init_vfs();
 var import_node_path6 = require("node:path");
 init_vault();
-
-// src/core/history.js
-init_vfs();
-var import_node_path4 = require("node:path");
-var import_node_crypto3 = require("node:crypto");
-var HISTORY_DIR = ".history";
-var HISTORY_LIMIT = 10;
-var MAX_SNAPSHOT_BYTES = 2 * 1024 * 1024;
-var KEY_MAX = 120;
-var KEY_HASH_LEN = 16;
-var ILLEGAL_NAME = /[<>:"\\|?*\u0000-\u001f\u007f]/g;
-var STAMP_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z/;
-function sha1(text) {
-  return (0, import_node_crypto3.createHash)("sha1").update(String(text), "utf8").digest("hex");
-}
-function badInput(message) {
-  return Object.assign(new Error(message || "\u975E\u6CD5\u7684\u8DEF\u5F84"), { status: 400 });
-}
-function notFound() {
-  return Object.assign(new Error("\u8FD9\u4E00\u7248\u5FEB\u7167\u4E0D\u5728\u4E86"), { status: 404 });
-}
-function isMissing(error2) {
-  return Boolean(error2) && (error2.code === "ENOENT" || error2.code === "ENOTDIR");
-}
-function clampLimit(limit) {
-  const n2 = Number(limit);
-  if (!Number.isFinite(n2)) return HISTORY_LIMIT;
-  return Math.max(1, Math.floor(n2));
-}
-function splitRel(relPath) {
-  if (typeof relPath !== "string" || relPath.trim() === "") throw badInput("\u7B14\u8BB0\u8DEF\u5F84\u4E0D\u80FD\u4E3A\u7A7A");
-  const parts = relPath.replace(/\\/g, "/").replace(/^\/+/, "").split("/").filter((seg) => seg !== "" && seg !== ".");
-  if (parts.length === 0) throw badInput("\u7B14\u8BB0\u8DEF\u5F84\u4E0D\u80FD\u4E3A\u7A7A");
-  if (parts.some((seg) => seg === "..")) throw badInput("path escapes vault root");
-  if (/^[a-zA-Z]:$/.test(parts[0])) throw badInput("\u7B14\u8BB0\u8DEF\u5F84\u5FC5\u987B\u662F\u5E93\u5185\u76F8\u5BF9\u8DEF\u5F84");
-  return parts;
-}
-function historyKeyFor(relPath) {
-  const parts = String(relPath == null ? "" : relPath).replace(/\\/g, "/").replace(/^\/+/, "").split("/").filter((seg) => seg !== "" && seg !== "." && seg !== "..");
-  let key = parts.join("__");
-  const before = key;
-  key = key.replace(ILLEGAL_NAME, "");
-  if (key === "" || /^\.+$/.test(key)) {
-    key = `note-${sha1(before)}`.slice(0, KEY_MAX);
-  }
-  key = key.replace(/[. ]+$/, "");
-  if (key === "") key = `note-${sha1(before)}`;
-  const chars = Array.from(key);
-  if (chars.length > KEY_MAX) {
-    const head = chars.slice(0, KEY_MAX - KEY_HASH_LEN - 1).join("");
-    key = `${head}-${sha1(key).slice(0, KEY_HASH_LEN)}`;
-  }
-  return key;
-}
-function stampLabel(now) {
-  const ms = now instanceof Date ? now.getTime() : Number(now);
-  const t4 = Number.isFinite(ms) ? ms : Date.now();
-  return new Date(t4).toISOString().replace(/[:.]/g, "-");
-}
-function parseStamp(name) {
-  const m3 = STAMP_RE.exec(name);
-  if (!m3) return null;
-  const [, y3, mo, d3, h5, mi, s3, ms] = m3;
-  const iso = `${y3}-${mo}-${d3}T${h5}:${mi}:${s3}.${ms}Z`;
-  const t4 = Date.parse(iso);
-  if (!Number.isFinite(t4)) return null;
-  return { ms: t4, iso };
-}
-function seqOf(name) {
-  const m3 = /Z-(\d+)\.md$/i.exec(name);
-  return m3 ? Number(m3[1]) : 1;
-}
-async function readSnapshots(dirAbs) {
-  let names;
-  try {
-    names = await readdir2(dirAbs);
-  } catch (error2) {
-    if (isMissing(error2)) return [];
-    throw error2;
-  }
-  const items = [];
-  for (const name of names) {
-    if (!name.toLowerCase().endsWith(".md")) continue;
-    let st;
-    try {
-      st = await stat2((0, import_node_path4.join)(dirAbs, name));
-    } catch {
-      continue;
-    }
-    if (!st.isFile()) continue;
-    const stamp = parseStamp(name);
-    items.push({
-      name,
-      bytes: st.size,
-      mtimeMs: st.mtimeMs,
-      savedAt: stamp ? stamp.iso : new Date(st.mtimeMs).toISOString(),
-      _ms: stamp ? stamp.ms : st.mtimeMs,
-      _seq: seqOf(name)
-    });
-  }
-  items.sort((a3, b3) => b3._ms - a3._ms || b3._seq - a3._seq || (a3.name < b3.name ? 1 : a3.name > b3.name ? -1 : 0));
-  return items;
-}
-async function pruneDir(dirAbs, keep) {
-  const items = await readSnapshots(dirAbs);
-  const survivors = items.slice(0, keep);
-  let pruned = 0;
-  for (const item of items.slice(keep)) {
-    try {
-      await rm2((0, import_node_path4.join)(dirAbs, item.name), { force: true });
-      pruned += 1;
-    } catch {
-    }
-  }
-  return { pruned, kept: survivors.length };
-}
-async function snapshotNote(root, relPath, { now = Date.now(), limit = HISTORY_LIMIT } = {}) {
-  const parts = splitRel(relPath);
-  const abs = (0, import_node_path4.resolve)(root, ...parts);
-  let st;
-  try {
-    st = await stat2(abs);
-  } catch (error2) {
-    if (isMissing(error2)) return { saved: false, reason: "missing" };
-    throw error2;
-  }
-  if (!st.isFile()) return { saved: false, reason: "missing" };
-  if (st.size > MAX_SNAPSHOT_BYTES) return { saved: false, reason: "too-large" };
-  const buf = await readFile2(abs);
-  if (buf.length > MAX_SNAPSHOT_BYTES) return { saved: false, reason: "too-large" };
-  const key = historyKeyFor(parts.join("/"));
-  const dirAbs = (0, import_node_path4.join)(root, HISTORY_DIR, key);
-  await mkdir2(dirAbs, { recursive: true });
-  const base = stampLabel(now);
-  let name = "";
-  for (let i3 = 1; i3 <= 999; i3 += 1) {
-    const candidate = i3 === 1 ? `${base}.md` : `${base}-${i3}.md`;
-    try {
-      await writeFile2((0, import_node_path4.join)(dirAbs, candidate), buf, { flag: "wx" });
-      name = candidate;
-      break;
-    } catch (error2) {
-      if (error2 && error2.code === "EEXIST") continue;
-      throw error2;
-    }
-  }
-  if (name === "") throw Object.assign(new Error("\u540C\u4E00\u6BEB\u79D2\u7684\u5FEB\u7167\u8FC7\u591A"), { status: 409 });
-  await pruneDir(dirAbs, clampLimit(limit));
-  return { saved: true, path: `${HISTORY_DIR}/${key}/${name}`, bytes: buf.length };
-}
-async function listHistory(root, relPath, { limit = 50 } = {}) {
-  const parts = splitRel(relPath);
-  const key = historyKeyFor(parts.join("/"));
-  const dirAbs = (0, import_node_path4.join)(root, HISTORY_DIR, key);
-  const items = await readSnapshots(dirAbs);
-  const cap = Number.isFinite(Number(limit)) ? Math.max(0, Math.floor(Number(limit))) : 50;
-  return items.slice(0, cap).map((item) => ({
-    name: item.name,
-    path: `${HISTORY_DIR}/${key}/${item.name}`,
-    bytes: item.bytes,
-    mtimeMs: item.mtimeMs,
-    savedAt: item.savedAt
-  }));
-}
-async function readHistoryEntry(root, relPath, name) {
-  if (typeof name !== "string" || name === "" || name === "." || name === "..") {
-    throw badInput("\u975E\u6CD5\u7684\u5FEB\u7167\u540D");
-  }
-  if (name.includes("/") || name.includes("\\") || name.includes("..") || name.includes("\0")) {
-    throw badInput("\u975E\u6CD5\u7684\u5FEB\u7167\u540D");
-  }
-  const parts = splitRel(relPath);
-  const key = historyKeyFor(parts.join("/"));
-  const abs = (0, import_node_path4.join)(root, HISTORY_DIR, key, name);
-  let st;
-  try {
-    st = await stat2(abs);
-  } catch (error2) {
-    if (isMissing(error2)) throw notFound();
-    throw error2;
-  }
-  if (!st.isFile()) throw notFound();
-  let buf;
-  try {
-    buf = await readFile2(abs);
-  } catch (error2) {
-    if (isMissing(error2)) throw notFound();
-    throw error2;
-  }
-  const stamp = parseStamp(name);
-  return {
-    name,
-    path: `${HISTORY_DIR}/${key}/${name}`,
-    content: buf.toString("utf8"),
-    bytes: buf.length,
-    savedAt: stamp ? stamp.iso : new Date(st.mtimeMs).toISOString()
-  };
-}
-async function atomicWrite(abs, content) {
-  const tmp = `${abs}.${process.pid}.${Date.now().toString(36)}.${(0, import_node_crypto3.randomBytes)(3).toString("hex")}.tmp`;
-  await writeFile2(tmp, content, "utf8");
-  try {
-    await rename2(tmp, abs);
-    return;
-  } catch (first) {
-    try {
-      await rm2(abs, { force: true });
-      await rename2(tmp, abs);
-      return;
-    } catch {
-      await rm2(tmp, { force: true }).catch(() => {
-      });
-      throw first;
-    }
-  }
-}
-async function restoreHistoryEntry(root, relPath, name, { keepCurrent = true } = {}) {
-  const entry = await readHistoryEntry(root, relPath, name);
-  const parts = splitRel(relPath);
-  const abs = (0, import_node_path4.resolve)(root, ...parts);
-  let hadSnapshot = false;
-  if (keepCurrent !== false) {
-    const snap = await snapshotNote(root, parts.join("/"));
-    hadSnapshot = snap.saved === true;
-  }
-  await mkdir2((0, import_node_path4.dirname)(abs), { recursive: true });
-  await atomicWrite(abs, entry.content);
-  return { restored: true, path: parts.join("/"), from: name, hadSnapshot };
-}
+init_history();
 
 // src/core/archive.js
 init_vfs();
@@ -5484,6 +5560,17 @@ function createHandler(config) {
     const result = await createDir(root, dir);
     send(res, 200, { ok: true, empty: true, ...result });
   }
+  async function handleRenameDir(req, res) {
+    const body = await readJsonBody(req);
+    const from = String(body.from || body.dir || body.path || "").trim();
+    const to = String(body.to || body.name || "").trim();
+    if (from === "") throw Object.assign(new Error("\u9700\u8981 from\uFF08\u539F\u76EE\u5F55\u8DEF\u5F84\uFF09"), { status: 400 });
+    if (to === "") throw Object.assign(new Error("\u65B0\u76EE\u5F55\u540D\u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+    const { root, missing } = await currentRoot();
+    if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
+    const result = await renameDir(root, from, to);
+    send(res, 200, { ok: true, ...result });
+  }
   async function handleDeleteDir(req, res) {
     const body = await readJsonBody(req);
     const dir = String(body.dir || body.path || "").trim();
@@ -6629,6 +6716,7 @@ function createHandler(config) {
         if (action === "delete") return await handleDelete(req, res);
         if (action === "dir" && parts[2] === "create") return await handleCreateDir(req, res);
         if (action === "dir" && parts[2] === "delete") return await handleDeleteDir(req, res);
+        if (action === "dir" && parts[2] === "rename") return await handleRenameDir(req, res);
         if (action === "tag" && parts[2] === "delete") return await handleDeleteTag(req, res);
         if (action === "tag" && parts[2] === "rename") return await handleRenameTag(req, res);
         if (action === "todo" && parts[2] === "toggle") return await handleToggleTodo(req, res);
@@ -8382,6 +8470,7 @@ var LEX = {
     "tree.menuRename": "\u6539\u540D",
     "tree.menuReveal": "\u5728\u6587\u4EF6\u5217\u8868\u91CC\u5B9A\u4F4D",
     "tree.tagRenamed": "\u6807\u7B7E\u5DF2\u6539\u540D",
+    "tree.dirRenamed": "\u76EE\u5F55\u5DF2\u6539\u540D",
     "todo.toggle": "\u70B9\u4E00\u4E0B\u52FE\u6389",
     "todo.done": "\u5DF2\u52FE\u6389",
     "todo.undone": "\u5DF2\u53D6\u6D88\u52FE\u9009",
@@ -8856,6 +8945,7 @@ var LEX = {
     "tree.menuRename": "Rename",
     "tree.menuReveal": "Reveal in file explorer",
     "tree.tagRenamed": "Tag renamed",
+    "tree.dirRenamed": "Folder renamed",
     "todo.toggle": "Click to tick off",
     "todo.done": "Ticked off",
     "todo.undone": "Unchecked",
@@ -9329,6 +9419,7 @@ var LEX = {
     "tree.menuRename": "Naam wijzigen",
     "tree.menuReveal": "Toon in bestandsverkenner",
     "tree.tagRenamed": "Tag hernoemd",
+    "tree.dirRenamed": "Map hernoemd",
     "todo.toggle": "Klik om af te vinken",
     "todo.done": "Afgevinkt",
     "todo.undone": "Vinkje verwijderd",
@@ -14266,6 +14357,24 @@ ${insert}
             setError(err && err.message ? err.message : String(err));
           }
         },
+        onRenameDir: async (from, to) => {
+          try {
+            const json = await api("/dir/rename", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ from, to })
+            });
+            if (activeDir === from) setActiveDir(to);
+            const currentPath = current !== null && current !== void 0 ? String(current.path || "") : "";
+            if (currentPath === from || currentPath.startsWith(`${from}/`)) {
+              setCurrent({ ...current, path: `${to}${currentPath.slice(from.length)}` });
+            }
+            showToast(t4("tree.dirRenamed"));
+            await refresh();
+          } catch (err) {
+            setError(err && err.message ? err.message : String(err));
+          }
+        },
         currentNoteId: current !== null && current.noteId ? current.noteId : null,
         heatmap: status !== null && status.heatmap ? status.heatmap : null
       }),
@@ -18123,6 +18232,7 @@ function TreePane(props) {
     onDeleteTag,
     onCreateTag,
     onRenameTag,
+    onRenameDir,
     heatmap,
     currentNoteId,
     onNarrowPick,
@@ -18304,7 +18414,11 @@ function TreePane(props) {
     }
     setBusy(true);
     try {
-      if (typeof onRenameTag === "function") await onRenameTag(renaming.from, to);
+      if (renaming.kind === "dir") {
+        if (typeof onRenameDir === "function") await onRenameDir(renaming.from, to);
+      } else if (typeof onRenameTag === "function") {
+        await onRenameTag(renaming.from, to);
+      }
       setRenaming(null);
     } finally {
       setBusy(false);
@@ -18316,16 +18430,16 @@ function TreePane(props) {
     return h4(
       "span",
       { className: "dshgn_rowMenu", onClick: (event) => event.stopPropagation() },
-      // 标签多一个「改名」。目录不需要：目录名就是磁盘上的文件夹名，
-      // 改名等于移动文件，风险比改个标签大得多，那是另一个功能。
-      target.kind === "tag" && typeof onRenameTag === "function" ? h4(
+      // 「改名」两种行都有：标签改名是改几十篇的 frontmatter，目录改名是搬一整棵
+      // 子树（连同底下的笔记、子目录、版本历史），后端各有一条路，界面同一颗按钮。
+      target.kind === "tag" && typeof onRenameTag === "function" || target.kind === "dir" && typeof onRenameDir === "function" ? h4(
         "button",
         {
           type: "button",
           className: "dshgn_rowBtn",
           title: t4("tree.menuRename"),
           onClick: () => {
-            setRenaming({ from: target.name, to: target.name });
+            setRenaming({ kind: target.kind, from: target.name, to: target.name });
             setMenu(null);
           }
         },
@@ -18460,75 +18574,104 @@ function TreePane(props) {
       )
     ) : null,
     flat.map(
-      (node) => h4(
-        "div",
-        {
-          key: node.path,
-          className: "dshgn_treeRow",
-          "data-on": activeDir === node.path ? "true" : "false",
-          "data-drop": dropOn === node.path ? "true" : "false",
-          // 折叠箭头占 12px：同一层的名字必须对齐，所以没有子目录的行也
-          // 留出这段空位（摆一个等宽的占位 span），而不是让它往前挪一格。
-          style: { paddingLeft: `${7 + node.depth * 11 + 12}px` },
-          onClick: picked(() => onPickDir(node.path)),
-          onContextMenu: (event) => openMenu(event, "dir", node.path),
-          // 卡片拖到这一行上就把它挪进这个目录。只认面板自己带的私有类型：
-          // 从宿主文件树拖过来的文件也走 dragover，但那是「导入」，不是「挪」。
-          onDragOver: (event) => {
-            if (typeof onMoveNoteTo !== "function") return;
-            if (!dragCarriesNote(event.dataTransfer)) return;
-            event.preventDefault();
-            event.stopPropagation();
-            try {
-              event.dataTransfer.dropEffect = "move";
-            } catch {
+      (node) => (
+        // 正在改名的那一行整行换成输入框：和标签那边同一套做法——名字就写在
+        // 它原来待的位置，用户不用在「哪一行」和「输入框在哪」之间对一次眼。
+        renaming !== null && renaming.kind === "dir" && renaming.from === node.path ? h4(
+          "span",
+          { key: node.path, className: "dshgn_treeNew" },
+          h4("input", {
+            className: "dshgn_treeNewInput",
+            type: "text",
+            autoFocus: true,
+            value: renaming.to,
+            placeholder: node.name,
+            onChange: (event) => setRenaming({ kind: "dir", from: node.path, to: event.target.value }),
+            onKeyDown: (event) => {
+              if (event.key === "Enter") void runRename();
+              if (event.key === "Escape") setRenaming(null);
             }
-            if (dropOn !== node.path) setDropOn(node.path);
-          },
-          onDragLeave: () => {
-            if (dropOn === node.path) setDropOn("");
-          },
-          onDrop: (event) => {
-            setDropOn("");
-            if (typeof onMoveNoteTo !== "function") return;
-            if (!dragCarriesNote(event.dataTransfer)) return;
-            event.preventDefault();
-            event.stopPropagation();
-            let dragged = "";
-            try {
-              dragged = String(event.dataTransfer.getData(DRAG_MIME) || "");
-            } catch {
-            }
-            if (dragged === "") return;
-            onMoveNoteTo(dragged, node.path);
-          },
-          title: `${node.path}
-${t4("tree.menuDelete")}\uFF1A\u53F3\u952E`
-        },
-        // 折叠箭头：只有底下还有目录的行才摆。按钮里不能套按钮，
-        // 所以它自己是一颗 button，点它只折叠、不选目录（stopPropagation）。
-        node.hasKids ? h4(
-          "button",
+          }),
+          h4(
+            "button",
+            { type: "button", className: "dshgn_treeNewOk", onClick: () => void runRename(), disabled: busy },
+            h4(Icon, { name: "check", size: 12 })
+          ),
+          h4(
+            "button",
+            { type: "button", className: "dshgn_treeNewCancel", onClick: () => setRenaming(null), disabled: busy },
+            h4(Icon, { name: "close", size: 12 })
+          )
+        ) : h4(
+          "div",
           {
-            type: "button",
-            className: "dshgn_treeFold",
-            title: folded.has(node.path) ? t4("tree.unfold") : t4("tree.fold"),
-            "aria-label": folded.has(node.path) ? t4("tree.unfold") : t4("tree.fold"),
-            "aria-expanded": folded.has(node.path) ? "false" : "true",
-            "data-folded": folded.has(node.path) ? "true" : "false",
-            onClick: (event) => {
+            key: node.path,
+            className: "dshgn_treeRow",
+            "data-on": activeDir === node.path ? "true" : "false",
+            "data-drop": dropOn === node.path ? "true" : "false",
+            // 折叠箭头占 12px：同一层的名字必须对齐，所以没有子目录的行也
+            // 留出这段空位（摆一个等宽的占位 span），而不是让它往前挪一格。
+            style: { paddingLeft: `${7 + node.depth * 11 + 12}px` },
+            onClick: picked(() => onPickDir(node.path)),
+            onContextMenu: (event) => openMenu(event, "dir", node.path),
+            // 卡片拖到这一行上就把它挪进这个目录。只认面板自己带的私有类型：
+            // 从宿主文件树拖过来的文件也走 dragover，但那是「导入」，不是「挪」。
+            onDragOver: (event) => {
+              if (typeof onMoveNoteTo !== "function") return;
+              if (!dragCarriesNote(event.dataTransfer)) return;
+              event.preventDefault();
               event.stopPropagation();
-              toggleFold(node.path);
+              try {
+                event.dataTransfer.dropEffect = "move";
+              } catch {
+              }
+              if (dropOn !== node.path) setDropOn(node.path);
             },
-            onContextMenu: (event) => {
-              openMenu(event, "dir", node.path);
-            }
+            onDragLeave: () => {
+              if (dropOn === node.path) setDropOn("");
+            },
+            onDrop: (event) => {
+              setDropOn("");
+              if (typeof onMoveNoteTo !== "function") return;
+              if (!dragCarriesNote(event.dataTransfer)) return;
+              event.preventDefault();
+              event.stopPropagation();
+              let dragged = "";
+              try {
+                dragged = String(event.dataTransfer.getData(DRAG_MIME) || "");
+              } catch {
+              }
+              if (dragged === "") return;
+              onMoveNoteTo(dragged, node.path);
+            },
+            title: `${node.path}
+${t4("tree.menuDelete")}\uFF1A\u53F3\u952E`
           },
-          h4(Icon, { name: "chevron", size: 11 })
-        ) : h4("span", { className: "dshgn_treeFoldGap" }),
-        h4(Icon, { name: "folder", size: 13 }),
-        h4("span", { className: "dshgn_treeName" }, node.name),
-        menu !== null && menu.kind === "dir" && menu.name === node.path ? rowMenu() : h4("span", { className: "dshgn_treeCount" }, String(node.count))
+          // 折叠箭头：只有底下还有目录的行才摆。按钮里不能套按钮，
+          // 所以它自己是一颗 button，点它只折叠、不选目录（stopPropagation）。
+          node.hasKids ? h4(
+            "button",
+            {
+              type: "button",
+              className: "dshgn_treeFold",
+              title: folded.has(node.path) ? t4("tree.unfold") : t4("tree.fold"),
+              "aria-label": folded.has(node.path) ? t4("tree.unfold") : t4("tree.fold"),
+              "aria-expanded": folded.has(node.path) ? "false" : "true",
+              "data-folded": folded.has(node.path) ? "true" : "false",
+              onClick: (event) => {
+                event.stopPropagation();
+                toggleFold(node.path);
+              },
+              onContextMenu: (event) => {
+                openMenu(event, "dir", node.path);
+              }
+            },
+            h4(Icon, { name: "chevron", size: 11 })
+          ) : h4("span", { className: "dshgn_treeFoldGap" }),
+          h4(Icon, { name: "folder", size: 13 }),
+          h4("span", { className: "dshgn_treeName" }, node.name),
+          menu !== null && menu.kind === "dir" && menu.name === node.path ? rowMenu() : h4("span", { className: "dshgn_treeCount" }, String(node.count))
+        )
       )
     ),
     // 标签区

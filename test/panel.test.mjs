@@ -9336,3 +9336,91 @@ test('待办页能把整份清单一次抄走，按篇分组、按行号排', as
   const counted = copied.split('\n').filter((line) => line.startsWith('- [ ] ')).length
   assert.ok(toastText.includes(String(counted)), '抄了几条就说几条')
 })
+
+test('左栏目录右键改名，整棵子树连同笔记一起搬到新名字下', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const backToList = async () => {
+    const back = rootNode().querySelector('.dshgn_noteBack')
+    if (back !== null) {
+      panel.setConfirmDialog(() => Promise.resolve(true))
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false')
+  }
+  await backToList()
+  // 上一条用例可能停在「待办」页签上，那一页没有搜索框——先回到笔记页再清搜索。
+  clickTab('笔记')
+  await waitFor(() => rootNode().querySelector('.dshgn_search') !== null, 4000, '笔记页签里有搜索框')
+  const search = rootNode().querySelector('.dshgn_search')
+  Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(search, '')
+  search.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(400)
+
+  const make = async (dir, title, content, requestId) => {
+    const res = await realFetch(`${server.origin}/getnote/create`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({ dir, title, content, withDatePrefix: false, requestId }),
+    })
+    const json = await res.json()
+    return json.path
+  }
+  const inside = await make('改名验收甲', '改名验收甲里的', ['# 改名验收甲里的', '', '正文第一句。', ''].join('\n'), 'seed-dir-rename-a')
+
+  const rowOf = (name) =>
+    Array.from(rootNode().querySelectorAll('.dshgn_treeRow')).find((el) => {
+      const label = el.querySelector('.dshgn_treeName')
+      return label !== null && (label.textContent || '').trim() === name
+    })
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rowOf('改名验收甲') !== undefined, 8000, '左栏里出现新目录')
+
+  // 右键这一行，菜单里应该有一颗「改名」
+  rowOf('改名验收甲').dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+  const renameBtn = await waitFor(() => {
+    const menu = rootNode().querySelector('.dshgn_rowMenu')
+    if (menu === null) return null
+    const hit = Array.from(menu.querySelectorAll('.dshgn_rowBtn')).find((btn) => btn.title === '改名')
+    return hit === undefined ? null : hit
+  }, 4000, '目录行右键里应该有「改名」')
+  renameBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+
+  const input = await waitFor(() => rootNode().querySelector('.dshgn_treeNewInput'), 4000, '改名输入框出现')
+  // 预填的是整条路径，用户只改最后一段就够
+  assert.equal(input.value, '改名验收甲')
+  Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(input, '改名验收乙')
+  input.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(60)
+  input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+
+  await waitFor(() => rowOf('改名验收乙') !== undefined, 8000, '左栏里出现新目录名')
+  assert.equal(rowOf('改名验收甲'), undefined, '旧目录名不该还在')
+
+  const toastText = await waitFor(() => {
+    const node = window.document.querySelector('.dshgn_toast')
+    return node === null ? null : String(node.textContent || '')
+  })
+  assert.ok(toastText.includes('目录已改名'), '改完给一句提示，实际 ' + toastText)
+
+  // 笔记真的跟着搬过去了
+  const readAt = async (path) =>
+    realFetch(`${server.origin}/getnote/read?path=${encodeURIComponent(path)}`, {
+      headers: { 'x-getnote-token': server.token },
+    })
+  const movedPath = '改名验收乙/改名验收甲里的.md'
+  let movedOk = false
+  for (let i = 0; i < 30; i += 1) {
+    const res = await readAt(movedPath)
+    if (res.status === 200) {
+      const json = await res.json()
+      if (String(json.content || '').includes('正文第一句。')) movedOk = true
+      break
+    }
+    await sleep(100)
+  }
+  assert.equal(movedOk, true, '新位置应该读得到那一篇，正文不变')
+  const oldRes = await readAt(inside)
+  assert.notEqual(oldRes.status, 200, '旧位置不该还留着')
+})

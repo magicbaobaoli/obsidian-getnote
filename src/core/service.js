@@ -74,6 +74,7 @@ import {
   applyInlineTagEdit,
   removeDir,
   removeTag,
+  renameDir,
   renameTag,
   createDir,
   resolveConflict,
@@ -853,6 +854,24 @@ export function createHandler(config) {
     if (missing) throw Object.assign(new Error(`本地库目录不存在：${missing}`), { status: 404 })
     const result = await createDir(root, dir)
     send(res, 200, { ok: true, empty: true, ...result })
+  }
+
+  /**
+   * 目录改名（连同底下的笔记与子目录一起搬）。
+   *
+   * 和「批量移动」不同：那个是逐篇搬、可以部分成功；这里是一条 rename，
+   * 要么整棵子树过去了、要么一步都没动，所以不需要 failed 清单。
+   */
+  async function handleRenameDir(req, res) {
+    const body = await readJsonBody(req)
+    const from = String(body.from || body.dir || body.path || '').trim()
+    const to = String(body.to || body.name || '').trim()
+    if (from === '') throw Object.assign(new Error('需要 from（原目录路径）'), { status: 400 })
+    if (to === '') throw Object.assign(new Error('新目录名不能为空'), { status: 400 })
+    const { root, missing } = await currentRoot()
+    if (missing) throw Object.assign(new Error(`本地库目录不存在：${missing}`), { status: 404 })
+    const result = await renameDir(root, from, to)
+    send(res, 200, { ok: true, ...result })
   }
 
   /** 删除目录（只允许空目录，非空回 409 并告诉用户还有几篇）。 */
@@ -2414,6 +2433,7 @@ export function createHandler(config) {
         // 目录 / 标签增删（左栏右键菜单 + 「+」按钮）
         if (action === 'dir' && parts[2] === 'create') return await handleCreateDir(req, res)
         if (action === 'dir' && parts[2] === 'delete') return await handleDeleteDir(req, res)
+        if (action === 'dir' && parts[2] === 'rename') return await handleRenameDir(req, res)
         if (action === 'tag' && parts[2] === 'delete') return await handleDeleteTag(req, res)
         if (action === 'tag' && parts[2] === 'rename') return await handleRenameTag(req, res)
         // 待办勾选：只翻正文里那一个方框，其余原样

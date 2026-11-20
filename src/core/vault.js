@@ -10,6 +10,7 @@
  */
 import { readdir, readFile, writeFile, rename, mkdir, stat, rm, rmdir, realpath, copyFile } from './vfs.js'
 import { createHash, randomBytes } from 'node:crypto'
+import { moveHistoryEntries } from './history.js'
 import { basename, dirname, extname, join, posix, relative, resolve, sep } from 'node:path'
 
 const NOTE_EXT = '.md'
@@ -1681,6 +1682,57 @@ export async function removeDir(root, dirInput) {
   }
   invalidateScan(root)
   return { ok: true, path: rel }
+}
+
+/**
+ * 给一个目录改名（连同底下的笔记和子目录一起搬过去）。
+ *
+ * 目录名就是磁盘上的文件夹名，改名等于 `rename(旧, 新)`——一条系统调用搬走整棵子树，
+ * 不用逐篇挪、也不会出现「搬了一半」的中间状态。三处要拦：
+ * 1. 新名字为空、或和旧的一模一样：空名字没有意义，同名算成功但别白跑一趟。
+ * 2. 新名字撞上已存在的目录/文件：rename 在 Windows 上会直接覆盖同名空目录，
+ *    在别处会报 ENOTEMPTY，两种都不该由用户来猜，先 409 说清楚。
+ * 3. 新名字混进插件保留目录名（`.trash`、`.history` 等）：和 createDir 同款校验。
+ * 搬完把 `.history` 里对应的快照目录也搬过去，否则改完名字历史会像凭空消失。
+ */
+export async function renameDir(root, fromInput, toInput) {
+  const from = normalizeRel(fromInput)
+  const to = normalizeRel(toInput)
+  if (from === '') throw Object.assign(new Error('要改名的目录不能是库根'), { status: 400 })
+  if (to === '') throw Object.assign(new Error('新目录名不能为空'), { status: 400 })
+  if (from === to) return { ok: true, from, to, unchanged: true }
+  for (const segment of to.split('/')) {
+    if (IGNORED_DIRS.has(segment)) {
+      throw Object.assign(new Error(`「${segment}」是插件保留的目录名，换一个`), { status: 400 })
+    }
+  }
+  const { abs: srcAbs } = resolveInside(root, from)
+  let srcStat
+  try {
+    srcStat = await stat(srcAbs)
+  } catch {
+    throw Object.assign(new Error('这个目录不存在'), { status: 404 })
+  }
+  if (!srcStat.isDirectory()) throw Object.assign(new Error('这不是一个目录'), { status: 400 })
+  const { abs: dstAbs, rel: dstRel } = resolveInside(root, to, { create: true })
+  try {
+    await stat(dstAbs)
+    throw Object.assign(new Error(`「${dstRel}」已经存在，换一个名字`), { status: 409 })
+  } catch (error) {
+    if (error && error.status === 409) throw error
+  }
+  try {
+    await mkdir(dirname(dstAbs), { recursive: true })
+    await rename(srcAbs, dstAbs)
+  } catch (error) {
+    throw Object.assign(new Error(`改目录名失败：${error && error.message ? error.message : error}`), {
+      status: 500,
+    })
+  }
+  // 快照目录跟着走。搬不动不算失败（见 moveHistoryEntries 的注释）。
+  await moveHistoryEntries(root, from, to)
+  invalidateScan(root)
+  return { ok: true, from, to }
 }
 
 /**

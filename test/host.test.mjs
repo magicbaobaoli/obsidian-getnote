@@ -902,6 +902,36 @@ try {
   const rmRoot = await call('/dir/delete', postJson('/dir/delete', { dir: '' }))
   check('不能删除库根', rmRoot.status === 400, String(rmRoot.status))
 
+  // 目录改名：搬整棵子树（笔记 + 子目录），不是逐篇挪
+  await mkdir(join(vault, '改名甲', '改名甲子'), { recursive: true })
+  await writeFile(join(vault, '改名甲', '改名甲里的.md'), '# 改名甲里的\n\n正文。\n', 'utf8')
+  await writeFile(join(vault, '改名甲', '改名甲子', '深处.md'), '# 深处\n\n正文。\n', 'utf8')
+  const renamed = await jpost('/dir/rename', { from: '改名甲', to: '改名乙' })
+  check('目录改名成功', renamed.ok === true && renamed.to === '改名乙', JSON.stringify(renamed))
+  const movedNote = await readFile(join(vault, '改名乙', '改名甲里的.md'), 'utf8')
+  check('改名后笔记跟着过去了', /改名甲里的/.test(movedNote), movedNote.slice(0, 40))
+  const movedDeep = await readFile(join(vault, '改名乙', '改名甲子', '深处.md'), 'utf8')
+  check('改名后子目录也整棵过去了', /深处/.test(movedDeep), movedDeep.slice(0, 40))
+  let oldGone = false
+  try {
+    await stat(join(vault, '改名甲'))
+  } catch {
+    oldGone = true
+  }
+  check('改名后旧目录不在了', oldGone === true)
+  const clashDir = await call('/dir/rename', postJson('/dir/rename', { from: '改名乙', to: '随手记' }))
+  check('改名撞上已有目录回 409', clashDir.status === 409, String(clashDir.status))
+  const emptyTo = await call('/dir/rename', postJson('/dir/rename', { from: '改名乙', to: '  ' }))
+  check('改名空名字回 400', emptyTo.status === 400, String(emptyTo.status))
+  const noFrom = await call('/dir/rename', postJson('/dir/rename', {}))
+  check('改名缺 from 回 400', noFrom.status === 400, String(noFrom.status))
+  const noDir = await call('/dir/rename', postJson('/dir/rename', { from: '根本不存在的目录', to: '随便' }))
+  check('改不存在的目录回 404', noDir.status === 404, String(noDir.status))
+  const sameName = await jpost('/dir/rename', { from: '改名乙', to: '改名乙' })
+  check('改成同名算成功但不白跑', sameName.ok === true && sameName.unchanged === true, JSON.stringify(sameName))
+  const keptReserved = await call('/dir/rename', postJson('/dir/rename', { from: '改名乙', to: '.trash' }))
+  check('改名不能改到保留目录名', keptReserved.status === 400, String(keptReserved.status))
+
   // 删标签：从所有笔记里抹掉，但笔记本身不动
   const tagBefore = await jget('/list')
   const tagNotePath = tagBefore.entries.find((e) => (e.tags || []).indexOf('批量标签') >= 0)

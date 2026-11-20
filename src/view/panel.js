@@ -647,6 +647,7 @@ async function saveFile(url, filename) {
         'tree.menuRename': '改名',
         'tree.menuReveal': '在文件列表里定位',
         'tree.tagRenamed': '标签已改名',
+        'tree.dirRenamed': '目录已改名',
         'todo.toggle': '点一下勾掉',
         'todo.done': '已勾掉',
         'todo.undone': '已取消勾选',
@@ -1125,6 +1126,7 @@ async function saveFile(url, filename) {
         'tree.menuRename': 'Rename',
         'tree.menuReveal': 'Reveal in file explorer',
         'tree.tagRenamed': 'Tag renamed',
+        'tree.dirRenamed': 'Folder renamed',
         'todo.toggle': 'Click to tick off',
         'todo.done': 'Ticked off',
         'todo.undone': 'Unchecked',
@@ -1602,6 +1604,7 @@ async function saveFile(url, filename) {
         'tree.menuRename': 'Naam wijzigen',
         'tree.menuReveal': 'Toon in bestandsverkenner',
         'tree.tagRenamed': 'Tag hernoemd',
+        'tree.dirRenamed': 'Map hernoemd',
         'todo.toggle': 'Klik om af te vinken',
         'todo.done': 'Afgevinkt',
         'todo.undone': 'Vinkje verwijderd',
@@ -7734,6 +7737,27 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                 setError(err && err.message ? err.message : String(err))
               }
             },
+            onRenameDir: async (from, to) => {
+              try {
+                const json = await api('/dir/rename', {
+                  method: 'POST',
+                  headers: { 'content-type': 'application/json' },
+                  body: JSON.stringify({ from, to }),
+                })
+                // 正筛着这个目录的时候要跟着搬过去，否则改完名字列表会突然空掉。
+                if (activeDir === from) setActiveDir(to)
+                // 正开着的那篇如果在这个目录底下，路径也换了，笔记头得跟着改，
+                // 否则再按保存会写回旧位置（旧目录已经被搬走了）。
+                const currentPath = current !== null && current !== undefined ? String(current.path || '') : ''
+                if (currentPath === from || currentPath.startsWith(`${from}/`)) {
+                  setCurrent({ ...current, path: `${to}${currentPath.slice(from.length)}` })
+                }
+                showToast(t('tree.dirRenamed'))
+                await refresh()
+              } catch (err) {
+                setError(err && err.message ? err.message : String(err))
+              }
+            },
             currentNoteId: current !== null && current.noteId ? current.noteId : null,
             heatmap: status !== null && status.heatmap ? status.heatmap : null,
           }),
@@ -12260,6 +12284,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         onDeleteTag,
         onCreateTag,
         onRenameTag,
+        onRenameDir,
         heatmap,
         currentNoteId,
         onNarrowPick,
@@ -12480,6 +12505,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         }
       }
 
+      // 改名分两路：标签改名改的是几十篇笔记的 frontmatter，目录改名是搬一整棵子树。
+      // 界面上的输入行长得一样（都是「在这里改个名字」），但按 kind 派给不同的回调，
+      // 免得在 runRename 里再猜一次这次改的是什么。
       const runRename = async () => {
         if (renaming === null) return
         const to = String(renaming.to || '').trim()
@@ -12489,7 +12517,11 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         }
         setBusy(true)
         try {
-          if (typeof onRenameTag === 'function') await onRenameTag(renaming.from, to)
+          if (renaming.kind === 'dir') {
+            if (typeof onRenameDir === 'function') await onRenameDir(renaming.from, to)
+          } else if (typeof onRenameTag === 'function') {
+            await onRenameTag(renaming.from, to)
+          }
           setRenaming(null)
         } finally {
           setBusy(false)
@@ -12506,9 +12538,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         return h(
           'span',
           { className: 'dshgn_rowMenu', onClick: (event) => event.stopPropagation() },
-          // 标签多一个「改名」。目录不需要：目录名就是磁盘上的文件夹名，
-          // 改名等于移动文件，风险比改个标签大得多，那是另一个功能。
-          target.kind === 'tag' && typeof onRenameTag === 'function'
+          // 「改名」两种行都有：标签改名是改几十篇的 frontmatter，目录改名是搬一整棵
+          // 子树（连同底下的笔记、子目录、版本历史），后端各有一条路，界面同一颗按钮。
+          (target.kind === 'tag' && typeof onRenameTag === 'function') ||
+          (target.kind === 'dir' && typeof onRenameDir === 'function')
             ? h(
                 'button',
                 {
@@ -12516,7 +12549,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                   className: 'dshgn_rowBtn',
                   title: t('tree.menuRename'),
                   onClick: () => {
-                    setRenaming({ from: target.name, to: target.name })
+                    setRenaming({ kind: target.kind, from: target.name, to: target.name })
                     setMenu(null)
                   },
                 },
@@ -12666,7 +12699,36 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             )
           : null,
         flat.map((node) =>
-          h(
+          // 正在改名的那一行整行换成输入框：和标签那边同一套做法——名字就写在
+          // 它原来待的位置，用户不用在「哪一行」和「输入框在哪」之间对一次眼。
+          renaming !== null && renaming.kind === 'dir' && renaming.from === node.path
+            ? h(
+                'span',
+                { key: node.path, className: 'dshgn_treeNew' },
+                h('input', {
+                  className: 'dshgn_treeNewInput',
+                  type: 'text',
+                  autoFocus: true,
+                  value: renaming.to,
+                  placeholder: node.name,
+                  onChange: (event) => setRenaming({ kind: 'dir', from: node.path, to: event.target.value }),
+                  onKeyDown: (event) => {
+                    if (event.key === 'Enter') void runRename()
+                    if (event.key === 'Escape') setRenaming(null)
+                  },
+                }),
+                h(
+                  'button',
+                  { type: 'button', className: 'dshgn_treeNewOk', onClick: () => void runRename(), disabled: busy },
+                  h(Icon, { name: 'check', size: 12 }),
+                ),
+                h(
+                  'button',
+                  { type: 'button', className: 'dshgn_treeNewCancel', onClick: () => setRenaming(null), disabled: busy },
+                  h(Icon, { name: 'close', size: 12 }),
+                ),
+              )
+            : h(
             'div',
             {
               key: node.path,
