@@ -3584,3 +3584,83 @@ test('块引用指向的是一段而不是一节，记号也不露在正文里',
   assert.equal(stripBlockId('一段话 ^abc123'), '一段话')
   assert.equal(stripBlockId('一段话'), '一段话')
 })
+
+test('脚注正文里只留一个上标，注解收在篇尾', async () => {
+  // 宿主把 [^1]: 注解 收在篇尾渲染成一小块注解列表，正文里只留上标。
+  // 面板原来把定义行当普通段落原样显示，读者会看到一串 [^1]: ... 混在正文中间。
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const backBtn = window.document.querySelector('.dshgn_noteBack')
+  if (backBtn) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    try {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+  }
+
+  const body = [
+    '# 脚注验收',
+    '',
+    '正文第一句，带一个脚注[^1]，后面还有字。',
+    '',
+    '第二条也带[^note-b]。',
+    '',
+    '[^1]: 这是第一条注解的内容。',
+    '[^note-b]: 这是第二条注解，',
+    '  换了一行还接着写。',
+  ].join('\n')
+  const res = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({ dir: '随手记', title: '脚注验收', content: body, withDatePrefix: false, requestId: 'seed-footnote' }),
+  })
+  assert.equal((await res.json()).path, '随手记/脚注验收.md')
+
+  await clickTab('笔记')
+  Array.from(window.document.querySelectorAll('.dshgn_iconBtn'))
+    .find((el) => el.title === '刷新')
+    .dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+  const card = await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) =>
+        (el.textContent || '').includes('脚注验收'),
+      ) || null,
+    8000,
+    '列表里应该有这一篇',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const note = await waitFor(
+    () => {
+      const el = window.document.querySelector('.dshgn_note')
+      return el !== null && (el.textContent || '').includes('正文第一句') ? el : null
+    },
+    8000,
+    '正文渲染出来',
+  )
+
+  const text = note.textContent || ''
+  assert.ok(!text.includes('[^1]'), '引用记号本身不该露出来')
+  assert.ok(!text.includes('[^note-b]'), '带名字的引用记号也不该露出来')
+
+  const refs = Array.from(note.querySelectorAll('.dshgn_footRef'))
+  assert.deepEqual(refs.map((el) => el.textContent), ['1', 'note-b'])
+  assert.equal(refs[0].getAttribute('data-footnote-ref'), '1')
+
+  const foots = Array.from(note.querySelectorAll('.dshgn_footnote'))
+  assert.deepEqual(foots.map((el) => el.getAttribute('data-footnote-id')), ['1', 'note-b'])
+  assert.ok((foots[0].textContent || '').includes('这是第一条注解的内容'))
+  assert.ok(
+    (foots[1].textContent || '').includes('换了一行还接着写'),
+    '缩进的续行要接在注解后面：' + foots[1].textContent,
+  )
+
+  const scroller = window.document.querySelector('.dshgn_scroll')
+  const { scrollToFootnote } = panel.__internals
+  assert.equal(scrollToFootnote(scroller, '1'), true)
+  assert.equal(scrollToFootnote(scroller, 'note-b'), true)
+  assert.equal(scrollToFootnote(scroller, '没有这条'), false)
+  assert.equal(scrollToFootnote(scroller, ''), false)
+})

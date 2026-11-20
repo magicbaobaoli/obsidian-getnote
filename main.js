@@ -8333,6 +8333,7 @@ var LEX = {
     "note.wikilinkMissing": "\u5E93\u91CC\u627E\u4E0D\u5230\u300C{name}\u300D\u8FD9\u7BC7\u7B14\u8BB0",
     "note.anchorMissing": "\u8FD9\u4E00\u7BC7\u91CC\u6CA1\u6709\u300C{name}\u300D\u8FD9\u4E00\u8282",
     "note.blockRef": "\u672C\u9875\u67D0\u4E00\u6BB5",
+    "note.footnote": "\u8DF3\u5230\u8FD9\u6761\u811A\u6CE8",
     "note.openEmbed": "\u6253\u5F00\u8FD9\u4E00\u7BC7",
     "note.embedBroken": "\u8FD9\u4E00\u7BC7\u6CA1\u8BFB\u51FA\u6765",
     "callout.expand": "\u5C55\u5F00",
@@ -8740,6 +8741,7 @@ var LEX = {
     "note.wikilinkMissing": 'No note named "{name}" in this vault',
     "note.anchorMissing": 'No section called "{name}" in this note',
     "note.blockRef": "A paragraph on this page",
+    "note.footnote": "Jump to this footnote",
     "note.openEmbed": "Open this note",
     "note.embedBroken": "Could not read this note",
     "callout.expand": "Expand",
@@ -9147,6 +9149,7 @@ var LEX = {
     "note.wikilinkMissing": "Geen notitie met de naam \u2018{name}\u2019 in deze map",
     "note.anchorMissing": "Geen kop met de naam \u2018{name}\u2019 in deze notitie",
     "note.blockRef": "Een alinea op deze pagina",
+    "note.footnote": "Naar deze voetnoot",
     "note.openEmbed": "Open deze notitie",
     "note.embedBroken": "Deze notitie kon niet gelezen worden",
     "callout.expand": "Uitvouwen",
@@ -9765,7 +9768,7 @@ function Icon(props) {
 function renderInline(text, keyPrefix, options) {
   const opts = options || {};
   const nodes = [];
-  const pattern = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\n]+\*)|(~~[^~\n]+~~)|(==[^=\n]+==)|(%%[\s\S]*?%%)|(!?\[\[[^\]\n]+\]\])|(\[[^\]\n]*\]\([^)\s]+\))|(https?:\/\/[^\s)]+)/g;
+  const pattern = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\n]+\*)|(~~[^~\n]+~~)|(==[^=\n]+==)|(%%[\s\S]*?%%)|(!?\[\[[^\]\n]+\]\])|(\[[^\]\n]*\]\([^)\s]+\))|(https?:\/\/[^\s)]+)|(\[\^[^\]\n]+\])/g;
   let last = 0;
   let match;
   let seq = 0;
@@ -9837,6 +9840,24 @@ function renderInline(text, keyPrefix, options) {
           )
         );
       }
+    } else if (token.startsWith("[^")) {
+      const footId = token.slice(2, -1).trim();
+      nodes.push(
+        h4(
+          "sup",
+          {
+            key,
+            className: "dshgn_footRef",
+            "data-footnote-ref": footId,
+            title: getT()("note.footnote"),
+            onClick: (event) => {
+              const box = event && event.currentTarget ? event.currentTarget.closest(".dshgn_md") : null;
+              if (box) scrollToFootnote(box, footId);
+            }
+          },
+          footId
+        )
+      );
     } else if (token.startsWith("[")) {
       const split = token.indexOf("](");
       const label = token.slice(1, split);
@@ -9926,6 +9947,20 @@ function scrollToBlock(box, id) {
   let hit = null;
   try {
     hit = host.querySelector('[data-block-id="' + want + '"]');
+  } catch (error2) {
+    hit = null;
+  }
+  if (!hit) return false;
+  return scrollHostTo(host, hit);
+}
+function scrollToFootnote(box, id) {
+  const want = String(id || "").trim();
+  if (want === "") return false;
+  const host = scrollHostOf(box);
+  if (!host) return false;
+  let hit = null;
+  try {
+    hit = host.querySelector('[data-footnote-id="' + want + '"]');
   } catch (error2) {
     hit = null;
   }
@@ -10203,6 +10238,7 @@ function renderBlocks(markdown, options) {
   let index = 0;
   let key = 0;
   const todoCounter = typeof opts.onToggleTodo === "function" ? { n: 0 } : null;
+  const footnotes = [];
   while (index < lines.length) {
     const line = lines[index];
     const trimmed = line.trim();
@@ -10236,6 +10272,18 @@ function renderBlocks(markdown, options) {
       index += 1;
       while (index < lines.length && lines[index].trim() !== "%%") index += 1;
       index += 1;
+      continue;
+    }
+    const footDef = /^\[\^([^\]\n]+)\]:\s?(.*)$/.exec(trimmed);
+    if (footDef) {
+      const footId = footDef[1].trim();
+      const footBody = [footDef[2]];
+      index += 1;
+      while (index < lines.length && /^\s{2,}\S/.test(lines[index])) {
+        footBody.push(lines[index].trim());
+        index += 1;
+      }
+      footnotes.push({ id: footId, text: footBody.join(" ").trim() });
       continue;
     }
     const heading = /^(#{1,6})\s+(.*)$/.exec(trimmed);
@@ -10419,6 +10467,22 @@ function renderBlocks(markdown, options) {
         "p",
         { key: `b${key++}`, className: "dshgn_p", "data-block-id": paraId === "" ? void 0 : paraId },
         renderInline(stripBlockId(paraText), `p${key}`, opts)
+      )
+    );
+  }
+  if (footnotes.length > 0) {
+    blocks.push(
+      h4(
+        "div",
+        { key: `b${key++}`, className: "dshgn_footnotes" },
+        footnotes.map(
+          (foot) => h4(
+            "div",
+            { key: foot.id, className: "dshgn_footnote", "data-footnote-id": foot.id },
+            h4("span", { className: "dshgn_footnoteNo" }, foot.id),
+            h4("span", { className: "dshgn_footnoteText" }, renderInline(foot.text, `fn-${foot.id}`, opts))
+          )
+        )
       )
     );
   }
@@ -10891,6 +10955,14 @@ var CSS = `
   padding-left:8px;margin-left:-8px}
 .dshgn_quote{margin:10px 0;padding:2px 0 2px 12px;border-left:2px solid var(--dsw-alias-border-l2);
   color:var(--dsw-alias-label-secondary)}
+/* \u811A\u6CE8\uFF1A\u6B63\u6587\u91CC\u7559\u4E00\u4E2A\u4E0A\u6807\uFF0C\u5B9A\u4E49\u6536\u5728\u7BC7\u5C3E\u4E00\u5C0F\u5757\u91CC\u3002
+   \u5B9A\u4E49\u884C\u539F\u6837\u663E\u793A\u7684\u8BDD\uFF0C\u8BFB\u8005\u4F1A\u770B\u5230\u4E00\u4E32 [^1]: ... \u6DF7\u5728\u6B63\u6587\u4E2D\u95F4\u3002 */
+.dshgn_footRef{font-size:9px;line-height:1;vertical-align:super;color:var(--dsw-alias-brand-primary);cursor:pointer;padding:0 1px}
+.dshgn_footRef:hover{text-decoration:underline}
+.dshgn_footnotes{margin:14px 0 0;padding-top:8px;border-top:0.5px solid var(--dsw-alias-border-l1);display:flex;flex-direction:column;gap:4px}
+.dshgn_footnote{display:flex;gap:6px;font-size:11px;line-height:1.6;color:var(--dsw-alias-label-secondary)}
+.dshgn_footnoteNo{flex:0 0 auto;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}
+.dshgn_footnoteText{flex:1 1 auto;min-width:0;word-break:break-word}
 /* callout\uFF1A\u8DDF\u5BBF\u4E3B\u4E00\u6837\u300C\u5DE6\u7AD6\u7EBF + \u6DE1\u5E95 + \u4E00\u884C\u6807\u9898\u300D\u3002\u7C7B\u578B\u53EA\u5F71\u54CD\u7AD6\u7EBF\u4E0E\u6807\u9898\u7684\u989C\u8272\uFF0C
    \u6B63\u6587\u4E00\u5F8B\u7528\u5E38\u89C4\u8272\u2014\u2014\u6574\u5757\u67D3\u6210\u8B66\u544A\u8272\u4F1A\u8BA9\u4EBA\u4EE5\u4E3A\u7B14\u8BB0\u672C\u8EAB\u51FA\u9519\u4E86\u3002 */
 .dshgn_callout{margin:10px 0;padding:7px 11px;border-radius:0 8px 8px 0;

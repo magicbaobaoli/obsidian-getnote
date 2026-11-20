@@ -702,6 +702,7 @@ async function saveFile(url, filename) {
         'note.wikilinkMissing': '库里找不到「{name}」这篇笔记',
         'note.anchorMissing': '这一篇里没有「{name}」这一节',
         'note.blockRef': '本页某一段',
+    'note.footnote': '跳到这条脚注',
         'note.openEmbed': '打开这一篇',
         'note.embedBroken': '这一篇没读出来',
         'callout.expand': '展开',
@@ -1113,6 +1114,7 @@ async function saveFile(url, filename) {
         'note.wikilinkMissing': 'No note named "{name}" in this vault',
         'note.anchorMissing': 'No section called "{name}" in this note',
         'note.blockRef': 'A paragraph on this page',
+    'note.footnote': 'Jump to this footnote',
         'note.openEmbed': 'Open this note',
         'note.embedBroken': 'Could not read this note',
         'callout.expand': 'Expand',
@@ -1523,6 +1525,7 @@ async function saveFile(url, filename) {
         'note.wikilinkMissing': 'Geen notitie met de naam ‘{name}’ in deze map',
         'note.anchorMissing': 'Geen kop met de naam ‘{name}’ in deze notitie',
         'note.blockRef': 'Een alinea op deze pagina',
+    'note.footnote': 'Naar deze voetnoot',
         'note.openEmbed': 'Open deze notitie',
         'note.embedBroken': 'Deze notitie kon niet gelezen worden',
         'callout.expand': 'Uitvouwen',
@@ -2319,7 +2322,7 @@ async function saveFile(url, filename) {
       // 删除线和高亮是 Obsidian 自己的扩展，标准 Markdown 里没有，但用户天天在写；
       // 不认的话它们会连标记符号一起原样露在界面上，看起来像正文写错了。
       const pattern =
-        /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\n]+\*)|(~~[^~\n]+~~)|(==[^=\n]+==)|(%%[\s\S]*?%%)|(!?\[\[[^\]\n]+\]\])|(\[[^\]\n]*\]\([^)\s]+\))|(https?:\/\/[^\s)]+)/g
+        /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\n]+\*)|(~~[^~\n]+~~)|(==[^=\n]+==)|(%%[\s\S]*?%%)|(!?\[\[[^\]\n]+\]\])|(\[[^\]\n]*\]\([^)\s]+\))|(https?:\/\/[^\s)]+)|(\[\^[^\]\n]+\])/g
       let last = 0
       let match
       let seq = 0
@@ -2412,6 +2415,26 @@ async function saveFile(url, filename) {
               ),
             )
           }
+        } else if (token.startsWith('[^')) {
+          // 脚注引用 [^1]：宿主的渲染器会把它变成上标并连到篇尾的注解，
+          // 我们原来把 [^1] 这串字符原样留在正文里，看着像写错了。
+          const footId = token.slice(2, -1).trim()
+          nodes.push(
+            h(
+              'sup',
+              {
+                key,
+                className: 'dshgn_footRef',
+                'data-footnote-ref': footId,
+                title: getT()('note.footnote'),
+                onClick: (event) => {
+                  const box = event && event.currentTarget ? event.currentTarget.closest('.dshgn_md') : null
+                  if (box) scrollToFootnote(box, footId)
+                },
+              },
+              footId,
+            ),
+          )
         } else if (token.startsWith('[')) {
           const split = token.indexOf('](')
           const label = token.slice(1, split)
@@ -2574,6 +2597,28 @@ async function saveFile(url, filename) {
       let hit = null
       try {
         hit = host.querySelector('[data-block-id="' + want + '"]')
+      } catch (error) {
+        hit = null
+      }
+      if (!hit) return false
+      return scrollHostTo(host, hit)
+    }
+
+    /**
+     * 滚到篇尾那一条脚注。
+     *
+     * 脚注定义在 `[^id]: 注解正文` 里，渲染时给那一块挂 `data-footnote-id`。
+     * 找不到就老实返回 false——脚注写了一半（有引用没有定义）是常见的手滑，
+     * 那种时候弹一句「这一篇里没有这条脚注」比什么都不说更吵。
+     */
+    function scrollToFootnote(box, id) {
+      const want = String(id || '').trim()
+      if (want === '') return false
+      const host = scrollHostOf(box)
+      if (!host) return false
+      let hit = null
+      try {
+        hit = host.querySelector('[data-footnote-id="' + want + '"]')
       } catch (error) {
         hit = null
       }
@@ -2987,6 +3032,10 @@ async function saveFile(url, filename) {
       // 那一行的开头是 `>`，匹配不上 `^(\s*)([-*+])\s+\[`；这里的递归调用也不传
       // opts，所以既不计数也不可点），口径天然对齐。
       const todoCounter = typeof opts.onToggleTodo === 'function' ? { n: 0 } : null
+      // 脚注：`[^id]: 注解正文` 是定义，`[^id]` 是引用。宿主把定义收在篇尾
+      // 渲染成一小块注解列表，正文里只留一个上标。我们原来把定义行当普通段落
+      // 原样显示，读者会看到一串 `[^1]: ...` 混在正文中间。
+      const footnotes = []
 
       while (index < lines.length) {
         const line = lines[index]
@@ -3033,6 +3082,20 @@ async function saveFile(url, filename) {
           index += 1
           while (index < lines.length && lines[index].trim() !== '%%') index += 1
           index += 1
+          continue
+        }
+
+        // 脚注定义：`[^id]: 注解正文`，缩进的续行也算这条注解的一部分
+        const footDef = /^\[\^([^\]\n]+)\]:\s?(.*)$/.exec(trimmed)
+        if (footDef) {
+          const footId = footDef[1].trim()
+          const footBody = [footDef[2]]
+          index += 1
+          while (index < lines.length && /^\s{2,}\S/.test(lines[index])) {
+            footBody.push(lines[index].trim())
+            index += 1
+          }
+          footnotes.push({ id: footId, text: footBody.join(' ').trim() })
           continue
         }
 
@@ -3253,6 +3316,24 @@ async function saveFile(url, filename) {
             'p',
             { key: `b${key++}`, className: 'dshgn_p', 'data-block-id': paraId === '' ? undefined : paraId },
             renderInline(stripBlockId(paraText), `p${key}`, opts),
+          ),
+        )
+      }
+
+      // 篇尾的注解列表。宿主也是收在正文最后，编号跟着定义走的顺序。
+      if (footnotes.length > 0) {
+        blocks.push(
+          h(
+            'div',
+            { key: `b${key++}`, className: 'dshgn_footnotes' },
+            footnotes.map((foot) =>
+              h(
+                'div',
+                { key: foot.id, className: 'dshgn_footnote', 'data-footnote-id': foot.id },
+                h('span', { className: 'dshgn_footnoteNo' }, foot.id),
+                h('span', { className: 'dshgn_footnoteText' }, renderInline(foot.text, `fn-${foot.id}`, opts)),
+              ),
+            ),
           ),
         )
       }
@@ -3729,6 +3810,14 @@ async function saveFile(url, filename) {
   padding-left:8px;margin-left:-8px}
 .dshgn_quote{margin:10px 0;padding:2px 0 2px 12px;border-left:2px solid var(--dsw-alias-border-l2);
   color:var(--dsw-alias-label-secondary)}
+/* 脚注：正文里留一个上标，定义收在篇尾一小块里。
+   定义行原样显示的话，读者会看到一串 [^1]: ... 混在正文中间。 */
+.dshgn_footRef{font-size:9px;line-height:1;vertical-align:super;color:var(--dsw-alias-brand-primary);cursor:pointer;padding:0 1px}
+.dshgn_footRef:hover{text-decoration:underline}
+.dshgn_footnotes{margin:14px 0 0;padding-top:8px;border-top:0.5px solid var(--dsw-alias-border-l1);display:flex;flex-direction:column;gap:4px}
+.dshgn_footnote{display:flex;gap:6px;font-size:11px;line-height:1.6;color:var(--dsw-alias-label-secondary)}
+.dshgn_footnoteNo{flex:0 0 auto;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}
+.dshgn_footnoteText{flex:1 1 auto;min-width:0;word-break:break-word}
 /* callout：跟宿主一样「左竖线 + 淡底 + 一行标题」。类型只影响竖线与标题的颜色，
    正文一律用常规色——整块染成警告色会让人以为笔记本身出错了。 */
 .dshgn_callout{margin:10px 0;padding:7px 11px;border-radius:0 8px 8px 0;
@@ -11793,5 +11882,5 @@ export const __internals = {
   themeVars, parseHex, rgbToHsl, hslToHex, ConflictPane, ArchiveCard, CardPane,
   TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale,
   reportSync, dailyTemplateOf, frontmatterText, isTagKey, FollowCard, parseTable, countWords,
-  isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock,
+  isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote,
 }
