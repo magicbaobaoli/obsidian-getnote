@@ -10059,6 +10059,16 @@ function renderInline(text, keyPrefix, options) {
   let last = 0;
   let match;
   let seq = 0;
+  const deadLink = (name) => {
+    const wanted = String(name || "").trim();
+    if (wanted === "") return false;
+    if (typeof opts.resolveNote !== "function") return false;
+    try {
+      return opts.resolveNote(wanted) === "";
+    } catch {
+      return false;
+    }
+  };
   while ((match = pattern.exec(text)) !== null) {
     if (match.index > last) nodes.push(text.slice(last, match.index));
     const token = match[0];
@@ -10106,13 +10116,15 @@ function renderInline(text, keyPrefix, options) {
         const blockLevel = embedded !== null && embedded !== void 0 && embedded.type === NoteEmbed;
         nodes.push(blockLevel ? embedded : h4("span", { key, className: "dshgn_embed" }, embedded));
       } else {
+        const dead = deadLink(target);
         nodes.push(
           h4(
             "button",
             {
               key,
               type: "button",
-              className: "dshgn_wikilink",
+              className: "dshgn_wikilink" + (dead ? " dshgn_wikilinkDead" : ""),
+              title: dead ? getT()("note.wikilinkMissing").replace("{name}", target) : void 0,
               // 双链在 Obsidian 里是跳转。这里没有 Obsidian 的解析器，尽力而为：
               // 有完整路径就按路径打开，只写标题就在当前库里按标题/文件名找。
               onClick: () => {
@@ -10151,13 +10163,15 @@ function renderInline(text, keyPrefix, options) {
       const href = token.slice(split + 2, -1);
       const inner = typeof opts.onOpenWikiLink === "function" ? markdownLinkTarget(href) : null;
       if (inner !== null) {
+        const dead = deadLink(inner.target);
         nodes.push(
           h4(
             "button",
             {
               key,
               type: "button",
-              className: "dshgn_wikilink",
+              className: "dshgn_wikilink" + (dead ? " dshgn_wikilinkDead" : ""),
+              title: dead ? getT()("note.wikilinkMissing").replace("{name}", inner.target) : void 0,
               onClick: () => opts.onOpenWikiLink(inner.target, inner.anchor)
             },
             label === "" ? inner.anchor === "" ? inner.target : inner.anchor : label
@@ -12129,6 +12143,10 @@ var CSS = `
   color:var(--dsw-alias-brand-primary);cursor:pointer;text-decoration:none;
   border-bottom:0.5px solid currentColor}
 .dshgn_wikilink:hover{color:var(--dsw-alias-brand-primary);border-bottom-color:transparent}
+/* \u6307\u5411\u8FD8\u4E0D\u5B58\u5728\u7684\u7B14\u8BB0\uFF1A\u5BBF\u4E3B\u91CC\u4E5F\u662F\u6697\u4E00\u6863 + \u865A\u4E0B\u5212\u7EBF\uFF0C\u4E00\u773C\u5206\u5F97\u51FA\u54EA\u4E9B\u8FD8\u6CA1\u5199\u3002
+   \u53EA\u6539\u5916\u89C2\uFF0C\u70B9\u4E86\u4ECD\u4F1A\u8D70\u539F\u6765\u90A3\u6761\u8DEF\u62A5\u4E00\u53E5\u300C\u5E93\u91CC\u627E\u4E0D\u5230\u300D\u3002 */
+.dshgn_wikilinkDead{color:var(--dsw-alias-label-tertiary);border-bottom-style:dashed}
+.dshgn_wikilinkDead:hover{color:var(--dsw-alias-label-secondary);border-bottom-color:currentColor}
 /* \u6B63\u6587\u91CC\u7684 #\u6807\u7B7E\uFF1A\u5F62\u72B6\u8DDF\u7B14\u8BB0\u5934\u5C5E\u6027\u533A\u90A3\u51E0\u9897\u80F6\u56CA\u4E00\u81F4\uFF0C\u8BA9\u4EBA\u4E00\u773C\u770B\u51FA\u300C\u8FD9\u662F\u6807\u7B7E\uFF0C
    \u4E0D\u662F\u6B63\u6587\u91CC\u7684\u4E00\u4E2A\u4E95\u53F7\u300D\u3002span \u4E0E button \u5171\u7528\u8FD9\u5957\u6837\u5F0F\uFF0C\u524D\u8005\u53EA\u4E0A\u8272\u3002 */
 .dshgn_inlineTag{display:inline;padding:0 4px;margin:0 1px;border:0;border-radius:6px;

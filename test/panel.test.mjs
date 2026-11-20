@@ -7542,3 +7542,136 @@ test('笔记头那行路径点一下就请宿主在文件列表里定位，没�
 
   panel.setRevealInVault(null)
 })
+
+/**
+ * 指向还不存在的笔记的双链要看得出来。
+ *
+ * 一篇笔记里十几个双链，原来它们和真链接长得一模一样，点下去才知道哪个是空的。
+ * 宿主里这种链接是暗一档 + 虚下划线；这里按同一套判定给外观，点了仍走原来那条路。
+ */
+test('指向还不存在的笔记的双链暗一档、悬停说明白，真链接不受影响', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+  await clickTab('笔记')
+
+  // ── 纯渲染：认得出来的亮着，认不出来的暗下去 ──────────────────────────
+  const { renderBlocks } = panel.__internals
+  const walk = (list, out) => {
+    list.forEach((node) => {
+      if (node === null || typeof node !== 'object') return
+      out.push(node)
+      const kids = node.props && node.props.children
+      if (Array.isArray(kids)) walk(kids, out)
+      else if (kids) walk([kids], out)
+    })
+    return out
+  }
+  const linksOf = (nodes) =>
+    walk(nodes, []).filter(
+      (node) => node.type === 'button' && String(node.props.className || '').includes('dshgn_wikilink'),
+    )
+  const resolve = (name) => (name === '已经写过的那一篇' ? '随手记/已经写过的那一篇.md' : '')
+  const nodes = renderBlocks('见 [[已经写过的那一篇]] 与 [[还没写的那一篇]]，还有 [方括号的那个](还没写的那一篇.md)。', {
+    onOpenWikiLink: () => {},
+    resolveNote: resolve,
+  })
+  const buttons = linksOf(nodes)
+  assert.equal(buttons.length, 3, '三条链接都该渲染成可点的按钮，实际 ' + buttons.length)
+  const alive = buttons.find((node) => String(node.props.children) === '已经写过的那一篇')
+  const deadWiki = buttons.find((node) => String(node.props.children) === '还没写的那一篇')
+  const deadSquare = buttons.find((node) => String(node.props.children) === '方括号的那个')
+  assert.ok(alive !== undefined && deadWiki !== undefined && deadSquare !== undefined, '三条都找得到')
+  assert.equal(String(alive.props.className).includes('dshgn_wikilinkDead'), false, '写得出的那篇不该暗')
+  assert.equal(alive.props.title, undefined, '写得出的那篇不需要解释')
+  assert.equal(String(deadWiki.props.className).includes('dshgn_wikilinkDead'), true, '还不存在的那篇该暗下去')
+  assert.ok(
+    String(deadWiki.props.title || '').includes('还没写的那一篇'),
+    '悬停要说清是哪一篇找不到，实际 ' + deadWiki.props.title,
+  )
+  assert.equal(String(deadSquare.props.className).includes('dshgn_wikilinkDead'), true, '方括号写法也按同一套判定')
+  // 没给解析函数时一律不暗：判断不了就别乱标
+  const plain = renderBlocks('见 [[还没写的那一篇]]', { onOpenWikiLink: () => {} })
+  assert.equal(String(linksOf(plain)[0].props.className).includes('dshgn_wikilinkDead'), false, '没接上解析函数时不标暗')
+
+  // ── 真渲染：库里只有其中一篇，界面上只暗那一条 ────────────────────────
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+  const existing = await post('/getnote/create', {
+    dir: '随手记',
+    title: '死链验收-已经写过',
+    content: ['# 死链验收-已经写过', '', '这一篇真的存在。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-dead-link-target',
+  })
+  const source = await post('/getnote/create', {
+    dir: '随手记',
+    title: '死链验收-引用方',
+    content: ['# 死链验收-引用方', '', '这里提到 [[死链验收-已经写过]] 与 [[死链验收-根本没写过]]。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-dead-link-source',
+  })
+  assert.ok(existing.path !== undefined && source.path !== undefined, '两篇都建好了')
+
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox !== null) {
+    const setInput = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setInput.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(300)
+  }
+  const allRow = Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+    const label = el.querySelector('.dshgn_treeName')
+    return label !== null && (label.textContent || '').trim() === '全部笔记'
+  })
+  if (allRow !== undefined) {
+    allRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+
+  const cardOf = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === source.path) || null
+  const card = await waitFor(cardOf, 8000, '引用方那一篇')
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 8000, '打开引用方')
+  const bodyLinks = await waitFor(
+    () => {
+      const list = Array.from(window.document.querySelectorAll('.dshgn_md .dshgn_wikilink'))
+      return list.length >= 2 ? list : null
+    },
+    8000,
+    '正文里的两条双链',
+  )
+  const liveBtn = bodyLinks.find((el) => (el.textContent || '').trim() === '死链验收-已经写过')
+  const deadBtn = bodyLinks.find((el) => (el.textContent || '').trim() === '死链验收-根本没写过')
+  assert.ok(liveBtn !== undefined && deadBtn !== undefined, '两条都摆出来了')
+  assert.equal(liveBtn.className.includes('dshgn_wikilinkDead'), false, '库里有的那篇不该暗')
+  assert.equal(deadBtn.className.includes('dshgn_wikilinkDead'), true, '库里没有的那篇该暗下去')
+  assert.ok(
+    String(deadBtn.getAttribute('title') || '').includes('死链验收-根本没写过'),
+    '悬停要说清是哪一篇找不到，实际 ' + deadBtn.getAttribute('title'),
+  )
+
+  // 点它仍然会明说一句，而不是什么都不发生
+  deadBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(
+    () => {
+      const box = window.document.querySelector('.dshgn_error')
+      return box !== null && String(box.textContent || '').includes('找不到')
+    },
+    5000,
+    '点暗掉的双链也要明说一句',
+  )
+
+  window.document.querySelector('.dshgn_noteBack').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 8000, '退回列表')
+})

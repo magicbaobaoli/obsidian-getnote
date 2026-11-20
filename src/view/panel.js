@@ -2547,6 +2547,20 @@ async function saveFile(url, filename) {
       let last = 0
       let match
       let seq = 0
+      // 指向一篇不存在笔记的双链：宿主里显示成「未创建的链接」（暗一档、虚下划线），
+      // 一眼就能看出哪些还没写。面板原来和真链接长得一模一样，点下去才报「库里
+      // 找不到」——一篇笔记里十几个双链，得挨个点才知道哪个是空的。
+      // 判定口径与「嵌入那一篇」共用 resolveNote，不另起一套规则。
+      const deadLink = (name) => {
+        const wanted = String(name || '').trim()
+        if (wanted === '') return false
+        if (typeof opts.resolveNote !== 'function') return false
+        try {
+          return opts.resolveNote(wanted) === ''
+        } catch {
+          return false
+        }
+      }
       while ((match = pattern.exec(text)) !== null) {
         if (match.index > last) nodes.push(text.slice(last, match.index))
         const token = match[0]
@@ -2606,13 +2620,17 @@ async function saveFile(url, filename) {
             const blockLevel = embedded !== null && embedded !== undefined && embedded.type === NoteEmbed
             nodes.push(blockLevel ? embedded : h('span', { key, className: 'dshgn_embed' }, embedded))
           } else {
+            // 解析不出来时只改外观与悬停说明，点下去仍走原来那条路（报一句
+            // 「库里找不到」）——点一下就知道为什么暗着，比彻底不给点更清楚。
+            const dead = deadLink(target)
             nodes.push(
               h(
                 'button',
                 {
                   key,
                   type: 'button',
-                  className: 'dshgn_wikilink',
+                  className: 'dshgn_wikilink' + (dead ? ' dshgn_wikilinkDead' : ''),
+                  title: dead ? getT()('note.wikilinkMissing').replace('{name}', target) : undefined,
                   // 双链在 Obsidian 里是跳转。这里没有 Obsidian 的解析器，尽力而为：
                   // 有完整路径就按路径打开，只写标题就在当前库里按标题/文件名找。
                   onClick: () => {
@@ -2665,13 +2683,16 @@ async function saveFile(url, filename) {
           // 用户会以为链接坏了。认得出来的就交回 onOpenWikiLink 走同一套解析。
           const inner = typeof opts.onOpenWikiLink === 'function' ? markdownLinkTarget(href) : null
           if (inner !== null) {
+            // 方括号链接也按同一套判定：写错文件名时同样暗下去
+            const dead = deadLink(inner.target)
             nodes.push(
               h(
                 'button',
                 {
                   key,
                   type: 'button',
-                  className: 'dshgn_wikilink',
+                  className: 'dshgn_wikilink' + (dead ? ' dshgn_wikilinkDead' : ''),
+                  title: dead ? getT()('note.wikilinkMissing').replace('{name}', inner.target) : undefined,
                   onClick: () => opts.onOpenWikiLink(inner.target, inner.anchor),
                 },
                 label === '' ? (inner.anchor === '' ? inner.target : inner.anchor) : label,
@@ -5153,6 +5174,10 @@ async function saveFile(url, filename) {
   color:var(--dsw-alias-brand-primary);cursor:pointer;text-decoration:none;
   border-bottom:0.5px solid currentColor}
 .dshgn_wikilink:hover{color:var(--dsw-alias-brand-primary);border-bottom-color:transparent}
+/* 指向还不存在的笔记：宿主里也是暗一档 + 虚下划线，一眼分得出哪些还没写。
+   只改外观，点了仍会走原来那条路报一句「库里找不到」。 */
+.dshgn_wikilinkDead{color:var(--dsw-alias-label-tertiary);border-bottom-style:dashed}
+.dshgn_wikilinkDead:hover{color:var(--dsw-alias-label-secondary);border-bottom-color:currentColor}
 /* 正文里的 #标签：形状跟笔记头属性区那几颗胶囊一致，让人一眼看出「这是标签，
    不是正文里的一个井号」。span 与 button 共用这套样式，前者只上色。 */
 .dshgn_inlineTag{display:inline;padding:0 4px;margin:0 1px;border:0;border-radius:6px;
