@@ -3403,3 +3403,24 @@ test('删除线、高亮和注释按宿主那套认，注释一个字都不露',
   assert.ok(!text.includes('一段注释里的双链'), '整段注释里的内容也不该露出来')
   assert.ok(text.includes('注释后面还有正文'), '注释前后的正文要照常在')
 })
+
+test('表格的对齐标记按宿主那套认，金额那一列不会全贴到左边', async () => {
+  // 宿主认 :--- / :---: / ---: 三种对齐。面板原来一律靠左，一份「金额」右对齐的
+  // 表格搬过来会全部贴到左边，数字位数不一就完全没法看。
+  const { parseTable } = panel.__internals
+  const linesIn = [
+    '| 项目 | 金额 | 备注 |',
+    '| :--- | ---: | :---: |',
+    '| 房租 | 1200 | 每月 |',
+    '| 水电 | 88 | 浮动 |',
+  ]
+  const table = parseTable(linesIn, 0)
+  assert.ok(table !== null, '这张表应该解析得出来')
+  assert.equal(table.alignOf(0), 'left')
+  assert.equal(table.alignOf(1), 'right')
+  assert.equal(table.alignOf(2), 'center')
+  assert.equal(table.alignOf(9), '', '没写冒号就是默认，交给 CSS')
+
+  const noAlign = parseTable(['| a | b |', '| --- | --- |', '| 1 | 2 |'], 0)
+  assert.equal(noAlign.alignOf(0), '', '没写冒号时不该硬塞一个对齐方式')
+})

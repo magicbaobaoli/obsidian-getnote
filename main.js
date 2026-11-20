@@ -10044,6 +10044,16 @@ function parseTable(lines, start) {
   if (headerCells === null) return null;
   if (start + 1 >= lines.length) return null;
   if (!/^\s*\|?[\s:-]+\|[\s:|-]*$/.test(lines[start + 1])) return null;
+  const aligns = splitRow(lines[start + 1]) || [];
+  const alignOf = (index2) => {
+    const cell = String(aligns[index2] === void 0 ? "" : aligns[index2]).trim();
+    if (!cell.includes(":")) return "";
+    const left = cell.startsWith(":");
+    const right = cell.endsWith(":");
+    if (left && right) return "center";
+    if (right) return "right";
+    return "left";
+  };
   const rows = [];
   let index = start + 2;
   while (index < lines.length && lines[index].trim().startsWith("|")) {
@@ -10052,7 +10062,7 @@ function parseTable(lines, start) {
     rows.push(cells);
     index += 1;
   }
-  return { header: headerCells, rows, consumed: index - start };
+  return { header: headerCells, rows, alignOf, consumed: index - start };
 }
 function splitRow(line) {
   const trimmed = line.trim();
@@ -10216,7 +10226,13 @@ function renderBlocks(markdown, options) {
                 h4(
                   "tr",
                   null,
-                  table.header.map((cell, i3) => h4("th", { key: i3 }, renderInline(cell, `th${i3}`, opts)))
+                  table.header.map(
+                    (cell, i3) => h4(
+                      "th",
+                      { key: i3, style: table.alignOf(i3) === "" ? void 0 : { textAlign: table.alignOf(i3) } },
+                      renderInline(cell, `th${i3}`, opts)
+                    )
+                  )
                 )
               ),
               h4(
@@ -10227,7 +10243,14 @@ function renderBlocks(markdown, options) {
                     "tr",
                     { key: rowIndex },
                     row.map(
-                      (cell, cellIndex) => h4("td", { key: cellIndex }, renderInline(cell, `td${rowIndex}-${cellIndex}`, opts))
+                      (cell, cellIndex) => h4(
+                        "td",
+                        {
+                          key: cellIndex,
+                          style: table.alignOf(cellIndex) === "" ? void 0 : { textAlign: table.alignOf(cellIndex) }
+                        },
+                        renderInline(cell, `td${rowIndex}-${cellIndex}`, opts)
+                      )
                     )
                   )
                 )

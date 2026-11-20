@@ -2749,6 +2749,19 @@ async function saveFile(url, filename) {
       if (headerCells === null) return null
       if (start + 1 >= lines.length) return null
       if (!/^\s*\|?[\s:-]+\|[\s:|-]*$/.test(lines[start + 1])) return null
+      // 对齐标记写在分隔行里：`:---` 靠左、`:---:` 居中、`---:` 靠右。
+      // 宿主认这三套，面板原来一律靠左——一份「金额」右对齐的表格搬过来会全部
+      // 贴到左边，数字位数不一就完全没法看。没写冒号就是默认，交给 CSS。
+      const aligns = splitRow(lines[start + 1]) || []
+      const alignOf = (index) => {
+        const cell = String(aligns[index] === undefined ? '' : aligns[index]).trim()
+        if (!cell.includes(':')) return ''
+        const left = cell.startsWith(':')
+        const right = cell.endsWith(':')
+        if (left && right) return 'center'
+        if (right) return 'right'
+        return 'left'
+      }
       const rows = []
       let index = start + 2
       while (index < lines.length && lines[index].trim().startsWith('|')) {
@@ -2757,7 +2770,7 @@ async function saveFile(url, filename) {
         rows.push(cells)
         index += 1
       }
-      return { header: headerCells, rows, consumed: index - start }
+      return { header: headerCells, rows, alignOf, consumed: index - start }
     }
 
     function splitRow(line) {
@@ -2981,7 +2994,13 @@ async function saveFile(url, filename) {
                     h(
                       'tr',
                       null,
-                      table.header.map((cell, i) => h('th', { key: i }, renderInline(cell, `th${i}`, opts))),
+                      table.header.map((cell, i) =>
+                        h(
+                          'th',
+                          { key: i, style: table.alignOf(i) === '' ? undefined : { textAlign: table.alignOf(i) } },
+                          renderInline(cell, `th${i}`, opts),
+                        ),
+                      ),
                     ),
                   ),
                   h(
@@ -2992,7 +3011,14 @@ async function saveFile(url, filename) {
                         'tr',
                         { key: rowIndex },
                         row.map((cell, cellIndex) =>
-                          h('td', { key: cellIndex }, renderInline(cell, `td${rowIndex}-${cellIndex}`, opts)),
+                          h(
+                            'td',
+                            {
+                              key: cellIndex,
+                              style: table.alignOf(cellIndex) === '' ? undefined : { textAlign: table.alignOf(cellIndex) },
+                            },
+                            renderInline(cell, `td${rowIndex}-${cellIndex}`, opts),
+                          ),
                         ),
                       ),
                     ),
@@ -11630,5 +11656,5 @@ export const __internals = {
   TrashPane, renderEmbed, assetLabel, ThemeCard, readSession, writeSession, SESSION_KEY,
   themeVars, parseHex, rgbToHsl, hslToHex, ConflictPane, ArchiveCard, CardPane,
   TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale,
-  reportSync, dailyTemplateOf, frontmatterText, isTagKey, FollowCard,
+  reportSync, dailyTemplateOf, frontmatterText, isTagKey, FollowCard, parseTable,
 }
