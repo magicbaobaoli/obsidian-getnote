@@ -8386,6 +8386,7 @@ var LEX = {
     "attach.failed": "\u6709\u51E0\u4E2A\u9644\u4EF6\u6CA1\u4F20\u4E0A\u53BB",
     "attach.needNote": "\u5148\u6253\u5F00\u4E00\u7BC7\u7B14\u8BB0\uFF0C\u518D\u5F80\u91CC\u653E\u6587\u4EF6",
     "note.backlinks": "\u5F15\u7528\u4E86\u8FD9\u7BC7\u7684\u7B14\u8BB0",
+    "note.backlinkJump": "\u53BB\u8FD9\u4E00\u53E5",
     "note.outlinks": "\u8FD9\u7BC7\u5F15\u7528\u4E86",
     "note.fontSize": "\u5B57\u53F7",
     "panel.loading": "\u6B63\u5728\u8BFB\u53D6\u7B14\u8BB0\u5E93\u2026",
@@ -8816,6 +8817,7 @@ var LEX = {
     "attach.failed": "Some files could not be uploaded",
     "attach.needNote": "Open a note first, then drop files into it",
     "note.backlinks": "Notes linking here",
+    "note.backlinkJump": "Jump to this line",
     "note.outlinks": "Links from this note",
     "note.fontSize": "Text size",
     "panel.loading": "Loading vault\u2026",
@@ -9246,6 +9248,7 @@ var LEX = {
     "attach.failed": "Sommige bestanden zijn niet ge\xFCpload",
     "attach.needNote": "Open eerst een notitie en zet daar bestanden in",
     "note.backlinks": "Notities die hierheen linken",
+    "note.backlinkJump": "Naar deze regel",
     "note.outlinks": "Links uit deze notitie",
     "note.fontSize": "Tekstgrootte",
     "panel.loading": "Notitiemap laden\u2026",
@@ -10271,6 +10274,19 @@ function highlightTerms(text, terms) {
     (part, index) => part.hit ? h4("span", { key: `hit-${index}`, className: "dshgn_matchHit" }, part.text) : part.text
   );
 }
+function textHasParts(hay, needle) {
+  if (hay === "" || needle === "") return false;
+  if (hay.includes(needle)) return true;
+  const parts = needle.split(" ").filter((part) => part !== "");
+  if (parts.length < 2) return false;
+  let at = 0;
+  for (let i3 = 0; i3 < parts.length; i3 += 1) {
+    const found = hay.indexOf(parts[i3], at);
+    if (found === -1) return false;
+    at = found + parts[i3].length;
+  }
+  return true;
+}
 function scrollToText(box, text) {
   const needle = lineNeedle(text);
   if (needle === "") return false;
@@ -10280,7 +10296,7 @@ function scrollToText(box, text) {
   for (let i3 = 0; i3 < blocks.length; i3 += 1) {
     const node = blocks[i3];
     if (node.querySelector("p, li, blockquote, pre")) continue;
-    if (String(node.textContent || "").replace(/\s+/g, " ").includes(needle)) return scrollHostTo(host, node);
+    if (textHasParts(String(node.textContent || "").replace(/\s+/g, " "), needle)) return scrollHostTo(host, node);
   }
   return false;
 }
@@ -11228,6 +11244,12 @@ var CSS = `
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dshgn_backlinkSnip{font-size:11px;line-height:1.5;color:var(--dsw-alias-label-secondary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* \u4E0A\u4E0B\u6587\u90A3\u4E00\u884C\u70B9\u5F97\u52A8\uFF1A\u865A\u7EBF\u4E0B\u5212\u7EBF\u662F\u300C\u8FD9\u91CC\u80FD\u70B9\u300D\u91CC\u6700\u4E0D\u5435\u7684\u4E00\u79CD\uFF0C\u4E0D\u52A8\u5B57\u53F7\u4E0D\u52A8\u8272 */
+.dshgn_backlinkSnipLink{cursor:pointer;text-decoration:underline;text-decoration-style:dotted;
+  text-underline-offset:2px}
+.dshgn_backlinkSnipLink:hover{color:var(--dsw-alias-brand-primary)}
+.dshgn_backlinkSnipLink:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);
+  outline-offset:1px;border-radius:3px}
 .dshgn_backlinkPath{font-size:10px;color:var(--dsw-alias-label-dimmed);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* \u51FA\u94FE\uFF1A\u8FD9\u7BC7\u81EA\u5DF1\u5F15\u7528\u4E86\u8C01\u3002\u4E00\u6761\u6761\u7AD6\u6392\u592A\u5360\u5730\u65B9\uFF08\u51FA\u94FE\u5E38\u5E38\u5341\u51E0\u6761\uFF09\uFF0C\u6392\u6210\u4E00\u884C\u80F6\u56CA\u3002 */
@@ -13930,6 +13952,11 @@ ${insert}
         anchor: pendingAnchor,
         onAnchorDone: () => setPendingAnchor(null),
         resolveNote: resolveNotePath,
+        // 反链底下那句上下文点一下就去那一句：jumpToMatch 收的是
+        // 「{ text }」这样的命中行，这里把一行字包成那个形状递过去。
+        // 上下文那一行末尾可能带省略号（snippetOfLine 把过长的截断了），
+        // 拿它去正文里比对是比不上的，先削掉。
+        onJumpToLine: (path, line) => jumpToMatch(path, { text: String(line || "").replace(/…$/, "") }),
         // 笔记头的前进/后退。两个布尔决定按钮灰不灰，回调只管挪。
         canBack: navState.canBack,
         canForward: navState.canForward,
@@ -17405,6 +17432,7 @@ function NotePane(props) {
   const canForward = props.canForward === true;
   const onNavBack = typeof props.onNavBack === "function" ? props.onNavBack : null;
   const onNavForward = typeof props.onNavForward === "function" ? props.onNavForward : null;
+  const onJumpToLine = typeof props.onJumpToLine === "function" ? props.onJumpToLine : null;
   const anchorRequest = props.anchor;
   const onAnchorDone = props.onAnchorDone;
   const resolveNote = props.resolveNote;
@@ -18554,8 +18582,32 @@ function NotePane(props) {
             // 上下文：引用那一行剩下的字。没有（宿主索引那份不带）就不占行，
             // 免得每条反链底下都空一格。最多三条——再多就是把人家的正文
             // 整段抄过来了。
+            //
+            // 这一行本身也能点：点标题是「去那一篇」，点这句话是「去那一句」。
+            // 反链最常见的用法就是「我记得在哪儿提过，是哪一段来着」——
+            // 只把人送到篇首，用户还得自己在一整篇里再找一遍那句话。
             (Array.isArray(hit.snippets) ? hit.snippets : []).filter((line) => typeof line === "string" && line !== "").slice(0, 3).map(
-              (line, index) => h4("span", { key: `${hit.path}-s${index}`, className: "dshgn_backlinkSnip" }, line)
+              (line, index) => h4(
+                "span",
+                {
+                  key: `${hit.path}-s${index}`,
+                  className: onJumpToLine === null ? "dshgn_backlinkSnip" : "dshgn_backlinkSnip dshgn_backlinkSnipLink",
+                  title: onJumpToLine === null ? void 0 : t4("note.backlinkJump"),
+                  role: onJumpToLine === null ? void 0 : "button",
+                  tabIndex: onJumpToLine === null ? void 0 : 0,
+                  onClick: onJumpToLine === null ? void 0 : (event) => {
+                    event.stopPropagation();
+                    onJumpToLine(hit.path, line);
+                  },
+                  onKeyDown: onJumpToLine === null ? void 0 : (event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onJumpToLine(hit.path, line);
+                  }
+                },
+                line
+              )
             ),
             h4("span", { className: "dshgn_backlinkPath" }, hit.path)
           )

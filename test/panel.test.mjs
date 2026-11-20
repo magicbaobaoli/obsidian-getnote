@@ -5744,3 +5744,127 @@ test('编辑区里敲 # 就把库里用过的标签摆出来，挑一条补上�
   await sleep(120)
 })
 
+/**
+ * 反链底下那句上下文点一下 = 去那一句，不是只把人送到篇首。
+ *
+ * 反链最常用的场景就是「我记得在哪篇里提过，是哪一段来着」。以前只能点开
+ * 那一篇，然后自己在整篇里再找一遍；现在点那句话就落到那一段。
+ */
+test('反链底下那句上下文点一下就落到那一句，不是只送到篇首', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const backBtn = window.document.querySelector('.dshgn_noteBack')
+  if (backBtn) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    try {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+  }
+
+  const seed = async (title, content, requestId) => {
+    const res = await realFetch(server.origin + '/getnote/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({ dir: '随手记', title, content, withDatePrefix: false, requestId }),
+    })
+    const json = await res.json()
+    assert.equal(json.path, '随手记/' + title + '.md')
+    return json.path
+  }
+
+  // 目标那篇要够长：落到第二段和停在篇首才分得出来
+  const target = await seed(
+    '反链跳句目标',
+    ['# 反链跳句目标', '', '第一段，跟这次跳转无关。', '', '第二段，也无关。', '', '第三段，还是无关。', ''].join('\n'),
+    'seed-bl-jump-target',
+  )
+  await seed(
+    '反链跳句来源',
+    ['# 反链跳句来源', '', '开头一句废话。', '', '中间这句提到 [[反链跳句目标]] 并且后面还有半句。', ''].join('\n'),
+    'seed-bl-jump-source',
+  )
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+  const card = await waitFor(
+    () => Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === target),
+    5000,
+    '目标笔记出现在列表里',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+
+  const snip = await waitFor(
+    () => window.document.querySelector('.dshgn_backlinkSnipLink'),
+    8000,
+    '上下文那一行应该是能点的',
+  )
+  assert.equal(snip.getAttribute('title'), '去这一句', '悬停要说清楚点它会去哪')
+  assert.ok((snip.textContent || '').includes('中间这句提到'), '这一行就是引用那一行剩下的字')
+
+  // 假排版：jsdom 不算布局，不铺一下的话滚到哪儿都看不出来
+  const realRect = window.HTMLElement.prototype.getBoundingClientRect
+  const realScrollTo = window.HTMLElement.prototype.scrollTo
+  let fakeTop = 0
+  const BLOCKS = 'p, li, h1, h2, h3, h4, h5, h6, blockquote, pre, td, th'
+  window.HTMLElement.prototype.getBoundingClientRect = function () {
+    const host = this.closest ? this.closest('.dshgn_scroll') : null
+    if (!host || !this.matches || !this.matches(BLOCKS)) {
+      return { top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0 }
+    }
+    const all = Array.from(host.querySelectorAll(BLOCKS))
+    const index = all.indexOf(this)
+    return { top: index * 100 - (host.scrollTop || 0), left: 0, right: 0, bottom: 0, width: 0, height: 0 }
+  }
+  window.HTMLElement.prototype.scrollTo = function (options) {
+    if (!options || typeof options.top !== 'number') return
+    this.scrollTop = options.top
+    fakeTop = options.top
+  }
+  try {
+    const liveScroller = () => window.document.querySelector('.dshgn_note .dshgn_scroll')
+    assert.equal(liveScroller().scrollTop, 0, '刚打开时停在篇首')
+
+    snip.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+
+    // 那一篇读回来之后才会滚，等滚动容器动起来
+    await waitFor(() => (liveScroller() || {}).scrollTop > 0, 8000, '点了那句话就滚到那一句')
+    assert.ok(fakeTop > 0, '滚的是正文自己的容器')
+    const notePathText = (window.document.querySelector('.dshgn_notePath') || {}).textContent || ''
+    assert.equal(notePathText, '随手记/反链跳句来源.md', '去的是引用方那一篇，不是被引的那一篇')
+
+    // 上下文里双链被削掉了，正文里它是个胶囊：整串比不过也得认出来
+    const body = window.document.querySelector('.dshgn_note')
+    assert.ok((body.textContent || '').includes('中间这句提到'), '落到了写着这句话的那一段')
+    assert.ok(!(body.textContent || '').includes('第一段，跟这次跳转无关。'), '目标篇的内容不该混进来')
+  } finally {
+    window.HTMLElement.prototype.getBoundingClientRect = realRect
+    window.HTMLElement.prototype.scrollTo = realScrollTo
+  }
+
+  // 纯函数：整串能比上就用整串，比不上按词顺序找
+  const textHasParts = panel.__internals.textHasParts
+  assert.equal(textHasParts('开会时记到 反链目标 这一段', '开会时记到 这一段'), true, '双链削掉之后按词也认得出')
+  assert.equal(textHasParts('开会时记到 反链目标 这一段', '开会时记到'), true, '整串能比上就按整串')
+  assert.equal(textHasParts('别的话', '开会时记到 这一段'), false, '顺序不对就不认')
+  assert.equal(textHasParts('这一段 开会时记到', '开会时记到 这一段'), false, '词序反了不算同一行')
+  assert.equal(textHasParts('', '开会时记到'), false)
+  assert.equal(textHasParts('开会时记到', ''), false)
+
+  // 收尾：退回列表，别把这篇留着影响后面的用例
+  const back2 = window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    if (back2) back2.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '收尾退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+})
+

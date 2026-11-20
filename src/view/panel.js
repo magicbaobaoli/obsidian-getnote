@@ -680,6 +680,7 @@ async function saveFile(url, filename) {
         'attach.failed': '有几个附件没传上去',
         'attach.needNote': '先打开一篇笔记，再往里放文件',
         'note.backlinks': '引用了这篇的笔记',
+    'note.backlinkJump': '去这一句',
         'note.outlinks': '这篇引用了',
         'note.fontSize': '字号',
         'panel.loading': '正在读取笔记库…',
@@ -1114,6 +1115,7 @@ async function saveFile(url, filename) {
         'attach.failed': 'Some files could not be uploaded',
         'attach.needNote': 'Open a note first, then drop files into it',
         'note.backlinks': 'Notes linking here',
+    'note.backlinkJump': 'Jump to this line',
         'note.outlinks': 'Links from this note',
         'note.fontSize': 'Text size',
         'panel.loading': 'Loading vault…',
@@ -1547,6 +1549,7 @@ async function saveFile(url, filename) {
         'attach.failed': 'Sommige bestanden zijn niet geüpload',
         'attach.needNote': 'Open eerst een notitie en zet daar bestanden in',
         'note.backlinks': 'Notities die hierheen linken',
+    'note.backlinkJump': 'Naar deze regel',
         'note.outlinks': 'Links uit deze notitie',
         'note.fontSize': 'Tekstgrootte',
         'panel.loading': 'Notitiemap laden…',
@@ -2943,6 +2946,29 @@ async function saveFile(url, filename) {
     }
 
     /**
+     * 正文里这一块，是不是「写着那段字」的那一块。
+     *
+     * 先按整串比，比不过再按词比：反链底下那句上下文是把双链整个削掉的
+     * （`开会时记到 这一段`），而渲染出来的正文里，双链是个胶囊，字还在中间
+     * （`开会时记到 反链上下文目标 这一段`）。整串比对会一直比不过，用户点了
+     * 「去这一句」却停在篇首。按词顺序找就能跳过中间那一坨：只要这几个词
+     * 依次出现，就认它是同一行。
+     */
+    function textHasParts(hay, needle) {
+      if (hay === '' || needle === '') return false
+      if (hay.includes(needle)) return true
+      const parts = needle.split(' ').filter((part) => part !== '')
+      if (parts.length < 2) return false
+      let at = 0
+      for (let i = 0; i < parts.length; i += 1) {
+        const found = hay.indexOf(parts[i], at)
+        if (found === -1) return false
+        at = found + parts[i].length
+      }
+      return true
+    }
+
+    /**
      * 滚到正文里包含某段文字的块上。
      *
      * 只认「块级」元素（段落、列表项、标题、引用、表格单元、代码块），不认
@@ -2960,7 +2986,7 @@ async function saveFile(url, filename) {
         const node = blocks[i]
         // 只认最小的那一个：列表项里还有段落时，滚到段落比滚到整条列表更准
         if (node.querySelector('p, li, blockquote, pre')) continue
-        if (String(node.textContent || '').replace(/\s+/g, ' ').includes(needle)) return scrollHostTo(host, node)
+        if (textHasParts(String(node.textContent || '').replace(/\s+/g, ' '), needle)) return scrollHostTo(host, node)
       }
       return false
     }
@@ -4226,6 +4252,12 @@ async function saveFile(url, filename) {
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dshgn_backlinkSnip{font-size:11px;line-height:1.5;color:var(--dsw-alias-label-secondary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 上下文那一行点得动：虚线下划线是「这里能点」里最不吵的一种，不动字号不动色 */
+.dshgn_backlinkSnipLink{cursor:pointer;text-decoration:underline;text-decoration-style:dotted;
+  text-underline-offset:2px}
+.dshgn_backlinkSnipLink:hover{color:var(--dsw-alias-brand-primary)}
+.dshgn_backlinkSnipLink:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);
+  outline-offset:1px;border-radius:3px}
 .dshgn_backlinkPath{font-size:10px;color:var(--dsw-alias-label-dimmed);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* 出链：这篇自己引用了谁。一条条竖排太占地方（出链常常十几条），排成一行胶囊。 */
@@ -7340,6 +7372,11 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             anchor: pendingAnchor,
             onAnchorDone: () => setPendingAnchor(null),
             resolveNote: resolveNotePath,
+            // 反链底下那句上下文点一下就去那一句：jumpToMatch 收的是
+            // 「{ text }」这样的命中行，这里把一行字包成那个形状递过去。
+            // 上下文那一行末尾可能带省略号（snippetOfLine 把过长的截断了），
+            // 拿它去正文里比对是比不上的，先削掉。
+            onJumpToLine: (path, line) => jumpToMatch(path, { text: String(line || '').replace(/…$/, '') }),
             // 笔记头的前进/后退。两个布尔决定按钮灰不灰，回调只管挪。
             canBack: navState.canBack,
             canForward: navState.canForward,
@@ -11444,6 +11481,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       const canForward = props.canForward === true
       const onNavBack = typeof props.onNavBack === 'function' ? props.onNavBack : null
       const onNavForward = typeof props.onNavForward === 'function' ? props.onNavForward : null
+      // 反链底下那句上下文点一下 = 去那一篇的那一句（不是只去篇首）
+      const onJumpToLine = typeof props.onJumpToLine === 'function' ? props.onJumpToLine : null
       const anchorRequest = props.anchor
       const onAnchorDone = props.onAnchorDone
       // 嵌入 ![[另一篇笔记]] 时用它把名字解析成路径（与点双链共用一套口径）
@@ -12855,11 +12894,46 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                         // 上下文：引用那一行剩下的字。没有（宿主索引那份不带）就不占行，
                         // 免得每条反链底下都空一格。最多三条——再多就是把人家的正文
                         // 整段抄过来了。
+                        //
+                        // 这一行本身也能点：点标题是「去那一篇」，点这句话是「去那一句」。
+                        // 反链最常见的用法就是「我记得在哪儿提过，是哪一段来着」——
+                        // 只把人送到篇首，用户还得自己在一整篇里再找一遍那句话。
                         (Array.isArray(hit.snippets) ? hit.snippets : [])
                           .filter((line) => typeof line === 'string' && line !== '')
                           .slice(0, 3)
                           .map((line, index) =>
-                            h('span', { key: `${hit.path}-s${index}`, className: 'dshgn_backlinkSnip' }, line),
+                            h(
+                              'span',
+                              {
+                                key: `${hit.path}-s${index}`,
+                                className:
+                                  onJumpToLine === null
+                                    ? 'dshgn_backlinkSnip'
+                                    : 'dshgn_backlinkSnip dshgn_backlinkSnipLink',
+                                title: onJumpToLine === null ? undefined : t('note.backlinkJump'),
+                                role: onJumpToLine === null ? undefined : 'button',
+                                tabIndex: onJumpToLine === null ? undefined : 0,
+                                onClick:
+                                  onJumpToLine === null
+                                    ? undefined
+                                    : (event) => {
+                                        // 外层是「打开这一篇」，这里是「打开并落到这一句」，
+                                        // 不拦住的话会先按外层打开、再按这句跳，白跳一趟
+                                        event.stopPropagation()
+                                        onJumpToLine(hit.path, line)
+                                      },
+                                onKeyDown:
+                                  onJumpToLine === null
+                                    ? undefined
+                                    : (event) => {
+                                        if (event.key !== 'Enter' && event.key !== ' ') return
+                                        event.preventDefault()
+                                        event.stopPropagation()
+                                        onJumpToLine(hit.path, line)
+                                      },
+                              },
+                              line,
+                            ),
                           ),
                         h('span', { className: 'dshgn_backlinkPath' }, hit.path),
                       ),
@@ -13650,7 +13724,7 @@ export const __internals = {
   TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale,
   reportSync, dailyTemplateOf, frontmatterText, isTagKey, FollowCard, parseTable, countWords,
   isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote, parseImageSize, renderParagraph, blockTextOf, markdownLinkTarget,
-  tagBodyOf, ZoomOverlay, continueListLine, indentLines, wrapInline, wikilinkQueryAt, wikilinkMatches, tagQueryAt, tagMatches, findInBody, findInBodyMatch, findInText,
+  tagBodyOf, ZoomOverlay, continueListLine, indentLines, wrapInline, wikilinkQueryAt, wikilinkMatches, tagQueryAt, tagMatches, findInBody, findInBodyMatch, findInText, textHasParts,
       readScrollMarks, writeScrollMark, scrollMarkOf, SCROLL_KEY,
   splitByTerms, highlightTerms, searchTermsOf,
 }
