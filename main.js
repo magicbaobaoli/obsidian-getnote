@@ -9815,7 +9815,7 @@ function renderInline(text, keyPrefix, options) {
           last = match.index + token.length;
           continue;
         }
-        const embedded = renderEmbed(target, key, Object.assign({}, opts, { anchor }));
+        const embedded = renderEmbed(target, key, Object.assign({}, opts, { anchor, label }));
         const blockLevel = embedded !== null && embedded !== void 0 && embedded.type === NoteEmbed;
         nodes.push(blockLevel ? embedded : h4("span", { key, className: "dshgn_embed" }, embedded));
       } else {
@@ -10075,6 +10075,15 @@ function NoteEmbed(props) {
     body
   );
 }
+function parseImageSize(label) {
+  const text = String(label === void 0 || label === null ? "" : label).trim();
+  const hit = /^(\d{1,4})(?:\s*[xX×]\s*(\d{1,4}))?$/.exec(text);
+  if (hit === null) return null;
+  const width = Number(hit[1]);
+  const height = hit[2] === void 0 ? 0 : Number(hit[2]);
+  if (!Number.isFinite(width) || width <= 0) return null;
+  return { width, height: Number.isFinite(height) && height > 0 ? height : 0 };
+}
 function renderEmbed(target, key, options) {
   const opts = options || {};
   const clean = String(target || "").trim();
@@ -10100,9 +10109,16 @@ function renderEmbed(target, key, options) {
   if (IMAGE_EXT_RE.test(path)) {
     const hosted = assetUrlOf(path);
     const openable = hasOpenAsset();
+    const size = parseImageSize(opts.label);
+    const sized = size === null ? {} : {
+      width: `${size.width}px`,
+      height: size.height > 0 ? `${size.height}px` : "auto",
+      maxHeight: "none"
+    };
     return h4("img", {
       key,
-      className: "dshgn_img" + (openable ? " dshgn_imgOpen" : ""),
+      className: "dshgn_img" + (openable ? " dshgn_imgOpen" : "") + (size === null ? "" : " dshgn_imgSized"),
+      style: sized,
       src: hosted !== "" ? hosted : withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(path)}`),
       alt: base,
       loading: "lazy",
@@ -11220,6 +11236,8 @@ var CSS = `
 /* \u56FE\u7247\u9644\u4EF6\uFF1A\u4E00\u884C\u6A2A\u5411\u6392\uFF0C\u5355\u5F20\u6700\u9AD8 200px\uFF0C\u907F\u514D\u4E00\u5F20\u7AD6\u6784\u56FE\u624B\u673A\u622A\u56FE\u628A\u6574\u7BC7\u6587\u7AE0\u63A8\u5230\u5C4F\u5E55\u5916\u3002 */
 .dshgn_imgRow{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
 .dshgn_imgOpen{cursor:zoom-in}
+/* \u5199\u4E86\u5C3A\u5BF8\u7684\u56FE\u6309\u5199\u7684\u6765\uFF1Aobject-fit \u4FDD\u6301\u6BD4\u4F8B\uFF0C\u4E0D\u8981\u88AB\u7F29\u7565\u56FE\u90A3\u6761 max-height \u538B\u6241\u3002 */
+.dshgn_imgSized{object-fit:contain}
     .dshgn_img{max-width:100%;max-height:200px;border-radius:8px;object-fit:contain;
   border:0.5px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-interactive-bg-hover)}
 /* Obsidian \u53CC\u94FE\uFF1A\u5916\u89C2\u8981\u50CF\u94FE\u63A5\u4F46\u4E0D\u80FD\u771F\u8DF3\uFF08\u5E93\u5185\u8DF3\u8F6C\u7531 JS \u5904\u7406\uFF09\uFF0C\u6240\u4EE5\u7528 button \u800C\u4E0D\u662F a\u3002 */

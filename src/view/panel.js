@@ -2379,7 +2379,7 @@ async function saveFile(url, filename) {
               last = match.index + token.length
               continue
             }
-            const embedded = renderEmbed(target, key, Object.assign({}, opts, { anchor }))
+            const embedded = renderEmbed(target, key, Object.assign({}, opts, { anchor, label }))
             // 嵌进来的是一整篇笔记时它自己就是块级元素，再套一层 inline-flex 的
             // 胶囊会把它挤成一条线——那种情况下直接放进来。
             const blockLevel = embedded !== null && embedded !== undefined && embedded.type === NoteEmbed
@@ -2804,6 +2804,21 @@ async function saveFile(url, filename) {
      * 也不需要把附件内容塞进笔记正文（那样库会越滚越大）。
      * 音频交给 AudioPlayer；认不出来的（PDF、docx…）只给文件名，不假装能预览。
      */
+    /**
+     * 嵌入图片时写在竖线后面的尺寸：`![[图.png|300]]`、`![[图.png|300x200]]`。
+     * 宿主按这个把图缩放显示；不认的话用户写多少都当显示文字用，图还是原样大小。
+     * 返回 null 表示没写尺寸（那种情况竖线后面是显示文字或什么都没有）。
+     */
+    function parseImageSize(label) {
+      const text = String(label === undefined || label === null ? '' : label).trim()
+      const hit = /^(\d{1,4})(?:\s*[xX×]\s*(\d{1,4}))?$/.exec(text)
+      if (hit === null) return null
+      const width = Number(hit[1])
+      const height = hit[2] === undefined ? 0 : Number(hit[2])
+      if (!Number.isFinite(width) || width <= 0) return null
+      return { width, height: Number.isFinite(height) && height > 0 ? height : 0 }
+    }
+
     function renderEmbed(target, key, options) {
       const opts = options || {}
       const clean = String(target || '').trim()
@@ -2843,9 +2858,18 @@ async function saveFile(url, filename) {
         // 点了交给宿主打开；没注入宿主时不给光标、不挂 onClick——挂一个点了
         // 什么都不会发生的处理器，比不能点更让人困惑。
         const openable = hasOpenAsset()
+        const size = parseImageSize(opts.label)
+        // 写了尺寸就按写的来：缩略图行那条 max-height 会把 300 高的图压成 200，
+        // 用户写数字就是为了看图本身，这里得让开。
+        const sized = size === null ? {} : {
+          width: `${size.width}px`,
+          height: size.height > 0 ? `${size.height}px` : 'auto',
+          maxHeight: 'none',
+        }
         return h('img', {
           key,
-          className: 'dshgn_img' + (openable ? ' dshgn_imgOpen' : ''),
+          className: 'dshgn_img' + (openable ? ' dshgn_imgOpen' : '') + (size === null ? '' : ' dshgn_imgSized'),
+          style: sized,
           src: hosted !== '' ? hosted : withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(path)}`),
           alt: base,
           loading: 'lazy',
@@ -4075,6 +4099,8 @@ async function saveFile(url, filename) {
 /* 图片附件：一行横向排，单张最高 200px，避免一张竖构图手机截图把整篇文章推到屏幕外。 */
 .dshgn_imgRow{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
 .dshgn_imgOpen{cursor:zoom-in}
+/* 写了尺寸的图按写的来：object-fit 保持比例，不要被缩略图那条 max-height 压扁。 */
+.dshgn_imgSized{object-fit:contain}
     .dshgn_img{max-width:100%;max-height:200px;border-radius:8px;object-fit:contain;
   border:0.5px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-interactive-bg-hover)}
 /* Obsidian 双链：外观要像链接但不能真跳（库内跳转由 JS 处理），所以用 button 而不是 a。 */
@@ -11882,5 +11908,5 @@ export const __internals = {
   themeVars, parseHex, rgbToHsl, hslToHex, ConflictPane, ArchiveCard, CardPane,
   TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale,
   reportSync, dailyTemplateOf, frontmatterText, isTagKey, FollowCard, parseTable, countWords,
-  isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote,
+  isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote, parseImageSize,
 }

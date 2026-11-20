@@ -3664,3 +3664,48 @@ test('脚注正文里只留一个上标，注解收在篇尾', async () => {
   assert.equal(scrollToFootnote(scroller, '没有这条'), false)
   assert.equal(scrollToFootnote(scroller, ''), false)
 })
+
+test('嵌入图片后面写的尺寸真的按那个大小显示', async () => {
+  // 宿主写法 `![[图.png|300]]`、`![[图.png|300x200]]`。不认的话用户写多少都
+  // 被当成显示文字，图还是原样大小（还会被缩略图那条 max-height 压到 200）。
+  const { parseImageSize, renderBlocks } = panel.__internals
+  assert.deepEqual(parseImageSize('120'), { width: 120, height: 0 })
+  assert.deepEqual(parseImageSize('300x200'), { width: 300, height: 200 })
+  assert.deepEqual(parseImageSize(' 300 × 200 '), { width: 300, height: 200 })
+  assert.equal(parseImageSize(''), null)
+  assert.equal(parseImageSize(undefined), null)
+  assert.equal(parseImageSize('示意图'), null, '显示文字不是尺寸')
+  assert.equal(parseImageSize('0'), null)
+  assert.equal(parseImageSize('-5'), null)
+
+  const assets = [{ name: '示意图.png', path: '随手记/asset/示意图.png', kind: 'image' }]
+  const opts = { assets, sourcePath: '随手记/图片尺寸验收.md' }
+  // 行内嵌入会被包一层 span.dshgn_embed，图在它里面
+  const imgIn = (nodes) => {
+    for (const node of nodes) {
+      if (node === null || node === undefined || typeof node !== 'object') continue
+      if (node.type === 'img') return node
+      const kids = node.props && node.props.children
+      if (kids === undefined || kids === null) continue
+      const found = imgIn(Array.isArray(kids) ? kids : [kids])
+      if (found !== null) return found
+    }
+    return null
+  }
+  const sized = renderBlocks('![[示意图.png|120]]', opts)
+  const img = imgIn(sized)
+  assert.ok(img !== null, '应该渲染出图片')
+  assert.equal(img.props.style.width, '120px')
+  assert.equal(img.props.style.maxHeight, 'none', '写了尺寸就不该被缩略图的 max-height 压住')
+  assert.ok(img.props.className.includes('dshgn_imgSized'))
+
+  const both = renderBlocks('![[示意图.png|300x200]]', opts)
+  const imgBoth = imgIn(both)
+  assert.equal(imgBoth.props.style.width, '300px')
+  assert.equal(imgBoth.props.style.height, '200px')
+
+  const plain = renderBlocks('![[示意图.png]]', opts)
+  const imgPlain = imgIn(plain)
+  assert.deepEqual(imgPlain.props.style, {}, '没写尺寸就交给 CSS')
+  assert.ok(!imgPlain.props.className.includes('dshgn_imgSized'))
+})
