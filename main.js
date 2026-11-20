@@ -10247,6 +10247,20 @@ function countWords(text) {
   const latin = source.match(/[A-Za-z0-9_'-]+/g);
   return (cjk === null ? 0 : cjk.length) + (latin === null ? 0 : latin.length);
 }
+function renderParagraph(text, keyPrefix, options) {
+  const lines = String(text === void 0 || text === null ? "" : text).split("\n");
+  const nodes = [];
+  lines.forEach((line, index) => {
+    const hard = /(\\|\s{2,})$/.test(line);
+    const content = hard ? line.replace(/(\\|\s{2,})$/, "") : line;
+    const parts = renderInline(content.trim(), `${keyPrefix}l${index}`, options);
+    parts.forEach((part) => nodes.push(part));
+    if (index === lines.length - 1) return;
+    if (hard) nodes.push(h4("br", { key: `${keyPrefix}br${index}` }));
+    else nodes.push(" ");
+  });
+  return nodes;
+}
 function renderBlocks(markdown, options) {
   const opts = options || {};
   const lines = String(markdown || "").split(/\r?\n/);
@@ -10482,7 +10496,7 @@ function renderBlocks(markdown, options) {
       h4(
         "p",
         { key: `b${key++}`, className: "dshgn_p", "data-block-id": paraId === "" ? void 0 : paraId },
-        renderInline(stripBlockId(paraText), `p${key}`, opts)
+        renderParagraph(stripBlockId(paraText), `p${key}`, opts)
       )
     );
   }
@@ -10924,7 +10938,7 @@ var CSS = `
 .dshgn_h2{font-size:1.19em;padding-bottom:5px;border-bottom:0.5px solid var(--dsw-alias-border-l2)}
 .dshgn_h3{font-size:1.05em}
 .dshgn_h4,.dshgn_h5,.dshgn_h6{font-size:.96em}
-.dshgn_p{margin:8px 0;white-space:pre-wrap;word-break:break-word}
+.dshgn_p{margin:8px 0;white-space:normal;word-break:break-word}
 .dshgn_hr{border:0;border-top:0.5px solid var(--dsw-alias-border-l2);margin:16px 0}
 .dshgn_link{color:var(--dsw-alias-brand-primary);text-decoration:none}
 .dshgn_link:hover{text-decoration:underline}

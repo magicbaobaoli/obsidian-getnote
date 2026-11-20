@@ -3709,3 +3709,34 @@ test('嵌入图片后面写的尺寸真的按那个大小显示', async () => {
   assert.deepEqual(imgPlain.props.style, {}, '没写尺寸就交给 CSS')
   assert.ok(!imgPlain.props.className.includes('dshgn_imgSized'))
 })
+
+test('段落里的换行按宿主的口径：软换行接成一句，两个空格才断行', async () => {
+  // 原来段落整段交给 renderInline、靠 CSS 的 pre-wrap 显示，于是每个换行都断行。
+  // 同一段在 Obsidian 里是一行话，在面板里被切成好几行，版式看着像两篇东西。
+  const { renderParagraph, renderBlocks } = panel.__internals
+  const flat = (nodes) =>
+    nodes
+      .map((node) => {
+        if (typeof node === 'string') return node
+        if (node === null || node === undefined) return ''
+        if (node.type === 'br') return '\n'
+        const kids = node.props && node.props.children
+        if (kids === undefined || kids === null) return ''
+        return flat(Array.isArray(kids) ? kids : [kids])
+      })
+      .join('')
+
+  // 软换行：接成一句话，中间一个空格
+  assert.equal(flat(renderParagraph('第一行\n第二行', 'k', {})), '第一行 第二行')
+  // 硬换行：行尾两个空格真的断
+  assert.equal(flat(renderParagraph('第一行  \n第二行', 'k', {})), '第一行\n第二行')
+  // 行尾一个反斜杠也是硬换行
+  assert.equal(flat(renderParagraph('第一行\\\n第二行', 'k', {})), '第一行\n第二行')
+
+  // 整篇渲染时也走这条路：三个软换行合成一段一行话
+  const blocks = renderBlocks('这是第一行\n这是第二行\n这是第三行', {})
+  const para = blocks.find((node) => node && node.type === 'p')
+  assert.ok(para !== undefined, '应该渲染出一个段落')
+  assert.equal(flat([para]), '这是第一行 这是第二行 这是第三行')
+  assert.equal(para.props.className, 'dshgn_p')
+})

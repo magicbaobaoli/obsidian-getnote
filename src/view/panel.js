@@ -3045,6 +3045,29 @@ async function saveFile(url, filename) {
       return (cjk === null ? 0 : cjk.length) + (latin === null ? 0 : latin.length)
     }
 
+    /**
+     * 段落里的换行按宿主的口径处理：单独一个换行是「软换行」，接成一句话；
+     * 行尾两个空格或者一个反斜杠才是「硬换行」，真的断行。
+     *
+     * 原来段落是把整段原文塞给 renderInline，靠 CSS 的 white-space:pre-wrap 显示，
+     * 结果每一个换行都成了断行——同一段在 Obsidian 里是一行话，在面板里被切成好几行，
+     * 版式看着像两篇东西。
+     */
+    function renderParagraph(text, keyPrefix, options) {
+      const lines = String(text === undefined || text === null ? '' : text).split('\n')
+      const nodes = []
+      lines.forEach((line, index) => {
+        const hard = /(\\|\s{2,})$/.test(line)
+        const content = hard ? line.replace(/(\\|\s{2,})$/, '') : line
+        const parts = renderInline(content.trim(), `${keyPrefix}l${index}`, options)
+        parts.forEach((part) => nodes.push(part))
+        if (index === lines.length - 1) return
+        if (hard) nodes.push(h('br', { key: `${keyPrefix}br${index}` }))
+        else nodes.push(' ')
+      })
+      return nodes
+    }
+
     function renderBlocks(markdown, options) {
       const opts = options || {}
       const lines = String(markdown || '').split(/\r?\n/)
@@ -3339,7 +3362,7 @@ async function saveFile(url, filename) {
           h(
             'p',
             { key: `b${key++}`, className: 'dshgn_p', 'data-block-id': paraId === '' ? undefined : paraId },
-            renderInline(stripBlockId(paraText), `p${key}`, opts),
+            renderParagraph(stripBlockId(paraText), `p${key}`, opts),
           ),
         )
       }
@@ -3787,7 +3810,7 @@ async function saveFile(url, filename) {
 .dshgn_h2{font-size:1.19em;padding-bottom:5px;border-bottom:0.5px solid var(--dsw-alias-border-l2)}
 .dshgn_h3{font-size:1.05em}
 .dshgn_h4,.dshgn_h5,.dshgn_h6{font-size:.96em}
-.dshgn_p{margin:8px 0;white-space:pre-wrap;word-break:break-word}
+.dshgn_p{margin:8px 0;white-space:normal;word-break:break-word}
 .dshgn_hr{border:0;border-top:0.5px solid var(--dsw-alias-border-l2);margin:16px 0}
 .dshgn_link{color:var(--dsw-alias-brand-primary);text-decoration:none}
 .dshgn_link:hover{text-decoration:underline}
@@ -11908,5 +11931,5 @@ export const __internals = {
   themeVars, parseHex, rgbToHsl, hslToHex, ConflictPane, ArchiveCard, CardPane,
   TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale,
   reportSync, dailyTemplateOf, frontmatterText, isTagKey, FollowCard, parseTable, countWords,
-  isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote, parseImageSize,
+  isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote, parseImageSize, renderParagraph,
 }
