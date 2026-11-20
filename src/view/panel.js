@@ -2309,6 +2309,38 @@ async function saveFile(url, filename) {
     // ── Markdown 渲染（无依赖）─────────────────────────────────────────────────
 
     /**
+     * 把 `[文字](href)` 里的 href 认成库内跳转，认不出就返回 null（当外链）。
+     *
+     * 宿主认三种写法：`[[笔记]]` 是双链，`[文字](笔记.md)` 与 `[文字](#小节)` 是普通
+     * Markdown 链接，但它们指向的仍是库里的东西。我们原来一律 target=_blank：点下去
+     * 宿主打不开这个相对地址，什么也不会发生，用户会以为链接坏了。
+     *
+     * 只认「看起来是库内」的：外站 http(s)、mailto、带协议头的都不碰；指向图片、
+     * PDF 之类的附件也交回外链（宿主里那是打开文件，不是切笔记）。
+     */
+    function markdownLinkTarget(href) {
+      const raw = String(href || '').trim()
+      if (raw === '') return null
+      // 带协议头的（http://、mailto:、file: …）一律当外链，交给浏览器/宿主
+      if (/^[a-z][a-z0-9+.-]*:/i.test(raw)) return null
+      // 纯锚点：同一篇里的某一节
+      if (raw.startsWith('#')) {
+        const anchor = raw.slice(1).trim()
+        return anchor === '' ? null : { target: '', anchor }
+      }
+      // 去掉可能的 ./ 与开头的斜杠；查询串与片段分开
+      const hashAt = raw.indexOf('#')
+      const pathPart = (hashAt === -1 ? raw : raw.slice(0, hashAt)).replace(/^\.\//, '').replace(/^\/+/, '')
+      const anchor = hashAt === -1 ? '' : raw.slice(hashAt + 1).trim()
+      if (pathPart === '') return anchor === '' ? null : { target: '', anchor }
+      // 附件（图片、PDF、音频…）不是笔记，宿主里点它是打开文件
+      if (/\.(?!md$)[a-z0-9]{1,6}$/i.test(pathPart)) return null
+      const target = pathPart.replace(/\.md$/i, '')
+      if (target === '') return null
+      return { target, anchor }
+    }
+
+    /**
      * 行内：`code` / **粗** / *斜* / [文本](链接) / 裸链接。
      *
      * 刻意保持保守：认不出的语法原样显示，绝不吞字。笔记里的时间是 `[00:12:30]`
@@ -2439,13 +2471,32 @@ async function saveFile(url, filename) {
           const split = token.indexOf('](')
           const label = token.slice(1, split)
           const href = token.slice(split + 2, -1)
-          nodes.push(
-            h(
-              'a',
-              { key, href, target: '_blank', rel: 'noreferrer noopener', className: 'dshgn_link' },
-              label,
-            ),
-          )
+          // [文字](笔记.md) / [文字](#小节) 在宿主里是往库内跳，不是开浏览器。
+          // 原来一律当外链 target=_blank，点下去宿主没反应（库里没有这个地址），
+          // 用户会以为链接坏了。认得出来的就交回 onOpenWikiLink 走同一套解析。
+          const inner = typeof opts.onOpenWikiLink === 'function' ? markdownLinkTarget(href) : null
+          if (inner !== null) {
+            nodes.push(
+              h(
+                'button',
+                {
+                  key,
+                  type: 'button',
+                  className: 'dshgn_wikilink',
+                  onClick: () => opts.onOpenWikiLink(inner.target, inner.anchor),
+                },
+                label === '' ? (inner.anchor === '' ? inner.target : inner.anchor) : label,
+              ),
+            )
+          } else {
+            nodes.push(
+              h(
+                'a',
+                { key, href, target: '_blank', rel: 'noreferrer noopener', className: 'dshgn_link' },
+                label,
+              ),
+            )
+          }
         } else {
           nodes.push(
             h('a', { key, href: token, target: '_blank', rel: 'noreferrer noopener', className: 'dshgn_link' }, token),
@@ -11976,5 +12027,5 @@ export const __internals = {
   themeVars, parseHex, rgbToHsl, hslToHex, ConflictPane, ArchiveCard, CardPane,
   TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale,
   reportSync, dailyTemplateOf, frontmatterText, isTagKey, FollowCard, parseTable, countWords,
-  isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote, parseImageSize, renderParagraph, blockTextOf,
+  isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote, parseImageSize, renderParagraph, blockTextOf, markdownLinkTarget,
 }

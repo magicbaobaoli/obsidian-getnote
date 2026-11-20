@@ -3776,3 +3776,46 @@ test('嵌进来的块引用只摆那一段，不是整篇嵌进来再滚过去',
   assert.equal(blockTextOf(fenced, 'fence01'), '')
   assert.equal(blockTextOf(fenced, 'real01'), '真的')
 })
+
+test('写成 [文字](笔记.md) 的链接也往库里跳，不当外链开浏览器', async () => {
+  // 宿主认 [文字](笔记.md) 和 [文字](#小节)，它们指向的仍是库里的东西。
+  // 我们原来一律 target=_blank，点下去什么也不会发生。
+  const { markdownLinkTarget, renderBlocks } = panel.__internals
+
+  assert.deepEqual(markdownLinkTarget('随手记/会议.md'), { target: '随手记/会议', anchor: '' })
+  assert.deepEqual(markdownLinkTarget('会议'), { target: '会议', anchor: '' })
+  assert.deepEqual(markdownLinkTarget('./会议.md'), { target: '会议', anchor: '' })
+  assert.deepEqual(markdownLinkTarget('随手记/会议.md#小结'), { target: '随手记/会议', anchor: '小结' })
+  assert.deepEqual(markdownLinkTarget('#小结'), { target: '', anchor: '小结' })
+  assert.equal(markdownLinkTarget('https://example.com/a.md'), null, '外站不碰')
+  assert.equal(markdownLinkTarget('mailto:a@b.c'), null)
+  assert.equal(markdownLinkTarget('file:///tmp/a.md'), null)
+  assert.equal(markdownLinkTarget('随手记/图.png'), null, '附件不是笔记')
+  assert.equal(markdownLinkTarget('随手记/说明.pdf'), null)
+  assert.equal(markdownLinkTarget(''), null)
+  assert.equal(markdownLinkTarget('#'), null)
+
+  // 真渲染一遍：库内链接变按钮，外链还是 a
+  const opened = []
+  const nodes = renderBlocks('见 [会议纪要](随手记/会议.md) 与 [官网](https://example.com)', {
+    onOpenWikiLink: (target, anchor) => opened.push([target, anchor]),
+  })
+  const walk = (list, out) => {
+    list.forEach((node) => {
+      if (node === null || typeof node !== 'object') return
+      out.push(node)
+      const kids = node.props && node.props.children
+      if (Array.isArray(kids)) walk(kids, out)
+      else if (kids) walk([kids], out)
+    })
+    return out
+  }
+  const flat = walk(nodes, [])
+  const button = flat.find((node) => node.type === 'button' && (node.props.className || '').includes('dshgn_wikilink'))
+  assert.ok(button !== undefined, '库内链接应该渲染成可点的按钮')
+  button.props.onClick()
+  assert.deepEqual(opened, [['随手记/会议', '']])
+  const anchor = flat.find((node) => node.type === 'a')
+  assert.ok(anchor !== undefined, '外链还是外链')
+  assert.equal(anchor.props.href, 'https://example.com')
+})

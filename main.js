@@ -9765,6 +9765,23 @@ function Icon(props) {
     )
   );
 }
+function markdownLinkTarget(href) {
+  const raw = String(href || "").trim();
+  if (raw === "") return null;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(raw)) return null;
+  if (raw.startsWith("#")) {
+    const anchor2 = raw.slice(1).trim();
+    return anchor2 === "" ? null : { target: "", anchor: anchor2 };
+  }
+  const hashAt = raw.indexOf("#");
+  const pathPart = (hashAt === -1 ? raw : raw.slice(0, hashAt)).replace(/^\.\//, "").replace(/^\/+/, "");
+  const anchor = hashAt === -1 ? "" : raw.slice(hashAt + 1).trim();
+  if (pathPart === "") return anchor === "" ? null : { target: "", anchor };
+  if (/\.(?!md$)[a-z0-9]{1,6}$/i.test(pathPart)) return null;
+  const target = pathPart.replace(/\.md$/i, "");
+  if (target === "") return null;
+  return { target, anchor };
+}
 function renderInline(text, keyPrefix, options) {
   const opts = options || {};
   const nodes = [];
@@ -9862,13 +9879,29 @@ function renderInline(text, keyPrefix, options) {
       const split = token.indexOf("](");
       const label = token.slice(1, split);
       const href = token.slice(split + 2, -1);
-      nodes.push(
-        h4(
-          "a",
-          { key, href, target: "_blank", rel: "noreferrer noopener", className: "dshgn_link" },
-          label
-        )
-      );
+      const inner = typeof opts.onOpenWikiLink === "function" ? markdownLinkTarget(href) : null;
+      if (inner !== null) {
+        nodes.push(
+          h4(
+            "button",
+            {
+              key,
+              type: "button",
+              className: "dshgn_wikilink",
+              onClick: () => opts.onOpenWikiLink(inner.target, inner.anchor)
+            },
+            label === "" ? inner.anchor === "" ? inner.target : inner.anchor : label
+          )
+        );
+      } else {
+        nodes.push(
+          h4(
+            "a",
+            { key, href, target: "_blank", rel: "noreferrer noopener", className: "dshgn_link" },
+            label
+          )
+        );
+      }
     } else {
       nodes.push(
         h4("a", { key, href: token, target: "_blank", rel: "noreferrer noopener", className: "dshgn_link" }, token)
