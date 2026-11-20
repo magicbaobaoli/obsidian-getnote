@@ -2350,6 +2350,7 @@ async function saveFile(url, filename) {
       warn: 'M12 4 3.5 19.5h17Z M12 10v4 M12 17h.01',
       info: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z M12 11v5 M12 8h.01',
       down: 'M12 5v14 M5 12l7 7 7-7',
+      hash: 'M9.5 4 7.5 20 M16.5 4l-2 16 M4 9.5h16 M3.5 14.5h16',
     }
 
     function Icon(props) {
@@ -3633,6 +3634,62 @@ async function saveFile(url, filename) {
           insert,
           label: insert,
           rank: q !== '' && nameLower.startsWith(q) ? 0 : 1,
+        })
+      }
+      hits.sort((a, b) => a.rank - b.rank || a.label.localeCompare(b.label, 'zh'))
+      return hits.slice(0, Math.max(0, limit))
+    }
+
+    /**
+     * 光标正停在一个没写完的 #标签 里吗？返回 { query, start }。
+     *
+     * 标签和双链一样是「我记得它叫什么，记不住它躺哪儿」，但更难——标签没有
+     * 候选可看，写错一个字就凭空多出一个只有这一篇才有的标签，标签云里从此
+     * 多一颗孤零零的胶囊。这里只负责判断「现在是不是在补标签」：从光标往回
+     * 找最近的 `#`，它前面必须是行首或空白（`C#` 不是标签、`## 标题` 也不是），
+     * 中间不能有空白，也不能是双链里的 `#`（`[[笔记#小节]]`）。
+     */
+    function tagQueryAt(text, caret) {
+      const source = String(text === null || text === undefined ? '' : text)
+      const at = Number.isInteger(caret) ? caret : source.length
+      if (at < 0 || at > source.length) return null
+      const before = source.slice(0, at)
+      const hash = before.lastIndexOf('#')
+      if (hash === -1) return null
+      const prev = hash === 0 ? '' : before[hash - 1]
+      // 紧贴着字的 # 不算（C#、URL 里的 #锚点）；连着两个 ## 是标题
+      if (prev !== '' && !/\s/.test(prev)) return null
+      const between = before.slice(hash + 1)
+      if (between === '') return null
+      if (/[\s#\[\]]/.test(between)) return null
+      // 已经在双链里了：`[[笔记#小节]]` 的那个 # 是在补小节，不是补标签
+      const open = before.lastIndexOf('[[')
+      if (open !== -1 && open > hash) return null
+      return { query: between, start: hash + 1 }
+    }
+
+    /**
+     * 从库里已有的标签里挑出补得上的那几条。
+     *
+     * 只补「库里已经有过的标签」：凭空敲一个新标签是允许的，但那时没有候选可
+     * 补——能补的就是「你以前用过这个词」，这恰好也是防手滑的那一层。
+     */
+    function tagMatches(tags, query, limit = 8) {
+      const list = Array.isArray(tags) ? tags : []
+      const q = String(query === null || query === undefined ? '' : query).trim().toLowerCase()
+      const hits = []
+      for (const raw of list) {
+        const tag = String(raw === null || raw === undefined ? '' : raw).replace(/^#+/, '').trim()
+        if (tag === '') continue
+        const lower = tag.toLowerCase()
+        if (q !== '' && lower.indexOf(q) === -1) continue
+        hits.push({
+          path: tag,
+          name: tag,
+          insert: tag,
+          label: `#${tag}`,
+          close: '',
+          rank: q !== '' && lower.startsWith(q) ? 0 : 1,
         })
       }
       hits.sort((a, b) => a.rank - b.rank || a.label.localeCompare(b.label, 'zh'))
@@ -7290,6 +7347,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             onNavForward: navForward,
             // 双链补全要「库里有哪些笔记」：名字打一半时从这上面挑
             noteNames: entries.map((entry) => entry.path),
+            // 标签补全要「库里已经有哪些标签」：只补用过的，凭空敲新词时没有候选。
+            // 这里不走 tagCounts——那个只留前 24 个热门标签，补全时缺的正是
+            // 那些不常用、用户更记不住的。
+            tagNames: [...new Set(entries.flatMap((entry) => entry.tags || []))],
             onAttach: attachFiles,
             // 属性区里的标签胶囊：与左栏标签区同一个动作（筛这个标签）
             onPickTag: (tag) => {
@@ -11391,6 +11452,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       const onPickTag = props.onPickTag
       // 双链补全用的名单：库里所有笔记的相对路径。名字认不出来时只能靠它。
       const noteNames = Array.isArray(props.noteNames) ? props.noteNames : []
+      // 库里已经用过的标签，给 `#` 补全当候选
+      const tagNames = Array.isArray(props.tagNames) ? props.tagNames : []
       // 渲染器要的是「库内相对路径」：status.vaultRoot 是绝对路径，笔记在库里
       // 真正的位置是「<子目录>/<笔记相对路径>」。相对链接、图片、嵌入块都靠它解析。
       const subfolder = status !== null && typeof status.subfolder === 'string' ? status.subfolder.replace(/^\/+|\/+$/g, '') : ''
@@ -11440,6 +11503,12 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 以前在面板里写双链得凭记忆把路径一字不差打对，打错一个斜杠就变成断链。
       const [linkPick, setLinkPick] = React.useState(null)
       const linkHits = linkPick === null ? [] : wikilinkMatches(noteNames, linkPick.query)
+      // 标签补全：`#` 后面打一半时把库里用过的标签摆出来。写错一个字就凭空
+      // 多出一个只有这一篇才有的标签，标签云里从此多一颗孤零零的胶囊。
+      const [tagPick, setTagPick] = React.useState(null)
+      const tagHits = tagPick === null ? [] : tagMatches(tagNames, tagPick.query)
+      const pickHits = linkPick !== null && linkHits.length > 0 ? linkHits : tagHits
+      const pickActive = linkPick !== null && linkHits.length > 0 ? linkPick.active : tagPick === null ? 0 : tagPick.active
       // 就地查找：读长笔记时想找一句话，翻回搜索框再搜一遍太重（得先离开这篇、
       // 输词、点命中行）。宿主阅读视图里 Ctrl+F 是就地查找，这里至少给一个
       // 「跳到下一处」——不弹浮层、不标高亮，只把视野挪过去。
@@ -11488,17 +11557,20 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       const applyLinkPick = React.useCallback((hit) => {
         const live = editorRef.current
         if (live === null || live === undefined || hit === null || hit === undefined) return
+        // 两份候选（双链、标签）走同一段替换：都是「从记号后面到光标」那一段
+        // 换成选中的那一条。哪一份开着，就取哪一份的起点。
+        const source = linkPick !== null && linkHits.length > 0 ? linkPick : tagPick
+        if (source === null || source === undefined) return
         const caret = typeof live.selectionStart === 'number' ? live.selectionStart : live.value.length
-        setLinkPick((current) => {
-          if (current === null) return null
-          const head = live.value.slice(0, current.start)
-          const tail = live.value.slice(caret)
-          const inserted = `${hit.insert}]]`
-          setDraft(head + inserted + tail)
-          placeCaret(head.length + inserted.length, head.length + inserted.length)
-          return null
-        })
-      }, [placeCaret, setDraft])
+        const head = live.value.slice(0, source.start)
+        const tail = live.value.slice(caret)
+        // 双链要补 `]]`，标签不用（标签到空白或标点就结束了）
+        const inserted = `${hit.insert}${typeof hit.close === 'string' ? hit.close : ']]'}`
+        setDraft(head + inserted + tail)
+        placeCaret(head.length + inserted.length, head.length + inserted.length)
+        setLinkPick(null)
+        setTagPick(null)
+      }, [linkHits.length, linkPick, placeCaret, setDraft, tagPick])
 
       // 在正文里找下一处 / 上一处。找不到时把话说明白：静默不动的话，
       // 用户会以为是自己敲错了词，接着反复按回车。
@@ -12363,31 +12435,37 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                 const at = typeof event.target.selectionStart === 'number' ? event.target.selectionStart : value.length
                 const open = wikilinkQueryAt(value, at)
                 setLinkPick(open === null ? null : { query: open.query, start: open.start, active: 0 })
+                // 不在双链里才看标签：`[[笔记#小节]]` 的那个 # 是在补小节
+                const tagOpen = open === null ? tagQueryAt(value, at) : null
+                setTagPick(tagOpen === null ? null : { query: tagOpen.query, start: tagOpen.start, active: 0 })
               },
               // 在清单行末尾按回车，接着写下一行（有序列表自动加一）。
               // 只认行尾，行中间的回车仍然是「把这行拆成两条」，交给浏览器自己处理。
               onKeyDown: (event) => {
                 // 补全开着的时候，上下键和回车先归它用：用户在候选列表里挑，
                 // 而不是在正文里挪光标。
-                if (linkPick !== null && linkHits.length > 0) {
+                if (pickHits.length > 0) {
+                  const picker = linkPick !== null && linkHits.length > 0 ? 'link' : 'tag'
+                  const setPicker = picker === 'link' ? setLinkPick : setTagPick
+                  const currentPick = picker === 'link' ? linkPick : tagPick
                   if (event.key === 'Escape') {
                     event.preventDefault()
-                    setLinkPick(null)
+                    setPicker(null)
                     return
                   }
                   if (event.key === 'ArrowDown') {
                     event.preventDefault()
-                    setLinkPick({ ...linkPick, active: Math.min(linkHits.length - 1, linkPick.active + 1) })
+                    setPicker({ ...currentPick, active: Math.min(pickHits.length - 1, pickActive + 1) })
                     return
                   }
                   if (event.key === 'ArrowUp') {
                     event.preventDefault()
-                    setLinkPick({ ...linkPick, active: Math.max(0, linkPick.active - 1) })
+                    setPicker({ ...currentPick, active: Math.max(0, pickActive - 1) })
                     return
                   }
                   if (event.key === 'Enter' || event.key === 'Tab') {
                     event.preventDefault()
-                    applyLinkPick(linkHits[Math.min(linkPick.active, linkHits.length - 1)])
+                    applyLinkPick(pickHits[Math.min(pickActive, pickHits.length - 1)])
                     return
                   }
                 }
@@ -12467,26 +12545,26 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             }),
             // 双链候选：紧贴编辑区下沿摆一排，鼠标点也行、键盘上下+回车也行。
             // 一条候选都没搜到时整块不出现——弹一个空盒子比不弹更让人困惑。
-            linkHits.length === 0
+            pickHits.length === 0
               ? null
               : h(
                 'div',
                 { className: 'dshgn_linkPick' },
-                linkHits.map((hit, index) =>
+                pickHits.map((hit, index) =>
                   h(
                     'button',
                     {
                       key: hit.path,
                       type: 'button',
                       className: 'dshgn_linkPickItem',
-                      'data-on': index === Math.min(linkPick.active, linkHits.length - 1) ? 'true' : 'false',
+                      'data-on': index === Math.min(pickActive, pickHits.length - 1) ? 'true' : 'false',
                       title: hit.path,
                       // 别让按钮抢走焦点：焦点一离开 textarea，光标位置就没了，
                       // 接下来的输入会落到别处。
                       onMouseDown: (event) => event.preventDefault(),
                       onClick: () => applyLinkPick(hit),
                     },
-                    h(Icon, { name: 'link', size: 12 }),
+                    h(Icon, { name: hit.close === '' ? 'hash' : 'link', size: 12 }),
                     h('span', { className: 'dshgn_linkPickName' }, hit.label),
                   ),
                 ),
@@ -13572,7 +13650,7 @@ export const __internals = {
   TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale,
   reportSync, dailyTemplateOf, frontmatterText, isTagKey, FollowCard, parseTable, countWords,
   isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote, parseImageSize, renderParagraph, blockTextOf, markdownLinkTarget,
-  tagBodyOf, ZoomOverlay, continueListLine, indentLines, wrapInline, wikilinkQueryAt, wikilinkMatches, findInBody, findInBodyMatch, findInText,
+  tagBodyOf, ZoomOverlay, continueListLine, indentLines, wrapInline, wikilinkQueryAt, wikilinkMatches, tagQueryAt, tagMatches, findInBody, findInBodyMatch, findInText,
       readScrollMarks, writeScrollMark, scrollMarkOf, SCROLL_KEY,
   splitByTerms, highlightTerms, searchTermsOf,
 }

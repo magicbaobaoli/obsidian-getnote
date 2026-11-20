@@ -5631,3 +5631,116 @@ test('Ctrl+E 在阅读态进编辑、编辑态存好再退，没改过就不白�
   assert.equal(rootNode().getAttribute('data-has-note'), 'true', '退出编辑态，但还留在这篇上')
 })
 
+test('编辑区里敲 # 就把库里用过的标签摆出来，挑一条补上去且不自动加空格', async () => {
+  const { tagQueryAt, tagMatches } = panel.__internals
+
+  // 纯函数：只在「# 后面正打着一串、前面是行首或空白」时才算在补标签
+  assert.deepEqual(tagQueryAt('写点 #生', 5), { query: '生', start: 4 })
+  assert.deepEqual(tagQueryAt('#生活', 3), { query: '生活', start: 1 })
+  assert.equal(tagQueryAt('#', 1), null, '刚敲一个井号还没打字，不弹')
+  assert.equal(tagQueryAt('C#', 2), null, 'C# 这种紧贴着字的井号不算标签')
+  assert.equal(tagQueryAt('## 标题', 5), null, '## 是标题，不是标签')
+  assert.equal(tagQueryAt('[[笔记#小节', 7), null, '双链里的井号是在补小节')
+  assert.equal(tagQueryAt('没有井号', 4), null)
+  assert.equal(tagQueryAt('写点 #生 活', 7), null, '中间隔了空白，已经不在这个标签里')
+
+  // 纯函数：只补库里已经用过的标签，打头的排前面
+  const tags = ['生活', '生活记录', '读书', '随手']
+  const hits = tagMatches(tags, '生活')
+  assert.equal(hits.length, 2)
+  assert.equal(hits[0].insert, '生活')
+  assert.equal(hits[0].label, '#生活')
+  assert.equal(hits[0].close, '', '标签不用补右括号')
+  assert.equal(tagMatches(tags, '读').length, 1)
+  assert.equal(tagMatches(tags, '没有这个').length, 0)
+  assert.equal(tagMatches(tags, '').length, 4, '空查询就是全都摆出来')
+
+  // 真渲染：库里先有带标签的笔记，再在编辑区里敲 # 补一条
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    const backBtn = window.document.querySelector('.dshgn_noteBack')
+    if (backBtn) {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    }
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox) {
+    searchBox.value = ''
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(260)
+  }
+
+  const rel = '随手记/标签补全验收.md'
+  const seeded = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '标签补全验收',
+      content: '# 标签补全验收\n\n先写几个标签：#生活 #读书 #随手\n',
+      withDatePrefix: false,
+      requestId: 'seed-tag-complete',
+    }),
+  })
+  assert.equal((await seeded.json()).path, rel)
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+  const card = await waitFor(
+    () => Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === rel) || null,
+    8000,
+    '标签补全验收的卡片',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 8000, '打开标签补全验收')
+
+  const editBtn = await waitFor(
+    () => Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '编辑') || null,
+    5000,
+    '编辑按钮',
+  )
+  editBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const editor = await waitFor(() => window.document.querySelector('.dshgn_editor'), 5000, '编辑区')
+
+  // 敲到「#生」：候选里应该摆出库里那两个带「生活」的标签
+  editor.value = '# 标签补全验收\n\n再补一个 #生'
+  editor.dispatchEvent(new window.Event('input', { bubbles: true }))
+  editor.setSelectionRange(editor.value.length, editor.value.length)
+  const items = await waitFor(
+    () => {
+      const found = window.document.querySelectorAll('.dshgn_linkPickItem')
+      return found.length > 0 ? Array.from(found) : null
+    },
+    5000,
+    '标签候选',
+  )
+  const labels = items.map((node) => node.textContent)
+  assert.ok(labels.some((text) => text.includes('#生活')), '候选里要有 #生活：' + labels.join('、'))
+  assert.equal(items[0].getAttribute('data-on'), 'true', '第一条默认选中')
+
+  // 回车补上：变成 #生活，不带 ]]，光标停在后面
+  editor.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  await sleep(120)
+  assert.equal(editor.value, '# 标签补全验收\n\n再补一个 #生活', '补上的标签不加右括号')
+  assert.equal(editor.selectionStart, editor.value.length, '光标停在补好的标签后面')
+  assert.equal(window.document.querySelectorAll('.dshgn_linkPickItem').length, 0, '补完候选收起')
+
+  // 库里没有的标签：不弹空盒子，用户照样能敲完
+  editor.value = '# 标签补全验收\n\n全新的 #根本没有这个标签'
+  editor.dispatchEvent(new window.Event('input', { bubbles: true }))
+  editor.setSelectionRange(editor.value.length, editor.value.length)
+  await sleep(200)
+  assert.equal(window.document.querySelectorAll('.dshgn_linkPickItem').length, 0, '一条都对不上就不弹')
+
+  // 收尾：退出编辑态，别把草稿留在面板上
+  editor.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  await sleep(120)
+})
+

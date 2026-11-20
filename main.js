@@ -9885,7 +9885,8 @@ var ICONS = {
   attach: "M14 3.5a4.5 4.5 0 0 1 6.4 6.4l-8.5 8.5a3 3 0 0 1-4.2-4.2l7.8-7.8",
   warn: "M12 4 3.5 19.5h17Z M12 10v4 M12 17h.01",
   info: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z M12 11v5 M12 8h.01",
-  down: "M12 5v14 M5 12l7 7 7-7"
+  down: "M12 5v14 M5 12l7 7 7-7",
+  hash: "M9.5 4 7.5 20 M16.5 4l-2 16 M4 9.5h16 M3.5 14.5h16"
 };
 function Icon(props) {
   const size = props && typeof props.size === "number" ? props.size : 16;
@@ -10730,6 +10731,43 @@ function wikilinkMatches(names, query, limit = 8) {
       insert,
       label: insert,
       rank: q4 !== "" && nameLower.startsWith(q4) ? 0 : 1
+    });
+  }
+  hits.sort((a3, b3) => a3.rank - b3.rank || a3.label.localeCompare(b3.label, "zh"));
+  return hits.slice(0, Math.max(0, limit));
+}
+function tagQueryAt(text, caret) {
+  const source = String(text === null || text === void 0 ? "" : text);
+  const at = Number.isInteger(caret) ? caret : source.length;
+  if (at < 0 || at > source.length) return null;
+  const before = source.slice(0, at);
+  const hash = before.lastIndexOf("#");
+  if (hash === -1) return null;
+  const prev = hash === 0 ? "" : before[hash - 1];
+  if (prev !== "" && !/\s/.test(prev)) return null;
+  const between = before.slice(hash + 1);
+  if (between === "") return null;
+  if (/[\s#\[\]]/.test(between)) return null;
+  const open = before.lastIndexOf("[[");
+  if (open !== -1 && open > hash) return null;
+  return { query: between, start: hash + 1 };
+}
+function tagMatches(tags, query, limit = 8) {
+  const list = Array.isArray(tags) ? tags : [];
+  const q4 = String(query === null || query === void 0 ? "" : query).trim().toLowerCase();
+  const hits = [];
+  for (const raw of list) {
+    const tag = String(raw === null || raw === void 0 ? "" : raw).replace(/^#+/, "").trim();
+    if (tag === "") continue;
+    const lower = tag.toLowerCase();
+    if (q4 !== "" && lower.indexOf(q4) === -1) continue;
+    hits.push({
+      path: tag,
+      name: tag,
+      insert: tag,
+      label: `#${tag}`,
+      close: "",
+      rank: q4 !== "" && lower.startsWith(q4) ? 0 : 1
     });
   }
   hits.sort((a3, b3) => a3.rank - b3.rank || a3.label.localeCompare(b3.label, "zh"));
@@ -13899,6 +13937,10 @@ ${insert}
         onNavForward: navForward,
         // 双链补全要「库里有哪些笔记」：名字打一半时从这上面挑
         noteNames: entries.map((entry) => entry.path),
+        // 标签补全要「库里已经有哪些标签」：只补用过的，凭空敲新词时没有候选。
+        // 这里不走 tagCounts——那个只留前 24 个热门标签，补全时缺的正是
+        // 那些不常用、用户更记不住的。
+        tagNames: [...new Set(entries.flatMap((entry) => entry.tags || []))],
         onAttach: attachFiles,
         // 属性区里的标签胶囊：与左栏标签区同一个动作（筛这个标签）
         onPickTag: (tag) => {
@@ -17368,6 +17410,7 @@ function NotePane(props) {
   const resolveNote = props.resolveNote;
   const onPickTag = props.onPickTag;
   const noteNames = Array.isArray(props.noteNames) ? props.noteNames : [];
+  const tagNames = Array.isArray(props.tagNames) ? props.tagNames : [];
   const subfolder = status !== null && typeof status.subfolder === "string" ? status.subfolder.replace(/^\/+|\/+$/g, "") : "";
   const vaultPathOf = (note) => {
     const rel = note !== null && typeof note.path === "string" ? note.path : "";
@@ -17399,6 +17442,10 @@ function NotePane(props) {
   const editorRef = A2(null);
   const [linkPick, setLinkPick] = h2(null);
   const linkHits = linkPick === null ? [] : wikilinkMatches(noteNames, linkPick.query);
+  const [tagPick, setTagPick] = h2(null);
+  const tagHits = tagPick === null ? [] : tagMatches(tagNames, tagPick.query);
+  const pickHits = linkPick !== null && linkHits.length > 0 ? linkHits : tagHits;
+  const pickActive = linkPick !== null && linkHits.length > 0 ? linkPick.active : tagPick === null ? 0 : tagPick.active;
   const [findOpen, setFindOpen] = h2(false);
   const [findText, setFindText] = h2("");
   const findInputRef = A2(null);
@@ -17431,17 +17478,17 @@ function NotePane(props) {
   const applyLinkPick = q2((hit) => {
     const live = editorRef.current;
     if (live === null || live === void 0 || hit === null || hit === void 0) return;
+    const source = linkPick !== null && linkHits.length > 0 ? linkPick : tagPick;
+    if (source === null || source === void 0) return;
     const caret = typeof live.selectionStart === "number" ? live.selectionStart : live.value.length;
-    setLinkPick((current2) => {
-      if (current2 === null) return null;
-      const head = live.value.slice(0, current2.start);
-      const tail = live.value.slice(caret);
-      const inserted = `${hit.insert}]]`;
-      setDraft(head + inserted + tail);
-      placeCaret(head.length + inserted.length, head.length + inserted.length);
-      return null;
-    });
-  }, [placeCaret, setDraft]);
+    const head = live.value.slice(0, source.start);
+    const tail = live.value.slice(caret);
+    const inserted = `${hit.insert}${typeof hit.close === "string" ? hit.close : "]]"}`;
+    setDraft(head + inserted + tail);
+    placeCaret(head.length + inserted.length, head.length + inserted.length);
+    setLinkPick(null);
+    setTagPick(null);
+  }, [linkHits.length, linkPick, placeCaret, setDraft, tagPick]);
   const runFind = q2((forward) => {
     const text = findText.trim();
     if (text === "") return;
@@ -18138,29 +18185,34 @@ function NotePane(props) {
           const at = typeof event.target.selectionStart === "number" ? event.target.selectionStart : value.length;
           const open = wikilinkQueryAt(value, at);
           setLinkPick(open === null ? null : { query: open.query, start: open.start, active: 0 });
+          const tagOpen = open === null ? tagQueryAt(value, at) : null;
+          setTagPick(tagOpen === null ? null : { query: tagOpen.query, start: tagOpen.start, active: 0 });
         },
         // 在清单行末尾按回车，接着写下一行（有序列表自动加一）。
         // 只认行尾，行中间的回车仍然是「把这行拆成两条」，交给浏览器自己处理。
         onKeyDown: (event) => {
-          if (linkPick !== null && linkHits.length > 0) {
+          if (pickHits.length > 0) {
+            const picker = linkPick !== null && linkHits.length > 0 ? "link" : "tag";
+            const setPicker = picker === "link" ? setLinkPick : setTagPick;
+            const currentPick = picker === "link" ? linkPick : tagPick;
             if (event.key === "Escape") {
               event.preventDefault();
-              setLinkPick(null);
+              setPicker(null);
               return;
             }
             if (event.key === "ArrowDown") {
               event.preventDefault();
-              setLinkPick({ ...linkPick, active: Math.min(linkHits.length - 1, linkPick.active + 1) });
+              setPicker({ ...currentPick, active: Math.min(pickHits.length - 1, pickActive + 1) });
               return;
             }
             if (event.key === "ArrowUp") {
               event.preventDefault();
-              setLinkPick({ ...linkPick, active: Math.max(0, linkPick.active - 1) });
+              setPicker({ ...currentPick, active: Math.max(0, pickActive - 1) });
               return;
             }
             if (event.key === "Enter" || event.key === "Tab") {
               event.preventDefault();
-              applyLinkPick(linkHits[Math.min(linkPick.active, linkHits.length - 1)]);
+              applyLinkPick(pickHits[Math.min(pickActive, pickHits.length - 1)]);
               return;
             }
           }
@@ -18225,24 +18277,24 @@ function NotePane(props) {
       }),
       // 双链候选：紧贴编辑区下沿摆一排，鼠标点也行、键盘上下+回车也行。
       // 一条候选都没搜到时整块不出现——弹一个空盒子比不弹更让人困惑。
-      linkHits.length === 0 ? null : h4(
+      pickHits.length === 0 ? null : h4(
         "div",
         { className: "dshgn_linkPick" },
-        linkHits.map(
+        pickHits.map(
           (hit, index) => h4(
             "button",
             {
               key: hit.path,
               type: "button",
               className: "dshgn_linkPickItem",
-              "data-on": index === Math.min(linkPick.active, linkHits.length - 1) ? "true" : "false",
+              "data-on": index === Math.min(pickActive, pickHits.length - 1) ? "true" : "false",
               title: hit.path,
               // 别让按钮抢走焦点：焦点一离开 textarea，光标位置就没了，
               // 接下来的输入会落到别处。
               onMouseDown: (event) => event.preventDefault(),
               onClick: () => applyLinkPick(hit)
             },
-            h4(Icon, { name: "link", size: 12 }),
+            h4(Icon, { name: hit.close === "" ? "hash" : "link", size: 12 }),
             h4("span", { className: "dshgn_linkPickName" }, hit.label)
           )
         )
