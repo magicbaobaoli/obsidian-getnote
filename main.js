@@ -8386,6 +8386,7 @@ var LEX = {
     "note.wikilinkMissing": "\u5E93\u91CC\u627E\u4E0D\u5230\u300C{name}\u300D\u8FD9\u7BC7\u7B14\u8BB0",
     "note.anchorMissing": "\u8FD9\u4E00\u7BC7\u91CC\u6CA1\u6709\u300C{name}\u300D\u8FD9\u4E00\u8282",
     "note.blockRef": "\u672C\u9875\u67D0\u4E00\u6BB5",
+    "note.pickTag": "\u7B5B\u8FD9\u4E2A\u6807\u7B7E",
     "note.footnote": "\u8DF3\u5230\u8FD9\u6761\u811A\u6CE8",
     "note.openEmbed": "\u6253\u5F00\u8FD9\u4E00\u7BC7",
     "note.embedBroken": "\u8FD9\u4E00\u7BC7\u6CA1\u8BFB\u51FA\u6765",
@@ -8800,6 +8801,7 @@ var LEX = {
     "note.wikilinkMissing": 'No note named "{name}" in this vault',
     "note.anchorMissing": 'No section called "{name}" in this note',
     "note.blockRef": "A paragraph on this page",
+    "note.pickTag": "Filter by this tag",
     "note.footnote": "Jump to this footnote",
     "note.openEmbed": "Open this note",
     "note.embedBroken": "Could not read this note",
@@ -9214,6 +9216,7 @@ var LEX = {
     "note.wikilinkMissing": "Geen notitie met de naam \u2018{name}\u2019 in deze map",
     "note.anchorMissing": "Geen kop met de naam \u2018{name}\u2019 in deze notitie",
     "note.blockRef": "Een alinea op deze pagina",
+    "note.pickTag": "Filter op deze tag",
     "note.footnote": "Naar deze voetnoot",
     "note.openEmbed": "Open deze notitie",
     "note.embedBroken": "Deze notitie kon niet gelezen worden",
@@ -9856,7 +9859,7 @@ function markdownLinkTarget(href) {
 function renderInline(text, keyPrefix, options) {
   const opts = options || {};
   const nodes = [];
-  const pattern = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\n]+\*)|(~~[^~\n]+~~)|(==[^=\n]+==)|(%%[\s\S]*?%%)|(!?\[\[[^\]\n]+\]\])|(\[[^\]\n]*\]\([^)\s]+\))|(https?:\/\/[^\s)]+)|(\[\^[^\]\n]+\])/g;
+  const pattern = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\n]+\*)|(~~[^~\n]+~~)|(==[^=\n]+==)|(%%[\s\S]*?%%)|(!?\[\[[^\]\n]+\]\])|(\[[^\]\n]*\]\([^)\s]+\))|(https?:\/\/[^\s)]+)|(\[\^[^\]\n]+\])|(#[^\s#`]+)/g;
   let last = 0;
   let match;
   let seq = 0;
@@ -9973,6 +9976,33 @@ function renderInline(text, keyPrefix, options) {
           )
         );
       }
+    } else if (token.startsWith("#")) {
+      const body = token.slice(1);
+      if (!tagBodyOf(body)) {
+        nodes.push(token);
+      } else {
+        const before = match.index > 0 ? text[match.index - 1] : "";
+        const lead = before === "" || /[\s([{>（【，、；：]/.test(before);
+        if (!lead) {
+          nodes.push(token);
+        } else if (typeof opts.onPickTag === "function") {
+          nodes.push(
+            h4(
+              "button",
+              {
+                key,
+                type: "button",
+                className: "dshgn_inlineTag",
+                title: getT()("note.pickTag"),
+                onClick: () => opts.onPickTag(body)
+              },
+              `#${body}`
+            )
+          );
+        } else {
+          nodes.push(h4("span", { key, className: "dshgn_inlineTag" }, `#${body}`));
+        }
+      }
     } else {
       nodes.push(
         h4("a", { key, href: token, target: "_blank", rel: "noreferrer noopener", className: "dshgn_link" }, token)
@@ -10021,6 +10051,14 @@ function aliasesOf(entry) {
   const data = entry !== null && entry !== void 0 && typeof entry === "object" ? entry.aliases : null;
   if (!Array.isArray(data)) return [];
   return data.map((item) => String(item === null || item === void 0 ? "" : item).trim()).filter((item) => item !== "");
+}
+function tagBodyOf(value) {
+  const body = String(value === null || value === void 0 ? "" : value);
+  if (body === "") return false;
+  if (!/^[\w\u4e00-\u9fa5/-]+$/.test(body)) return false;
+  if (/^[\d/]+$/.test(body)) return false;
+  if (body.endsWith("/")) return false;
+  return true;
 }
 function isTagKey(key) {
   const name = String(key || "").trim().toLowerCase();
@@ -11413,6 +11451,13 @@ var CSS = `
   color:var(--dsw-alias-brand-primary);cursor:pointer;text-decoration:none;
   border-bottom:0.5px solid currentColor}
 .dshgn_wikilink:hover{color:var(--dsw-alias-brand-primary);border-bottom-color:transparent}
+/* \u6B63\u6587\u91CC\u7684 #\u6807\u7B7E\uFF1A\u5F62\u72B6\u8DDF\u7B14\u8BB0\u5934\u5C5E\u6027\u533A\u90A3\u51E0\u9897\u80F6\u56CA\u4E00\u81F4\uFF0C\u8BA9\u4EBA\u4E00\u773C\u770B\u51FA\u300C\u8FD9\u662F\u6807\u7B7E\uFF0C
+   \u4E0D\u662F\u6B63\u6587\u91CC\u7684\u4E00\u4E2A\u4E95\u53F7\u300D\u3002span \u4E0E button \u5171\u7528\u8FD9\u5957\u6837\u5F0F\uFF0C\u524D\u8005\u53EA\u4E0A\u8272\u3002 */
+.dshgn_inlineTag{display:inline;padding:0 4px;margin:0 1px;border:0;border-radius:6px;
+  background:rgba(var(--dshgn-tintRgb),.1);font:inherit;font-size:.94em;
+  color:var(--dsw-alias-brand-primary);text-decoration:none;white-space:nowrap}
+button.dshgn_inlineTag{cursor:pointer}
+button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-accent)}
 /* \u5D4C\u5165\u7684\u975E\u56FE\u7247\u9644\u4EF6\uFF08![[x.pdf]] \u8FD9\u7C7B\uFF09\uFF1A\u53EA\u663E\u793A\u6210\u4E00\u9897\u6587\u4EF6\u540D\u80F6\u56CA\uFF0C\u70B9\u4E0D\u5F00\u4E5F\u4E0D\u5047\u88C5\u80FD\u70B9\u3002 */
 .dshgn_embed{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;
   border-radius:10px;border:0.5px solid var(--dsw-alias-border-l2);
@@ -17454,6 +17499,9 @@ function NotePane(props) {
             // 共用一套，否则会出现「点得过去、嵌不进来」。
             resolveNote,
             embedDepth: 0,
+            // 正文里的 #标签：点一下就在左栏筛这个标签，与笔记头属性区
+            // 那几颗胶囊同一个动作。卡片摘要那边不给，那里点了会跳走。
+            onPickTag,
             t: t4
           }
         )

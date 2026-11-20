@@ -3960,3 +3960,125 @@ test('提示框里的待办不算序号，勾一下不会勾到正文里那条',
   boxes[1].props.onClick({ preventDefault() {}, stopPropagation() {} })
   assert.deepEqual(clicked, [[0, true], [1, true]], '正文第二条是第 1 个')
 })
+
+test('正文里写到的 #标签 是个能点的胶囊，不像一串普通字', async () => {
+  // 标签云里已经有这个标签了，正文里那串 #生活体验 却还是干巴巴的字，
+  // 点也点不了——同一个东西在页面上长成两副样子，用户会以为是没渲染对。
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const backBtn = window.document.querySelector('.dshgn_noteBack')
+  if (backBtn) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    try {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+  }
+
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox) {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setter.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(400)
+  }
+
+  const seed = async (title, content, requestId) => {
+    const res = await realFetch(server.origin + '/getnote/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({ dir: '随手记', title, content, withDatePrefix: false, requestId }),
+    })
+    const json = await res.json()
+    assert.equal(json.path, '随手记/' + title + '.md')
+    return json.path
+  }
+
+  const target = await seed(
+    '正文胶囊验收',
+    ['# 正文胶囊验收', '', '今天出去走了走 #生活体验', '', '编号 #123 不是标签，abc#def 也不是。', ''].join('\n'),
+    'seed-inline-pill',
+  )
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  const card = await waitFor(
+    () => Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === target) || null,
+    8000,
+    '列表里应该有这一篇',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 5000, '打开这一篇')
+
+  const pill = await waitFor(
+    () => {
+      const all = Array.from(window.document.querySelectorAll('.dshgn_inlineTag'))
+      return all.find((el) => (el.textContent || '').trim() === '#生活体验') || null
+    },
+    8000,
+    '正文里的 #标签 该做成胶囊',
+  )
+  assert.equal(pill.tagName, 'BUTTON', '接得上筛标签的地方就该能点')
+
+  const noteText = window.document.querySelector('.dshgn_note').textContent || ''
+  assert.ok(noteText.includes('#123'), '纯数字不算标签，得原样留着：' + noteText.slice(0, 200))
+  assert.ok(noteText.includes('abc#def'), '紧贴着字的井号不算标签，得原样留着')
+  assert.equal(
+    Array.from(window.document.querySelectorAll('.dshgn_inlineTag')).some(
+      (el) => (el.textContent || '').trim() === '#123',
+    ),
+    false,
+    '纯数字不该被做成胶囊',
+  )
+
+  pill.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_tagRow')).some(
+        (el) => el.getAttribute('data-on') === 'true' && (el.textContent || '').includes('生活体验'),
+      ),
+    5000,
+    '点正文里的胶囊就该去左栏筛这个标签',
+  )
+
+  // 收尾：清掉筛选，别把状态留给后面的用例
+  const onRow = Array.from(window.document.querySelectorAll('.dshgn_tagRow')).find(
+    (el) => el.getAttribute('data-on') === 'true',
+  )
+  if (onRow) {
+    onRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(
+      () => Array.from(window.document.querySelectorAll('.dshgn_tagRow')).every((el) => el.getAttribute('data-on') !== 'true'),
+      5000,
+      '把标签筛选清掉',
+    )
+  }
+
+  // 渲染器层：口径与 vault 那边一致，不然后台认得、前台认不出
+  const { renderInline, tagBodyOf } = panel.__internals
+  const nodes = renderInline('看到 #标签 了', 'k', {})
+  const span = nodes.find((node) => node && typeof node === 'object' && node.props && node.props.className === 'dshgn_inlineTag')
+  assert.ok(span !== undefined, '没接筛标签的地方也要上色')
+  assert.equal(span.type, 'span', '没有去处时不该是个按钮')
+  assert.equal(span.props.children, '#标签')
+
+  const plain = renderInline('#123', 'k', {})
+  assert.equal(
+    plain.some((node) => node && typeof node === 'object' && node.props && node.props.className === 'dshgn_inlineTag'),
+    false,
+    '纯数字不是标签',
+  )
+
+  assert.equal(tagBodyOf('生活'), true)
+  assert.equal(tagBodyOf('读书/摘抄'), true)
+  assert.equal(tagBodyOf('123'), false, '纯数字不算标签')
+  assert.equal(tagBodyOf('a/'), false, '结尾挂斜杠的不算标签')
+  assert.equal(tagBodyOf(''), false)
+})

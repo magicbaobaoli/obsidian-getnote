@@ -702,6 +702,7 @@ async function saveFile(url, filename) {
         'note.wikilinkMissing': '库里找不到「{name}」这篇笔记',
         'note.anchorMissing': '这一篇里没有「{name}」这一节',
         'note.blockRef': '本页某一段',
+        'note.pickTag': '筛这个标签',
     'note.footnote': '跳到这条脚注',
         'note.openEmbed': '打开这一篇',
         'note.embedBroken': '这一篇没读出来',
@@ -1120,6 +1121,7 @@ async function saveFile(url, filename) {
         'note.wikilinkMissing': 'No note named "{name}" in this vault',
         'note.anchorMissing': 'No section called "{name}" in this note',
         'note.blockRef': 'A paragraph on this page',
+        'note.pickTag': 'Filter by this tag',
     'note.footnote': 'Jump to this footnote',
         'note.openEmbed': 'Open this note',
         'note.embedBroken': 'Could not read this note',
@@ -1537,6 +1539,7 @@ async function saveFile(url, filename) {
         'note.wikilinkMissing': 'Geen notitie met de naam ‘{name}’ in deze map',
         'note.anchorMissing': 'Geen kop met de naam ‘{name}’ in deze notitie',
         'note.blockRef': 'Een alinea op deze pagina',
+        'note.pickTag': 'Filter op deze tag',
     'note.footnote': 'Naar deze voetnoot',
         'note.openEmbed': 'Open deze notitie',
         'note.embedBroken': 'Deze notitie kon niet gelezen worden',
@@ -2371,8 +2374,11 @@ async function saveFile(url, filename) {
       // 高亮（`==`）、注释（`%%`）、双链、普通链接、裸链。
       // 删除线和高亮是 Obsidian 自己的扩展，标准 Markdown 里没有，但用户天天在写；
       // 不认的话它们会连标记符号一起原样露在界面上，看起来像正文写错了。
+      // 正文里的 `#标签` 也认（宿主就是这么渲染的）。放在最后一位：这样
+      // `https://x/#section` 会先被前面的裸链那一条整段吃掉，URL 里的井号
+      // 不会被拆成一个假标签；行内代码与注释也都在更前面，同理。
       const pattern =
-        /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\n]+\*)|(~~[^~\n]+~~)|(==[^=\n]+==)|(%%[\s\S]*?%%)|(!?\[\[[^\]\n]+\]\])|(\[[^\]\n]*\]\([^)\s]+\))|(https?:\/\/[^\s)]+)|(\[\^[^\]\n]+\])/g
+        /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\n]+\*)|(~~[^~\n]+~~)|(==[^=\n]+==)|(%%[\s\S]*?%%)|(!?\[\[[^\]\n]+\]\])|(\[[^\]\n]*\]\([^)\s]+\))|(https?:\/\/[^\s)]+)|(\[\^[^\]\n]+\])|(#[^\s#`]+)/g
       let last = 0
       let match
       let seq = 0
@@ -2515,6 +2521,41 @@ async function saveFile(url, filename) {
               ),
             )
           }
+        } else if (token.startsWith('#')) {
+          // 正文里的 #标签。认不出的（纯数字、结尾挂斜杠、中间有标点）原样留着：
+          // 那本来就不是标签，吞掉或改样子都等于替用户改正文。
+          const body = token.slice(1)
+          if (!tagBodyOf(body)) {
+            nodes.push(token)
+          } else {
+            // 左边紧挨着字的时候（`abc#def`）不算标签：宿主只在空白或标点后面
+            // 认井号。看的是原文里这个 token 前一个字符。
+            const before = match.index > 0 ? text[match.index - 1] : ''
+            const lead = before === '' || /[\s([{>（【，、；：]/.test(before)
+            if (!lead) {
+              nodes.push(token)
+            } else if (typeof opts.onPickTag === 'function') {
+              // 有筛标签的去处就做成能点的胶囊，点了等于在左栏筛这个标签——
+              // 与笔记头属性区里那几颗胶囊是同一个动作。
+              nodes.push(
+                h(
+                  'button',
+                  {
+                    key,
+                    type: 'button',
+                    className: 'dshgn_inlineTag',
+                    title: getT()('note.pickTag'),
+                    onClick: () => opts.onPickTag(body),
+                  },
+                  `#${body}`,
+                ),
+              )
+            } else {
+              // 没接筛标签的入口（卡片摘要、嵌入的正文）就只上色、不给光标：
+              // 点下去什么都不会发生的按钮比不能点更让人困惑。
+              nodes.push(h('span', { key, className: 'dshgn_inlineTag' }, `#${body}`))
+            }
+          }
         } else {
           nodes.push(
             h('a', { key, href: token, target: '_blank', rel: 'noreferrer noopener', className: 'dshgn_link' }, token),
@@ -2622,6 +2663,22 @@ async function saveFile(url, filename) {
     }
 
     /** 这个键是不是「标签」——宿主的约定是 tags，用户手写时常见 tag / 标签。 */
+    /**
+     * 正文里 `#标签` 的写法能不能算标签。
+     *
+     * 与 src/core/vault.js 的 isTagBody 同一套口径：标签云那边认什么，正文这里就
+     * 认什么，否则会出现「标签云里有、正文里点不了」这种一半一半的怪事。
+     * 纯数字（#123）和结尾挂斜杠的都不算——前者宿主也不认，后者是路径。
+     */
+    function tagBodyOf(value) {
+      const body = String(value === null || value === undefined ? '' : value)
+      if (body === '') return false
+      if (!/^[\w\u4e00-\u9fa5/-]+$/.test(body)) return false
+      if (/^[\d/]+$/.test(body)) return false
+      if (body.endsWith('/')) return false
+      return true
+    }
+
     function isTagKey(key) {
       const name = String(key || '').trim().toLowerCase()
       return name === 'tags' || name === 'tag' || name === '标签' || name === '标签页'
@@ -4261,6 +4318,13 @@ async function saveFile(url, filename) {
   color:var(--dsw-alias-brand-primary);cursor:pointer;text-decoration:none;
   border-bottom:0.5px solid currentColor}
 .dshgn_wikilink:hover{color:var(--dsw-alias-brand-primary);border-bottom-color:transparent}
+/* 正文里的 #标签：形状跟笔记头属性区那几颗胶囊一致，让人一眼看出「这是标签，
+   不是正文里的一个井号」。span 与 button 共用这套样式，前者只上色。 */
+.dshgn_inlineTag{display:inline;padding:0 4px;margin:0 1px;border:0;border-radius:6px;
+  background:rgba(var(--dshgn-tintRgb),.1);font:inherit;font-size:.94em;
+  color:var(--dsw-alias-brand-primary);text-decoration:none;white-space:nowrap}
+button.dshgn_inlineTag{cursor:pointer}
+button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-accent)}
 /* 嵌入的非图片附件（![[x.pdf]] 这类）：只显示成一颗文件名胶囊，点不开也不假装能点。 */
 .dshgn_embed{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;
   border-radius:10px;border:0.5px solid var(--dsw-alias-border-l2);
@@ -11424,6 +11488,9 @@ async function saveFile(url, filename) {
                     // 共用一套，否则会出现「点得过去、嵌不进来」。
                     resolveNote,
                     embedDepth: 0,
+                    // 正文里的 #标签：点一下就在左栏筛这个标签，与笔记头属性区
+                    // 那几颗胶囊同一个动作。卡片摘要那边不给，那里点了会跳走。
+                    onPickTag,
                     t,
                   },
                 ),
@@ -12211,4 +12278,5 @@ export const __internals = {
   TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale,
   reportSync, dailyTemplateOf, frontmatterText, isTagKey, FollowCard, parseTable, countWords,
   isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote, parseImageSize, renderParagraph, blockTextOf, markdownLinkTarget,
+  tagBodyOf,
 }
