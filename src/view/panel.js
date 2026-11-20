@@ -3080,6 +3080,47 @@ async function saveFile(url, filename) {
      * `tag:录音卡 会议` 这种查询里，tag:/dir: 是限定词、不会出现在正文那一行上，
      * 拿它去标只会把整行染成没命中。所以这里跟服务端同一套拆法，只留正文词。
      */
+    // 搜索框里敲到一半时，拿库里已有的目录名和标签名补全。用户记得「那篇在某个目录里」，
+    // 却不一定记得目录名带不带斜杠、标签有没有嵌套；与其让他猜，不如直接摆出来。
+    // 只补正在敲的那一个词：dir:随 补目录，#读 补标签，裸词两边都补。
+    function searchSuggestAt(text, caret) {
+      const source = String(text === null || text === undefined ? '' : text)
+      const at = Number.isInteger(caret) ? caret : source.length
+      if (at < 0 || at > source.length) return null
+      const before = source.slice(0, at)
+      // 从光标往前找到最近的空白：那一段就是正在敲的词
+      let start = at
+      while (start > 0 && !/[ \t\n]/.test(before.charAt(start - 1))) start -= 1
+      const word = before.slice(start)
+      if (word === '') return null
+      const kind = word.startsWith('dir:') ? 'dir' : word.startsWith('#') || word.startsWith('tag:') ? 'tag' : 'both'
+      const query = word.replace(/^(dir:|tag:|#)/, '')
+      // start 是「该被替换掉的那一段」的起点（不含 dir:/tag:/# 前缀），
+      // wordStart 是整个词的起点——补全时要连前缀一起换掉，否则会拼成 dir:dir:随手记。
+      return { kind, query, start: start + word.length - query.length, wordStart: start }
+    }
+
+    function searchSuggestions(dirs, tags, kind, query, limit = 6) {
+      const q = String(query || '').trim().toLowerCase()
+      const out = []
+      const push = (value, tag) => {
+        const text = String(value || '').trim()
+        if (text === '') return
+        if (q !== '' && !text.toLowerCase().includes(q)) return
+        out.push({ value: text, kind: tag })
+      }
+      if (kind === 'dir' || kind === 'both') for (const dir of dirs || []) push(dir, 'dir')
+      if (kind === 'tag' || kind === 'both') for (const tag of tags || []) push(tag, 'tag')
+      // 打头的排前面：敲「读」时「读书」比「随手/读书」更可能是要的那一个
+      out.sort((a, b) => {
+        const sa = a.value.toLowerCase().startsWith(q) ? 0 : 1
+        const sb = b.value.toLowerCase().startsWith(q) ? 0 : 1
+        if (sa !== sb) return sa - sb
+        return a.value.localeCompare(b.value, 'zh')
+      })
+      return out.slice(0, limit)
+    }
+
     function searchTermsOf(query) {
       const rest = String(query || '')
         .replace(/(?:^|\s)(?:tag|dir):(?:"[^"]*"|\S+)/gi, ' ')
@@ -4554,6 +4595,21 @@ async function saveFile(url, filename) {
 .dshgn_cardLinkMore{font-size:10px;color:var(--dsw-alias-label-dimmed);align-self:center}
 .dshgn_searchHint{padding:0 10px 7px;font-size:10px;line-height:1.5;
   color:var(--dsw-alias-label-dimmed)}
+/* 搜索补全候选：把库里已有的目录名与标签名摆出来，省得凭记忆猜拼写。
+   摆在搜索行正下方、与搜索框同宽，和列表卡片区分开（不占卡片的位置感）。 */
+.dshgn_suggest{flex:none;display:flex;flex-wrap:wrap;gap:4px;padding:0 10px 7px}
+.dshgn_suggestItem{appearance:none;display:inline-flex;align-items:center;gap:3px;
+  max-width:100%;padding:1px 7px;border:0.5px solid var(--dsw-alias-border-l2);
+  border-radius:999px;background:rgba(var(--dshgn-tintRgb),.06);
+  color:var(--dsw-alias-label-secondary);font:inherit;font-size:10px;line-height:1.7;
+  cursor:pointer}
+.dshgn_suggestItem:hover{background:var(--dsw-alias-interactive-bg-hover);
+  color:var(--dsw-alias-brand-primary)}
+.dshgn_suggestItem[data-on="true"]{border-color:var(--dsw-alias-brand-primary);
+  color:var(--dsw-alias-brand-primary)}
+.dshgn_suggestItem:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);
+  outline-offset:1px}
+.dshgn_suggestName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_searching{flex:none;font-size:10px;color:var(--dsw-alias-label-tertiary)}
 /* 筛选条：左栏点了目录/标签之后，中栏得说清「现在筛的是什么、怎么退出去」。
    以前只是卡片悄悄少了，换过目录再回来的人会以为笔记丢了。 */
@@ -5875,6 +5931,33 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 结果里要把用户敲的词标出来，先按服务端那套拆一遍：tag:/dir: 是限定词，
       // 不会出现在正文那一行上，拿它去标等于把整行染成「没命中」。
       const searchTerms = React.useMemo(() => searchTermsOf(query), [query])
+      // 搜索框的补全：只认正在敲的那一个词，候选来自库里已有的目录与标签。
+      // 敲完整词之后（末尾有空白）就不再提示——那时用户已经在往下写了。
+      const [suggestAt, setSuggestAt] = React.useState(null)
+      // 上下键在候选里停在哪一条；null 表示还没用键盘挑过（回车仍按原意打开排头那篇）
+      const [suggestIndex, setSuggestIndex] = React.useState(null)
+      const searchTags = React.useMemo(() => [...new Set(entries.flatMap((entry) => entry.tags || []))], [entries])
+      const suggestions = React.useMemo(() => {
+        if (suggestAt === null) return []
+        return searchSuggestions(dirs, searchTags, suggestAt.kind, suggestAt.query)
+      }, [dirs, searchTags, suggestAt])
+      const applySuggestion = React.useCallback(
+        (item) => {
+          if (item === null || item === undefined) return
+          const box = findInPanel('.dshgn_search')
+          const caret = box !== null && Number.isInteger(box.selectionStart) ? box.selectionStart : query.length
+          const spot = searchSuggestAt(query, caret)
+          if (spot === null) return
+          const insert = item.kind === 'tag' ? `#${item.value}` : `dir:${item.value}`
+          const head = query.slice(0, spot.wordStart)
+          const tail = query.slice(caret)
+          const next = `${head}${insert}${tail === '' || tail.startsWith(' ') ? ' ' : ''}${tail}`
+          setQuery(next)
+          setSuggestAt(null)
+          setSuggestIndex(null)
+        },
+        [query],
+      )
       const shown = searchMode ? hits : visible
       // 只渲染前 listLimit 条。切查询/目录/标签时回到初始窗口，否则在新目录里
       // 还留着一个巨大的窗口，等于没省。
@@ -7493,7 +7576,17 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                 type: 'search',
                 value: query,
                 placeholder: t('search.placeholder'),
-                onChange: (event) => setQuery(event.target.value),
+                onChange: (event) => {
+                  const value = event.target.value
+                  setQuery(value)
+                  // 补全只跟着正在敲的那个词走：光标后没有空白时才提示。
+                  // 输入法组字途中也给提示——候选本身不会干扰上屏。
+                  const caret = Number.isInteger(event.target.selectionStart) ? event.target.selectionStart : value.length
+                  const spot = value.trim() === '' ? null : searchSuggestAt(value, caret)
+                  setSuggestAt(spot)
+                  // 候选换了，键盘停留的位置就没意义了
+                  setSuggestIndex(null)
+                },
                 // 搜完还要把鼠标挪到第一张卡上点一下，是搜索这条路上最后一段体力活。
                 // 回车就打开排在最前面的那一篇（相关度排的，就是最该看的那篇），
                 // Esc 把搜索框清空退回整份列表。
@@ -7501,10 +7594,39 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                   // 输入法还在组字时回车是「上屏」，不是「打开」
                   if (event.nativeEvent && event.nativeEvent.isComposing) return
                   if (event.key === 'Escape') {
+                    // 候选摆着时 Esc 先收候选：那一下多半是想把提示按掉，
+                    // 而不是把已经敲好的搜索词整条扔掉。
+                    if (suggestions.length > 0) {
+                      event.preventDefault()
+                      setSuggestAt(null)
+                      setSuggestIndex(null)
+                      return
+                    }
                     if (query === '') return
                     event.preventDefault()
                     setQuery('')
                     return
+                  }
+                  // 补全候选摆着的时候，上下键在其中挑、回车把它补进去。
+                  // 这里先于「回车打开排头那篇」处理：候选摆着时回车显然是想补全。
+                  if (suggestions.length > 0) {
+                    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                      event.preventDefault()
+                      const step = event.key === 'ArrowDown' ? 1 : -1
+                      setSuggestIndex((prev) => {
+                        const from = prev === null ? (step > 0 ? -1 : 0) : prev
+                        const next = from + step
+                        if (next < 0) return suggestions.length - 1
+                        if (next >= suggestions.length) return 0
+                        return next
+                      })
+                      return
+                    }
+                    if (event.key === 'Enter' && suggestIndex !== null) {
+                      event.preventDefault()
+                      applySuggestion(suggestions[suggestIndex])
+                      return
+                    }
                   }
                   if (event.key !== 'Enter') return
                   // 空搜索框里回车什么都不做：那时「第一篇」只是整份列表的头一篇，
@@ -7544,6 +7666,36 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                     listSort === 'name' ? 'A→Z' : '⏱',
                   ),
             ),
+            // 搜索框的补全候选：把库里已有的目录名与标签名摆出来。
+            // 只补正在敲的那一个词，敲完加了空白就不再提示。
+            suggestions.length > 0
+              ? h(
+                  'div',
+                  { className: 'dshgn_suggest', role: 'listbox' },
+                  suggestions.map((item, index) =>
+                    h(
+                      'button',
+                      {
+                        key: `${item.kind}-${item.value}`,
+                        type: 'button',
+                        className: 'dshgn_suggestItem',
+                        'data-kind': item.kind,
+                        'data-on': suggestIndex === index ? 'true' : 'false',
+                        role: 'option',
+                        'aria-selected': suggestIndex === index ? 'true' : 'false',
+                        // 用 mousedown 而不是 click：click 要等鼠标松开，
+                        // 那时输入框已经失焦、光标位置也拿不到了。
+                        onMouseDown: (event) => {
+                          event.preventDefault()
+                          applySuggestion(item)
+                        },
+                      },
+                      h(Icon, { name: item.kind === 'dir' ? 'folder' : 'hash', size: 11 }),
+                      h('span', { className: 'dshgn_suggestName' }, item.value),
+                    ),
+                  ),
+                )
+              : null,
             // 限定语法提示：`tag:` / `dir:` 是隐藏功能，不提示没人会知道。
             // 只在输入框有内容时出现，平时不占位置。
             query.trim() !== ''
@@ -14841,5 +14993,5 @@ export const __internals = {
   tagBodyOf, ZoomOverlay, continueListLine, indentLines, wrapInline, linkPaste, wikilinkQueryAt, wikilinkMatches, tagQueryAt, tagMatches, findInBody, findInBodyMatch, findInText, textHasParts,
       readScrollMarks, writeScrollMark, scrollMarkOf, SCROLL_KEY,
   readDrafts, draftOf, writeDraft, dropDraft, DRAFT_KEY, DRAFT_KEEP, DRAFT_MAX,
-  splitByTerms, highlightTerms, searchTermsOf,
+  splitByTerms, highlightTerms, searchTermsOf, searchSuggestAt, searchSuggestions,
 }

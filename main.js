@@ -10408,6 +10408,38 @@ function splitByTerms(text, terms) {
   if (last < line.length) parts.push({ hit: false, text: line.slice(last) });
   return parts.length > 0 ? parts : [{ hit: false, text: line }];
 }
+function searchSuggestAt(text, caret) {
+  const source = String(text === null || text === void 0 ? "" : text);
+  const at = Number.isInteger(caret) ? caret : source.length;
+  if (at < 0 || at > source.length) return null;
+  const before = source.slice(0, at);
+  let start = at;
+  while (start > 0 && !/[ \t\n]/.test(before.charAt(start - 1))) start -= 1;
+  const word = before.slice(start);
+  if (word === "") return null;
+  const kind = word.startsWith("dir:") ? "dir" : word.startsWith("#") || word.startsWith("tag:") ? "tag" : "both";
+  const query = word.replace(/^(dir:|tag:|#)/, "");
+  return { kind, query, start: start + word.length - query.length, wordStart: start };
+}
+function searchSuggestions(dirs, tags, kind, query, limit = 6) {
+  const q4 = String(query || "").trim().toLowerCase();
+  const out = [];
+  const push = (value, tag) => {
+    const text = String(value || "").trim();
+    if (text === "") return;
+    if (q4 !== "" && !text.toLowerCase().includes(q4)) return;
+    out.push({ value: text, kind: tag });
+  };
+  if (kind === "dir" || kind === "both") for (const dir of dirs || []) push(dir, "dir");
+  if (kind === "tag" || kind === "both") for (const tag of tags || []) push(tag, "tag");
+  out.sort((a3, b3) => {
+    const sa = a3.value.toLowerCase().startsWith(q4) ? 0 : 1;
+    const sb = b3.value.toLowerCase().startsWith(q4) ? 0 : 1;
+    if (sa !== sb) return sa - sb;
+    return a3.value.localeCompare(b3.value, "zh");
+  });
+  return out.slice(0, limit);
+}
 function searchTermsOf(query) {
   const rest = String(query || "").replace(/(?:^|\s)(?:tag|dir):(?:"[^"]*"|\S+)/gi, " ").replace(/(?:^|\s)#([^\s#]+)/g, " ");
   const terms = [];
@@ -11523,6 +11555,21 @@ var CSS = `
 .dshgn_cardLinkMore{font-size:10px;color:var(--dsw-alias-label-dimmed);align-self:center}
 .dshgn_searchHint{padding:0 10px 7px;font-size:10px;line-height:1.5;
   color:var(--dsw-alias-label-dimmed)}
+/* \u641C\u7D22\u8865\u5168\u5019\u9009\uFF1A\u628A\u5E93\u91CC\u5DF2\u6709\u7684\u76EE\u5F55\u540D\u4E0E\u6807\u7B7E\u540D\u6446\u51FA\u6765\uFF0C\u7701\u5F97\u51ED\u8BB0\u5FC6\u731C\u62FC\u5199\u3002
+   \u6446\u5728\u641C\u7D22\u884C\u6B63\u4E0B\u65B9\u3001\u4E0E\u641C\u7D22\u6846\u540C\u5BBD\uFF0C\u548C\u5217\u8868\u5361\u7247\u533A\u5206\u5F00\uFF08\u4E0D\u5360\u5361\u7247\u7684\u4F4D\u7F6E\u611F\uFF09\u3002 */
+.dshgn_suggest{flex:none;display:flex;flex-wrap:wrap;gap:4px;padding:0 10px 7px}
+.dshgn_suggestItem{appearance:none;display:inline-flex;align-items:center;gap:3px;
+  max-width:100%;padding:1px 7px;border:0.5px solid var(--dsw-alias-border-l2);
+  border-radius:999px;background:rgba(var(--dshgn-tintRgb),.06);
+  color:var(--dsw-alias-label-secondary);font:inherit;font-size:10px;line-height:1.7;
+  cursor:pointer}
+.dshgn_suggestItem:hover{background:var(--dsw-alias-interactive-bg-hover);
+  color:var(--dsw-alias-brand-primary)}
+.dshgn_suggestItem[data-on="true"]{border-color:var(--dsw-alias-brand-primary);
+  color:var(--dsw-alias-brand-primary)}
+.dshgn_suggestItem:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);
+  outline-offset:1px}
+.dshgn_suggestName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_searching{flex:none;font-size:10px;color:var(--dsw-alias-label-tertiary)}
 /* \u7B5B\u9009\u6761\uFF1A\u5DE6\u680F\u70B9\u4E86\u76EE\u5F55/\u6807\u7B7E\u4E4B\u540E\uFF0C\u4E2D\u680F\u5F97\u8BF4\u6E05\u300C\u73B0\u5728\u7B5B\u7684\u662F\u4EC0\u4E48\u3001\u600E\u4E48\u9000\u51FA\u53BB\u300D\u3002
    \u4EE5\u524D\u53EA\u662F\u5361\u7247\u6084\u6084\u5C11\u4E86\uFF0C\u6362\u8FC7\u76EE\u5F55\u518D\u56DE\u6765\u7684\u4EBA\u4F1A\u4EE5\u4E3A\u7B14\u8BB0\u4E22\u4E86\u3002 */
@@ -12715,6 +12762,30 @@ function GetnotePage() {
   }, [query]);
   const searchMode = query.trim() !== "" && hits !== null;
   const searchTerms = T2(() => searchTermsOf(query), [query]);
+  const [suggestAt, setSuggestAt] = h2(null);
+  const [suggestIndex, setSuggestIndex] = h2(null);
+  const searchTags = T2(() => [...new Set(entries.flatMap((entry) => entry.tags || []))], [entries]);
+  const suggestions = T2(() => {
+    if (suggestAt === null) return [];
+    return searchSuggestions(dirs, searchTags, suggestAt.kind, suggestAt.query);
+  }, [dirs, searchTags, suggestAt]);
+  const applySuggestion = q2(
+    (item) => {
+      if (item === null || item === void 0) return;
+      const box = findInPanel(".dshgn_search");
+      const caret = box !== null && Number.isInteger(box.selectionStart) ? box.selectionStart : query.length;
+      const spot = searchSuggestAt(query, caret);
+      if (spot === null) return;
+      const insert = item.kind === "tag" ? `#${item.value}` : `dir:${item.value}`;
+      const head2 = query.slice(0, spot.wordStart);
+      const tail = query.slice(caret);
+      const next = `${head2}${insert}${tail === "" || tail.startsWith(" ") ? " " : ""}${tail}`;
+      setQuery(next);
+      setSuggestAt(null);
+      setSuggestIndex(null);
+    },
+    [query]
+  );
   const shown = searchMode ? hits : visible;
   const filterKey = `${query}\0${activeDir}\0${activeTag}`;
   const [lastFilterKey, setLastFilterKey] = h2(filterKey);
@@ -14033,17 +14104,49 @@ ${insert}
             type: "search",
             value: query,
             placeholder: t4("search.placeholder"),
-            onChange: (event) => setQuery(event.target.value),
+            onChange: (event) => {
+              const value = event.target.value;
+              setQuery(value);
+              const caret = Number.isInteger(event.target.selectionStart) ? event.target.selectionStart : value.length;
+              const spot = value.trim() === "" ? null : searchSuggestAt(value, caret);
+              setSuggestAt(spot);
+              setSuggestIndex(null);
+            },
             // 搜完还要把鼠标挪到第一张卡上点一下，是搜索这条路上最后一段体力活。
             // 回车就打开排在最前面的那一篇（相关度排的，就是最该看的那篇），
             // Esc 把搜索框清空退回整份列表。
             onKeyDown: (event) => {
               if (event.nativeEvent && event.nativeEvent.isComposing) return;
               if (event.key === "Escape") {
+                if (suggestions.length > 0) {
+                  event.preventDefault();
+                  setSuggestAt(null);
+                  setSuggestIndex(null);
+                  return;
+                }
                 if (query === "") return;
                 event.preventDefault();
                 setQuery("");
                 return;
+              }
+              if (suggestions.length > 0) {
+                if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                  event.preventDefault();
+                  const step = event.key === "ArrowDown" ? 1 : -1;
+                  setSuggestIndex((prev) => {
+                    const from = prev === null ? step > 0 ? -1 : 0 : prev;
+                    const next = from + step;
+                    if (next < 0) return suggestions.length - 1;
+                    if (next >= suggestions.length) return 0;
+                    return next;
+                  });
+                  return;
+                }
+                if (event.key === "Enter" && suggestIndex !== null) {
+                  event.preventDefault();
+                  applySuggestion(suggestions[suggestIndex]);
+                  return;
+                }
               }
               if (event.key !== "Enter") return;
               if (query.trim() === "") return;
@@ -14078,6 +14181,34 @@ ${insert}
             listSort === "name" ? "A\u2192Z" : "\u23F1"
           )
         ),
+        // 搜索框的补全候选：把库里已有的目录名与标签名摆出来。
+        // 只补正在敲的那一个词，敲完加了空白就不再提示。
+        suggestions.length > 0 ? h4(
+          "div",
+          { className: "dshgn_suggest", role: "listbox" },
+          suggestions.map(
+            (item, index) => h4(
+              "button",
+              {
+                key: `${item.kind}-${item.value}`,
+                type: "button",
+                className: "dshgn_suggestItem",
+                "data-kind": item.kind,
+                "data-on": suggestIndex === index ? "true" : "false",
+                role: "option",
+                "aria-selected": suggestIndex === index ? "true" : "false",
+                // 用 mousedown 而不是 click：click 要等鼠标松开，
+                // 那时输入框已经失焦、光标位置也拿不到了。
+                onMouseDown: (event) => {
+                  event.preventDefault();
+                  applySuggestion(item);
+                }
+              },
+              h4(Icon, { name: item.kind === "dir" ? "folder" : "hash", size: 11 }),
+              h4("span", { className: "dshgn_suggestName" }, item.value)
+            )
+          )
+        ) : null,
         // 限定语法提示：`tag:` / `dir:` 是隐藏功能，不提示没人会知道。
         // 只在输入框有内容时出现，平时不占位置。
         query.trim() !== "" ? h4("div", { className: "dshgn_searchHint" }, t4("search.hint")) : null,

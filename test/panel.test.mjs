@@ -7675,3 +7675,133 @@ test('指向还不存在的笔记的双链暗一档、悬停说明白，真链�
   window.document.querySelector('.dshgn_noteBack').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
   await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 8000, '退回列表')
 })
+
+test('搜索框里敲到一半，把库里已有的目录名和标签名摆出来，键盘挑一条补进去', async () => {
+  const { searchSuggestAt, searchSuggestions } = panel.__internals
+
+  // 只补正在敲的那一个词
+  assert.deepEqual(searchSuggestAt('dir:随', 5), { kind: 'dir', query: '随', start: 4, wordStart: 0 })
+  assert.deepEqual(searchSuggestAt('#读', 2), { kind: 'tag', query: '读', start: 1, wordStart: 0 })
+  assert.deepEqual(searchSuggestAt('开会', 2), { kind: 'both', query: '开会', start: 0, wordStart: 0 })
+  assert.deepEqual(searchSuggestAt('tag:读 会', 5), { kind: 'tag', query: '读', start: 4, wordStart: 0 })
+  // 光标落在空白之后，正在敲的是下一个词
+  assert.deepEqual(searchSuggestAt('tag:读 会', 7), { kind: 'both', query: '会', start: 6, wordStart: 6 })
+  // 光标停在一个词后面（已经打了空白）就没什么可补的
+  assert.equal(searchSuggestAt('开会 ', 3), null)
+  assert.equal(searchSuggestAt('', 0), null)
+  // 越界的光标不猜
+  assert.equal(searchSuggestAt('abc', 99), null)
+  assert.equal(searchSuggestAt('abc', -1), null)
+
+  const dirs = ['随手记', '读书笔记', '归档']
+  const tags = ['读书', '随手', '读书笔记摘抄']
+  assert.deepEqual(
+    searchSuggestions(dirs, tags, 'dir', '随').map((item) => item.value),
+    ['随手记'],
+  )
+  assert.deepEqual(
+    searchSuggestions(dirs, tags, 'tag', '读').map((item) => item.value),
+    ['读书', '读书笔记摘抄'],
+  )
+  // 裸词两边都补：打头的排前面
+  const both = searchSuggestions(dirs, tags, 'both', '读').map((item) => item.value)
+  assert.ok(both.includes('读书笔记'))
+  assert.ok(both.includes('读书'))
+  // 空查询也有上限，不会把几十个标签一次铺满
+  assert.ok(searchSuggestions(dirs, tags, 'both', '').length <= 6)
+  assert.deepEqual(searchSuggestions(dirs, tags, 'dir', '根本没有这个'), [])
+
+  // 真渲染：敲 dir:随 就摆出目录候选，上下键挑、回车补进去
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const backBtn0 = () => window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(async () => true)
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = backBtn0()
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(220)
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  const box0 = window.document.querySelector('.dshgn_search')
+  if (box0) {
+    box0.value = ''
+    box0.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(260)
+  }
+
+  await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '搜索补全验收',
+      content: ['# 搜索补全验收', '', '这一篇用来把目录和标签带进索引。', '', '#读书'].join('\n'),
+      withDatePrefix: false,
+      requestId: 'seed-search-suggest',
+    }),
+  })
+
+  await clickTab('笔记')
+  const refreshBtn2 = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn2().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+
+  const box = await waitFor(() => window.document.querySelector('.dshgn_search'), 5000, '搜索框')
+  const items = () => Array.from(window.document.querySelectorAll('.dshgn_suggestItem'))
+  const type = async (text) => {
+    box.value = text
+    box.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(120)
+  }
+  const press = (key) => box.dispatchEvent(new window.KeyboardEvent('keydown', { key, bubbles: true }))
+
+  await type('dir:随')
+  const first = await waitFor(() => items()[0] || null, 3000, '目录候选')
+  assert.equal(first.getAttribute('data-kind'), 'dir')
+  assert.ok(first.textContent.includes('随手记'))
+
+  press('ArrowDown')
+  await sleep(80)
+  assert.equal(items()[0].getAttribute('data-on'), 'true')
+  press('Enter')
+  await sleep(150)
+  assert.equal(box.value, 'dir:随手记 ')
+  assert.equal(items().length, 0, '补进去之后候选该收起来')
+
+  // 标签也一样：敲 #读 摆出标签候选
+  await type('#读')
+  const tagItem = await waitFor(
+    () => items().find((el) => el.getAttribute('data-kind') === 'tag') || null,
+    3000,
+     '标签候选',
+  )
+  assert.ok(tagItem.textContent.includes('读书'))
+  press('ArrowDown')
+  await sleep(80)
+  press('Enter')
+  await sleep(150)
+  assert.ok(box.value.startsWith('#读书') || box.value.startsWith('#读书笔记'))
+
+  // 已经打了空白就不再提示
+  await type('随便什么 ')
+  await sleep(150)
+  assert.equal(items().length, 0)
+
+  // Esc 先收候选，不把已经敲好的词扔掉
+  await type('dir:随')
+  await waitFor(() => items().length > 0, 3000, '候选再出现')
+  press('Escape')
+  await sleep(120)
+  assert.equal(items().length, 0)
+  assert.equal(box.value, 'dir:随')
+
+  box.value = ''
+  box.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(200)
+})
