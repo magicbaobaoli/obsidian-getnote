@@ -154,9 +154,31 @@ export function deriveDate(relPath, data, statMs) {
   return null
 }
 
+/**
+ * 抹掉 `%%…%%` 注释。
+ *
+ * 注释在宿主里是不显示的（不是灰字、不是折叠，是整段不存在）。列表摘录、
+ * 正文标签、断链体检都要先过这一层：不抹的话，注释里随手写的 `#草稿`
+ * 会冒进标签云，注释里那条「先别删」的旧双链会被报成断链。
+ */
+export function stripComments(text) {
+  return String(text == null ? '' : text).replace(/%%[\s\S]*?%%/g, ' ')
+}
+
+/**
+ * 与 stripComments 一样抹掉注释，但保留换行——行号必须对得上。
+ *
+ * 断链体检要报「第几行」，反链要按行取上下文，这两处都不能把行数改掉。
+ * 注释里的双链在宿主里不算链接（点了也没反应），所以它们不该被算进反链，
+ * 也不该被报成断链。
+ */
+function maskComments(text) {
+  return String(text == null ? '' : text).replace(/%%[\s\S]*?%%/g, (all) => all.replace(/[^\n]/g, ' '))
+}
+
 /** 正文摘录：压掉空行与 Markdown 噪声，取前面一段做列表副标题。 */
 export function excerptOf(body, limit = 140) {
-  const text = String(body || '')
+  const text = stripComments(body)
     .replace(/^---[\s\S]*?\n---\s*\n?/, '')
     .replace(/```[\s\S]*?```/g, ' ')
     .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
@@ -983,7 +1005,7 @@ export async function searchNotes(root, query, { limit = 60, perFile = 3, sort =
  */
 export function extractWikiLinks(text) {
   const out = new Set()
-  const src = String(text || '')
+  const src = maskComments(text)
   const re = /\[\[([^\]\n|]+)(?:\|[^\]\n]*)?\]\]/g
   let m
   while ((m = re.exec(src)) !== null) {
@@ -1020,7 +1042,7 @@ function snippetOfLine(line, width = 60) {
  * 一模一样的上下文只是噪音。判定口径与 findBacklinks 的匹配完全一致。
  */
 function linkHitsInText(text, wantedLower) {
-  const src = String(text || '')
+  const src = maskComments(text)
   const re = /\[\[([^\]\n|]+)(?:\|[^\]\n]*)?\]\]/g
   const counts = new Map()
   const snippets = []
@@ -1185,7 +1207,7 @@ export async function findBrokenLinks(root, entries) {
     } catch {
       continue
     }
-    const lines = text.split(/\r?\n/)
+    const lines = maskComments(text).split(/\r?\n/)
     let inFence = false
     for (let i = 0; i < lines.length; i += 1) {
       const line = lines[i]
@@ -1977,7 +1999,7 @@ export function extractInlineTags(text) {
   const out = []
   const seen = new Set()
   let inFence = false
-  for (const rawLine of String(text == null ? '' : text).split(/\r?\n/)) {
+  for (const rawLine of maskComments(text).split(/\r?\n/)) {
     if (/^\s*(```|~~~)/.test(rawLine)) {
       inFence = !inFence
       continue

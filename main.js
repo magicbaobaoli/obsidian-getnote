@@ -264,6 +264,7 @@ __export(vault_exports, {
   saveAsset: () => saveAsset,
   scanVault: () => scanVault,
   searchNotes: () => searchNotes,
+  stripComments: () => stripComments,
   toPosix: () => toPosix,
   toggleTodo: () => toggleTodo,
   trashNote: () => trashNote,
@@ -365,8 +366,14 @@ function deriveDate(relPath, data, statMs) {
   }
   return null;
 }
+function stripComments(text) {
+  return String(text == null ? "" : text).replace(/%%[\s\S]*?%%/g, " ");
+}
+function maskComments(text) {
+  return String(text == null ? "" : text).replace(/%%[\s\S]*?%%/g, (all) => all.replace(/[^\n]/g, " "));
+}
 function excerptOf(body, limit = 140) {
-  const text = String(body || "").replace(/^---[\s\S]*?\n---\s*\n?/, "").replace(/```[\s\S]*?```/g, " ").replace(/!\[[^\]]*\]\([^)]*\)/g, " ").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/^#{1,6}\s+/gm, "").replace(/[*_`>]/g, "").replace(/\s+/g, " ").trim();
+  const text = stripComments(body).replace(/^---[\s\S]*?\n---\s*\n?/, "").replace(/```[\s\S]*?```/g, " ").replace(/!\[[^\]]*\]\([^)]*\)/g, " ").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/^#{1,6}\s+/gm, "").replace(/[*_`>]/g, "").replace(/\s+/g, " ").trim();
   return text.length > limit ? `${text.slice(0, limit).trimEnd()}\u2026` : text;
 }
 function invalidateScan(root) {
@@ -985,7 +992,7 @@ async function searchNotes(root, query, { limit = 60, perFile = 3, sort = "relev
 }
 function extractWikiLinks(text) {
   const out = /* @__PURE__ */ new Set();
-  const src = String(text || "");
+  const src = maskComments(text);
   const re = /\[\[([^\]\n|]+)(?:\|[^\]\n]*)?\]\]/g;
   let m3;
   while ((m3 = re.exec(src)) !== null) {
@@ -1000,7 +1007,7 @@ function snippetOfLine(line, width = 60) {
   return `${text.slice(0, width - 1).trim()}\u2026`;
 }
 function linkHitsInText(text, wantedLower) {
-  const src = String(text || "");
+  const src = maskComments(text);
   const re = /\[\[([^\]\n|]+)(?:\|[^\]\n]*)?\]\]/g;
   const counts = /* @__PURE__ */ new Map();
   const snippets = [];
@@ -1117,7 +1124,7 @@ async function findBrokenLinks(root, entries) {
     } catch {
       continue;
     }
-    const lines = text.split(/\r?\n/);
+    const lines = maskComments(text).split(/\r?\n/);
     let inFence = false;
     for (let i3 = 0; i3 < lines.length; i3 += 1) {
       const line = lines[i3];
@@ -1633,7 +1640,7 @@ function extractInlineTags(text) {
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   let inFence = false;
-  for (const rawLine of String(text == null ? "" : text).split(/\r?\n/)) {
+  for (const rawLine of maskComments(text).split(/\r?\n/)) {
     if (/^\s*(```|~~~)/.test(rawLine)) {
       inFence = !inFence;
       continue;
@@ -9749,7 +9756,7 @@ function Icon(props) {
 function renderInline(text, keyPrefix, options) {
   const opts = options || {};
   const nodes = [];
-  const pattern = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\n]+\*)|(!?\[\[[^\]\n]+\]\])|(\[[^\]\n]*\]\([^)\s]+\))|(https?:\/\/[^\s)]+)/g;
+  const pattern = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\n]+\*)|(~~[^~\n]+~~)|(==[^=\n]+==)|(%%[\s\S]*?%%)|(!?\[\[[^\]\n]+\]\])|(\[[^\]\n]*\]\([^)\s]+\))|(https?:\/\/[^\s)]+)/g;
   let last = 0;
   let match;
   let seq = 0;
@@ -9763,6 +9770,11 @@ function renderInline(text, keyPrefix, options) {
       nodes.push(h4("strong", { key }, token.slice(2, -2)));
     } else if (token.startsWith("*")) {
       nodes.push(h4("em", { key }, token.slice(1, -1)));
+    } else if (token.startsWith("~~")) {
+      nodes.push(h4("del", { key, className: "dshgn_del" }, token.slice(2, -2)));
+    } else if (token.startsWith("==")) {
+      nodes.push(h4("mark", { key, className: "dshgn_mark" }, token.slice(2, -2)));
+    } else if (token.startsWith("%%")) {
     } else if (token.startsWith("[[") || token.startsWith("![[")) {
       const embed = token.startsWith("!");
       const inner = token.slice(embed ? 3 : 2, -2);
@@ -10162,6 +10174,12 @@ function renderBlocks(markdown, options) {
           h4("code", null, fenceText)
         )
       );
+      continue;
+    }
+    if (trimmed === "%%") {
+      index += 1;
+      while (index < lines.length && lines[index].trim() !== "%%") index += 1;
+      index += 1;
       continue;
     }
     const heading = /^(#{1,6})\s+(.*)$/.exec(trimmed);
@@ -10740,6 +10758,8 @@ var CSS = `
 .dshgn_link:hover{text-decoration:underline}
 /* \u5916\u94FE\u6309\u94AE\uFF1A\u5916\u89C2\u7167\u94FE\u63A5\u8D70\uFF0C\u884C\u4E3A\u662F\u6309\u94AE\uFF08\u907F\u514D\u81EA\u5B9A\u4E49\u89C6\u56FE\u91CC\u70B9\u5916\u94FE\u628A\u5E94\u7528\u5BFC\u822A\u8D70\uFF09 */
 .dshgn_linkBtn{background:none;border:0;padding:0;font:inherit;cursor:pointer;text-align:left}
+.dshgn_del{text-decoration:line-through;opacity:.72}
+.dshgn_mark{padding:0 2px;border-radius:3px;background:rgba(255,208,0,.34);color:inherit}
 .dshgn_code{padding:1px 5px;border-radius:4px;background:var(--dsw-alias-interactive-bg-hover);
   font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);font-size:12px}
 .dshgn_pre{position:relative;margin:10px 0;padding:11px 12px;border-radius:9px;overflow-x:auto;

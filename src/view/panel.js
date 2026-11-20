@@ -2305,8 +2305,12 @@ async function saveFile(url, filename) {
     function renderInline(text, keyPrefix, options) {
       const opts = options || {}
       const nodes = []
+      // 行内标记按宿主那套认：行内代码、粗体、斜体、删除线（`~~`）、
+      // 高亮（`==`）、注释（`%%`）、双链、普通链接、裸链。
+      // 删除线和高亮是 Obsidian 自己的扩展，标准 Markdown 里没有，但用户天天在写；
+      // 不认的话它们会连标记符号一起原样露在界面上，看起来像正文写错了。
       const pattern =
-        /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\n]+\*)|(!?\[\[[^\]\n]+\]\])|(\[[^\]\n]*\]\([^)\s]+\))|(https?:\/\/[^\s)]+)/g
+        /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*\n]+\*)|(~~[^~\n]+~~)|(==[^=\n]+==)|(%%[\s\S]*?%%)|(!?\[\[[^\]\n]+\]\])|(\[[^\]\n]*\]\([^)\s]+\))|(https?:\/\/[^\s)]+)/g
       let last = 0
       let match
       let seq = 0
@@ -2320,6 +2324,13 @@ async function saveFile(url, filename) {
           nodes.push(h('strong', { key }, token.slice(2, -2)))
         } else if (token.startsWith('*')) {
           nodes.push(h('em', { key }, token.slice(1, -1)))
+        } else if (token.startsWith('~~')) {
+          nodes.push(h('del', { key, className: 'dshgn_del' }, token.slice(2, -2)))
+        } else if (token.startsWith('==')) {
+          nodes.push(h('mark', { key, className: 'dshgn_mark' }, token.slice(2, -2)))
+        } else if (token.startsWith('%%')) {
+          // 注释在宿主里根本不显示（不是小字、不是灰色，是整段不存在），
+          // 这里也一个字都不放。留成空节点等于占位，段落里会多出一个空格。
         } else if (token.startsWith('[[') || token.startsWith('![[')) {
           // Obsidian 双链：`[[目标]]` / `[[目标|显示文字]]` / `![[附件]]`
           const embed = token.startsWith('!')
@@ -2917,6 +2928,17 @@ async function saveFile(url, filename) {
                   h('code', null, fenceText),
                 ),
           )
+          continue
+        }
+
+        // 整段注释：\`%%\` 单独起一行、下面几行是注释内容、再用一行 \`%%\` 收尾。
+        // 宿主里这一整段是不显示的（不是折叠、不是灰字，就是不存在），这里也
+        // 一个字都不留——留着的话用户会以为自己写的东西没被注释掉。
+        // 只认「整行就是 %%」的开头，行尾带内容的交给行内那条规则处理。
+        if (trimmed === '%%') {
+          index += 1
+          while (index < lines.length && lines[index].trim() !== '%%') index += 1
+          index += 1
           continue
         }
 
@@ -3530,6 +3552,8 @@ async function saveFile(url, filename) {
 .dshgn_link:hover{text-decoration:underline}
 /* 外链按钮：外观照链接走，行为是按钮（避免自定义视图里点外链把应用导航走） */
 .dshgn_linkBtn{background:none;border:0;padding:0;font:inherit;cursor:pointer;text-align:left}
+.dshgn_del{text-decoration:line-through;opacity:.72}
+.dshgn_mark{padding:0 2px;border-radius:3px;background:rgba(255,208,0,.34);color:inherit}
 .dshgn_code{padding:1px 5px;border-radius:4px;background:var(--dsw-alias-interactive-bg-hover);
   font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);font-size:12px}
 .dshgn_pre{position:relative;margin:10px 0;padding:11px 12px;border-radius:9px;overflow-x:auto;

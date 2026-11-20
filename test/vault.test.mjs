@@ -29,6 +29,7 @@ import {
   mergeTags,
   extractInlineTags,
   applyInlineTagEdit,
+  stripComments,
   findBacklinks,
   findBrokenLinks,
   renameTag,
@@ -741,6 +742,70 @@ note_url: https://www.biji.com/note/1200000000000000001
     check('断链: 围栏里的不算', !mine.some((h) => h.target === '也是不存在的'))
     check('断链: 别名指得到的不算断链', !mine.some((h) => h.target === '别名一篇'))
     check('断链: 扫描篇数交回去', broken.scanned >= 3, String(broken.scanned))
+  }
+  // 注释（%%…%%）：宿主里整段不显示，面板也不该让它参与任何统计
+  {
+    const dir = '注释测试'
+    await mkdir(join(root, dir), { recursive: true })
+    await writeFile(join(root, dir, '被引.md'), '# 被引\n\n正文\n', 'utf8')
+    await writeFile(
+      join(root, dir, '只注释里提.md'),
+      [
+        '# 只注释里提',
+        '',
+        '正文先写一句。',
+        '%%',
+        '这里提到 [[被引]] 和 [[根本不存在的注释死链]]',
+        '还写了 #草稿 这个标签',
+        '%%',
+        '后面还有正文。',
+      ].join('\n'),
+      'utf8',
+    )
+    await writeFile(
+      join(root, dir, '正文里提.md'),
+      '# 正文里提\n\n见 [[被引]]，这个是算数的。\n',
+      'utf8',
+    )
+
+    check('注释: 抹掉注释内容', !stripComments('正文 %%藏起来%% 后面').includes('藏起来'))
+    check('注释: 没注释时原样返回', stripComments('普通正文') === '普通正文')
+
+    const scanned = await scanVault(root)
+    const onlyComment = scanned.entries.find((e) => e.path === dir + '/只注释里提.md')
+    check(
+      '注释: 注释里的 #标签 不进标签云',
+      onlyComment !== undefined && !onlyComment.tags.includes('草稿'),
+      JSON.stringify(onlyComment && onlyComment.tags),
+    )
+    check(
+      '注释: 注释里的内容不进摘录',
+      onlyComment !== undefined && !onlyComment.excerpt.includes('根本不存在的注释死链'),
+      onlyComment && onlyComment.excerpt,
+    )
+    check(
+      '注释: 正文里写的 #标签 照样算',
+      extractInlineTags('正文 #真标签 %%#假标签%% 后面').includes('真标签'),
+    )
+
+    const broken = await findBrokenLinks(root)
+    check(
+      '注释: 注释里的双链不算断链',
+      !broken.hits.some((h) => h.target === '根本不存在的注释死链'),
+      JSON.stringify(broken.hits.map((h) => h.target)),
+    )
+
+    const backlinks = await findBacklinks(root, '被引')
+    check(
+      '注释: 只在注释里提到的不算反链',
+      !backlinks.hits.some((h) => h.path === dir + '/只注释里提.md'),
+      JSON.stringify(backlinks.hits.map((h) => h.path)),
+    )
+    check(
+      '注释: 正文里提到照常算反链',
+      backlinks.hits.some((h) => h.path === dir + '/正文里提.md'),
+      JSON.stringify(backlinks.hits.map((h) => h.path)),
+    )
   }
 } finally {
   await rm(root, { recursive: true, force: true })

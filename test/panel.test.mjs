@@ -3323,3 +3323,83 @@ test('搜索结果点一行就跳到正文里那一行，不从头开始读', as
   assert.equal(lineNeedle(''), '')
 })
 
+test('删除线、高亮和注释按宿主那套认，注释一个字都不露', async () => {
+  // ~~划掉~~ 和 ==高亮== 是 Obsidian 自己的行内扩展，标准 Markdown 没有；
+  // %%注释%% 更极端——宿主里它是整段不存在，不是小字也不是灰字。
+  // 不认的话三种标记会连符号一起原样露在界面上，看起来像正文写错了。
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const backBtn = window.document.querySelector('.dshgn_noteBack')
+  if (backBtn) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    try {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+  }
+
+  const box = await waitFor(() => window.document.querySelector('.dshgn_search'), 5000, '搜索框')
+  const setInput = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  setInput.call(box, '')
+  box.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(260)
+
+  const body = [
+    '# 行内标记验收',
+    '',
+    '这句有 ~~划掉的字~~ 和 ==高亮的字==，还有 %%藏起来的注释%% 结尾。',
+    '',
+    '%%',
+    '这一整段都是注释，一个字都不该露出来。',
+    '里面还写着 [[一段注释里的双链]]。',
+    '%%',
+    '',
+    '注释后面还有正文。',
+  ].join('\n')
+  const res = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({ dir: '随手记', title: '行内标记验收', content: body, withDatePrefix: false, requestId: 'seed-inline-marks' }),
+  })
+  assert.equal((await res.json()).path, '随手记/行内标记验收.md')
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  const card = await waitFor(
+    () => {
+      const all = Array.from(window.document.querySelectorAll('.dshgn_card'))
+      return all.find((el) => (el.textContent || '').includes('行内标记验收')) || null
+    },
+    8000,
+    '列表里应该有这一篇',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const note = await waitFor(
+    () => {
+      const el = window.document.querySelector('.dshgn_note')
+      return el !== null && (el.textContent || '').includes('高亮的字') ? el : null
+    },
+    8000,
+    '正文里应该有高亮那句',
+  )
+
+  const del = note.querySelector('del.dshgn_del')
+  const mark = note.querySelector('mark.dshgn_mark')
+  assert.ok(del !== null, '删除线要渲染成 del')
+  assert.equal(del.textContent, '划掉的字')
+  assert.ok(mark !== null, '高亮要渲染成 mark')
+  assert.equal(mark.textContent, '高亮的字')
+
+  const text = note.textContent || ''
+  assert.ok(!text.includes('~~'), '删除线的符号不该露出来：' + text.slice(0, 200))
+  assert.ok(!text.includes('=='), '高亮的符号不该露出来：' + text.slice(0, 200))
+  assert.ok(!text.includes('%%'), '注释的符号不该露出来：' + text.slice(0, 200))
+  assert.ok(!text.includes('藏起来的注释'), '行内注释的内容一个字都不该露出来')
+  assert.ok(!text.includes('一段注释里的双链'), '整段注释里的内容也不该露出来')
+  assert.ok(text.includes('注释后面还有正文'), '注释前后的正文要照常在')
+})
