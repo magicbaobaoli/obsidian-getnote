@@ -224,6 +224,7 @@ __export(vault_exports, {
   MAX_WRITE: () => MAX_WRITE,
   NOTE_EXT: () => NOTE_EXT,
   applyInlineTagEdit: () => applyInlineTagEdit,
+  backlinkSnippets: () => backlinkSnippets,
   buildTree: () => buildTree,
   conflictArchiveName: () => conflictArchiveName,
   createDir: () => createDir,
@@ -237,6 +238,7 @@ __export(vault_exports, {
   findBrokenLinks: () => findBrokenLinks,
   heatmapOf: () => heatmapOf,
   invalidateScan: () => invalidateScan,
+  linkNamesOf: () => linkNamesOf,
   listAssets: () => listAssets,
   listConflicts: () => listConflicts,
   listDirs: () => listDirs,
@@ -1085,6 +1087,17 @@ async function findBacklinks(root, target, entries) {
   hits.sort((a3, b3) => (Number(b3.count) || 1) - (Number(a3.count) || 1) || a3.title.localeCompare(b3.title, "zh"));
   return { target: raw, hits };
 }
+function backlinkSnippets(text, names, limit = 3) {
+  const wanted = /* @__PURE__ */ new Set();
+  const list = names instanceof Set ? [...names] : Array.isArray(names) ? names : [];
+  for (const value of list) {
+    const name = String(value === null || value === void 0 ? "" : value).trim().toLowerCase();
+    if (name !== "") wanted.add(name);
+  }
+  if (wanted.size === 0) return [];
+  const found = linkHitsInText(String(text || ""), wanted);
+  return found.snippets.slice(0, Math.max(0, limit));
+}
 function knownLinkNames(entries) {
   const known = /* @__PURE__ */ new Set();
   const add = (value) => {
@@ -1759,6 +1772,17 @@ function normalizeAliases(value) {
   }
   const single = String(value).trim();
   return single === "" ? [] : [single];
+}
+function linkNamesOf(entry) {
+  const path = String(entry && entry.path || "").trim();
+  if (path === "") return [];
+  const noExt = path.replace(/\.md$/i, "");
+  const base = noExt.split("/").pop() || noExt;
+  const names = [path, noExt, base];
+  const title = String(entry && entry.title || "").trim();
+  if (title !== "") names.push(title);
+  for (const alias of normalizeAliases(entry && entry.aliases)) names.push(alias);
+  return names;
 }
 async function vaultStats(root, entries) {
   let bytes = 0;
@@ -8192,6 +8216,7 @@ function linksViaHost(path) {
   if (__graph === null) return null;
   try {
     const result = __graph(String(path || ""), "links");
+    if (result !== null && typeof result === "object" && typeof result.then === "function") return null;
     return result === void 0 || result === null ? null : result;
   } catch {
     return null;
@@ -16978,16 +17003,31 @@ function NotePane(props) {
     }
     let alive = true;
     setBacklinks(null);
+    const scanLocally = () => {
+      void api(`/backlinks?path=${encodeURIComponent(currentPath)}`).then((json) => {
+        if (alive) setBacklinks(json);
+      }).catch(() => {
+        if (alive) setBacklinks({ hits: [] });
+      });
+    };
     const hosted = backlinksViaHost(currentPath);
     if (hosted !== null) {
-      setBacklinks(hosted);
-      return void 0;
+      if (typeof hosted.then === "function") {
+        void hosted.then((json) => {
+          if (!alive) return;
+          if (json === null || json === void 0) scanLocally();
+          else setBacklinks(json);
+        }).catch(() => {
+          if (alive) scanLocally();
+        });
+      } else {
+        setBacklinks(hosted);
+      }
+      return () => {
+        alive = false;
+      };
     }
-    void api(`/backlinks?path=${encodeURIComponent(currentPath)}`).then((json) => {
-      if (alive) setBacklinks(json);
-    }).catch(() => {
-      if (alive) setBacklinks({ hits: [] });
-    });
+    scanLocally();
     return () => {
       alive = false;
     };
@@ -18267,7 +18307,9 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     setOpenAsset((path) => this.openAssetInVault(path));
     setDailyTemplate(() => this.dailyTemplateContent());
     setRenameNote((path) => this.renameNoteInVault(path));
-    setVaultGraph((path, kind) => this.vaultGraphOf(path, kind));
+    setVaultGraph(
+      (path, kind) => kind === "backlinks" ? this.vaultGraphWithSnippets(path, kind) : this.vaultGraphOf(path, kind)
+    );
     setStatusReport((info) => this.updateStatusBar(info));
     const stored = await readSettings();
     this.debugLogging = stored.debugLogging === true;
@@ -19280,6 +19322,52 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     } catch {
       return null;
     }
+  }
+  /**
+   * 反链的「上下文」在宿主这条路补上。
+   *
+   * vaultGraphOf 只读 metadataCache，拿得到「谁引用了我」「引了几次」，拿不到
+   * 引用那一行剩下的字——宿主的索引存的是链接位置，不是上下文。于是面板接上
+   * 宿主时反链底下空着一行，同一篇笔记接不接宿主长得不一样。
+   *
+   * 这里把那一行补回来：只读**引用了这篇的那几篇**的正文，不是全库。挑行用的是
+   * vault.js 里同一个函数（backlinkSnippets），判定口径与面板本地扫描一致，
+   * 所以不会出现「本地三条、接上宿主两条」。
+   *
+   * 命中特别多的笔记（被几十篇引用）只给前几十条补上下文：再多就是为了一屏之外
+   * 的条目把磁盘读穿，而用户根本还没滚到那儿。
+   */
+  async vaultGraphWithSnippets(path, kind) {
+    const base = this.vaultGraphOf(path, kind);
+    if (base === null) return null;
+    if (kind !== "backlinks") return base;
+    if (!Array.isArray(base.hits) || base.hits.length === 0) return base;
+    const rel = String(path || "").replace(/^\/+/, "");
+    if (rel === "") return base;
+    const runtime2 = getRuntime();
+    const basePath2 = String(runtime2.vaultBase || "");
+    if (basePath2 === "") return base;
+    const names = linkNamesOf({ path: rel, title: rel.split("/").pop().replace(/\.md$/i, "") });
+    try {
+      const own = await readFile2((0, import_node_path7.join)(basePath2, rel), "utf8");
+      const head = parseFrontmatter(own).data || {};
+      const aliases = head.aliases !== void 0 ? head.aliases : head.alias !== void 0 ? head.alias : head["\u522B\u540D"];
+      for (const alias of normalizeAliases(aliases)) names.push(alias);
+    } catch {
+    }
+    const wanted = new Set(names.map((name) => String(name).toLowerCase()));
+    const budget = 40;
+    await Promise.all(
+      base.hits.slice(0, budget).map(async (hit) => {
+        try {
+          const text = await readFile2((0, import_node_path7.join)(basePath2, hit.path), "utf8");
+          hit.snippets = backlinkSnippets(text, wanted, 3);
+        } catch {
+          hit.snippets = [];
+        }
+      })
+    );
+    return base;
   }
   async saveLocalPort(port) {
     await updateSettings({ localPort: port });

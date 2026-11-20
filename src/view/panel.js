@@ -501,6 +501,9 @@ async function saveFile(url, filename) {
       if (__graph === null) return null
       try {
         const result = __graph(String(path || ''), 'links')
+        // 出链就在这一篇正文里，/read 早算好了；宿主给个 Promise 反而说明这一条
+        // 走了不该走的路，当没问到、退回用 /read 那份。
+        if (result !== null && typeof result === 'object' && typeof result.then === 'function') return null
         return result === undefined || result === null ? null : result
       } catch {
         return null
@@ -10868,19 +10871,39 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         }
         let alive = true
         setBacklinks(null)
+        const scanLocally = () => {
+          void api(`/backlinks?path=${encodeURIComponent(currentPath)}`)
+            .then((json) => {
+              if (alive) setBacklinks(json)
+            })
+            .catch(() => {
+              // 反查失败不该影响读笔记，静默降级成「没有关联」
+              if (alive) setBacklinks({ hits: [] })
+            })
+        }
         const hosted = backlinksViaHost(currentPath)
         if (hosted !== null) {
-          setBacklinks(hosted)
-          return undefined
+          // 宿主那条路可能是异步的：反链底下那行上下文要读引用方的正文，索引里没有。
+          // 中途换了笔记就别落地了——上一篇的反链盖到这一篇头上，比晚一点出更难查。
+          if (typeof hosted.then === 'function') {
+            void hosted
+              .then((json) => {
+                if (!alive) return
+                // 宿主说「我这儿没有」，那就跟问不到一样，退回自己扫
+                if (json === null || json === undefined) scanLocally()
+                else setBacklinks(json)
+              })
+              .catch(() => {
+                if (alive) scanLocally()
+              })
+          } else {
+            setBacklinks(hosted)
+          }
+          return () => {
+            alive = false
+          }
         }
-        void api(`/backlinks?path=${encodeURIComponent(currentPath)}`)
-          .then((json) => {
-            if (alive) setBacklinks(json)
-          })
-          .catch(() => {
-            // 反查失败不该影响读笔记，静默降级成「没有关联」
-            if (alive) setBacklinks({ hits: [] })
-          })
+        scanLocally()
         return () => {
           alive = false
         }

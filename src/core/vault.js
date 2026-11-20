@@ -1142,6 +1142,28 @@ export async function findBacklinks(root, target, entries) {
 }
 
 /**
+ * 只取「引用那一行」的上下文，不算次数、不排顺序。
+ *
+ * 给宿主那条路用：Obsidian 的 metadataCache 知道「谁引用了这一篇」和「引了几次」，
+ * 但拿不到那一行剩下的字——它存的是链接的位置，不是上下文。面板接上宿主时反链
+ * 底下就空着一行，同一篇笔记接不接宿主长得不一样。这里把「从一篇正文里挑出引用
+ * 目标的那几行」单独开出来，宿主侧读一次正文就能补上，判定口径与本地扫描完全一致。
+ *
+ * 名字集合宽松一点没关系：多算一条上下文只是多一行字，少算才是「看着像丢了」。
+ */
+export function backlinkSnippets(text, names, limit = 3) {
+  const wanted = new Set()
+  const list = names instanceof Set ? [...names] : Array.isArray(names) ? names : []
+  for (const value of list) {
+    const name = String(value === null || value === undefined ? '' : value).trim().toLowerCase()
+    if (name !== '') wanted.add(name)
+  }
+  if (wanted.size === 0) return []
+  const found = linkHitsInText(String(text || ''), wanted)
+  return found.snippets.slice(0, Math.max(0, limit))
+}
+
+/**
  * 把库里「可能被双链指到」的名字收成一个集合，用于断链判断。
  *
  * 双链的写法比文件路径松得多：`[[甲]]`、`[[随手记/甲]]`、`[[甲.md]]`、别名、
@@ -2161,6 +2183,27 @@ export function normalizeAliases(value) {
   }
   const single = String(value).trim()
   return single === '' ? [] : [single]
+}
+
+/**
+ * 一篇笔记的正文里，有哪些「名字」会指向它。
+ *
+ * 双链的写法比文件路径松：`[[甲]]`、`[[随手记/甲]]`、`[[甲.md]]`、标题、
+ * 以及头部里写的别名，在 Obsidian 里都指得到同一篇。所以「谁引用了这篇」不能只
+ * 比路径。这里把这一篇的所有可能名字收成一个数组，交给 backlinkSnippets 去正文里
+ * 挑行——两边（面板本地扫描、宿主侧补上下文）用同一份口径，才不会出现「本地能
+ * 找到、接上宿主就少一条」。
+ */
+export function linkNamesOf(entry) {
+  const path = String((entry && entry.path) || '').trim()
+  if (path === '') return []
+  const noExt = path.replace(/\.md$/i, '')
+  const base = noExt.split('/').pop() || noExt
+  const names = [path, noExt, base]
+  const title = String((entry && entry.title) || '').trim()
+  if (title !== '') names.push(title)
+  for (const alias of normalizeAliases(entry && entry.aliases)) names.push(alias)
+  return names
 }
 
 /** 库统计：面板顶部显示「几篇笔记 / 几个目录 / 多大」。 */

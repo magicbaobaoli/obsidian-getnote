@@ -625,6 +625,106 @@ test('反链优先问宿主，注入了就不再扫全库', async () => {
 })
 
 /**
+ * 宿主那条路是异步的：反链底下那行上下文要读引用方的正文，metadataCache 里没有。
+ *
+ * 所以面板得等它落地，而不是看见 Promise 就当「没有反链」。同时晚到的那份也得
+ * 带上 snippets，否则接上宿主时反链底下永远空着一行，跟本地扫描那份长得不一样。
+ */
+test('宿主晚一步答的反链也落得下，答「没有」时照样退回自己扫', async () => {
+  await waitFor(() => window.document.querySelector('.dshgn_root') !== null, 5000, '根节点渲染')
+
+  // 宿主那边的 Promise 由测试攥着，想什么时候答就什么时候答。React 在开发构建里
+  // 会把 effect 跑两遍（挂载 → 清理 → 再挂载），第二遍可能在我们放行之后才开始，
+  // 所以放行之后改成立刻作答，否则后挂上去的那一次永远等不到答复。
+  const pending = []
+  let answerNow = false
+  const payloadFor = (path) => ({
+    target: path,
+    host: true,
+    hits: [
+      {
+        path: '别处的笔记.md',
+        title: '别处的笔记',
+        links: [path],
+        count: 2,
+        snippets: ['开会时记到这一段'],
+      },
+    ],
+  })
+  panel.setVaultGraph((path, kind) => {
+    if (kind !== 'backlinks') return null
+    if (answerNow) return Promise.resolve(payloadFor(path))
+    return new Promise((resolve) => pending.push(() => resolve(payloadFor(path))))
+  })
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    await clickTab('云端')
+    await clickTab('笔记')
+    const card = await waitFor(
+      () =>
+        Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) =>
+          (el.textContent || '').includes('右键菜单验收'),
+        ),
+      5000,
+    )
+    // 前面几个用例可能把它开着，先退回空态，否则这一下点的是「收起」
+    const close = window.document.querySelector('.dshgn_noteBack')
+    if (close) close.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(
+      () => window.document.querySelector('.dshgn_root').getAttribute('data-has-note') === 'false',
+      5000,
+      '先退回空态',
+    )
+    card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+
+    await waitFor(() => pending.length > 0, 5000, '面板应该向宿主问过反链')
+    assert.equal(
+      window.document.querySelector('.dshgn_backlinkItem'),
+      null,
+      '宿主还没答，就先别拿旧的反链顶上',
+    )
+
+    answerNow = true
+    for (const answer of pending) answer()
+    const item = await waitFor(
+      () => window.document.querySelector('.dshgn_backlinkItem'),
+      5000,
+      '晚到的反链也要落下来',
+    )
+    assert.ok((item.textContent || '').includes('别处的笔记'), '要显示宿主给的标题')
+    const snip = await waitFor(
+      () => window.document.querySelector('.dshgn_backlinkSnip'),
+      5000,
+      '晚到的反链也要带上下文',
+    )
+    assert.ok((snip.textContent || '').includes('开会时记到'), '上下文要显示出来')
+
+    // 宿主说「我这儿没有」时，跟问不到一样退回自己扫，不能因为异步就静默空白
+    panel.setVaultGraph((path, kind) => (kind === 'backlinks' ? Promise.resolve(null) : null))
+    const closeAgain = window.document.querySelector('.dshgn_noteBack')
+    closeAgain.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(
+      () => window.document.querySelector('.dshgn_root').getAttribute('data-has-note') === 'false',
+      5000,
+      '先收起这一篇',
+    )
+    const before = fetchCalls.filter((url) => url.includes('/backlinks')).length
+    // 同一篇刚被收起又点开，effect 的依赖是路径，不一定重新跑——先换一篇再换回来
+    await clickTab('云端')
+    await clickTab('笔记')
+    card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(
+      () => fetchCalls.filter((url) => url.includes('/backlinks')).length > before,
+      5000,
+      '宿主给空时要退回自己扫',
+    )
+  } finally {
+    panel.setVaultGraph(null)
+    panel.setConfirmDialog(null)
+  }
+})
+
+/**
  * 双链该指向哪一篇，先问宿主的索引。
  *
  * 面板原来自己在扫到的 entries 里按「路径全等 → 文件名 → 标题」三级退让。

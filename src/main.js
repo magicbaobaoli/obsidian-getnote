@@ -28,7 +28,14 @@ import {
 } from './core/vfs.js'
 import { configureCardScripts } from './core/card.js'
 import { setDebugLogging } from './core/log.js'
-import { invalidateScan, scanVault } from './core/vault.js'
+import {
+  backlinkSnippets,
+  invalidateScan,
+  linkNamesOf,
+  normalizeAliases,
+  parseFrontmatter,
+  scanVault,
+} from './core/vault.js'
 import { basesTemplate, parseCanvas, addFileNode, serializeCanvas } from './core/integrations.js'
 import { startAutoSync, startCardAutoImport, markPanelVisible } from './core/service.js'
 import { startLocalServer } from './host/server.js'
@@ -190,7 +197,12 @@ export default class GetnoteObsidianPlugin extends Plugin {
     // 我们再读一遍全库正文去正则匹配 [[...]]，等于把同一件事干第二遍。库大了之后
     // 这个差别是「点一下立刻出」和「等一秒」的差别。问不到（链接还没被索引、文件
     // 刚写下去）时面板会自己退回本地扫描，所以这里拿不准就返回 null。
-    setVaultGraph((path, kind) => this.vaultGraphOf(path, kind))
+    // 反链底下那行上下文得读引用方的正文，所以反链这一条是异步的；面板那边拿到
+    // Promise 会等它落地再渲染。出链不用（就在这一篇正文里，/read 早算好了），
+    // 保持同步，免得为一行不需要的东西多绕一个微任务。
+    setVaultGraph((path, kind) =>
+      kind === 'backlinks' ? this.vaultGraphWithSnippets(path, kind) : this.vaultGraphOf(path, kind),
+    )
 
     // 状态栏文案跟着面板里的实际情况走：只有「得到大脑」四个字，用户既不知道
     // 库有多大，也不知道面板里开着哪一篇。状态栏是他唯一一直看得见我们的地方。
@@ -1386,6 +1398,56 @@ export default class GetnoteObsidianPlugin extends Plugin {
     } catch {
       return null
     }
+  }
+
+  /**
+   * 反链的「上下文」在宿主这条路补上。
+   *
+   * vaultGraphOf 只读 metadataCache，拿得到「谁引用了我」「引了几次」，拿不到
+   * 引用那一行剩下的字——宿主的索引存的是链接位置，不是上下文。于是面板接上
+   * 宿主时反链底下空着一行，同一篇笔记接不接宿主长得不一样。
+   *
+   * 这里把那一行补回来：只读**引用了这篇的那几篇**的正文，不是全库。挑行用的是
+   * vault.js 里同一个函数（backlinkSnippets），判定口径与面板本地扫描一致，
+   * 所以不会出现「本地三条、接上宿主两条」。
+   *
+   * 命中特别多的笔记（被几十篇引用）只给前几十条补上下文：再多就是为了一屏之外
+   * 的条目把磁盘读穿，而用户根本还没滚到那儿。
+   */
+  async vaultGraphWithSnippets(path, kind) {
+    const base = this.vaultGraphOf(path, kind)
+    if (base === null) return null
+    if (kind !== 'backlinks') return base
+    if (!Array.isArray(base.hits) || base.hits.length === 0) return base
+    const rel = String(path || '').replace(/^\/+/, '')
+    if (rel === '') return base
+    const runtime = settingsStore.getRuntime()
+    const basePath = String(runtime.vaultBase || '')
+    if (basePath === '') return base
+    // 目标那一篇的名字：路径、去扩展名、文件名、标题，再加头部里写的别名。
+    // 别名要读一次目标自己的正文——只读一个文件，比让反链少一条划算。
+    const names = linkNamesOf({ path: rel, title: rel.split('/').pop().replace(/\.md$/i, '') })
+    try {
+      const own = await vfsRead(join(basePath, rel), 'utf8')
+      const head = parseFrontmatter(own).data || {}
+      const aliases = head.aliases !== undefined ? head.aliases : head.alias !== undefined ? head.alias : head['别名']
+      for (const alias of normalizeAliases(aliases)) names.push(alias)
+    } catch {
+      // 读不到就按没有别名算：少一条上下文，不影响反链本身
+    }
+    const wanted = new Set(names.map((name) => String(name).toLowerCase()))
+    const budget = 40
+    await Promise.all(
+      base.hits.slice(0, budget).map(async (hit) => {
+        try {
+          const text = await vfsRead(join(basePath, hit.path), 'utf8')
+          hit.snippets = backlinkSnippets(text, wanted, 3)
+        } catch {
+          hit.snippets = []
+        }
+      }),
+    )
+    return base
   }
 
   async saveLocalPort(port) {

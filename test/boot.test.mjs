@@ -1296,6 +1296,60 @@ test('刚写下的笔记反链为空时不替宿主下结论，交给面板自�
   app.metadataCache.resolvedLinks = {}
 })
 
+test('宿主给的反链补得上「在哪一句」，别名写的也算', async () => {
+  await adapter.write('得到大脑/随手记/被引.md', '---\naliases: [别名目标]\n---\n\n# 被引\n\n正文\n')
+  await adapter.write('得到大脑/随手记/引用方.md', '# 引用方\n\n开会时记到 [[被引]] 这一段\n')
+  await adapter.write(
+    '得到大脑/随手记/别名引用方.md',
+    '# 别名引用方\n\n用别名引一下 [[别名目标]] 试试\n',
+  )
+  await adapter.write('得到大脑/随手记/无关方.md', '# 无关方\n\n一句都没提\n')
+
+  // 宿主索引：引用方与别名引用方都指向被引；无关方不在里面
+  app.metadataCache.resolvedLinks = {
+    '得到大脑/随手记/引用方.md': { '得到大脑/随手记/被引.md': 1 },
+    '得到大脑/随手记/别名引用方.md': { '得到大脑/随手记/被引.md': 1 },
+  }
+  app.metadataCache.fileCache = {}
+
+  const graph = await plugin.vaultGraphWithSnippets('得到大脑/随手记/被引.md', 'backlinks')
+  assert.ok(graph !== null, '有宿主索引时不该返回 null')
+  assert.equal(graph.host, true)
+  assert.equal(graph.hits.length, 2, '两条引用都要在')
+  for (const hit of graph.hits) {
+    assert.ok(Array.isArray(hit.snippets), '每条都要带上 snippets 字段')
+    assert.ok(hit.snippets.length > 0, '引用了就得有上下文，实际：' + JSON.stringify(hit))
+    assert.ok(
+      !hit.snippets.some((line) => line.includes('[[')),
+      '上下文里不该还留着双链本身：' + hit.snippets.join(' | '),
+    )
+  }
+  const byPath = new Map(graph.hits.map((hit) => [hit.path, hit]))
+  assert.ok(
+    (byPath.get('得到大脑/随手记/引用方.md').snippets[0] || '').includes('开会时记到'),
+    '上下文要是引用那一行',
+  )
+  assert.ok(
+    (byPath.get('得到大脑/随手记/别名引用方.md').snippets[0] || '').includes('用别名引一下'),
+    '写的是别名也得挑得出那一行',
+  )
+  assert.equal(byPath.has('得到大脑/随手记/无关方.md'), false, '没引用的不该被算进来')
+
+  // 出链那条不该被绕成异步：它就在这一篇正文里，/read 早算好了
+  const out = plugin.vaultGraphOf('得到大脑/随手记/引用方.md', 'links')
+  assert.ok(!(out instanceof Promise), '出链要保持同步')
+
+  // 没有反链时原样返回，不额外读盘
+  app.metadataCache.resolvedLinks = {}
+  const empty = await plugin.vaultGraphWithSnippets('得到大脑/随手记/无关方.md', 'backlinks')
+  assert.ok(
+    empty === null || (Array.isArray(empty.hits) && empty.hits.length === 0),
+    '没反链时不该凭空造出命中，实际：' + JSON.stringify(empty),
+  )
+
+  app.metadataCache.resolvedLinks = {}
+})
+
 test('双链指向哪一篇由宿主的索引说了算，问不到才自己找', async () => {
   await adapter.write('得到大脑/随手记/同名.md', '# 随手记里的同名\n')
   await adapter.mkdir('得到大脑/日记')
