@@ -13,6 +13,7 @@ import {
   createNote,
   trashNote,
   searchNotes,
+  parseSearchQuery,
   parseFrontmatter,
   vaultStats,
   listDirs,
@@ -152,6 +153,43 @@ note_url: https://www.biji.com/note/1200000000000000001
     'searchNotes: 没有双链的笔记给空数组',
     found.hits.every((h) => Array.isArray(h.links)),
     JSON.stringify(found.hits.map((h) => h.links)),
+  )
+
+  // 9b. 引号把一串词绑成一个，前导减号是排除。
+  //     搜「开会 记录」时两个词各自出现在篇里就算命中，想找那一次连着的会议
+  //     得写 "开会 记录"；搜「会议 -录音」的人要的是开会记录，不是录音转写。
+  await writeFile(join(root, '随手记', '连着的短语.md'), ['# 连着的短语', '', '今天开会 记录得比较全。', ''].join('\n'), 'utf8')
+  await writeFile(join(root, '随手记', '分开的两个词.md'), ['# 分开的两个词', '', '开会之前先把记录本找出来。', ''].join('\n'), 'utf8')
+  const phraseHits = await searchNotes(root, '"开会 记录"')
+  check(
+    'searchNotes: 引号里的一串要连着出现',
+    phraseHits.hits.some((h) => h.path === '随手记/连着的短语.md') && !phraseHits.hits.some((h) => h.path === '随手记/分开的两个词.md'),
+    JSON.stringify(phraseHits.hits.map((h) => h.path)),
+  )
+  const looseHits = await searchNotes(root, '开会 记录')
+  check(
+    'searchNotes: 不加引号时两个词各自出现就算',
+    looseHits.hits.some((h) => h.path === '随手记/连着的短语.md') && looseHits.hits.some((h) => h.path === '随手记/分开的两个词.md'),
+    JSON.stringify(looseHits.hits.map((h) => h.path)),
+  )
+  const excludedHits = await searchNotes(root, '记录 -开会')
+  check(
+    'searchNotes: 前加减号把它排掉',
+    !excludedHits.hits.some((h) => h.path === '随手记/连着的短语.md') && !excludedHits.hits.some((h) => h.path === '随手记/分开的两个词.md'),
+    JSON.stringify(excludedHits.hits.map((h) => h.path)),
+  )
+  const excludedPhrase = await searchNotes(root, '记录 -"开会 记录"')
+  check(
+    'searchNotes: 减号后面也能跟引号，只排掉连着的那一篇',
+    excludedPhrase.hits.some((h) => h.path === '随手记/分开的两个词.md') && !excludedPhrase.hits.some((h) => h.path === '随手记/连着的短语.md'),
+    JSON.stringify(excludedPhrase.hits.map((h) => h.path)),
+  )
+  const parsedQuery = parseSearchQuery('开会 "连着 两个" -排除 -"也不要 这个"')
+  check(
+    'parseSearchQuery: 引号与减号各归各位',
+    JSON.stringify(parsedQuery.terms) === JSON.stringify(['开会', '连着 两个']) &&
+      JSON.stringify(parsedQuery.nots) === JSON.stringify(['排除', '也不要 这个']),
+    JSON.stringify(parsedQuery),
   )
 
   // 10. 统计与目录

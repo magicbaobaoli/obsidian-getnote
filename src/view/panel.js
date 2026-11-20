@@ -544,7 +544,7 @@ async function saveFile(url, filename) {
         'action.copied': '已复制',
         'action.retry': '重试',
         'search.placeholder': '搜索标题、正文、标签…',
-        'search.hint': '可以加限定：tag:录音卡 · dir:随手记 · #私密。多个词要同时命中。',
+        'search.hint': '可以加限定：tag:录音卡 · dir:随手记 · #私密。多个词要同时命中；引号包住的一串要连着出现，前面加减号就是不要它。',
         'search.jumpToLine': '跳到这一行',
         'batch.pick': '选择这篇',
         'batch.picked': '篇已选',
@@ -1011,7 +1011,7 @@ async function saveFile(url, filename) {
         'action.copied': 'Copied',
         'action.retry': 'Retry',
         'search.placeholder': 'Search title, body, tags…',
-        'search.hint': 'Narrow it down: tag:voice · dir:notes · #private. All words must match.',
+        'search.hint': 'Narrow it down: tag:voice · dir:notes · #private. All words must match; quote a phrase to keep it together, put - in front to exclude it.',
         'search.jumpToLine': 'Jump to this line',
         'batch.pick': 'Select this note',
         'batch.picked': 'selected',
@@ -1470,7 +1470,7 @@ async function saveFile(url, filename) {
         'action.copied': 'Gekopieerd',
         'action.retry': 'Opnieuw',
         'search.placeholder': 'Zoek titel, tekst, tags…',
-        'search.hint': 'Verfijn: tag:spraak · dir:notities · #privé. Alle woorden moeten voorkomen.',
+        'search.hint': 'Verfijn: tag:spraak · dir:notities · #privé. Alle woorden moeten voorkomen; zet een frase tussen quotes, en - ervoor om hem uit te sluiten.',
         'search.jumpToLine': 'Naar deze regel',
         'batch.pick': 'Deze notitie selecteren',
         'batch.picked': 'geselecteerd',
@@ -3027,9 +3027,16 @@ async function saveFile(url, filename) {
       const rest = String(query || '')
         .replace(/(?:^|\s)(?:tag|dir):(?:"[^"]*"|\S+)/gi, ' ')
         .replace(/(?:^|\s)#([^\s#]+)/g, ' ')
+      // 跟服务端同一套拆法：引号包起来的一串词是一个词（标它整串），
+      // 前导减号是排除（那一行上根本没有它，拿去标只会把整行染成没命中）。
       const terms = []
-      for (const token of rest.split(/\s+/)) {
-        if (token !== '') terms.push(token)
+      const re = /(-?)"([^"]*)"|(-?)(\S+)/g
+      let m
+      while ((m = re.exec(rest)) !== null) {
+        const neg = (m[1] !== undefined ? m[1] : m[3]) === '-'
+        const value = (m[2] !== undefined ? m[2] : m[4]).trim()
+        if (value === '' || neg) continue
+        terms.push(value)
       }
       return terms
     }

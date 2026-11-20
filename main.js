@@ -858,6 +858,7 @@ function parseSearchQuery(input) {
   const tags = [];
   const dirs = [];
   const terms = [];
+  const nots = [];
   const re = /(?:^|\s)(tag|dir):("[^"]*"|\S+)/gi;
   let rest = raw;
   let m3;
@@ -873,10 +874,16 @@ function parseSearchQuery(input) {
     tags.push(name);
     return " ";
   });
-  for (const token of rest.split(/\s+/)) {
-    if (token !== "") terms.push(token);
+  const tokenRe = /(-?)"([^"]*)"|(-?)(\S+)/g;
+  let t4;
+  while ((t4 = tokenRe.exec(rest)) !== null) {
+    const neg = (t4[1] !== void 0 ? t4[1] : t4[3]) === "-";
+    const value = (t4[2] !== void 0 ? t4[2] : t4[4]).trim();
+    if (value === "") continue;
+    if (neg) nots.push(value);
+    else terms.push(value);
   }
-  return { raw, tags, dirs, terms };
+  return { raw, tags, dirs, terms, nots };
 }
 async function searchNotes(root, query, { limit = 60, perFile = 3, sort = "relevance" } = {}) {
   const parsed = parseSearchQuery(query);
@@ -884,6 +891,7 @@ async function searchNotes(root, query, { limit = 60, perFile = 3, sort = "relev
     return { query: parsed.raw, parsed, hits: [], scanned: 0, truncated: false };
   }
   const needles = parsed.terms.map((t4) => t4.toLowerCase());
+  const notNeedles = parsed.nots.map((t4) => t4.toLowerCase());
   const tagNeedles = parsed.tags.map((t4) => t4.toLowerCase());
   const dirNeedles = parsed.dirs.map((d3) => d3.toLowerCase().replace(/^\.?\//, ""));
   const hits = [];
@@ -929,6 +937,17 @@ async function searchNotes(root, query, { limit = 60, perFile = 3, sort = "relev
         continue;
       }
       const { data, body } = parseFrontmatter(text);
+      if (notNeedles.length > 0) {
+        const allLower = text.toLowerCase();
+        let excluded = false;
+        for (const bad of notNeedles) {
+          if (allLower.includes(bad)) {
+            excluded = true;
+            break;
+          }
+        }
+        if (excluded) continue;
+      }
       const fileTags = mergeTags(normalizeTags(data.tags), extractInlineTags(body)).map((t4) => t4.toLowerCase());
       if (tagNeedles.length > 0) {
         let tagOk = true;
@@ -8251,7 +8270,7 @@ var LEX = {
     "action.copied": "\u5DF2\u590D\u5236",
     "action.retry": "\u91CD\u8BD5",
     "search.placeholder": "\u641C\u7D22\u6807\u9898\u3001\u6B63\u6587\u3001\u6807\u7B7E\u2026",
-    "search.hint": "\u53EF\u4EE5\u52A0\u9650\u5B9A\uFF1Atag:\u5F55\u97F3\u5361 \xB7 dir:\u968F\u624B\u8BB0 \xB7 #\u79C1\u5BC6\u3002\u591A\u4E2A\u8BCD\u8981\u540C\u65F6\u547D\u4E2D\u3002",
+    "search.hint": "\u53EF\u4EE5\u52A0\u9650\u5B9A\uFF1Atag:\u5F55\u97F3\u5361 \xB7 dir:\u968F\u624B\u8BB0 \xB7 #\u79C1\u5BC6\u3002\u591A\u4E2A\u8BCD\u8981\u540C\u65F6\u547D\u4E2D\uFF1B\u5F15\u53F7\u5305\u4F4F\u7684\u4E00\u4E32\u8981\u8FDE\u7740\u51FA\u73B0\uFF0C\u524D\u9762\u52A0\u51CF\u53F7\u5C31\u662F\u4E0D\u8981\u5B83\u3002",
     "search.jumpToLine": "\u8DF3\u5230\u8FD9\u4E00\u884C",
     "batch.pick": "\u9009\u62E9\u8FD9\u7BC7",
     "batch.picked": "\u7BC7\u5DF2\u9009",
@@ -8714,7 +8733,7 @@ var LEX = {
     "action.copied": "Copied",
     "action.retry": "Retry",
     "search.placeholder": "Search title, body, tags\u2026",
-    "search.hint": "Narrow it down: tag:voice \xB7 dir:notes \xB7 #private. All words must match.",
+    "search.hint": "Narrow it down: tag:voice \xB7 dir:notes \xB7 #private. All words must match; quote a phrase to keep it together, put - in front to exclude it.",
     "search.jumpToLine": "Jump to this line",
     "batch.pick": "Select this note",
     "batch.picked": "selected",
@@ -9169,7 +9188,7 @@ var LEX = {
     "action.copied": "Gekopieerd",
     "action.retry": "Opnieuw",
     "search.placeholder": "Zoek titel, tekst, tags\u2026",
-    "search.hint": "Verfijn: tag:spraak \xB7 dir:notities \xB7 #priv\xE9. Alle woorden moeten voorkomen.",
+    "search.hint": "Verfijn: tag:spraak \xB7 dir:notities \xB7 #priv\xE9. Alle woorden moeten voorkomen; zet een frase tussen quotes, en - ervoor om hem uit te sluiten.",
     "search.jumpToLine": "Naar deze regel",
     "batch.pick": "Deze notitie selecteren",
     "batch.picked": "geselecteerd",
@@ -10352,8 +10371,13 @@ function splitByTerms(text, terms) {
 function searchTermsOf(query) {
   const rest = String(query || "").replace(/(?:^|\s)(?:tag|dir):(?:"[^"]*"|\S+)/gi, " ").replace(/(?:^|\s)#([^\s#]+)/g, " ");
   const terms = [];
-  for (const token of rest.split(/\s+/)) {
-    if (token !== "") terms.push(token);
+  const re = /(-?)"([^"]*)"|(-?)(\S+)/g;
+  let m3;
+  while ((m3 = re.exec(rest)) !== null) {
+    const neg = (m3[1] !== void 0 ? m3[1] : m3[3]) === "-";
+    const value = (m3[2] !== void 0 ? m3[2] : m3[4]).trim();
+    if (value === "" || neg) continue;
+    terms.push(value);
   }
   return terms;
 }

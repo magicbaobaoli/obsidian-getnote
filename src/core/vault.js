@@ -843,6 +843,8 @@ export async function purgeTrash(root, trashPath) {
  * 认得的限定词：
  *   tag:xxx / #xxx  → 按 frontmatter tags 过滤（支持多个，全部命中才算）
  *   dir:xxx         → 路径前缀过滤（不区分大小写）
+ *   "连着两个词"     → 当成一个词，要连着出现才算命中
+ *   -词 / -"两个词"  → 排除：正文或标题里出现它就整篇不算
  * 其余词就是正文关键词，空格分隔的多个关键词要**全部**命中。
  */
 export function parseSearchQuery(input) {
@@ -850,6 +852,7 @@ export function parseSearchQuery(input) {
   const tags = []
   const dirs = []
   const terms = []
+  const nots = []
   // 用正则整体扫描而不是 split(' ')：`dir:随手记` 里如果目录名本身带空格
   // （用户的库确实有这种），用空格切会把目录名截断成两半。
   const re = /(?:^|\s)(tag|dir):("[^"]*"|\S+)/gi
@@ -868,10 +871,19 @@ export function parseSearchQuery(input) {
     tags.push(name)
     return ' '
   })
-  for (const token of rest.split(/\s+/)) {
-    if (token !== '') terms.push(token)
+  // 引号把一串词包成「一个词」：搜「开会 记录」时两个词各自出现在篇里就行，
+  // 想找那一次连着的会议就得写 "开会 记录"。前导的减号是排除——
+  // 搜「会议 -录音」的人要的是开会记录，不是那堆录音转写。
+  const tokenRe = /(-?)"([^"]*)"|(-?)(\S+)/g
+  let t
+  while ((t = tokenRe.exec(rest)) !== null) {
+    const neg = (t[1] !== undefined ? t[1] : t[3]) === '-'
+    const value = (t[2] !== undefined ? t[2] : t[4]).trim()
+    if (value === '') continue
+    if (neg) nots.push(value)
+    else terms.push(value)
   }
-  return { raw, tags, dirs, terms }
+  return { raw, tags, dirs, terms, nots }
 }
 
 export async function searchNotes(root, query, { limit = 60, perFile = 3, sort = 'relevance' } = {}) {
@@ -880,6 +892,7 @@ export async function searchNotes(root, query, { limit = 60, perFile = 3, sort =
     return { query: parsed.raw, parsed, hits: [], scanned: 0, truncated: false }
   }
   const needles = parsed.terms.map((t) => t.toLowerCase())
+  const notNeedles = parsed.nots.map((t) => t.toLowerCase())
   const tagNeedles = parsed.tags.map((t) => t.toLowerCase())
   const dirNeedles = parsed.dirs.map((d) => d.toLowerCase().replace(/^\.?\//, ''))
   const hits = []
@@ -927,6 +940,19 @@ export async function searchNotes(root, query, { limit = 60, perFile = 3, sort =
         continue
       }
       const { data, body } = parseFrontmatter(text)
+      // 排除词先过一遍：命中就不必再算正文行、算标签。整篇读进来的 text
+      // 已经含标题与 frontmatter，所以「标题里有这个词」也算排除。
+      if (notNeedles.length > 0) {
+        const allLower = text.toLowerCase()
+        let excluded = false
+        for (const bad of notNeedles) {
+          if (allLower.includes(bad)) {
+            excluded = true
+            break
+          }
+        }
+        if (excluded) continue
+      }
       const fileTags = mergeTags(normalizeTags(data.tags), extractInlineTags(body)).map((t) => t.toLowerCase())
       if (tagNeedles.length > 0) {
         let tagOk = true

@@ -6897,3 +6897,68 @@ test('右键里能把这一篇复制成一份副本，原文件一个字都不�
     panel.setConfirmDialog(null)
   }
 })
+
+test('搜索里引号把一串词绑在一起、减号把它排掉，结果当场跟着变', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const { searchTermsOf } = panel.__internals
+
+  // 标色只标正文词：引号里的整串算一个词，减号后面那个不该被标
+  assert.deepEqual(searchTermsOf('开会 "连着 两个" -排除'), ['开会', '连着 两个'])
+  assert.deepEqual(searchTermsOf('-"不要 这个" 会议'), ['会议'])
+  assert.deepEqual(searchTermsOf('"只有这一串"'), ['只有这一串'])
+  assert.deepEqual(searchTermsOf('tag:录音卡 会议'), ['会议'])
+
+  // 退回空态，并把搜索框清干净
+  const back = window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    if (back) back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  const seed = async (title, content, requestId) => {
+    const res = await realFetch(server.origin + '/getnote/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({ dir: '随手记', title, content, withDatePrefix: false, requestId }),
+    })
+    assert.equal(res.ok, true, '造笔记失败：' + res.status)
+  }
+  await seed('短语搜索连着', ['# 短语搜索连着', '', '今天开会 记录得比较全。'].join('\n'), 'seed-phrase-joined')
+  await seed('短语搜索分开', ['# 短语搜索分开', '', '开会之前先把记录本找出来。'].join('\n'), 'seed-phrase-apart')
+
+  await clickTab('笔记')
+  const refresh = Array.from(window.document.querySelectorAll('button')).find((el) => (el.getAttribute('title') || '') === '刷新')
+  assert.ok(refresh, '找不到刷新按钮')
+  refresh.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+
+  const searchBox = () => window.document.querySelector('.dshgn_search')
+  const type = async (text) => {
+    const box = searchBox()
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setter.call(box, text)
+    box.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(500)
+  }
+  const titles = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_card .dshgn_cardTitle'))
+      .map((el) => el.textContent)
+      .filter((text) => text.indexOf('短语搜索') >= 0)
+
+  // 不加引号：两篇都命中
+  await type('开会 记录')
+  assert.deepEqual(titles().sort(), ['短语搜索分开', '短语搜索连着'])
+
+  // 加引号：只有真的连着写的那一篇
+  await type('"开会 记录"')
+  assert.deepEqual(titles(), ['短语搜索连着'])
+
+  // 减号：把连着的那篇排掉，只剩另一篇
+  await type('记录 -"开会 记录"')
+  assert.deepEqual(titles(), ['短语搜索分开'])
+
+  // 收尾：清空搜索框
+  await type('')
+})
