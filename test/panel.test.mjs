@@ -7805,3 +7805,106 @@ test('搜索框里敲到一半，把库里已有的目录名和标签名摆出�
   box.dispatchEvent(new window.Event('input', { bubbles: true }))
   await sleep(200)
 })
+test('卡片上摆着这一篇的标签，点一颗就按它筛，多出来的收成 +N', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const seed = async (title, tags, requestId) => {
+    const content = ['---', 'tags: [' + tags.join(', ') + ']', '---', '', '# ' + title, '', '正文', ''].join('\n')
+    const res = await realFetch(server.origin + '/getnote/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({ dir: '随手记', title, content, withDatePrefix: false, requestId }),
+    })
+    const json = await res.json()
+    return json.path
+  }
+
+  // 上一个用例可能把某篇开着：先退回空态，卡片才在列表里
+  const back = window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    if (back) back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox) {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setter.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(400)
+  }
+
+  const pathA = await seed(
+    '卡片标签甲',
+    ['卡片标签/子一', '卡片标签/子二', '卡片标签/子三', '卡片标签/子四'],
+    'seed-card-tags-a',
+  )
+  const pathB = await seed('卡片标签乙', ['卡片标签乙独有'], 'seed-card-tags-b')
+  assert.ok(pathA !== undefined && pathB !== undefined, '两篇都建好了')
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+
+  const cardOf = (path) =>
+    Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === path) || null
+  const cardA = await waitFor(() => cardOf(pathA), 8000, '四颗标签的那一篇')
+  const cardB = await waitFor(() => cardOf(pathB), 8000, '一颗标签的那一篇')
+
+  const chipsOf = (card) => Array.from(card.querySelectorAll('.dshgn_cardTag'))
+  const chipsA = chipsOf(cardA)
+  assert.equal(chipsA.length, 3, '最多摆三颗，实际 ' + chipsA.length)
+  assert.deepEqual(
+    chipsA.map((el) => (el.textContent || '').trim()),
+    ['卡片标签/子一', '卡片标签/子二', '卡片标签/子三'],
+    '摆的是最前面那三颗',
+  )
+  const moreA = cardA.querySelector('.dshgn_cardTagMore')
+  assert.ok(moreA !== null, '多出来的要收成一颗 +N')
+  assert.equal((moreA.textContent || '').trim(), '+1', '四颗里藏了一颗')
+  assert.ok(
+    String(chipsA[0].getAttribute('title') || '').includes('筛这个标签'),
+    '悬停要说清点一下会怎样，实际 ' + chipsA[0].getAttribute('title'),
+  )
+
+  // 只有一颗标签的那篇不该冒出一个 +0
+  assert.equal(chipsOf(cardB).length, 1)
+  assert.equal(cardB.querySelector('.dshgn_cardTagMore'), null, '没多出来的就别摆 +0')
+
+  // 点标签是「按它筛」，不是「打开这一篇」
+  chipsA[0].dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const cardTitles = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_card')).map((el) => el.getAttribute('title'))
+  await waitFor(
+    () => {
+      const list = cardTitles()
+      return list.length === 1 && list[0] === pathA
+    },
+    5000,
+    '点一颗标签之后只剩那个标签的笔记：' + JSON.stringify(cardTitles()),
+  )
+  assert.equal(
+    rootNode().getAttribute('data-has-note'),
+    'false',
+    '点标签不该顺带把笔记打开',
+  )
+  const tagRowOn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_tagRow')).find((el) => el.title === '卡片标签/子一') || null
+  const onRow = await waitFor(tagRowOn, 5000, '左栏那一行标签')
+  assert.equal(onRow.getAttribute('data-on'), 'true', '左栏要跟着亮起来，同一个动作')
+
+  // 收尾：把筛选退回去，别影响后面的用例
+  const allRow = Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+    const label = el.querySelector('.dshgn_treeName')
+    return label !== null && (label.textContent || '').trim() === '全部笔记'
+  })
+  if (allRow !== undefined) {
+    allRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+})

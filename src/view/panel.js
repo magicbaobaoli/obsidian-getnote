@@ -4836,6 +4836,15 @@ async function saveFile(url, filename) {
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_cardMeta{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--dsw-alias-label-tertiary);
   overflow:hidden;white-space:nowrap}
+/* 卡片上的标签：和日期、目录挤在同一行，所以只给到能看清的最小尺寸；
+   多了就收成 +N，宁可不显示也不让目录被挤掉。 */
+.dshgn_cardTags{display:inline-flex;align-items:center;gap:3px;min-width:0;overflow:hidden}
+.dshgn_cardTag{appearance:none;max-width:88px;padding:0 5px;border:0.5px solid var(--dsw-alias-border-l2);
+  border-radius:999px;background:transparent;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:9px;
+  line-height:1.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
+.dshgn_cardTag:hover{color:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary)}
+.dshgn_cardTag:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_cardTagMore{flex:none;color:var(--dsw-alias-label-tertiary)}
 .dshgn_cardExcerpt{font-size:11px;line-height:15px;color:var(--dsw-alias-label-tertiary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_note{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
@@ -8029,6 +8038,36 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                         { className: 'dshgn_cardMeta' },
                         entry.date ? h('span', null, entry.date) : null,
                         entry.dir ? h('span', null, entry.dir) : null,
+                        // 标签摆在卡片上：光看标题和目录，常常想不起这篇属于哪一摊事。
+                        // 点一颗就按它筛——和左栏标签区、属性区里那几颗是同一个动作。
+                        // 最多三颗，多出来的收成「+N」，否则标签多的一行会把目录挤没。
+                        Array.isArray(entry.tags) && entry.tags.length > 0
+                          ? h(
+                              'span',
+                              { className: 'dshgn_cardTags' },
+                              entry.tags.slice(0, 3).map((tag) =>
+                                h(
+                                  'button',
+                                  {
+                                    key: tag,
+                                    type: 'button',
+                                    className: 'dshgn_cardTag',
+                                    title: `${t('note.pickTag')}：${tag}`,
+                                    onClick: (event) => {
+                                      // 点标签是「按它筛」，不是「打开这篇」
+                                      event.stopPropagation()
+                                      setActiveTag(tag)
+                                      setActiveDir('')
+                                    },
+                                  },
+                                  tag,
+                                ),
+                              ),
+                              entry.tags.length > 3
+                                ? h('span', { className: 'dshgn_cardTagMore' }, `+${entry.tags.length - 3}`)
+                                : null,
+                            )
+                          : null,
                       ),
                       // 搜索态优先显示正文命中行（带行号），比摘要更能说明为什么它被搜出来
                       searchMode && Array.isArray(entry.matches) && entry.matches.length > 0
