@@ -7059,3 +7059,104 @@ test('按 x 就把当前这一篇选进批量操作，再按一次退出，Esc �
     panel.setConfirmDialog(null)
   }
 })
+
+test('搜出来之后在搜索框里按回车就打开排在最前面的那篇，Esc 把搜索退回整份列表', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+
+  const back = window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    if (back) back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  const clearBox = async () => {
+    const box = window.document.querySelector('.dshgn_search')
+    if (!box) return
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setter.call(box, '')
+    box.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(400)
+  }
+  await clearBox()
+
+  const seed = async (title, content, requestId) => {
+    const res = await realFetch(server.origin + '/getnote/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({ dir: '随手记', title, content, withDatePrefix: false, requestId }),
+    })
+    assert.equal(res.ok, true, '造笔记失败：' + res.status)
+  }
+  await seed('回车搜索验收', ['# 回车搜索验收', '', '这一段里写着 荔枝 两个字。'].join('\n'), 'seed-search-enter')
+
+  await clickTab('笔记')
+  const refresh = Array.from(window.document.querySelectorAll('button')).find((el) => (el.getAttribute('title') || '') === '刷新')
+  assert.ok(refresh, '找不到刷新按钮')
+  refresh.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+
+  const box = window.document.querySelector('.dshgn_search')
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  const key = (el, k) => el.dispatchEvent(new window.KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }))
+
+  // 空搜索框里按回车不该打开任何东西
+  key(box, 'Enter')
+  await sleep(300)
+  assert.equal(rootNode().getAttribute('data-has-note'), 'false', '空搜索框回车不该打开笔记')
+
+  // 搜到结果之后回车打开第一篇
+  setter.call(box, '荔枝')
+  box.dispatchEvent(new window.Event('input', { bubbles: true }))
+  // 等结果回来：搜索有 220ms 防抖 + 一次请求，卡片数会先停在整份列表上
+  const cardsOf = () => Array.from(window.document.querySelectorAll('.dshgn_card'))
+  await waitFor(() => {
+    if (window.document.querySelector('.dshgn_searching') !== null) return false
+    const list = cardsOf()
+    return list.length > 0 && list.length < 3
+  }, 8000, '搜索结果回来')
+  // 回车该打开的是「排在最前面的那篇」，先把它记下来再按
+  const firstPath = cardsOf()[0].getAttribute('title')
+  key(window.document.querySelector('.dshgn_search'), 'Enter')
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 6000, '回车之后打开那一篇')
+  const path = window.document.querySelector('.dshgn_notePath').textContent
+  assert.equal(path, firstPath, '回车打开的应当是排在最前面的那篇')
+
+  // 回列表，Esc 把搜索清掉、退回整份列表
+  const back2 = window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    if (back2) back2.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回列表')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  const box2 = await waitFor(() => window.document.querySelector('.dshgn_search'), 5000, '搜索框')
+  setter.call(box2, '荔枝')
+  box2.dispatchEvent(new window.Event('input', { bubbles: true }))
+  const searchedCount = await waitFor(() => {
+    if (window.document.querySelector('.dshgn_searching') !== null) return false
+    const list = cardsOf()
+    return list.length > 0 && list.length < 3 ? list.length : false
+  }, 8000, '第二次搜索的结果回来')
+  key(window.document.querySelector('.dshgn_search'), 'Escape')
+  await sleep(600)
+  assert.equal(window.document.querySelector('.dshgn_search').value, '', 'Esc 之后搜索框该清空')
+  await waitFor(() => cardsOf().length > searchedCount, 5000, 'Esc 之后该退回整份列表')
+
+  // 速查表里写着这两个键
+  const helpBtn = Array.from(window.document.querySelectorAll('button')).find((el) => el.classList.contains('dshgn_helpBtn'))
+  assert.ok(helpBtn, '找不到速查表按钮')
+  helpBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const rows = await waitFor(() => {
+    const found = window.document.querySelectorAll('.dshgn_helpRow')
+    return found.length > 0 ? found : null
+  }, 5000, '速查表')
+  const text = Array.from(rows).map((row) => row.textContent).join(' | ')
+  assert.ok(text.indexOf('Enter') >= 0, '速查表里该有回车这一条')
+  assert.ok(text.indexOf('打开第一篇') >= 0, '速查表里该写清楚回车做什么')
+  key(window.document.body, 'Escape')
+  await sleep(200)
+  await clearBox()
+})

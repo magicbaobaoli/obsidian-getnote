@@ -8307,6 +8307,7 @@ var LEX = {
     "help.title": "\u952E\u76D8\u5FEB\u6377\u952E",
     "help.hint": "\u9762\u677F\u91CC\u7684\u952E\u90FD\u80FD\u7528 Ctrl\uFF0CMac \u4E0A\u6362\u6210 Cmd\u3002",
     "help.search": "\u805A\u7126\u641C\u7D22\u6846",
+    "help.searchEnter": "\u5728\u641C\u7D22\u7ED3\u679C\u4E0A\u56DE\u8F66\u5C31\u6253\u5F00\u7B2C\u4E00\u7BC7\uFF0CEsc \u9000\u56DE\u6574\u4EFD\u5217\u8868",
     "help.new": "\u65B0\u5EFA\u7B14\u8BB0",
     "help.move": "\u4E0A\u4E0B\u4E00\u7BC7",
     "help.nav": "\u56DE\u4E0A\u4E00\u7BC7 / \u53BB\u4E0B\u4E00\u7BC7",
@@ -8766,6 +8767,7 @@ var LEX = {
     "help.title": "Keyboard shortcuts",
     "help.hint": "Ctrl works everywhere; on a Mac use Cmd.",
     "help.search": "Focus the search box",
+    "help.searchEnter": "Enter opens the first hit, Esc goes back to the whole list",
     "help.new": "New note",
     "help.move": "Next / previous note in the list",
     "help.nav": "Back / forward between notes",
@@ -9222,6 +9224,7 @@ var LEX = {
     "help.title": "Sneltoetsen",
     "help.hint": "Ctrl werkt overal; gebruik op een Mac Cmd.",
     "help.search": "Zoekvak focus geven",
+    "help.searchEnter": "Enter opent de eerste treffer, Esc gaat terug naar de hele lijst",
     "help.new": "Nieuwe notitie",
     "help.move": "Volgende / vorige notitie in de lijst",
     "help.nav": "Terug / vooruit tussen notities",
@@ -13547,6 +13550,8 @@ ${insert}
   }, []);
   const helpRows = [
     { keys: ["Ctrl", "K"], what: "help.search" },
+    // 搜索框里的两个键：回车打开排在最前面的那篇，Esc 退回整份列表
+    { keys: ["Enter"], what: "help.searchEnter" },
     { keys: ["Ctrl", "N"], what: "help.new" },
     { keys: ["J", "K"], what: "help.move" },
     { keys: ["X"], what: "help.pick" },
@@ -13915,7 +13920,31 @@ ${insert}
             type: "search",
             value: query,
             placeholder: t4("search.placeholder"),
-            onChange: (event) => setQuery(event.target.value)
+            onChange: (event) => setQuery(event.target.value),
+            // 搜完还要把鼠标挪到第一张卡上点一下，是搜索这条路上最后一段体力活。
+            // 回车就打开排在最前面的那一篇（相关度排的，就是最该看的那篇），
+            // Esc 把搜索框清空退回整份列表。
+            onKeyDown: (event) => {
+              if (event.nativeEvent && event.nativeEvent.isComposing) return;
+              if (event.key === "Escape") {
+                if (query === "") return;
+                event.preventDefault();
+                setQuery("");
+                return;
+              }
+              if (event.key !== "Enter") return;
+              if (query.trim() === "") return;
+              const first = shown.length > 0 ? shown[0] : null;
+              if (first === null) return;
+              event.preventDefault();
+              if (!dirty) {
+                void openNote(first.path, true);
+                return;
+              }
+              void confirmDialog(t4("note.unsaved")).then((ok) => {
+                if (ok) void openNote(first.path, true);
+              });
+            }
           }),
           searching ? h4("span", { className: "dshgn_searching" }, t4("search.searching")) : null,
           // 排序开关。搜索态不显示：那边的顺序是相关度排的，换成本地排序

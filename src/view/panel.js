@@ -581,6 +581,7 @@ async function saveFile(url, filename) {
         'help.title': '键盘快捷键',
         'help.hint': '面板里的键都能用 Ctrl，Mac 上换成 Cmd。',
         'help.search': '聚焦搜索框',
+        'help.searchEnter': '在搜索结果上回车就打开第一篇，Esc 退回整份列表',
         'help.new': '新建笔记',
         'help.move': '上下一篇',
         'help.nav': '回上一篇 / 去下一篇',
@@ -1044,6 +1045,7 @@ async function saveFile(url, filename) {
         'help.title': 'Keyboard shortcuts',
         'help.hint': 'Ctrl works everywhere; on a Mac use Cmd.',
         'help.search': 'Focus the search box',
+        'help.searchEnter': 'Enter opens the first hit, Esc goes back to the whole list',
         'help.new': 'New note',
         'help.move': 'Next / previous note in the list',
         'help.nav': 'Back / forward between notes',
@@ -1504,6 +1506,7 @@ async function saveFile(url, filename) {
         'help.title': 'Sneltoetsen',
         'help.hint': 'Ctrl werkt overal; gebruik op een Mac Cmd.',
         'help.search': 'Zoekvak focus geven',
+        'help.searchEnter': 'Enter opent de eerste treffer, Esc gaat terug naar de hele lijst',
         'help.new': 'Nieuwe notitie',
         'help.move': 'Volgende / vorige notitie in de lijst',
         'help.nav': 'Terug / vooruit tussen notities',
@@ -6955,6 +6958,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 不写死成 HTML，三种语言各自查自己的说法。
       const helpRows = [
         { keys: ['Ctrl', 'K'], what: 'help.search' },
+        // 搜索框里的两个键：回车打开排在最前面的那篇，Esc 退回整份列表
+        { keys: ['Enter'], what: 'help.searchEnter' },
         { keys: ['Ctrl', 'N'], what: 'help.new' },
         { keys: ['J', 'K'], what: 'help.move' },
         { keys: ['X'], what: 'help.pick' },
@@ -7342,6 +7347,34 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                 value: query,
                 placeholder: t('search.placeholder'),
                 onChange: (event) => setQuery(event.target.value),
+                // 搜完还要把鼠标挪到第一张卡上点一下，是搜索这条路上最后一段体力活。
+                // 回车就打开排在最前面的那一篇（相关度排的，就是最该看的那篇），
+                // Esc 把搜索框清空退回整份列表。
+                onKeyDown: (event) => {
+                  // 输入法还在组字时回车是「上屏」，不是「打开」
+                  if (event.nativeEvent && event.nativeEvent.isComposing) return
+                  if (event.key === 'Escape') {
+                    if (query === '') return
+                    event.preventDefault()
+                    setQuery('')
+                    return
+                  }
+                  if (event.key !== 'Enter') return
+                  // 空搜索框里回车什么都不做：那时「第一篇」只是整份列表的头一篇，
+                  // 打开它太意外了。搜索框里有字就打开排在最前面的那篇——结果还没
+                  // 从服务端回来时，列表已经按本地那套先筛过一遍，排头那篇不算错。
+                  if (query.trim() === '') return
+                  const first = shown.length > 0 ? shown[0] : null
+                  if (first === null) return
+                  event.preventDefault()
+                  if (!dirty) {
+                    void openNote(first.path, true)
+                    return
+                  }
+                  void confirmDialog(t('note.unsaved')).then((ok) => {
+                    if (ok) void openNote(first.path, true)
+                  })
+                },
               }),
               searching ? h('span', { className: 'dshgn_searching' }, t('search.searching')) : null,
               // 排序开关。搜索态不显示：那边的顺序是相关度排的，换成本地排序
