@@ -4441,6 +4441,8 @@ async function saveFile(url, filename) {
 .dshgn_tagRow[data-on="true"]{border-color:transparent;background:var(--dsw-alias-interactive-bg-hover-accent);
   color:var(--dsw-alias-brand-primary)}
 .dshgn_treeTags{display:flex;flex-wrap:wrap;padding:2px 4px}
+/* 嵌套标签摊平后，子标签的胶囊只写最后一段，靠缩进表示层级 */
+.dshgn_treeTags .dshgn_tagRow[data-nest="true"]{border-style:dashed}
 /* 写作热力图：16 周 × 7 天的小方格。格子用 grid-auto-flow:column 按列铺，
    所以 DOM 顺序是「一天接一天」，视觉上是「一周一列」——顺序对了不用重排。 */
 .dshgn_heat{flex:none;margin:6px 6px 8px;padding:8px 8px 6px;border-radius:8px;
@@ -5500,7 +5502,14 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           if (activeDir !== '') {
             if (entry.dir !== activeDir && !entry.path.startsWith(`${activeDir}/`)) return false
           }
-          if (activeTag !== '' && !(entry.tags || []).includes(activeTag)) return false
+          // 点父标签也要把子标签的笔记收进来：标签云里「读书」底下就摆着
+          // 「读书/摘抄」，点上面那条却一篇都筛不出来会让人以为标签是坏的。
+          if (
+            activeTag !== '' &&
+            !(entry.tags || []).some((tag) => tag === activeTag || tag.startsWith(`${activeTag}/`))
+          ) {
+            return false
+          }
           if (needle === '') return true
           return (
             entry.title.toLowerCase().includes(needle) ||
@@ -11102,6 +11111,62 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         return copy
       }, [tagCounts, entries, tagSort])
 
+      // 嵌套标签（#读书/摘抄）按斜杠拆成层级摊开，子标签自己占一行、缩进一格。
+      // 以前标签云是「一个标签一颗胶囊」平铺，父标签「读书」与它下面的
+      // 「读书/摘抄」并排摆着，看不出谁属于谁；同一份前缀在每颗胶囊里重复一遍，
+      // 一屏能塞的标签也少了一半。
+      // 排序口径跟着上面那套走（tagSort 决定同级谁在前），父标签永远排在自己的
+      // 子标签之前——按名字排时这也是对的（「读书」是「读书/摘抄」的前缀）。
+      const tagTree = React.useMemo(() => {
+        const root = { children: new Map() }
+        const ensure = (segments) => {
+          let node = root
+          for (const segment of segments) {
+            if (!node.children.has(segment)) {
+              node.children.set(segment, { name: segment, children: new Map() })
+            }
+            node = node.children.get(segment)
+          }
+          return node
+        }
+        for (const [tag, count] of tagCounts) ensure(String(tag).split('/')).count = count
+        const latest = (path) => {
+          let max = 0
+          for (const entry of entries) {
+            const tags = entry.tags || []
+            if (tags.includes(path) && entry.mtimeMs > max) max = entry.mtimeMs
+          }
+          return max
+        }
+        const rows = []
+        const walk = (node, prefix, depth) => {
+          const items = [...node.children.values()]
+          items.sort((a, b) => {
+            const pa = prefix === '' ? a.name : `${prefix}/${a.name}`
+            const pb = prefix === '' ? b.name : `${prefix}/${b.name}`
+            if (tagSort === 'name') return pa.localeCompare(pb, 'zh')
+            if (tagSort === 'count') return (b.count || 0) - (a.count || 0) || pa.localeCompare(pb, 'zh')
+            return latest(pb) - latest(pa) || pa.localeCompare(pb, 'zh')
+          })
+          for (const item of items) {
+            const path = prefix === '' ? item.name : `${prefix}/${item.name}`
+            // 计数取「这一颗自己 + 它下面所有子标签」，否则父标签永远是个 0
+            let sum = item.count || 0
+            const total = (node2) => {
+              for (const child of node2.children.values()) {
+                sum += child.count || 0
+                total(child)
+              }
+            }
+            total(item)
+            rows.push({ path, label: item.name, depth, count: sum })
+            walk(item, path, depth + 1)
+          }
+        }
+        walk(root, '', 0)
+        return rows
+      }, [tagCounts, entries, tagSort])
+
       const runCreate = async () => {
         const name = draft.trim()
         if (name === '') {
@@ -11371,13 +11436,13 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
               ),
             )
           : null,
-        sortedTags.length > 0
+        tagTree.length > 0
           ? h(
               'div',
               { className: 'dshgn_treeTags' },
               // 标签项外面包一层 span：行内菜单里也是按钮，button 不能套 button
               // （HTML 非法，React 会警告，点击也会被外层吞掉）。
-              sortedTags.map(([tag, count]) =>
+              tagTree.map(({ path: tag, label, depth, count }) =>
                 renaming !== null && renaming.from === tag
                   ? h(
                       'span',
@@ -11413,11 +11478,19 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                         {
                           type: 'button',
                           className: 'dshgn_tagRow',
+                          // 缩进用 padding 而不是 margin：胶囊自己会截断宽度，
+                          // 用 margin 缩进时右边留给省略号的空间跟着变窄，长标签
+                          // 在不同层级里被切掉的字数不一样，看着很乱。
+                          style: depth > 0 ? { paddingLeft: `${8 + depth * 8}px` } : undefined,
+                          'data-nest': depth > 0 ? 'true' : undefined,
                           'data-on': activeTag === tag ? 'true' : 'false',
+                          // 摊平之后只看得到最后一段，「读书/摘抄」显示成「摘抄」，
+                          // 悬停要能看出它到底属于哪一条。
+                          title: tag,
                           onClick: picked(() => onPickTag(activeTag === tag ? '' : tag)),
                           onContextMenu: (event) => openMenu(event, 'tag', tag),
                         },
-                        `${tag} ${count}`,
+                        `${label} ${count}`,
                       ),
                       menu !== null && menu.kind === 'tag' && menu.name === tag ? rowMenu() : null,
                     ),

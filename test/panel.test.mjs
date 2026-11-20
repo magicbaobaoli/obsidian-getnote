@@ -5868,3 +5868,92 @@ test('反链底下那句上下文点一下就落到那一句，不是只送到�
   }
 })
 
+test('嵌套标签按斜杠摊成层级，点父标签也把子标签的笔记收进来', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const seed = async (title, tags, requestId) => {
+    const content = ['---', 'tags: [' + tags.join(', ') + ']', '---', '', '# ' + title, '', '正文', ''].join('\n')
+    const res = await realFetch(server.origin + '/getnote/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({ dir: '随手记', title, content, withDatePrefix: false, requestId }),
+    })
+    const json = await res.json()
+    return json.path
+  }
+
+  // 上一个用例可能把某篇开着：先退回空态，标签云才在左栏里
+  const back = window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    if (back) back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox) {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setter.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(400)
+  }
+
+  const pathA = await seed('嵌套标签甲', ['嵌套验收/子甲'], 'seed-nested-tag-a')
+  const pathB = await seed('嵌套标签乙', ['嵌套验收/子乙'], 'seed-nested-tag-b')
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+
+  const tagRows = () => Array.from(window.document.querySelectorAll('.dshgn_tagRow'))
+  const rowOf = (title) => tagRows().find((el) => el.title === title) || null
+
+  // 父标签与两颗子标签各占一行：以前它们并排摆着，看不出谁属于谁
+  const parent = await waitFor(() => rowOf('嵌套验收'), 8000, '父标签要有一行')
+  const childA = rowOf('嵌套验收/子甲')
+  const childB = rowOf('嵌套验收/子乙')
+  assert.ok(childA !== null && childB !== null, '子标签也要各占一行')
+  assert.equal((parent.textContent || '').trim(), '嵌套验收 2', '父标签的数是它下面所有子标签加起来')
+  assert.equal((childA.textContent || '').trim(), '子甲 1', '子标签只写最后一段，不再重复前缀')
+  assert.equal(childA.getAttribute('data-nest'), 'true', '子标签要能看出是缩进去的那一层')
+  assert.equal(parent.getAttribute('data-nest'), null, '父标签不是缩进去的那一层')
+
+  // 父子顺序：父标签永远排在自己的子标签前面
+  const order = tagRows().map((el) => el.title)
+  assert.ok(
+    order.indexOf('嵌套验收') < order.indexOf('嵌套验收/子甲'),
+    '父标签该排在子标签前面：' + JSON.stringify(order.slice(0, 6)),
+  )
+
+  // 点父标签：子标签下面的笔记也要收进来
+  parent.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const cardTitles = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_card')).map((el) => el.getAttribute('title'))
+  await waitFor(
+    () => cardTitles().includes(pathA) && cardTitles().includes(pathB),
+    5000,
+    '点父标签该把两颗子标签的笔记都收进来：' + JSON.stringify(cardTitles()),
+  )
+
+  // 点子标签：只留它自己那一篇
+  rowOf('嵌套验收/子甲').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(
+    () => cardTitles().includes(pathA) && !cardTitles().includes(pathB),
+    5000,
+    '点子标签只该留它自己那一篇：' + JSON.stringify(cardTitles()),
+  )
+
+  // 收尾：把筛选清掉，别把状态留给后面的用例
+  const onRow = tagRows().find((el) => el.getAttribute('data-on') === 'true')
+  if (onRow) {
+    onRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(
+      () => tagRows().every((el) => el.getAttribute('data-on') !== 'true'),
+      5000,
+      '把标签筛选清掉',
+    )
+  }
+})
+

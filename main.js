@@ -11433,6 +11433,8 @@ var CSS = `
 .dshgn_tagRow[data-on="true"]{border-color:transparent;background:var(--dsw-alias-interactive-bg-hover-accent);
   color:var(--dsw-alias-brand-primary)}
 .dshgn_treeTags{display:flex;flex-wrap:wrap;padding:2px 4px}
+/* \u5D4C\u5957\u6807\u7B7E\u644A\u5E73\u540E\uFF0C\u5B50\u6807\u7B7E\u7684\u80F6\u56CA\u53EA\u5199\u6700\u540E\u4E00\u6BB5\uFF0C\u9760\u7F29\u8FDB\u8868\u793A\u5C42\u7EA7 */
+.dshgn_treeTags .dshgn_tagRow[data-nest="true"]{border-style:dashed}
 /* \u5199\u4F5C\u70ED\u529B\u56FE\uFF1A16 \u5468 \xD7 7 \u5929\u7684\u5C0F\u65B9\u683C\u3002\u683C\u5B50\u7528 grid-auto-flow:column \u6309\u5217\u94FA\uFF0C
    \u6240\u4EE5 DOM \u987A\u5E8F\u662F\u300C\u4E00\u5929\u63A5\u4E00\u5929\u300D\uFF0C\u89C6\u89C9\u4E0A\u662F\u300C\u4E00\u5468\u4E00\u5217\u300D\u2014\u2014\u987A\u5E8F\u5BF9\u4E86\u4E0D\u7528\u91CD\u6392\u3002 */
 .dshgn_heat{flex:none;margin:6px 6px 8px;padding:8px 8px 6px;border-radius:8px;
@@ -12393,7 +12395,9 @@ function GetnotePage() {
       if (activeDir !== "") {
         if (entry.dir !== activeDir && !entry.path.startsWith(`${activeDir}/`)) return false;
       }
-      if (activeTag !== "" && !(entry.tags || []).includes(activeTag)) return false;
+      if (activeTag !== "" && !(entry.tags || []).some((tag) => tag === activeTag || tag.startsWith(`${activeTag}/`))) {
+        return false;
+      }
       if (needle === "") return true;
       return entry.title.toLowerCase().includes(needle) || entry.path.toLowerCase().includes(needle) || (entry.excerpt || "").toLowerCase().includes(needle) || (entry.tags || []).some((tag) => tag.toLowerCase().includes(needle));
     });
@@ -17092,6 +17096,54 @@ function TreePane(props) {
     }
     return copy;
   }, [tagCounts, entries, tagSort]);
+  const tagTree = T2(() => {
+    const root = { children: /* @__PURE__ */ new Map() };
+    const ensure = (segments) => {
+      let node = root;
+      for (const segment of segments) {
+        if (!node.children.has(segment)) {
+          node.children.set(segment, { name: segment, children: /* @__PURE__ */ new Map() });
+        }
+        node = node.children.get(segment);
+      }
+      return node;
+    };
+    for (const [tag, count] of tagCounts) ensure(String(tag).split("/")).count = count;
+    const latest = (path) => {
+      let max = 0;
+      for (const entry of entries) {
+        const tags = entry.tags || [];
+        if (tags.includes(path) && entry.mtimeMs > max) max = entry.mtimeMs;
+      }
+      return max;
+    };
+    const rows = [];
+    const walk = (node, prefix, depth) => {
+      const items = [...node.children.values()];
+      items.sort((a3, b3) => {
+        const pa = prefix === "" ? a3.name : `${prefix}/${a3.name}`;
+        const pb = prefix === "" ? b3.name : `${prefix}/${b3.name}`;
+        if (tagSort === "name") return pa.localeCompare(pb, "zh");
+        if (tagSort === "count") return (b3.count || 0) - (a3.count || 0) || pa.localeCompare(pb, "zh");
+        return latest(pb) - latest(pa) || pa.localeCompare(pb, "zh");
+      });
+      for (const item of items) {
+        const path = prefix === "" ? item.name : `${prefix}/${item.name}`;
+        let sum = item.count || 0;
+        const total2 = (node2) => {
+          for (const child of node2.children.values()) {
+            sum += child.count || 0;
+            total2(child);
+          }
+        };
+        total2(item);
+        rows.push({ path, label: item.name, depth, count: sum });
+        walk(item, path, depth + 1);
+      }
+    };
+    walk(root, "", 0);
+    return rows;
+  }, [tagCounts, entries, tagSort]);
   const runCreate = async () => {
     const name = draft.trim();
     if (name === "") {
@@ -17334,13 +17386,13 @@ ${t4("tree.menuDelete")}\uFF1A\u53F3\u952E`
         h4(Icon, { name: "close", size: 12 })
       )
     ) : null,
-    sortedTags.length > 0 ? h4(
+    tagTree.length > 0 ? h4(
       "div",
       { className: "dshgn_treeTags" },
       // 标签项外面包一层 span：行内菜单里也是按钮，button 不能套 button
       // （HTML 非法，React 会警告，点击也会被外层吞掉）。
-      sortedTags.map(
-        ([tag, count]) => renaming !== null && renaming.from === tag ? h4(
+      tagTree.map(
+        ({ path: tag, label, depth, count }) => renaming !== null && renaming.from === tag ? h4(
           "span",
           { key: tag, className: "dshgn_treeNew" },
           h4("input", {
@@ -17373,11 +17425,19 @@ ${t4("tree.menuDelete")}\uFF1A\u53F3\u952E`
             {
               type: "button",
               className: "dshgn_tagRow",
+              // 缩进用 padding 而不是 margin：胶囊自己会截断宽度，
+              // 用 margin 缩进时右边留给省略号的空间跟着变窄，长标签
+              // 在不同层级里被切掉的字数不一样，看着很乱。
+              style: depth > 0 ? { paddingLeft: `${8 + depth * 8}px` } : void 0,
+              "data-nest": depth > 0 ? "true" : void 0,
               "data-on": activeTag === tag ? "true" : "false",
+              // 摊平之后只看得到最后一段，「读书/摘抄」显示成「摘抄」，
+              // 悬停要能看出它到底属于哪一条。
+              title: tag,
               onClick: picked(() => onPickTag(activeTag === tag ? "" : tag)),
               onContextMenu: (event) => openMenu(event, "tag", tag)
             },
-            `${tag} ${count}`
+            `${label} ${count}`
           ),
           menu !== null && menu.kind === "tag" && menu.name === tag ? rowMenu() : null
         )
