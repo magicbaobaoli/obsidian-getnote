@@ -10516,6 +10516,32 @@ function findInBody(box, text, forward = true) {
   if (!host) return null;
   return scrollHostTo(host, target) ? target : null;
 }
+function findAllBodyMatches(box, text) {
+  const needle = lineNeedle(text);
+  if (needle === "") return [];
+  const host = scrollHostOf(box);
+  if (!host) return [];
+  const blocks = host.querySelectorAll("p, li, h1, h2, h3, h4, h5, h6, blockquote, pre, td, th");
+  const out = [];
+  for (let i3 = 0; i3 < blocks.length; i3 += 1) {
+    const node = blocks[i3];
+    if (node.querySelector("p, li, blockquote, pre")) continue;
+    if (String(node.textContent || "").replace(/\s+/g, " ").includes(needle)) out.push(node);
+  }
+  return out;
+}
+function countTextMatches(text, needle) {
+  const src = String(text || "").toLowerCase();
+  const want = String(needle || "").trim().toLowerCase();
+  if (want === "") return 0;
+  let count = 0;
+  let at = src.indexOf(want);
+  while (at !== -1) {
+    count += 1;
+    at = src.indexOf(want, at + want.length);
+  }
+  return count;
+}
 function findInText(text, needle, start, end, forward = true) {
   const src = String(text || "");
   const want = String(needle || "").trim();
@@ -11980,6 +12006,9 @@ var CSS = `
   border-radius:6px;outline:none;background:var(--dsw-alias-bg-primary);font:inherit;font-size:12px;
   color:var(--dsw-alias-label-primary)}
 .dshgn_findInput:focus{border-color:var(--dsw-alias-brand-primary)}
+/* \u300C\u7B2C\u51E0\u5904 / \u5171\u51E0\u5904\u300D\uFF1A\u7B49\u5BBD\u6570\u5B57\uFF0C\u6309\u56DE\u8F66\u65F6\u8FD9\u4E00\u4E32\u4E0D\u8DDF\u7740\u5DE6\u53F3\u8DF3 */
+.dshgn_findCount{flex:none;font-size:11px;line-height:1.6;color:var(--dsw-alias-label-tertiary);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
 /* \u6551\u56DE\u6765\u7684\u8349\u7A3F\u63D0\u793A\u6761\uFF1A\u6BD4\u67E5\u627E\u6761\u66F4\u300C\u5B89\u9759\u300D\uFF0C\u5B83\u53EA\u662F\u63D0\u4E00\u53E5\uFF0C\u4E0D\u8BE5\u62A2\u9605\u8BFB\u7684\u6CE8\u610F\u529B */
 .dshgn_draftBar{display:flex;align-items:center;gap:8px;padding:5px clamp(16px,3vw,32px);
   border-bottom:0.5px solid var(--dsw-alias-border-l1);
@@ -18470,11 +18499,13 @@ function NotePane(props) {
   const pickActive = linkPick !== null && linkHits.length > 0 ? linkPick.active : tagPick === null ? 0 : tagPick.active;
   const [findOpen, setFindOpen] = h2(false);
   const [findText, setFindText] = h2("");
+  const [findHit, setFindHit] = h2(null);
   const findInputRef = A2(null);
   const findOpenRef = A2(false);
   findOpenRef.current = findOpen;
   const closeFind = q2(() => {
     setFindOpen(false);
+    setFindHit(null);
     if (!editingRef.current) return;
     const live = editorRef.current;
     if (live === null || live === void 0) return;
@@ -18523,6 +18554,7 @@ function NotePane(props) {
       if (found === null) {
         const any = live.value.toLowerCase().indexOf(text.toLowerCase()) !== -1;
         showToast(any ? t4("note.findEnd") : t4("note.findMiss").replace("{text}", text));
+        setFindHit(null);
         return;
       }
       live.focus();
@@ -18535,13 +18567,22 @@ function NotePane(props) {
       const lineHeight = style === null ? 0 : Number.parseFloat(style.lineHeight);
       const step = Number.isFinite(lineHeight) && lineHeight > 0 ? lineHeight : 20;
       live.scrollTop = Math.max(0, line * step - live.clientHeight / 2);
+      setFindHit({
+        index: countTextMatches(live.value.slice(0, found.start), text) + 1,
+        total: countTextMatches(live.value, text)
+      });
       return;
     }
+    const matches = findAllBodyMatches(scrollRef.current, text);
     const hit = findInBody(scrollRef.current, text, forward);
     if (hit === null) {
       const any = findInBodyMatch(scrollRef.current, text, true) !== null || findInBodyMatch(scrollRef.current, text, false) !== null;
       showToast(any ? t4("note.findEnd") : t4("note.findMiss").replace("{text}", text));
+      setFindHit(matches.length === 0 ? null : { index: matches.length, total: matches.length });
+      return;
     }
+    const at = matches.indexOf(hit);
+    setFindHit({ index: at === -1 ? 1 : at + 1, total: matches.length });
   }, [findText, showToast, t4]);
   y2(() => {
     if (!findOpen) return void 0;
@@ -19261,7 +19302,10 @@ ${t4("tree.menuReveal")}` : absolute,
         value: findText,
         placeholder: t4(editing ? "note.findInEditor" : "note.findPlaceholder"),
         spellCheck: false,
-        onChange: (event) => setFindText(event.target.value),
+        onChange: (event) => {
+          setFindText(event.target.value);
+          setFindHit(null);
+        },
         onKeyDown: (event) => {
           if (event.key === "Escape") {
             event.preventDefault();
@@ -19274,6 +19318,8 @@ ${t4("tree.menuReveal")}` : absolute,
           runFind(!event.shiftKey);
         }
       }),
+      // 只有真找过才报数：刚打开、还没敲字时摆一个「0/0」只是噪音
+      findHit === null ? null : h4("span", { className: "dshgn_findCount" }, `${findHit.index}/${findHit.total}`),
       h4(
         "button",
         {

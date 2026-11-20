@@ -8287,3 +8287,206 @@ test('长表格自己滚、表头钉在顶上；短表格不钉，免得一屏�
     panel.setConfirmDialog(null)
   }
 })
+test('查找条报出「第几处 / 共几处」，按到头了也知道自己在哪儿', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+  await clickTab('笔记')
+  const { countTextMatches } = panel.__internals
+  // 纯函数：不分大小写、不重叠、空词算 0
+  assert.equal(countTextMatches('桂圆 桂圆 龙眼', '桂圆'), 2)
+  assert.equal(countTextMatches('GuiYuan guiyuan', 'guiyuan'), 2)
+  assert.equal(countTextMatches('啊啊啊', '啊啊'), 1)
+  assert.equal(countTextMatches('桂圆', '   '), 0)
+  assert.equal(countTextMatches('', '桂圆'), 0)
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+  const body = [
+    '# 查找计数验收',
+    '',
+    '第一段里写着桂圆两个字。',
+    '',
+    '第二段里也有桂圆。',
+    '',
+    '第三段还是桂圆，一共三处。',
+  ].join('\n')
+  const targetPath = '随手记/查找计数验收.md'
+  const seed = await post('/getnote/create', {
+    dir: '随手记',
+    title: '查找计数验收',
+    content: body,
+    withDatePrefix: false,
+    requestId: 'seed-find-count',
+  })
+  assert.equal(seed.path, targetPath)
+
+  // 退回空态、清搜索、退回全量，前面用例留下的状态别带进来
+  panel.setConfirmDialog(async () => true)
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = window.document.querySelector('.dshgn_noteBack')
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(220)
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox !== null) {
+    const setBox = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setBox.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(300)
+  }
+  const rowOf = (name) =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+      const label = el.querySelector('.dshgn_treeName')
+      return label !== null && (label.textContent || '').trim() === name
+    })
+  const allRow = rowOf('全部笔记')
+  if (allRow !== undefined) {
+    allRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+
+  const cardOf = (path) =>
+    Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === path) || null
+  const card = await waitFor(() => cardOf(targetPath), 8000, '列表里那一篇')
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 8000, '打开笔记')
+  await waitFor(() => window.document.querySelector('.dshgn_md') !== null, 6000, '正文渲染')
+  // 查找按钮与监听都是 effect 挂的，先让出一拍
+  await sleep(250)
+
+  // jsdom 没有排版，得给块补一份假排版，否则「下一处」永远停在原地
+  const realRect = window.HTMLElement.prototype.getBoundingClientRect
+  const realScrollTo = window.HTMLElement.prototype.scrollTo
+  const BLOCKS = 'p, li, h1, h2, h3, h4, h5, h6, blockquote, pre, td, th'
+  const blockTopOf = (node) => {
+    const note = node.closest ? node.closest('.dshgn_note .dshgn_scroll') : null
+    if (note === null || note === undefined) return null
+    const all = Array.from(note.querySelectorAll(BLOCKS))
+    let hit = node
+    while (hit && all.indexOf(hit) === -1) hit = hit.parentElement
+    if (!hit) return null
+    const index = all.indexOf(hit)
+    return index < 0 ? null : index * 100
+  }
+  window.HTMLElement.prototype.getBoundingClientRect = function fakeRect() {
+    const note = this.classList && this.classList.contains('dshgn_scroll') && this.closest('.dshgn_note')
+    if (note) return { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0, x: 0, y: 0 }
+    const base = blockTopOf(this)
+    if (base !== null) {
+      const top = base - (this.closest('.dshgn_scroll').scrollTop || 0)
+      return { top, bottom: top + 40, left: 0, right: 0, width: 0, height: 40, x: 0, y: top }
+    }
+    return realRect.call(this)
+  }
+  window.HTMLElement.prototype.scrollTo = function fakeScrollToTo(options) {
+    if (options && typeof options.top === 'number') this.scrollTop = options.top
+  }
+  const setInput = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  try {
+    const findBtn = () => Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '在这篇里找')
+    findBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    const input = await waitFor(() => window.document.querySelector('.dshgn_findInput'), 5000, '查找输入框')
+    const countEl = () => window.document.querySelector('.dshgn_findCount')
+    assert.equal(countEl(), null, '刚打开还没找，不该摆一个 0/0')
+    setInput.call(input, '桂圆')
+    input.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(150)
+    input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    await sleep(220)
+    assert.ok(countEl() !== null, '找过之后要报出第几处')
+    assert.equal((countEl().textContent || '').trim(), '1/3', '第一处 / 共三处')
+    input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    await sleep(220)
+    assert.equal((countEl().textContent || '').trim(), '2/3')
+    input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true }))
+    await sleep(220)
+    assert.equal((countEl().textContent || '').trim(), '1/3', '往回走也要报数')
+    // 一路按到底：说完「到头了」，数字停在最后一处，不跳回 1
+    for (let i = 0; i < 5; i += 1) {
+      input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+      await sleep(160)
+    }
+    const toast = window.document.querySelector('.dshgn_toast')
+    assert.ok(toast !== null && (toast.textContent || '').includes('到头了'), '到头了要说一声')
+    assert.equal((countEl().textContent || '').trim(), '3/3', '到头之后停在最后一处')
+    // 改词就把旧数字收掉：那是上一个词的进度，留着只会误导
+    setInput.call(input, '龙眼')
+    input.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(150)
+    assert.equal(countEl(), null, '改了词，旧的第几处要收掉')
+    input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    await sleep(220)
+    assert.equal(countEl(), null, '这个词一处都没有，不报数')
+    assert.ok((window.document.querySelector('.dshgn_toast').textContent || '').includes('这篇里没有'), '找不到要说「这篇里没有」')
+    input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await sleep(150)
+    assert.equal(countEl(), null, 'Esc 收起查找条，数字一起收掉')
+  } finally {
+    window.HTMLElement.prototype.getBoundingClientRect = realRect
+    window.HTMLElement.prototype.scrollTo = realScrollTo
+  }
+
+  // 编辑态：正文没渲染，报的是 textarea 里那一段的第几处
+  const editBtn = () => Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '编辑')
+  editBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const editor = await waitFor(() => window.document.querySelector('.dshgn_editor'), 6000, '编辑区')
+  await sleep(250)
+  const setEditor = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set
+  setEditor.call(editor, body)
+  editor.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(200)
+  try {
+    editor.setSelectionRange(0, 0)
+  } catch {
+    // jsdom 里偶尔设不了选区，忽略
+  }
+  // 编辑态的笔记头没有那颗放大镜（只有「取消」），查找条走 textarea 自己的 Ctrl+F
+  editor.focus()
+  editor.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true }))
+  const input2 = await waitFor(() => window.document.querySelector('.dshgn_findInput'), 5000, '编辑态的查找输入框')
+  editor.setSelectionRange(0, 0)
+  setInput.call(input2, '桂圆')
+  input2.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(150)
+  input2.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  await sleep(220)
+  const countEl2 = window.document.querySelector('.dshgn_findCount')
+  assert.ok(countEl2 !== null, '编辑态也要报数')
+  assert.equal((countEl2.textContent || '').trim(), '1/3', '编辑态从头找是第 1 处 / 共 3 处')
+  input2.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  await sleep(220)
+  assert.equal((window.document.querySelector('.dshgn_findCount').textContent || '').trim(), '2/3')
+  input2.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  await sleep(150)
+  editor.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  await sleep(250)
+
+  // 收尾：退回空态，别把编辑态留给后面的用例
+  panel.setConfirmDialog(async () => true)
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = window.document.querySelector('.dshgn_noteBack')
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(220)
+    }
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+})

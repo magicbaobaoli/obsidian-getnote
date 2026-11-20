@@ -3247,6 +3247,36 @@ async function saveFile(url, filename) {
       return scrollHostTo(host, target) ? target : null
     }
 
+    /** 正文里所有「写着这段字」的块，按从上到下的顺序。查找条报「第几处 / 共几处」用。 */
+    function findAllBodyMatches(box, text) {
+      const needle = lineNeedle(text)
+      if (needle === '') return []
+      const host = scrollHostOf(box)
+      if (!host) return []
+      const blocks = host.querySelectorAll('p, li, h1, h2, h3, h4, h5, h6, blockquote, pre, td, th')
+      const out = []
+      for (let i = 0; i < blocks.length; i += 1) {
+        const node = blocks[i]
+        if (node.querySelector('p, li, blockquote, pre')) continue
+        if (String(node.textContent || '').replace(/\s+/g, ' ').includes(needle)) out.push(node)
+      }
+      return out
+    }
+
+    /** 一段纯文本里这个词出现了几次（不分大小写）。编辑态报「第几处 / 共几处」用。 */
+    function countTextMatches(text, needle) {
+      const src = String(text || '').toLowerCase()
+      const want = String(needle || '').trim().toLowerCase()
+      if (want === '') return 0
+      let count = 0
+      let at = src.indexOf(want)
+      while (at !== -1) {
+        count += 1
+        at = src.indexOf(want, at + want.length)
+      }
+      return count
+    }
+
     /**
      * 在一段纯文本里找「下一处 / 上一处」，返回那一段的下标区间。
      *
@@ -5020,6 +5050,9 @@ async function saveFile(url, filename) {
   border-radius:6px;outline:none;background:var(--dsw-alias-bg-primary);font:inherit;font-size:12px;
   color:var(--dsw-alias-label-primary)}
 .dshgn_findInput:focus{border-color:var(--dsw-alias-brand-primary)}
+/* 「第几处 / 共几处」：等宽数字，按回车时这一串不跟着左右跳 */
+.dshgn_findCount{flex:none;font-size:11px;line-height:1.6;color:var(--dsw-alias-label-tertiary);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
 /* 救回来的草稿提示条：比查找条更「安静」，它只是提一句，不该抢阅读的注意力 */
 .dshgn_draftBar{display:flex;align-items:center;gap:8px;padding:5px clamp(16px,3vw,32px);
   border-bottom:0.5px solid var(--dsw-alias-border-l1);
@@ -12710,6 +12743,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 「跳到下一处」——不弹浮层、不标高亮，只把视野挪过去。
       const [findOpen, setFindOpen] = React.useState(false)
       const [findText, setFindText] = React.useState('')
+      // 「第几处 / 共几处」。以前只有「下一处」一个动作，按到第几处全凭记忆，
+      // 一篇长笔记里反复按回车时根本不知道自己走到哪儿、还有几处没看。
+      const [findHit, setFindHit] = React.useState(null)
       const findInputRef = React.useRef(null)
       // 与 zoomRef 同一个理由：Esc 的监听挂在挂载时就挂，靠 ref 读当前值，
       // 免得「刚打开就按 Esc」落进重挂的空档里。
@@ -12720,6 +12756,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 字全进了那个已经藏起来的输入框里，看起来像「编辑区坏了」。
       const closeFind = React.useCallback(() => {
         setFindOpen(false)
+        setFindHit(null)
         if (!editingRef.current) return
         const live = editorRef.current
         if (live === null || live === undefined) return
@@ -12784,6 +12821,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             // 一处都没有 vs 到头了，是两件事：前者要用户改词，后者只是到头。
             const any = live.value.toLowerCase().indexOf(text.toLowerCase()) !== -1
             showToast(any ? t('note.findEnd') : t('note.findMiss').replace('{text}', text))
+            setFindHit(null)
             return
           }
           live.focus()
@@ -12799,15 +12837,25 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           const lineHeight = style === null ? 0 : Number.parseFloat(style.lineHeight)
           const step = Number.isFinite(lineHeight) && lineHeight > 0 ? lineHeight : 20
           live.scrollTop = Math.max(0, line * step - live.clientHeight / 2)
+          // 光标前面有几处，就是「第几处」；总数按整段算
+          setFindHit({
+            index: countTextMatches(live.value.slice(0, found.start), text) + 1,
+            total: countTextMatches(live.value, text),
+          })
           return
         }
+        const matches = findAllBodyMatches(scrollRef.current, text)
         const hit = findInBody(scrollRef.current, text, forward)
         if (hit === null) {
           // 一处都没有 vs 到头了，是两件事：前者要用户改词，后者只是到头。
           const any = findInBodyMatch(scrollRef.current, text, true) !== null ||
             findInBodyMatch(scrollRef.current, text, false) !== null
           showToast(any ? t('note.findEnd') : t('note.findMiss').replace('{text}', text))
+          setFindHit(matches.length === 0 ? null : { index: matches.length, total: matches.length })
+          return
         }
+        const at = matches.indexOf(hit)
+        setFindHit({ index: at === -1 ? 1 : at + 1, total: matches.length })
       }, [findText, showToast, t])
 
       // 打开查找条就把光标放进去：用户按了按钮就是想立刻输字，
@@ -13720,7 +13768,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                 value: findText,
                 placeholder: t(editing ? 'note.findInEditor' : 'note.findPlaceholder'),
                 spellCheck: false,
-                onChange: (event) => setFindText(event.target.value),
+                onChange: (event) => {
+                  setFindText(event.target.value)
+                  setFindHit(null)
+                },
                 onKeyDown: (event) => {
                   if (event.key === 'Escape') {
                     event.preventDefault()
@@ -13733,6 +13784,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                   runFind(!event.shiftKey)
                 },
               }),
+              // 只有真找过才报数：刚打开、还没敲字时摆一个「0/0」只是噪音
+              findHit === null
+                ? null
+                : h('span', { className: 'dshgn_findCount' }, `${findHit.index}/${findHit.total}`),
               h(
                 'button',
                 {
@@ -15158,7 +15213,7 @@ export const __internals = {
   TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale,
   reportSync, dailyTemplateOf, frontmatterText, isTagKey, FollowCard, parseTable, countWords,
   isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote, scrollToFootnoteRef, parseImageSize, renderParagraph, blockTextOf, markdownLinkTarget,
-  tagBodyOf, ZoomOverlay, continueListLine, indentLines, wrapInline, linkPaste, wikilinkQueryAt, wikilinkMatches, tagQueryAt, tagMatches, findInBody, findInBodyMatch, findInText, textHasParts,
+  tagBodyOf, ZoomOverlay, continueListLine, indentLines, wrapInline, linkPaste, wikilinkQueryAt, wikilinkMatches, tagQueryAt, tagMatches, findInBody, findAllBodyMatches, countTextMatches, findInBodyMatch, findInText, textHasParts,
       readScrollMarks, writeScrollMark, scrollMarkOf, SCROLL_KEY,
   readDrafts, draftOf, writeDraft, dropDraft, DRAFT_KEY, DRAFT_KEEP, DRAFT_MAX,
   splitByTerms, highlightTerms, searchTermsOf, searchSuggestAt, searchSuggestions,
