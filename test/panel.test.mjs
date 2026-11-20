@@ -8730,3 +8730,132 @@ test('大图能左右一张张看，一张时就不摆那两颗按钮', async ()
     panel.setConfirmDialog(null)
   }
 })
+
+test('批量操作里能把一个标签从选中的几篇里一起去掉，正文里那个 #标签 也不留', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+  await clickTab('笔记')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+  const pathA = '批量去标签甲/批量去标签-这一篇.md'
+  const pathB = '批量去标签甲/批量去标签-那一篇.md'
+  const seedA = await post('/getnote/create', {
+    dir: '批量去标签甲',
+    title: '批量去标签-这一篇',
+    content: ['---', 'tags: [批量去标签]', '---', '', '# 批量去标签甲', '', '正文里也写一个 #批量去标签 在这儿。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-batch-untag-a',
+  })
+  assert.equal(seedA.path, pathA)
+  const seedB = await post('/getnote/create', {
+    dir: '批量去标签甲',
+    title: '批量去标签-那一篇',
+    content: ['---', 'tags: [批量去标签, 批量去标签保留]', '---', '', '# 批量去标签乙', '', '这篇只有头部挂着标签。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-batch-untag-b',
+  })
+  assert.equal(seedB.path, pathB)
+
+  // 退回空态、清搜索、退回全量：前面用例留下的筛选别带进来
+  const backBtn = () => window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(async () => true)
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = backBtn()
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(220)
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox !== null) {
+    const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setValue.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(300)
+  }
+  const rowOf = (name) =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+      const label = el.querySelector('.dshgn_treeName')
+      return label !== null && (label.textContent || '').trim() === name
+    })
+  const allRow = rowOf('全部笔记')
+  if (allRow !== undefined) {
+    allRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rowOf('批量去标签甲') !== undefined, 8000, '左栏里出现这两篇所在的目录')
+
+  // 两篇一起勾上
+  const cardOf = (path) =>
+    Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === path) || null
+  const cardA = await waitFor(() => cardOf(pathA), 8000, '第一篇')
+  cardA.querySelector('.dshgn_pickBox').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(200)
+  const cardB = await waitFor(() => cardOf(pathB), 8000, '第二篇')
+  cardB.querySelector('.dshgn_pickBox').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_batchBar') !== null, 3000, '批量栏出现')
+  const countText = () => (window.document.querySelector('.dshgn_batchCount') || { textContent: '' }).textContent
+  assert.ok(String(countText()).includes('2'), '应该选中两篇，实际 ' + countText())
+
+  const batchBtn = Array.from(window.document.querySelectorAll('.dshgn_batchBtn')).find(
+    (el) => (el.textContent || '').trim() === '批量操作',
+  )
+  assert.ok(batchBtn, '应该有「批量操作」按钮')
+  batchBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_batchMenu') !== null, 3000, '批量菜单展开')
+
+  // 去标签和加标签共用第一个输入框
+  const tagInput = () => window.document.querySelectorAll('.dshgn_batchInput')[0]
+  assert.ok(tagInput(), '应该有标签输入框')
+  const untagBtn = Array.from(window.document.querySelectorAll('.dshgn_batchMenu .dshgn_btn')).find(
+    (el) => (el.textContent || '').trim() === '去标签',
+  )
+  assert.ok(untagBtn, '应该有「去标签」按钮')
+  assert.equal(untagBtn.disabled, true, '还没填标签时不该能按')
+
+  const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  setValue.call(tagInput(), '批量去标签')
+  tagInput().dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(160)
+  assert.equal(untagBtn.disabled, false, '填了标签就该能按')
+
+  untagBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(
+    () => (window.document.querySelector('.dshgn_toast') || { textContent: '' }).textContent.includes('已处理'),
+    8000,
+    '说一声处理了几篇',
+  )
+
+  const readAt = async (p) =>
+    realFetch(server.origin + '/getnote/read?path=' + encodeURIComponent(p), {
+      headers: { 'x-getnote-token': server.token },
+    })
+  const noteA = await (await readAt(pathA)).json()
+  assert.ok(!(noteA.tags || []).includes('批量去标签'), '头部那个标签该没了，实际 ' + JSON.stringify(noteA.tags))
+  assert.ok(
+    !String(noteA.content || '').includes('#批量去标签'),
+    '正文里那个 #标签 也该抹掉，实际 ' + String(noteA.content || ''),
+  )
+  assert.ok(String(noteA.content || '').includes('正文里也写一个'), '正文其余的字一个字都不该动')
+
+  const noteB = await (await readAt(pathB)).json()
+  assert.ok(!(noteB.tags || []).includes('批量去标签'), '第二篇的标签也该没了，实际 ' + JSON.stringify(noteB.tags))
+  assert.ok(
+    (noteB.tags || []).includes('批量去标签保留'),
+    '同一篇里的别的标签不该被连带去掉，实际 ' + JSON.stringify(noteB.tags),
+  )
+})

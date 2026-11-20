@@ -576,6 +576,8 @@ async function saveFile(url, filename) {
         'batch.clear': '取消选择',
         'batch.tagPlaceholder': '要添加的标签',
         'batch.addTag': '加标签',
+    'batch.removeTag': '去标签',
+    'batch.tagRemovePlaceholder': '要去掉的标签',
         'batch.dirPlaceholder': '目标目录',
         'batch.dirPick': '填进目标目录',
         'batch.move': '移动',
@@ -1053,6 +1055,8 @@ async function saveFile(url, filename) {
         'batch.clear': 'Clear selection',
         'batch.tagPlaceholder': 'Tag to add',
         'batch.addTag': 'Add tag',
+    'batch.removeTag': 'Remove tag',
+    'batch.tagRemovePlaceholder': 'Tag to remove',
         'batch.dirPlaceholder': 'Target folder',
         'batch.dirPick': 'Use this folder',
         'batch.move': 'Move',
@@ -1522,6 +1526,8 @@ async function saveFile(url, filename) {
         'batch.clear': 'Selectie wissen',
         'batch.tagPlaceholder': 'Tag om toe te voegen',
         'batch.addTag': 'Tag toevoegen',
+    'batch.removeTag': 'Tag verwijderen',
+    'batch.tagRemovePlaceholder': 'Tag om te verwijderen',
         'batch.dirPlaceholder': 'Doelmap',
         'batch.dirPick': 'Deze map gebruiken',
         'batch.move': 'Verplaatsen',
@@ -7076,7 +7082,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
               body: JSON.stringify({
                 action: kind,
                 paths: Array.from(picked),
-                tag: kind === 'tag' ? batchTag.trim() : undefined,
+                tag: kind === 'tag' || kind === 'untag' ? batchTag.trim() : undefined,
                 dir: kind === 'move' ? batchDir.trim() : undefined,
               }),
             })
@@ -7896,6 +7902,19 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                               onClick: () => void runBatch('tag'),
                             },
                             t('batch.addTag'),
+                          ),
+                          // 去标签和加标签共用同一个输入框：想改归类时往往就是
+                          // 「把旧的去掉、换成新的」，敲一次名字点两下，比开两个框省事。
+                          h(
+                            'button',
+                            {
+                              type: 'button',
+                              className: 'dshgn_btn',
+                              title: t('batch.removeTag'),
+                              disabled: busy || batchTag.trim() === '',
+                              onClick: () => void runBatch('untag'),
+                            },
+                            t('batch.removeTag'),
                           ),
                         ),
                         h(

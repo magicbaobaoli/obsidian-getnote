@@ -834,6 +834,15 @@ try {
   const tagged = await jget('/read?path=' + encodeURIComponent('随手记/交集A.md'))
   check('D2 标签真的写进 frontmatter', Array.isArray(tagged.tags) && tagged.tags.indexOf('批量标签') >= 0, JSON.stringify(tagged.tags))
 
+  // D2 批量去标签：加的反向操作，正文里的 #标签 也要一起抹掉
+  const batchUntag = await jpost('/batch', { action: 'untag', paths: ['随手记/交集A.md'], tag: '批量标签' })
+  check('D2 批量去标签', batchUntag.ok === true && batchUntag.changed === 1, JSON.stringify(batchUntag))
+  const untagged = await jget('/read?path=' + encodeURIComponent('随手记/交集A.md'))
+  check('D2 去标签后 frontmatter 里没有了', !(untagged.tags || []).includes('批量标签'), JSON.stringify(untagged.tags))
+  // 本来就没有这个标签的篇目算「处理过了」，不该进失败清单
+  const untagAgain = await jpost('/batch', { action: 'untag', paths: ['随手记/交集A.md'], tag: '批量标签' })
+  check('D2 去一个本来没有的标签不算失败', untagAgain.ok === true && (untagAgain.failed || []).length === 0, JSON.stringify(untagAgain))
+
   // D2 批量移目录
   // 注意别用「做过的项目」：那个位置在库里是个普通文件（早前测试特意放的），
   // 拿它当目标目录会 EEXIST。

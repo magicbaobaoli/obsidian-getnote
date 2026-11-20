@@ -5733,12 +5733,12 @@ function createHandler(config) {
     const action = String(body.action || "");
     const paths = Array.isArray(body.paths) ? body.paths.filter((p3) => typeof p3 === "string" && p3 !== "") : [];
     if (paths.length === 0) throw Object.assign(new Error("\u9700\u8981 paths"), { status: 400 });
-    if (action !== "tag" && action !== "move" && action !== "delete") {
-      throw Object.assign(new Error("action \u53EA\u80FD\u662F tag / move / delete"), { status: 400 });
+    if (action !== "tag" && action !== "untag" && action !== "move" && action !== "delete") {
+      throw Object.assign(new Error("action \u53EA\u80FD\u662F tag / untag / move / delete"), { status: 400 });
     }
     const tag = typeof body.tag === "string" ? body.tag.trim() : "";
     const dir = typeof body.dir === "string" ? body.dir.trim() : "";
-    if (action === "tag" && tag === "") throw Object.assign(new Error("\u9700\u8981 tag"), { status: 400 });
+    if ((action === "tag" || action === "untag") && tag === "") throw Object.assign(new Error("\u9700\u8981 tag"), { status: 400 });
     if (action === "move" && dir === "") throw Object.assign(new Error("\u9700\u8981 dir"), { status: 400 });
     const { root, missing } = await currentRoot();
     if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
@@ -5767,6 +5767,25 @@ function createHandler(config) {
             continue;
           }
           const updated = rewriteTags(text, [...current, tag]);
+          try {
+            await snapshotNote(root, path);
+          } catch {
+          }
+          await writeNote(root, path, updated, { backup: false });
+          changed += 1;
+        } else if (action === "untag") {
+          const meta = note.frontmatter || {};
+          const text = note.content;
+          const actual = readTags(text);
+          const current = actual.length > 0 ? actual : normalizeTags(meta.tags);
+          const inlineSet = new Set(extractInlineTags(note.body));
+          const base = current.filter((item) => !inlineSet.has(item));
+          const withHead = rewriteTags(text, base.filter((item) => item !== tag));
+          const updated = applyInlineTagEdit(withHead, tag, "");
+          if (updated === text) {
+            changed += 1;
+            continue;
+          }
           try {
             await snapshotNote(root, path);
           } catch {
@@ -8292,6 +8311,8 @@ var LEX = {
     "batch.clear": "\u53D6\u6D88\u9009\u62E9",
     "batch.tagPlaceholder": "\u8981\u6DFB\u52A0\u7684\u6807\u7B7E",
     "batch.addTag": "\u52A0\u6807\u7B7E",
+    "batch.removeTag": "\u53BB\u6807\u7B7E",
+    "batch.tagRemovePlaceholder": "\u8981\u53BB\u6389\u7684\u6807\u7B7E",
     "batch.dirPlaceholder": "\u76EE\u6807\u76EE\u5F55",
     "batch.dirPick": "\u586B\u8FDB\u76EE\u6807\u76EE\u5F55",
     "batch.move": "\u79FB\u52A8",
@@ -8765,6 +8786,8 @@ var LEX = {
     "batch.clear": "Clear selection",
     "batch.tagPlaceholder": "Tag to add",
     "batch.addTag": "Add tag",
+    "batch.removeTag": "Remove tag",
+    "batch.tagRemovePlaceholder": "Tag to remove",
     "batch.dirPlaceholder": "Target folder",
     "batch.dirPick": "Use this folder",
     "batch.move": "Move",
@@ -9230,6 +9253,8 @@ var LEX = {
     "batch.clear": "Selectie wissen",
     "batch.tagPlaceholder": "Tag om toe te voegen",
     "batch.addTag": "Tag toevoegen",
+    "batch.removeTag": "Tag verwijderen",
+    "batch.tagRemovePlaceholder": "Tag om te verwijderen",
     "batch.dirPlaceholder": "Doelmap",
     "batch.dirPick": "Deze map gebruiken",
     "batch.move": "Verplaatsen",
@@ -13666,7 +13691,7 @@ ${insert}
           body: JSON.stringify({
             action: kind,
             paths: Array.from(picked),
-            tag: kind === "tag" ? batchTag.trim() : void 0,
+            tag: kind === "tag" || kind === "untag" ? batchTag.trim() : void 0,
             dir: kind === "move" ? batchDir.trim() : void 0
           })
         });
@@ -14391,6 +14416,19 @@ ${insert}
                   onClick: () => void runBatch("tag")
                 },
                 t4("batch.addTag")
+              ),
+              // 去标签和加标签共用同一个输入框：想改归类时往往就是
+              // 「把旧的去掉、换成新的」，敲一次名字点两下，比开两个框省事。
+              h4(
+                "button",
+                {
+                  type: "button",
+                  className: "dshgn_btn",
+                  title: t4("batch.removeTag"),
+                  disabled: busy || batchTag.trim() === "",
+                  onClick: () => void runBatch("untag")
+                },
+                t4("batch.removeTag")
               )
             ),
             h4(

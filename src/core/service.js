@@ -70,6 +70,8 @@ import {
   normalizeTags,
   readTags,
   rewriteTags,
+  extractInlineTags,
+  applyInlineTagEdit,
   removeDir,
   removeTag,
   renameTag,
@@ -1220,12 +1222,12 @@ export function createHandler(config) {
     const action = String(body.action || '')
     const paths = Array.isArray(body.paths) ? body.paths.filter((p) => typeof p === 'string' && p !== '') : []
     if (paths.length === 0) throw Object.assign(new Error('需要 paths'), { status: 400 })
-    if (action !== 'tag' && action !== 'move' && action !== 'delete') {
-      throw Object.assign(new Error('action 只能是 tag / move / delete'), { status: 400 })
+    if (action !== 'tag' && action !== 'untag' && action !== 'move' && action !== 'delete') {
+      throw Object.assign(new Error('action 只能是 tag / untag / move / delete'), { status: 400 })
     }
     const tag = typeof body.tag === 'string' ? body.tag.trim() : ''
     const dir = typeof body.dir === 'string' ? body.dir.trim() : ''
-    if (action === 'tag' && tag === '') throw Object.assign(new Error('需要 tag'), { status: 400 })
+    if ((action === 'tag' || action === 'untag') && tag === '') throw Object.assign(new Error('需要 tag'), { status: 400 })
     if (action === 'move' && dir === '') throw Object.assign(new Error('需要 dir'), { status: 400 })
     const { root, missing } = await currentRoot()
     if (missing) throw Object.assign(new Error(`本地库目录不存在：${missing}`), { status: 404 })
@@ -1266,6 +1268,31 @@ export function createHandler(config) {
             await snapshotNote(root, path)
           } catch {
             // 历史不是加标签的前置条件
+          }
+          await writeNote(root, path, updated, { backup: false })
+          changed += 1
+        } else if (action === 'untag') {
+          // 去掉标签和加标签是同一条路的两头：都只改 frontmatter 那一行、
+          // 都走历史不留 .bak。正文里的 `#标签` 也得一起抹掉，否则头部删了、
+          // 正文还留着，下一次扫描它又长回来（见 removeTag 的同款处理）。
+          const meta = note.frontmatter || {}
+          const text = note.content
+          const actual = readTags(text)
+          const current = actual.length > 0 ? actual : normalizeTags(meta.tags)
+          const inlineSet = new Set(extractInlineTags(note.body))
+          const base = current.filter((item) => !inlineSet.has(item))
+          const withHead = rewriteTags(text, base.filter((item) => item !== tag))
+          const updated = applyInlineTagEdit(withHead, tag, '')
+          // 一篇本来就没有这个标签时算「处理过了」而不是失败：用户选了十篇、
+          // 其中三篇本来就没这个标签，那三篇不该出现在失败清单里。
+          if (updated === text) {
+            changed += 1
+            continue
+          }
+          try {
+            await snapshotNote(root, path)
+          } catch {
+            // 历史不是去标签的前置条件
           }
           await writeNote(root, path, updated, { backup: false })
           changed += 1
