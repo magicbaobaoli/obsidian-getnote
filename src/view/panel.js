@@ -668,6 +668,7 @@ async function saveFile(url, filename) {
         'note.zoomImage': '点开看大图',
         'note.find': '在这篇里找',
         'note.findPlaceholder': '找什么…',
+        'note.findInEditor': '在正文里找什么…',
         'note.findNext': '找下一处',
         'note.findPrev': '找上一处',
         'note.findMiss': '这篇里没有「{text}」',
@@ -724,7 +725,7 @@ async function saveFile(url, filename) {
         'note.embedBroken': '这一篇没读出来',
         'callout.expand': '展开',
  'editor.words': '{n} 字',
- 'editor.saveHint': 'Ctrl+S 保存 · Esc 取消 · Ctrl+B 加粗 · Ctrl+I 斜体',
+ 'editor.saveHint': 'Ctrl+S 保存 · Esc 取消 · Ctrl+B 加粗 · Ctrl+I 斜体 · Ctrl+F 查找',
         'callout.collapse': '收起',
         'note.image': '图片',
         'action.close': '关闭',
@@ -1099,6 +1100,7 @@ async function saveFile(url, filename) {
         'note.zoomImage': 'Click to enlarge',
         'note.find': 'Find in this note',
         'note.findPlaceholder': 'Find…',
+        'note.findInEditor': 'Find in the text…',
         'note.findNext': 'Find next',
         'note.findPrev': 'Find previous',
         'note.findMiss': 'No "{text}" in this note',
@@ -1155,7 +1157,7 @@ async function saveFile(url, filename) {
         'note.embedBroken': 'Could not read this note',
         'callout.expand': 'Expand',
  'editor.words': '{n} words',
- 'editor.saveHint': 'Ctrl+S to save · Esc to cancel · Ctrl+B bold · Ctrl+I italic',
+ 'editor.saveHint': 'Ctrl+S to save · Esc to cancel · Ctrl+B bold · Ctrl+I italic · Ctrl+F find',
         'callout.collapse': 'Collapse',
         'note.image': 'Image',
         'action.close': 'Close',
@@ -1529,6 +1531,7 @@ async function saveFile(url, filename) {
         'note.zoomImage': 'Klik om te vergroten',
         'note.find': 'Zoek in deze notitie',
         'note.findPlaceholder': 'Zoeken…',
+        'note.findInEditor': 'Zoeken in de tekst…',
         'note.findNext': 'Volgende',
         'note.findPrev': 'Vorige',
         'note.findMiss': 'Geen "{text}" in deze notitie',
@@ -1585,7 +1588,7 @@ async function saveFile(url, filename) {
         'note.embedBroken': 'Deze notitie kon niet gelezen worden',
         'callout.expand': 'Uitvouwen',
  'editor.words': '{n} woorden',
- 'editor.saveHint': 'Ctrl+S om op te slaan · Esc om te annuleren · Ctrl+B vet · Ctrl+I cursief',
+ 'editor.saveHint': 'Ctrl+S om op te slaan · Esc om te annuleren · Ctrl+B vet · Ctrl+I cursief · Ctrl+F zoeken',
         'callout.collapse': 'Invouwen',
         'note.image': 'Afbeelding',
         'action.close': 'Sluiten',
@@ -3000,6 +3003,31 @@ async function saveFile(url, filename) {
       const host = scrollHostOf(box)
       if (!host) return null
       return scrollHostTo(host, target) ? target : null
+    }
+
+    /**
+     * 在一段纯文本里找「下一处 / 上一处」，返回那一段的下标区间。
+     *
+     * 编辑态的 Ctrl+F 用这个：那时候正文没渲染，光标在 textarea 里，要挪的
+     * 是选区而不是视野。起点取「选区末尾」（往前）和「选区开头」（往后）——
+     * 从光标处接着找的话，刚选中的这一处会被再选中一次，按回车看起来像没动。
+     */
+    function findInText(text, needle, start, end, forward = true) {
+      const src = String(text || '')
+      const want = String(needle || '').trim()
+      if (want === '') return null
+      const lower = src.toLowerCase()
+      const target = want.toLowerCase()
+      if (forward) {
+        const from = Math.max(0, Math.min(lower.length, typeof end === 'number' && end > start ? end : start))
+        const at = lower.indexOf(target, from)
+        if (at === -1) return null
+        return { start: at, end: at + target.length }
+      }
+      const before = Math.max(0, Math.min(lower.length, typeof start === 'number' ? start : 0))
+      const at = lower.lastIndexOf(target, before - 1)
+      if (at === -1) return null
+      return { start: at, end: at + target.length }
     }
 
     /** 图像扩展名判定：只认浏览器能直接显示的格式。 */
@@ -11321,6 +11349,19 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       const findOpenRef = React.useRef(false)
       findOpenRef.current = findOpen
 
+      // 收起查找条。编辑态要顺手把焦点还给正文：否则用户按完 Esc 再敲字，
+      // 字全进了那个已经藏起来的输入框里，看起来像「编辑区坏了」。
+      const closeFind = React.useCallback(() => {
+        setFindOpen(false)
+        if (!editingRef.current) return
+        const live = editorRef.current
+        if (live === null || live === undefined) return
+        try {
+          live.focus()
+        } catch {
+          // 无焦点/已卸载时忽略
+        }
+      }, [])
       const canAttach = typeof onAttach === 'function'
       const closeZoom = React.useCallback(() => setZoom(null), [])
       // 改完正文要把光标放回去：受控 textarea 重渲染之后光标会被甩到末尾。
@@ -11362,6 +11403,34 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       const runFind = React.useCallback((forward) => {
         const text = findText.trim()
         if (text === '') return
+        // 编辑态：正文没渲染，要找的是 textarea 里那一段字，挪的是选区。
+        if (editingRef.current) {
+          const live = editorRef.current
+          if (live === null || live === undefined) return
+          const caret = typeof live.selectionStart === 'number' ? live.selectionStart : 0
+          const selEnd = typeof live.selectionEnd === 'number' ? live.selectionEnd : caret
+          const found = findInText(live.value, text, caret, selEnd, forward)
+          if (found === null) {
+            // 一处都没有 vs 到头了，是两件事：前者要用户改词，后者只是到头。
+            const any = live.value.toLowerCase().indexOf(text.toLowerCase()) !== -1
+            showToast(any ? t('note.findEnd') : t('note.findMiss').replace('{text}', text))
+            return
+          }
+          live.focus()
+          try {
+            live.setSelectionRange(found.start, found.end)
+          } catch {
+            // 无焦点/已卸载时设不了选区，忽略
+          }
+          // 把命中的那一行滚进视野中间：不滚的话用户只看到选区变了，
+          // 却不知道它跑到上边还是下边去了。
+          const line = live.value.slice(0, found.start).split('\n').length - 1
+          const style = typeof window.getComputedStyle === 'function' ? window.getComputedStyle(live) : null
+          const lineHeight = style === null ? 0 : Number.parseFloat(style.lineHeight)
+          const step = Number.isFinite(lineHeight) && lineHeight > 0 ? lineHeight : 20
+          live.scrollTop = Math.max(0, line * step - live.clientHeight / 2)
+          return
+        }
         const hit = findInBody(scrollRef.current, text, forward)
         if (hit === null) {
           // 一处都没有 vs 到头了，是两件事：前者要用户改词，后者只是到头。
@@ -11383,6 +11452,43 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(focus)
         return undefined
       }, [findOpen])
+      // `editing` 是每次渲染新建的绑定，挂在挂载时的那段监听闭包里会一直看到
+      // 挂载那一刻的 false（编辑态里照样被抢走），所以用 ref 读当前值。
+      const editingRef = React.useRef(false)
+      editingRef.current = editing
+      // 阅读态按 Ctrl/Cmd+F 直接把查找条叫出来。
+      //
+      // 面板级那个 keydown effect（GetnotePage 里）在 `if (typing) return` 处就把
+      // 输入框里的按键全放走了，而它自己处理 Ctrl+K / Ctrl+N 时也不管 F——所以
+      // 阅读态（焦点不在任何输入框里）按 Ctrl+F 原本什么都不会发生，只有鼠标去
+      // 点笔记头上那个放大镜才行。宿主里这是肌肉记忆，这里补上。
+      //
+      // 编辑态故意不管：那边 Ctrl+F 归 textarea 自己（见 onKeyDown 里的同一段
+      // 处理），两条路都接的话按一次会开两遍、而且焦点会来回抢。
+      React.useEffect(() => {
+        const onKey = (event) => {
+          const lower = String(event.key || '').toLowerCase()
+          if (lower !== 'f' || !(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return
+          if (editingRef.current) return
+          const target = event.target
+          const tag = target !== null && target !== undefined && typeof target.tagName === 'string'
+            ? target.tagName.toLowerCase()
+            : ''
+          // 焦点在输入框里时这是「在那个框里找」，不是「在这篇里找」
+          if (tag === 'input' || tag === 'textarea' || tag === 'select') return
+          if (target !== null && target !== undefined && target.isContentEditable === true) return
+          event.preventDefault()
+          setFindOpen(true)
+          // 已经开着时再按一次也要把焦点拉回来：用户可能刚点过正文。
+          if (typeof window.requestAnimationFrame === 'function') {
+            window.requestAnimationFrame(() => {
+              const live = findInputRef.current
+              if (live !== null && live !== undefined) live.focus()
+            })
+          }
+        }
+        return attachOnPanelWindows('keydown', onKey)
+      }, [])
       // 放大态按 Esc 关掉。挂到面板窗口上而不是根节点上：焦点可能还在别处，
       // 用户在遮罩上按 Esc 时事件未必从根节点冒上来。
       React.useEffect(() => {
@@ -11905,7 +12011,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                     className: 'dshgn_iconBtn',
                     title: t('note.find'),
                     'data-on': findOpen ? 'true' : 'false',
-                    onClick: () => setFindOpen((prev) => !prev),
+                    // 告诉浏览器这个按钮有快捷键，鼠标悬停时它会自己显示出来
+                    'aria-keyshortcuts': 'Control+F Meta+F',
+                    onClick: () => (findOpen ? closeFind() : setFindOpen(true)),
                   },
                   h(Icon, { name: 'search', size: 15 }),
                 ),
@@ -12014,10 +12122,14 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                 ),
               ),
         ),
-        // 就地查找的输入条：只在阅读态、且用户点开了才出现。
+        // 就地查找的输入条：用户点开了才出现。
         // 回车找下一处、Shift+回车找上一处、Esc 收起——与浏览器/宿主的查找框
         // 同一套手感，用户不用再学一遍。
-        !editing && findOpen
+        //
+        // 编辑态也摆：那边 Ctrl+F 由 textarea 自己接（面板级监听会把输入框里的
+        // 按键放走），没有这条就没处可开。只是编辑态不去滚动正文——那时候正文
+        // 根本没渲染，用户要的是「在这个框里找下一处」，走的是光标。
+        findOpen
           ? h(
               'div',
               { className: 'dshgn_findBar' },
@@ -12027,14 +12139,14 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                 type: 'text',
                 className: 'dshgn_findInput',
                 value: findText,
-                placeholder: t('note.findPlaceholder'),
+                placeholder: t(editing ? 'note.findInEditor' : 'note.findPlaceholder'),
                 spellCheck: false,
                 onChange: (event) => setFindText(event.target.value),
                 onKeyDown: (event) => {
                   if (event.key === 'Escape') {
                     event.preventDefault()
                     event.stopPropagation()
-                    setFindOpen(false)
+                    closeFind()
                     return
                   }
                   if (event.key !== 'Enter') return
@@ -12068,7 +12180,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                   type: 'button',
                   className: 'dshgn_iconBtn',
                   title: t('action.close'),
-                  onClick: () => setFindOpen(false),
+                  onClick: () => closeFind(),
                 },
                 h(Icon, { name: 'close', size: 13 }),
               ),
@@ -12122,6 +12234,20 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                 // Ctrl/Cmd + B / I / Shift+X：加粗、斜体、删除线。
                 // 宿主里这是肌肉记忆，在裸 textarea 上按下去原本什么都不发生。
                 const mod = (event.ctrlKey || event.metaKey) && !event.altKey
+                // Ctrl/Cmd + F：把查找条叫出来。编辑态由这里接（面板级那个
+                // keydown 会把输入框里的按键放走），焦点交给查找条输入框，
+                // 回车在光标所在的位置往下找——不滚正文，正文这时候没渲染。
+                if (mod && String(event.key || '').toLowerCase() === 'f' && !event.shiftKey) {
+                  event.preventDefault()
+                  setFindOpen(true)
+                  if (typeof window.requestAnimationFrame === 'function') {
+                    window.requestAnimationFrame(() => {
+                      const live = findInputRef.current
+                      if (live !== null && live !== undefined) live.focus()
+                    })
+                  }
+                  return
+                }
                 if (mod) {
                   const lower = String(event.key || '').toLowerCase()
                   const mark = lower === 'b' && !event.shiftKey ? '**'
@@ -13286,7 +13412,7 @@ export const __internals = {
   TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale,
   reportSync, dailyTemplateOf, frontmatterText, isTagKey, FollowCard, parseTable, countWords,
   isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote, parseImageSize, renderParagraph, blockTextOf, markdownLinkTarget,
-  tagBodyOf, ZoomOverlay, continueListLine, indentLines, wrapInline, wikilinkQueryAt, wikilinkMatches, findInBody, findInBodyMatch,
+  tagBodyOf, ZoomOverlay, continueListLine, indentLines, wrapInline, wikilinkQueryAt, wikilinkMatches, findInBody, findInBodyMatch, findInText,
       readScrollMarks, writeScrollMark, scrollMarkOf, SCROLL_KEY,
   splitByTerms, highlightTerms, searchTermsOf,
 }

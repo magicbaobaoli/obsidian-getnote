@@ -5220,4 +5220,148 @@ test('列表能在「最近改的」和「按名称」之间切，切完记着�
   window.localStorage.removeItem('dshgn.listSort')
 })
 
+test('阅读态按 Ctrl+F 直接把查找条叫出来，编辑态按下去找的是正文里那一段字', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    const backBtn = window.document.querySelector('.dshgn_noteBack')
+    if (backBtn) {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    }
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  const searchBox = await waitFor(() => window.document.querySelector('.dshgn_search'), 5000, '搜索框')
+  const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  setValue.call(searchBox, '')
+  searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(260)
+
+  const res = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '快捷键查找验收',
+      content: '# 快捷键查找验收\n\n第一段写着 龙眼 两个字。\n\n第二段又提到 龙眼 一次。\n',
+      withDatePrefix: false,
+      requestId: 'seed-find-shortcut',
+    }),
+  })
+  assert.equal((await res.json()).path, '随手记/快捷键查找验收.md')
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  const card = await waitFor(
+    () => Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => (el.textContent || '').includes('快捷键查找验收')) || null,
+    8000,
+    '列表里的那一篇',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 8000, '打开笔记')
+
+  const findBtn = () => Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '在这篇里找')
+
+  // 阅读态：焦点不在输入框里，Ctrl+F 就该把查找条叫出来。
+  // 原来是「鼠标去点笔记头那颗放大镜」才行——宿主里这是肌肉记忆。
+  window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true }))
+  const input = await waitFor(() => window.document.querySelector('.dshgn_findInput'), 5000, 'Ctrl+F 该叫出查找条')
+  assert.equal(findBtn().getAttribute('data-on'), 'true', '查找条开着时那颗按钮要亮')
+  assert.equal(input.getAttribute('placeholder'), '找什么…', '阅读态的占位文字是「在这篇里找」')
+  assert.equal(findBtn().getAttribute('aria-keyshortcuts'), 'Control+F Meta+F', '按钮上要写着这个快捷键')
+
+  // 再按一次不该把它关掉（那是「叫出来」的手势，不是开关）
+  window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true }))
+  await sleep(120)
+  assert.ok(window.document.querySelector('.dshgn_findInput') !== null, '再按一次仍然是开着')
+
+  // 焦点在输入框里时，Ctrl+F 不该被面板抢走（那是「在那个框里找」）
+  input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true }))
+  await sleep(80)
+  assert.ok(window.document.querySelector('.dshgn_findInput') !== null)
+
+  // 收起，进编辑态
+  input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  await sleep(150)
+  assert.equal(window.document.querySelector('.dshgn_findInput'), null, 'Esc 应该收起查找条')
+
+  const editBtn = () => Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '编辑')
+  editBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const editor = await waitFor(() => window.document.querySelector('.dshgn_editor'), 5000, '进编辑态')
+
+  // 编辑态：正文没渲染，Ctrl+F 找的是 textarea 里那一段字，挪的是选区
+  editor.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true }))
+  const editInput = await waitFor(() => window.document.querySelector('.dshgn_findInput'), 5000, '编辑态也要能叫出查找条')
+  assert.equal(editInput.getAttribute('placeholder'), '在正文里找什么…', '编辑态的占位文字说的是「在正文里」')
+  assert.ok((window.document.querySelector('.dshgn_editorHint').textContent || '').includes('Ctrl+F'), '提示行里写得出 Ctrl+F')
+
+  // 光标放在开头，找「龙眼」：选区落到第一处
+  editor.focus()
+  editor.setSelectionRange(0, 0)
+  setValue.call(editInput, '龙眼')
+  editInput.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(120)
+  editInput.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  await sleep(150)
+  const body = editor.value
+  const firstAt = body.indexOf('龙眼')
+  assert.equal(editor.selectionStart, firstAt, '回车该选中正文里第一处「龙眼」')
+  assert.equal(editor.selectionEnd, firstAt + 2, '选中两个字')
+
+  // 再回车：往下走到第二处（不是原地再选一遍）
+  editInput.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  await sleep(150)
+  const secondAt = body.indexOf('龙眼', firstAt + 2)
+  assert.equal(editor.selectionStart, secondAt, '再回车该往下走到第二处')
+
+  // Shift+回车：往回走
+  editInput.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true }))
+  await sleep(150)
+  assert.equal(editor.selectionStart, firstAt, 'Shift+回车该回到上一处')
+
+  // 到头了要明说
+  const toast = () => window.document.querySelector('.dshgn_toast')
+  editInput.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  editInput.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  await sleep(200)
+  assert.ok(toast() !== null && (toast().textContent || '').includes('到头了'), '编辑态到头了也要说一声')
+
+  // 一个词都没有：说的是「这篇里没有」
+  setValue.call(editInput, '根本没有这个词')
+  editInput.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(120)
+  editInput.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  await sleep(200)
+  assert.ok((toast().textContent || '').includes('这篇里没有'), '编辑态找不到也要说「这篇里没有」')
+
+  // Esc 收起查找条，焦点要回到编辑区（不然接着敲的字全进了那个藏起来的框）
+  editInput.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  await sleep(200)
+  assert.equal(window.document.querySelector('.dshgn_findInput'), null, 'Esc 应该收起查找条')
+  assert.equal(window.document.activeElement, window.document.querySelector('.dshgn_editor'), '焦点要回到编辑区')
+
+  // 纯函数：起点取「选区末尾」往下、取「选区开头」往上，空词当没找
+  const findInText = panel.__internals.findInText
+  assert.equal(findInText('甲龙眼乙龙眼丙', '龙眼', 0, 0, true).start, 1, '从光标往下找第一处')
+  assert.equal(findInText('甲龙眼乙龙眼丙', '龙眼', 0, 0, true).end, 3, '区间是两个字的宽度')
+  assert.equal(findInText('甲龙眼乙龙眼丙', '龙眼', 7, 7, true), null, '到底了就没有下一处')
+  assert.equal(findInText('甲龙眼乙龙眼丙', '龙眼', 4, 4, false).start, 1, '往回找上一处')
+  assert.equal(findInText('甲龙眼乙龙眼丙', '龙眼', 1, 1, false), null, '到头了就没有上一处')
+  assert.equal(findInText('甲龙眼乙龙眼丙', '', 0, 0, true), null, '空词当没找')
+  assert.equal(findInText('', '龙眼', 0, 0, true), null, '空正文当没找')
+  // 大小写不敏感，但选区落在原文上
+  assert.equal(findInText('Alpha beta ALPHA', 'alpha', 0, 0, true).start, 0)
+  assert.equal(findInText('Alpha beta ALPHA', 'alpha', 6, 6, true).start, 11, '第二处按原文的位置给')
+
+  window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_editor') === null, 5000, 'Esc 退出编辑态')
+})
+
 

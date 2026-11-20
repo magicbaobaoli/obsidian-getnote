@@ -8374,6 +8374,7 @@ var LEX = {
     "note.zoomImage": "\u70B9\u5F00\u770B\u5927\u56FE",
     "note.find": "\u5728\u8FD9\u7BC7\u91CC\u627E",
     "note.findPlaceholder": "\u627E\u4EC0\u4E48\u2026",
+    "note.findInEditor": "\u5728\u6B63\u6587\u91CC\u627E\u4EC0\u4E48\u2026",
     "note.findNext": "\u627E\u4E0B\u4E00\u5904",
     "note.findPrev": "\u627E\u4E0A\u4E00\u5904",
     "note.findMiss": "\u8FD9\u7BC7\u91CC\u6CA1\u6709\u300C{text}\u300D",
@@ -8430,7 +8431,7 @@ var LEX = {
     "note.embedBroken": "\u8FD9\u4E00\u7BC7\u6CA1\u8BFB\u51FA\u6765",
     "callout.expand": "\u5C55\u5F00",
     "editor.words": "{n} \u5B57",
-    "editor.saveHint": "Ctrl+S \u4FDD\u5B58 \xB7 Esc \u53D6\u6D88 \xB7 Ctrl+B \u52A0\u7C97 \xB7 Ctrl+I \u659C\u4F53",
+    "editor.saveHint": "Ctrl+S \u4FDD\u5B58 \xB7 Esc \u53D6\u6D88 \xB7 Ctrl+B \u52A0\u7C97 \xB7 Ctrl+I \u659C\u4F53 \xB7 Ctrl+F \u67E5\u627E",
     "callout.collapse": "\u6536\u8D77",
     "note.image": "\u56FE\u7247",
     "action.close": "\u5173\u95ED",
@@ -8801,6 +8802,7 @@ var LEX = {
     "note.zoomImage": "Click to enlarge",
     "note.find": "Find in this note",
     "note.findPlaceholder": "Find\u2026",
+    "note.findInEditor": "Find in the text\u2026",
     "note.findNext": "Find next",
     "note.findPrev": "Find previous",
     "note.findMiss": 'No "{text}" in this note',
@@ -8857,7 +8859,7 @@ var LEX = {
     "note.embedBroken": "Could not read this note",
     "callout.expand": "Expand",
     "editor.words": "{n} words",
-    "editor.saveHint": "Ctrl+S to save \xB7 Esc to cancel \xB7 Ctrl+B bold \xB7 Ctrl+I italic",
+    "editor.saveHint": "Ctrl+S to save \xB7 Esc to cancel \xB7 Ctrl+B bold \xB7 Ctrl+I italic \xB7 Ctrl+F find",
     "callout.collapse": "Collapse",
     "note.image": "Image",
     "action.close": "Close",
@@ -9228,6 +9230,7 @@ var LEX = {
     "note.zoomImage": "Klik om te vergroten",
     "note.find": "Zoek in deze notitie",
     "note.findPlaceholder": "Zoeken\u2026",
+    "note.findInEditor": "Zoeken in de tekst\u2026",
     "note.findNext": "Volgende",
     "note.findPrev": "Vorige",
     "note.findMiss": 'Geen "{text}" in deze notitie',
@@ -9284,7 +9287,7 @@ var LEX = {
     "note.embedBroken": "Deze notitie kon niet gelezen worden",
     "callout.expand": "Uitvouwen",
     "editor.words": "{n} woorden",
-    "editor.saveHint": "Ctrl+S om op te slaan \xB7 Esc om te annuleren \xB7 Ctrl+B vet \xB7 Ctrl+I cursief",
+    "editor.saveHint": "Ctrl+S om op te slaan \xB7 Esc om te annuleren \xB7 Ctrl+B vet \xB7 Ctrl+I cursief \xB7 Ctrl+F zoeken",
     "callout.collapse": "Invouwen",
     "note.image": "Afbeelding",
     "action.close": "Sluiten",
@@ -10297,6 +10300,23 @@ function findInBody(box, text, forward = true) {
   const host = scrollHostOf(box);
   if (!host) return null;
   return scrollHostTo(host, target) ? target : null;
+}
+function findInText(text, needle, start, end, forward = true) {
+  const src = String(text || "");
+  const want = String(needle || "").trim();
+  if (want === "") return null;
+  const lower = src.toLowerCase();
+  const target = want.toLowerCase();
+  if (forward) {
+    const from = Math.max(0, Math.min(lower.length, typeof end === "number" && end > start ? end : start));
+    const at2 = lower.indexOf(target, from);
+    if (at2 === -1) return null;
+    return { start: at2, end: at2 + target.length };
+  }
+  const before = Math.max(0, Math.min(lower.length, typeof start === "number" ? start : 0));
+  const at = lower.lastIndexOf(target, before - 1);
+  if (at === -1) return null;
+  return { start: at, end: at + target.length };
 }
 var IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|avif|svg|bmp)$/i;
 var FILE_EXT_RE = /\.(pdf|docx?|xlsx?|pptx?|zip|rar|7z|tar|gz|mp3|wav|m4a|aac|ogg|flac|mp4|mov|webm|mkv|canvas|excalidraw|txt|csv|tsv|json|html?|js|css)$/i;
@@ -17309,6 +17329,16 @@ function NotePane(props) {
   const findInputRef = A2(null);
   const findOpenRef = A2(false);
   findOpenRef.current = findOpen;
+  const closeFind = q2(() => {
+    setFindOpen(false);
+    if (!editingRef.current) return;
+    const live = editorRef.current;
+    if (live === null || live === void 0) return;
+    try {
+      live.focus();
+    } catch {
+    }
+  }, []);
   const canAttach = typeof onAttach === "function";
   const closeZoom = q2(() => setZoom(null), []);
   const placeCaret = q2((start, end) => {
@@ -17340,6 +17370,29 @@ function NotePane(props) {
   const runFind = q2((forward) => {
     const text = findText.trim();
     if (text === "") return;
+    if (editingRef.current) {
+      const live = editorRef.current;
+      if (live === null || live === void 0) return;
+      const caret = typeof live.selectionStart === "number" ? live.selectionStart : 0;
+      const selEnd = typeof live.selectionEnd === "number" ? live.selectionEnd : caret;
+      const found = findInText(live.value, text, caret, selEnd, forward);
+      if (found === null) {
+        const any = live.value.toLowerCase().indexOf(text.toLowerCase()) !== -1;
+        showToast(any ? t4("note.findEnd") : t4("note.findMiss").replace("{text}", text));
+        return;
+      }
+      live.focus();
+      try {
+        live.setSelectionRange(found.start, found.end);
+      } catch {
+      }
+      const line = live.value.slice(0, found.start).split("\n").length - 1;
+      const style = typeof window.getComputedStyle === "function" ? window.getComputedStyle(live) : null;
+      const lineHeight = style === null ? 0 : Number.parseFloat(style.lineHeight);
+      const step = Number.isFinite(lineHeight) && lineHeight > 0 ? lineHeight : 20;
+      live.scrollTop = Math.max(0, line * step - live.clientHeight / 2);
+      return;
+    }
     const hit = findInBody(scrollRef.current, text, forward);
     if (hit === null) {
       const any = findInBodyMatch(scrollRef.current, text, true) !== null || findInBodyMatch(scrollRef.current, text, false) !== null;
@@ -17356,6 +17409,28 @@ function NotePane(props) {
     if (typeof window.requestAnimationFrame === "function") window.requestAnimationFrame(focus);
     return void 0;
   }, [findOpen]);
+  const editingRef = A2(false);
+  editingRef.current = editing;
+  y2(() => {
+    const onKey = (event) => {
+      const lower = String(event.key || "").toLowerCase();
+      if (lower !== "f" || !(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
+      if (editingRef.current) return;
+      const target = event.target;
+      const tag = target !== null && target !== void 0 && typeof target.tagName === "string" ? target.tagName.toLowerCase() : "";
+      if (tag === "input" || tag === "textarea" || tag === "select") return;
+      if (target !== null && target !== void 0 && target.isContentEditable === true) return;
+      event.preventDefault();
+      setFindOpen(true);
+      if (typeof window.requestAnimationFrame === "function") {
+        window.requestAnimationFrame(() => {
+          const live = findInputRef.current;
+          if (live !== null && live !== void 0) live.focus();
+        });
+      }
+    };
+    return attachOnPanelWindows("keydown", onKey);
+  }, []);
   y2(() => {
     const onKey = (event) => {
       if (event.key !== "Escape" || zoomRef.current === null) return;
@@ -17757,7 +17832,9 @@ function NotePane(props) {
             className: "dshgn_iconBtn",
             title: t4("note.find"),
             "data-on": findOpen ? "true" : "false",
-            onClick: () => setFindOpen((prev) => !prev)
+            // 告诉浏览器这个按钮有快捷键，鼠标悬停时它会自己显示出来
+            "aria-keyshortcuts": "Control+F Meta+F",
+            onClick: () => findOpen ? closeFind() : setFindOpen(true)
           },
           h4(Icon, { name: "search", size: 15 })
         ),
@@ -17856,10 +17933,14 @@ function NotePane(props) {
         )
       )
     ),
-    // 就地查找的输入条：只在阅读态、且用户点开了才出现。
+    // 就地查找的输入条：用户点开了才出现。
     // 回车找下一处、Shift+回车找上一处、Esc 收起——与浏览器/宿主的查找框
     // 同一套手感，用户不用再学一遍。
-    !editing && findOpen ? h4(
+    //
+    // 编辑态也摆：那边 Ctrl+F 由 textarea 自己接（面板级监听会把输入框里的
+    // 按键放走），没有这条就没处可开。只是编辑态不去滚动正文——那时候正文
+    // 根本没渲染，用户要的是「在这个框里找下一处」，走的是光标。
+    findOpen ? h4(
       "div",
       { className: "dshgn_findBar" },
       h4(Icon, { name: "search", size: 13 }),
@@ -17868,14 +17949,14 @@ function NotePane(props) {
         type: "text",
         className: "dshgn_findInput",
         value: findText,
-        placeholder: t4("note.findPlaceholder"),
+        placeholder: t4(editing ? "note.findInEditor" : "note.findPlaceholder"),
         spellCheck: false,
         onChange: (event) => setFindText(event.target.value),
         onKeyDown: (event) => {
           if (event.key === "Escape") {
             event.preventDefault();
             event.stopPropagation();
-            setFindOpen(false);
+            closeFind();
             return;
           }
           if (event.key !== "Enter") return;
@@ -17909,7 +17990,7 @@ function NotePane(props) {
           type: "button",
           className: "dshgn_iconBtn",
           title: t4("action.close"),
-          onClick: () => setFindOpen(false)
+          onClick: () => closeFind()
         },
         h4(Icon, { name: "close", size: 13 })
       )
@@ -17955,6 +18036,17 @@ function NotePane(props) {
             }
           }
           const mod = (event.ctrlKey || event.metaKey) && !event.altKey;
+          if (mod && String(event.key || "").toLowerCase() === "f" && !event.shiftKey) {
+            event.preventDefault();
+            setFindOpen(true);
+            if (typeof window.requestAnimationFrame === "function") {
+              window.requestAnimationFrame(() => {
+                const live = findInputRef.current;
+                if (live !== null && live !== void 0) live.focus();
+              });
+            }
+            return;
+          }
           if (mod) {
             const lower = String(event.key || "").toLowerCase();
             const mark = lower === "b" && !event.shiftKey ? "**" : lower === "i" && !event.shiftKey ? "*" : lower === "x" && event.shiftKey ? "~~" : "";
