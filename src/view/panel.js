@@ -704,6 +704,8 @@ async function saveFile(url, filename) {
         'note.openEmbed': '打开这一篇',
         'note.embedBroken': '这一篇没读出来',
         'callout.expand': '展开',
+ 'editor.words': '{n} 字',
+ 'editor.saveHint': 'Ctrl+S 保存 · Esc 取消',
         'callout.collapse': '收起',
         'note.image': '图片',
         'action.close': '关闭',
@@ -1112,6 +1114,8 @@ async function saveFile(url, filename) {
         'note.openEmbed': 'Open this note',
         'note.embedBroken': 'Could not read this note',
         'callout.expand': 'Expand',
+ 'editor.words': '{n} words',
+ 'editor.saveHint': 'Ctrl+S to save · Esc to cancel',
         'callout.collapse': 'Collapse',
         'note.image': 'Image',
         'action.close': 'Close',
@@ -1519,6 +1523,8 @@ async function saveFile(url, filename) {
         'note.openEmbed': 'Open deze notitie',
         'note.embedBroken': 'Deze notitie kon niet gelezen worden',
         'callout.expand': 'Uitvouwen',
+ 'editor.words': '{n} woorden',
+ 'editor.saveHint': 'Ctrl+S om op te slaan · Esc om te annuleren',
         'callout.collapse': 'Invouwen',
         'note.image': 'Afbeelding',
         'action.close': 'Sluiten',
@@ -2895,6 +2901,15 @@ async function saveFile(url, filename) {
       return renderBlocks(markdown, opts)
     }
 
+    // 编辑时的字数：中文按字算、西文按词算，和宿主的「字数」口径一致。
+    // 中文一个词可能两三个字，按词算会把一篇两千字的中文报成八百，用户会以为丢了一半。
+    function countWords(text) {
+      const source = String(text === null || text === undefined ? '' : text)
+      const cjk = source.match(/[\u4e00-\u9fa5]/g)
+      const latin = source.match(/[A-Za-z0-9_'-]+/g)
+      return (cjk === null ? 0 : cjk.length) + (latin === null ? 0 : latin.length)
+    }
+
     function renderBlocks(markdown, options) {
       const opts = options || {}
       const lines = String(markdown || '').split(/\r?\n/)
@@ -3668,6 +3683,10 @@ async function saveFile(url, filename) {
   background:transparent;color:var(--dsw-alias-label-primary);
   font-family:var(--font-text,var(--dsw-font-sans,inherit));font-size:var(--font-text-size,13px);
   line-height:var(--line-height-normal,1.7)}
+.dshgn_editorFoot{display:flex;align-items:center;gap:10px;padding:5px clamp(16px,3vw,32px);
+  border-top:0.5px solid var(--dsw-alias-border-l1);font-size:10.5px;
+  color:var(--dsw-alias-label-tertiary);flex:0 0 auto}
+.dshgn_editorHint{margin-left:auto;opacity:.75}
 .dshgn_empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:8px;padding:32px;text-align:center;color:var(--dsw-alias-label-tertiary)}
 .dshgn_emptyTitle{font-size:13px;color:var(--dsw-alias-label-secondary)}
@@ -10618,7 +10637,10 @@ async function saveFile(url, filename) {
               ),
         ),
         editing
-          ? h('textarea', {
+          ? h(
+            React.Fragment,
+            null,
+            h('textarea', {
               className: 'dshgn_editor',
               value: draft === null ? '' : draft,
               spellCheck: false,
@@ -10634,7 +10656,16 @@ async function saveFile(url, filename) {
                     }
                   }
                 : undefined,
-            })
+            }),
+            // 编辑时脚下那一条：字数 + 快捷键提示。原来编辑态一个字的反馈都没有，
+            // 用户不知道按什么保存、也不知道自己写了多少。
+            h(
+              'div',
+              { className: 'dshgn_editorFoot' },
+              h('span', null, t('editor.words').replace('{n}', String(countWords(draft)))),
+              h('span', { className: 'dshgn_editorHint' }, t('editor.saveHint')),
+            ),
+          )
           : historyOpen
             ? h(
                 'div',
@@ -11656,5 +11687,5 @@ export const __internals = {
   TrashPane, renderEmbed, assetLabel, ThemeCard, readSession, writeSession, SESSION_KEY,
   themeVars, parseHex, rgbToHsl, hslToHex, ConflictPane, ArchiveCard, CardPane,
   TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale,
-  reportSync, dailyTemplateOf, frontmatterText, isTagKey, FollowCard, parseTable,
+  reportSync, dailyTemplateOf, frontmatterText, isTagKey, FollowCard, parseTable, countWords,
 }

@@ -3424,3 +3424,82 @@ test('表格的对齐标记按宿主那套认，金额那一列不会全贴到�
   const noAlign = parseTable(['| a | b |', '| --- | --- |', '| 1 | 2 |'], 0)
   assert.equal(noAlign.alignOf(0), '', '没写冒号时不该硬塞一个对齐方式')
 })
+
+test('编辑时脚下看得见字数和保存办法', async () => {
+  // 编辑态原来一个字的反馈都没有：不知道按什么保存，也不知道写了多少。
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const backBtn = window.document.querySelector('.dshgn_noteBack')
+  if (backBtn) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    try {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+  }
+
+  const res = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({ dir: '随手记', title: '字数验收', content: '# 字数验收\n\n开头\n', withDatePrefix: false, requestId: 'seed-wordcount' }),
+  })
+  assert.equal((await res.json()).path, '随手记/字数验收.md')
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+  const card = await waitFor(
+    () => {
+      const all = Array.from(window.document.querySelectorAll('.dshgn_card'))
+      return all.find((el) => (el.textContent || '').includes('字数验收')) || null
+    },
+    8000,
+    '列表里应该有这一篇',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 5000, '笔记打开了')
+
+  const editBtn = await waitFor(
+    () => {
+      const head = window.document.querySelector('.dshgn_noteHead')
+      if (head === null) return null
+      return Array.from(head.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '编辑') || null
+    },
+    5000,
+    '笔记头上有编辑按钮',
+  )
+  editBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const editor = await waitFor(() => window.document.querySelector('.dshgn_editor'), 5000, '编辑区出现')
+
+  // 脚下那一条：字数 + 快捷键提示
+  const foot = await waitFor(() => window.document.querySelector('.dshgn_editorFoot'), 5000, '编辑区脚下有字数和提示')
+  assert.ok((foot.textContent || '').includes('Ctrl+S'), '要告诉用户怎么保存')
+  assert.ok((foot.textContent || '').includes('Esc'), '也要告诉用户怎么放弃')
+
+  // 改几个字，字数要跟着走（不是进编辑态那一刻的死数字）
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set
+  setter.call(editor, '一二三四五六七八九十')
+  editor.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await waitFor(
+    () => ((window.document.querySelector('.dshgn_editorFoot') || {}).textContent || '').includes('10 字'),
+    5000,
+    '字数要跟着草稿走',
+  )
+
+  // 中英混排：中文按字、西文按词，别把两千字的中文报成八百
+  const { countWords } = panel.__internals
+  assert.equal(countWords('一二三'), 3)
+  assert.equal(countWords('hello world'), 2)
+  assert.equal(countWords('中文 hello 混排'), 5, '四个汉字 + 一个英文词')
+  assert.equal(countWords(''), 0)
+  assert.equal(countWords(null), 0)
+  assert.equal(countWords(undefined), 0)
+  assert.equal(countWords('123 456'), 2)
+
+  // Esc 退出编辑态，别把这一篇留在编辑里影响后面的用例
+  window.document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  await sleep(120)
+})

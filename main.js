@@ -8335,6 +8335,8 @@ var LEX = {
     "note.openEmbed": "\u6253\u5F00\u8FD9\u4E00\u7BC7",
     "note.embedBroken": "\u8FD9\u4E00\u7BC7\u6CA1\u8BFB\u51FA\u6765",
     "callout.expand": "\u5C55\u5F00",
+    "editor.words": "{n} \u5B57",
+    "editor.saveHint": "Ctrl+S \u4FDD\u5B58 \xB7 Esc \u53D6\u6D88",
     "callout.collapse": "\u6536\u8D77",
     "note.image": "\u56FE\u7247",
     "action.close": "\u5173\u95ED",
@@ -8739,6 +8741,8 @@ var LEX = {
     "note.openEmbed": "Open this note",
     "note.embedBroken": "Could not read this note",
     "callout.expand": "Expand",
+    "editor.words": "{n} words",
+    "editor.saveHint": "Ctrl+S to save \xB7 Esc to cancel",
     "callout.collapse": "Collapse",
     "note.image": "Image",
     "action.close": "Close",
@@ -9143,6 +9147,8 @@ var LEX = {
     "note.openEmbed": "Open deze notitie",
     "note.embedBroken": "Deze notitie kon niet gelezen worden",
     "callout.expand": "Uitvouwen",
+    "editor.words": "{n} woorden",
+    "editor.saveHint": "Ctrl+S om op te slaan \xB7 Esc om te annuleren",
     "callout.collapse": "Invouwen",
     "note.image": "Afbeelding",
     "action.close": "Sluiten",
@@ -10150,6 +10156,12 @@ function renderMarkdown(markdown, options) {
   }
   return renderBlocks(markdown, opts);
 }
+function countWords(text) {
+  const source = String(text === null || text === void 0 ? "" : text);
+  const cjk = source.match(/[\u4e00-\u9fa5]/g);
+  const latin = source.match(/[A-Za-z0-9_'-]+/g);
+  return (cjk === null ? 0 : cjk.length) + (latin === null ? 0 : latin.length);
+}
 function renderBlocks(markdown, options) {
   const opts = options || {};
   const lines = String(markdown || "").split(/\r?\n/);
@@ -10871,6 +10883,10 @@ var CSS = `
   background:transparent;color:var(--dsw-alias-label-primary);
   font-family:var(--font-text,var(--dsw-font-sans,inherit));font-size:var(--font-text-size,13px);
   line-height:var(--line-height-normal,1.7)}
+.dshgn_editorFoot{display:flex;align-items:center;gap:10px;padding:5px clamp(16px,3vw,32px);
+  border-top:0.5px solid var(--dsw-alias-border-l1);font-size:10.5px;
+  color:var(--dsw-alias-label-tertiary);flex:0 0 auto}
+.dshgn_editorHint{margin-left:auto;opacity:.75}
 .dshgn_empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:8px;padding:32px;text-align:center;color:var(--dsw-alias-label-tertiary)}
 .dshgn_emptyTitle{font-size:13px;color:var(--dsw-alias-label-secondary)}
@@ -16752,21 +16768,33 @@ function NotePane(props) {
         )
       )
     ),
-    editing ? h4("textarea", {
-      className: "dshgn_editor",
-      value: draft === null ? "" : draft,
-      spellCheck: false,
-      onChange: (event) => setDraft(event.target.value),
-      // 截图之后 Ctrl+V 是最顺手的插图方式。宿主接住了，面板以前什么都不做，
-      // 剪贴板里的图就悄悄没了。
-      onPaste: canAttach ? (event) => {
-        const files = event.clipboardData && event.clipboardData.files;
-        if (files && files.length > 0) {
-          event.preventDefault();
-          void onAttach(files);
-        }
-      } : void 0
-    }) : historyOpen ? h4(
+    editing ? h4(
+      b,
+      null,
+      h4("textarea", {
+        className: "dshgn_editor",
+        value: draft === null ? "" : draft,
+        spellCheck: false,
+        onChange: (event) => setDraft(event.target.value),
+        // 截图之后 Ctrl+V 是最顺手的插图方式。宿主接住了，面板以前什么都不做，
+        // 剪贴板里的图就悄悄没了。
+        onPaste: canAttach ? (event) => {
+          const files = event.clipboardData && event.clipboardData.files;
+          if (files && files.length > 0) {
+            event.preventDefault();
+            void onAttach(files);
+          }
+        } : void 0
+      }),
+      // 编辑时脚下那一条：字数 + 快捷键提示。原来编辑态一个字的反馈都没有，
+      // 用户不知道按什么保存、也不知道自己写了多少。
+      h4(
+        "div",
+        { className: "dshgn_editorFoot" },
+        h4("span", null, t3("editor.words").replace("{n}", String(countWords(draft)))),
+        h4("span", { className: "dshgn_editorHint" }, t3("editor.saveHint"))
+      )
+    ) : historyOpen ? h4(
       "div",
       { className: "dshgn_historyPane" },
       h4(
