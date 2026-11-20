@@ -702,6 +702,8 @@ async function saveFile(url, filename) {
         'note.anchorMissing': '这一篇里没有「{name}」这一节',
         'note.openEmbed': '打开这一篇',
         'note.embedBroken': '这一篇没读出来',
+        'callout.expand': '展开',
+        'callout.collapse': '收起',
         'note.image': '图片',
         'action.close': '关闭',
         'action.back': '返回列表',
@@ -1107,6 +1109,8 @@ async function saveFile(url, filename) {
         'note.anchorMissing': 'No section called "{name}" in this note',
         'note.openEmbed': 'Open this note',
         'note.embedBroken': 'Could not read this note',
+        'callout.expand': 'Expand',
+        'callout.collapse': 'Collapse',
         'note.image': 'Image',
         'action.close': 'Close',
         'action.back': 'Back to list',
@@ -1511,6 +1515,8 @@ async function saveFile(url, filename) {
         'note.anchorMissing': 'Geen kop met de naam ‘{name}’ in deze notitie',
         'note.openEmbed': 'Open deze notitie',
         'note.embedBroken': 'Deze notitie kon niet gelezen worden',
+        'callout.expand': 'Uitvouwen',
+        'callout.collapse': 'Invouwen',
         'note.image': 'Afbeelding',
         'action.close': 'Sluiten',
         'action.back': 'Terug naar lijst',
@@ -2256,6 +2262,9 @@ async function saveFile(url, filename) {
       'external-link': 'M14 4h6v6 M20 4l-9 9 M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5',
       rename: 'M9 4h6 M12 4v16 M9 20h6',
       attach: 'M14 3.5a4.5 4.5 0 0 1 6.4 6.4l-8.5 8.5a3 3 0 0 1-4.2-4.2l7.8-7.8',
+      warn: 'M12 4 3.5 19.5h17Z M12 10v4 M12 17h.01',
+      info: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z M12 11v5 M12 8h.01',
+      down: 'M12 5v14 M5 12l7 7 7-7',
     }
 
     function Icon(props) {
@@ -2696,6 +2705,86 @@ async function saveFile(url, filename) {
       return text.replace(new RegExp(`^\\s*#\\s+${escaped}\\s*\\n+`), '')
     }
 
+    // callout 的配色与图标。宿主里 callout 类型是自由的（[!任意名字] 都能写），
+    // 所以这里只给常见的一批配色，认不出的统一走 note 那套中性色——认不出就当普通
+    // 引用块处理会让用户写的 [!warning] 变成一串字符，比配色不准难看得多。
+    const CALLOUT_TONES = {
+      note: { icon: 'note', tone: '' },
+      info: { icon: 'info', tone: 'info' },
+      todo: { icon: 'check', tone: 'info' },
+      abstract: { icon: 'note', tone: 'info' },
+      summary: { icon: 'note', tone: 'info' },
+      tldr: { icon: 'note', tone: 'info' },
+      tip: { icon: 'brain', tone: 'success' },
+      hint: { icon: 'brain', tone: 'success' },
+      important: { icon: 'warn', tone: 'success' },
+      success: { icon: 'check', tone: 'success' },
+      check: { icon: 'check', tone: 'success' },
+      done: { icon: 'check', tone: 'success' },
+      question: { icon: 'info', tone: 'warn' },
+      help: { icon: 'info', tone: 'warn' },
+      faq: { icon: 'info', tone: 'warn' },
+      warning: { icon: 'warn', tone: 'warn' },
+      caution: { icon: 'warn', tone: 'warn' },
+      attention: { icon: 'warn', tone: 'warn' },
+      failure: { icon: 'close', tone: 'error' },
+      fail: { icon: 'close', tone: 'error' },
+      missing: { icon: 'close', tone: 'error' },
+      danger: { icon: 'warn', tone: 'error' },
+      error: { icon: 'warn', tone: 'error' },
+      bug: { icon: 'warn', tone: 'error' },
+      example: { icon: 'file', tone: '' },
+      quote: { icon: 'note', tone: '' },
+      cite: { icon: 'note', tone: '' },
+    }
+
+    /**
+     * 宿主的 callout（`> [!note] 标题` + 缩进正文）。
+     *
+     * 手写渲染器里以前整块当普通引用，[!note] 会原样显示成一行字符——用户写的
+     * 「注意」「警告」全变成噪音。这里把它拆成「图标 + 标题 + 正文」三块，
+     * 类型名不认识的也照样有标题，不吞字。
+     *
+     * 可折叠标记（[!note]- 默认收起、[!note]+ 默认展开）也认：收起时只留
+     * 标题那一行，点标题展开。宿主里 - 就是「默认收起」，照做。
+     */
+    function CalloutBlock(props) {
+      const type = String(props.type || '').toLowerCase()
+      const spec = CALLOUT_TONES[type] || { icon: 'note', tone: '' }
+      const t = getT()
+      const title = String(props.title || '').trim()
+      const foldable = props.fold === '-' || props.fold === '+'
+      const [open, setOpen] = React.useState(props.fold !== '-')
+      const bodyLines = Array.isArray(props.lines) ? props.lines : []
+      const hasBody = bodyLines.some((line) => String(line || '').trim() !== '')
+      return h(
+        'div',
+        {
+          className: 'dshgn_callout' + (spec.tone === '' ? '' : ' dshgn_callout-' + spec.tone),
+          'data-type': type,
+        },
+        h(
+          foldable ? 'button' : 'div',
+          {
+            type: foldable ? 'button' : undefined,
+            className: 'dshgn_calloutHead' + (foldable ? ' dshgn_calloutFold' : ''),
+            onClick: foldable
+              ? () => {
+                  setOpen((prev) => !prev)
+                }
+              : undefined,
+            title: foldable ? t(open ? 'callout.collapse' : 'callout.expand') : undefined,
+          },
+          h(Icon, { name: spec.icon, size: 13, className: 'dshgn_calloutIcon' }),
+          h('span', { className: 'dshgn_calloutTitle' }, title !== '' ? title : type),
+          foldable ? h(Icon, { name: open ? 'up' : 'down', size: 12 }) : null,
+        ),
+        open && hasBody
+          ? h('div', { className: 'dshgn_calloutBody' }, renderBlocks(bodyLines.join('\n'), props.opts))
+          : null,
+      )
+    }
+
     /**
      * 正文渲染的统一入口。
      *
@@ -2835,6 +2924,24 @@ async function saveFile(url, filename) {
           while (index < lines.length && lines[index].trim().startsWith('>')) {
             body.push(lines[index].trim().replace(/^>\s?/, ''))
             index += 1
+          }
+          // `> [!note] 标题` 是宿主的 callout。以前整块当普通引用渲染，
+          // `[!note]` 会原样显示成一串字符，用户写的「注意」和正文混在一起。
+          // 类型名不限英文——宿主认的是「方括号感叹号 + 任意名字」，
+          // 写成中文类型也照样是个 callout，只是配色走中性那套。
+          const callout = /^\[!([^\]\n]+?)\]([+-]?)\s*(.*)$/.exec(body[0].trim())
+          if (callout) {
+            blocks.push(
+              h(CalloutBlock, {
+                key: `b${key++}`,
+                type: callout[1],
+                fold: callout[2],
+                title: callout[3],
+                lines: body.slice(1),
+                opts,
+              }),
+            )
+            continue
           }
           blocks.push(
             h(
@@ -3396,6 +3503,32 @@ async function saveFile(url, filename) {
   padding-left:8px;margin-left:-8px}
 .dshgn_quote{margin:10px 0;padding:2px 0 2px 12px;border-left:2px solid var(--dsw-alias-border-l2);
   color:var(--dsw-alias-label-secondary)}
+/* callout：跟宿主一样「左竖线 + 淡底 + 一行标题」。类型只影响竖线与标题的颜色，
+   正文一律用常规色——整块染成警告色会让人以为笔记本身出错了。 */
+.dshgn_callout{margin:10px 0;padding:7px 11px;border-radius:0 8px 8px 0;
+  border-left:2.5px solid var(--dsw-alias-border-l2);
+  background:var(--dsw-alias-interactive-bg-hover)}
+.dshgn_callout-info{border-left-color:var(--dsw-alias-brand-primary)}
+.dshgn_callout-success{border-left-color:var(--dsw-alias-state-success-primary)}
+.dshgn_callout-warn{border-left-color:var(--dsw-alias-state-warn-primary)}
+.dshgn_callout-error{border-left-color:var(--dsw-alias-state-error-primary)}
+.dshgn_calloutHead{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;
+  color:var(--dsw-alias-label-primary);line-height:17px}
+.dshgn_callout-info .dshgn_calloutHead{color:var(--dsw-alias-brand-primary)}
+.dshgn_callout-success .dshgn_calloutHead{color:var(--dsw-alias-state-success-primary)}
+.dshgn_callout-warn .dshgn_calloutHead{color:var(--dsw-alias-state-warn-primary)}
+.dshgn_callout-error .dshgn_calloutHead{color:var(--dsw-alias-state-error-primary)}
+/* 可折叠时标题是按钮：去掉按钮默认样式，只留 hover 的一点底色，
+   让人能看出这一行能点。 */
+.dshgn_calloutFold{appearance:none;border:0;background:transparent;padding:0;margin:0;
+  width:100%;font:inherit;font-size:12px;font-weight:600;text-align:left;cursor:pointer;
+  border-radius:5px}
+.dshgn_calloutFold:hover{background:var(--dsw-alias-interactive-bg-hover-accent)}
+.dshgn_calloutIcon{flex:none}
+.dshgn_calloutTitle{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_calloutBody{margin-top:5px;color:var(--dsw-alias-label-secondary);font-size:12.5px}
+.dshgn_calloutBody .dshgn_p:first-child{margin-top:0}
+.dshgn_calloutBody .dshgn_p:last-child{margin-bottom:0}
 .dshgn_mdList{margin:8px 0;padding-left:22px}
 .dshgn_li{margin:3px 0;line-height:1.7}
 .dshgn_liCont{color:var(--dsw-alias-label-secondary)}
@@ -11344,7 +11477,7 @@ export {
 
 // 离线测试直接验渲染结构用，运行时无影响
 export const __internals = {
-  renderBlocks, renderInline, stripLeadingHeading, BrokenPane, LEX, ICONS, AudioPlayer, CloudPane,
+  renderBlocks, renderInline, stripLeadingHeading, BrokenPane, CalloutBlock, CALLOUT_TONES, LEX, ICONS, AudioPlayer, CloudPane,
   SyncPane, CloudCredCard, SettingsPane, GetnotePage, NotePane, TranscriptBlock,
   looksLikeTranscript, formatMoment, parseTranscript, stampToSeconds, activeTranscriptIndex,
   TrashPane, renderEmbed, assetLabel, ThemeCard, readSession, writeSession, SESSION_KEY,

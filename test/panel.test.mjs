@@ -3103,3 +3103,122 @@ test('正文里写的 #标签 也进标签云，点一下就能筛', async () =>
   }
 })
 
+
+test('引用块写成宿主那种 callout 时，图标标题正文各归各位', async () => {
+  // 手写渲染器以前把 `> [!warning] 注意` 整块当普通引用，[!warning] 原样显示成
+  // 一串字符。宿主渲染器本来就支持 callout，所以这条只在没有宿主渲染器时缺——
+  // 而面板的离线测试跑的正好是手写那一套，popout 窗口和渲染器注入失败时也会退回来。
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const backBtn = window.document.querySelector('.dshgn_noteBack')
+  if (backBtn) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    try {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+  }
+
+  const seed = async (title, content, requestId) => {
+    const res = await realFetch(server.origin + '/getnote/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({ dir: '随手记', title, content, withDatePrefix: false, requestId }),
+    })
+    const json = await res.json()
+    assert.equal(json.path, '随手记/' + title + '.md')
+    return json.path
+  }
+
+  const target = await seed(
+    'callout 验收',
+    [
+      '# callout 验收',
+      '',
+      '> [!warning] 别在周五上线',
+      '> 周五上线没人看着。',
+      '',
+      '> [!note]- 收起来的备注',
+      '> 展开才看得到的一段。',
+      '',
+      '> [!自造类型] 认不出的也照样有标题',
+      '> 类型名是自由的。',
+      '',
+      '普通引用块不该变成 callout。',
+      '',
+      '> 就是一段引用',
+      '',
+    ].join('\n'),
+    'seed-callout',
+  )
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+  const card = await waitFor(
+    () => Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === target),
+    5000,
+    'callout 笔记出现在列表里',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+
+  const boxes = await waitFor(
+    () => {
+      const all = Array.from(window.document.querySelectorAll('.dshgn_callout'))
+      return all.length >= 3 ? all : null
+    },
+    8000,
+    '三个 callout 都该渲染成 callout',
+  )
+  assert.equal(boxes.length, 3, '普通引用块不该算进来')
+
+  // ① 标题、正文各归各位，[!warning] 那串字符不该露在界面上
+  const warnBox = boxes.find((el) => el.getAttribute('data-type') === 'warning')
+  assert.ok(warnBox, '警告那块该在')
+  assert.equal((warnBox.querySelector('.dshgn_calloutTitle').textContent || '').trim(), '别在周五上线')
+  assert.ok((warnBox.querySelector('.dshgn_calloutBody').textContent || '').includes('没人看着'))
+  const whole = window.document.querySelector('.dshgn_md').textContent || ''
+  assert.ok(!whole.includes('[!warning]'), '类型标记不该原样露出来：' + whole.slice(0, 200))
+  assert.ok(!whole.includes('[!自造类型]'), '认不出的类型也不该露标记')
+  // 类型只影响配色，不该把标题吃掉：认不出的类型照样显示用户写的标题
+  const customBox = boxes.find((el) => el.getAttribute('data-type') === '自造类型')
+  assert.ok(customBox, '认不出的类型也该当 callout 渲染')
+  assert.equal((customBox.querySelector('.dshgn_calloutTitle').textContent || '').trim(), '认不出的也照样有标题')
+
+  // ② `[!note]-` 默认收起：正文不占地方，点一下标题才展开
+  const foldBox = boxes.find((el) => el.getAttribute('data-type') === 'note')
+  assert.ok(foldBox, '可折叠那块该在')
+  assert.equal(foldBox.querySelector('.dshgn_calloutBody'), null, '带减号的默认收起，正文先不占地方')
+  foldBox.querySelector('.dshgn_calloutFold').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(
+    () => {
+      const again = Array.from(window.document.querySelectorAll('.dshgn_callout')).find(
+        (el) => el.getAttribute('data-type') === 'note',
+      )
+      return again && again.querySelector('.dshgn_calloutBody') !== null
+    },
+    5000,
+    '点标题该展开',
+  )
+
+  // ③ 普通引用块还是普通引用块
+  assert.equal(window.document.querySelectorAll('.dshgn_quote').length, 1, '只有那一块是普通引用')
+
+  // ④ 渲染器层：类型与折叠标记按原样交给组件，认不出的类型有兜底
+  const { renderBlocks, CalloutBlock, CALLOUT_TONES } = panel.__internals
+  const rendered = renderBlocks('> [!tip] 试试\n> 正文\n', {})
+  assert.equal(rendered.length, 1)
+  assert.equal(rendered[0].type, CalloutBlock)
+  assert.equal(rendered[0].props.type, 'tip')
+  assert.equal(rendered[0].props.title, '试试')
+  assert.equal(rendered[0].props.fold, '')
+  const folded = renderBlocks('> [!warning]- 收着\n> 正文\n', {})
+  assert.equal(folded[0].props.fold, '-')
+  assert.equal(CALLOUT_TONES.tip.tone, 'success')
+  assert.equal(CALLOUT_TONES.warning.tone, 'warn')
+  assert.equal(CALLOUT_TONES.自造类型, undefined)
+})
+

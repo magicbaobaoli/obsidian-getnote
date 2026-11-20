@@ -8326,6 +8326,8 @@ var LEX = {
     "note.anchorMissing": "\u8FD9\u4E00\u7BC7\u91CC\u6CA1\u6709\u300C{name}\u300D\u8FD9\u4E00\u8282",
     "note.openEmbed": "\u6253\u5F00\u8FD9\u4E00\u7BC7",
     "note.embedBroken": "\u8FD9\u4E00\u7BC7\u6CA1\u8BFB\u51FA\u6765",
+    "callout.expand": "\u5C55\u5F00",
+    "callout.collapse": "\u6536\u8D77",
     "note.image": "\u56FE\u7247",
     "action.close": "\u5173\u95ED",
     "action.back": "\u8FD4\u56DE\u5217\u8868",
@@ -8727,6 +8729,8 @@ var LEX = {
     "note.anchorMissing": 'No section called "{name}" in this note',
     "note.openEmbed": "Open this note",
     "note.embedBroken": "Could not read this note",
+    "callout.expand": "Expand",
+    "callout.collapse": "Collapse",
     "note.image": "Image",
     "action.close": "Close",
     "action.back": "Back to list",
@@ -9128,6 +9132,8 @@ var LEX = {
     "note.anchorMissing": "Geen kop met de naam \u2018{name}\u2019 in deze notitie",
     "note.openEmbed": "Open deze notitie",
     "note.embedBroken": "Deze notitie kon niet gelezen worden",
+    "callout.expand": "Uitvouwen",
+    "callout.collapse": "Invouwen",
     "note.image": "Afbeelding",
     "action.close": "Sluiten",
     "action.back": "Terug naar lijst",
@@ -9709,7 +9715,10 @@ var ICONS = {
   note: "M5 4h9l5 5v11H5Z M14 4v5h5 M8 13h8 M8 17h5",
   "external-link": "M14 4h6v6 M20 4l-9 9 M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5",
   rename: "M9 4h6 M12 4v16 M9 20h6",
-  attach: "M14 3.5a4.5 4.5 0 0 1 6.4 6.4l-8.5 8.5a3 3 0 0 1-4.2-4.2l7.8-7.8"
+  attach: "M14 3.5a4.5 4.5 0 0 1 6.4 6.4l-8.5 8.5a3 3 0 0 1-4.2-4.2l7.8-7.8",
+  warn: "M12 4 3.5 19.5h17Z M12 10v4 M12 17h.01",
+  info: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z M12 11v5 M12 8h.01",
+  down: "M12 5v14 M5 12l7 7 7-7"
 };
 function Icon(props) {
   const size = props && typeof props.size === "number" ? props.size : 16;
@@ -10008,6 +10017,67 @@ function stripLeadingHeading(markdown, title) {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return text.replace(new RegExp(`^\\s*#\\s+${escaped}\\s*\\n+`), "");
 }
+var CALLOUT_TONES = {
+  note: { icon: "note", tone: "" },
+  info: { icon: "info", tone: "info" },
+  todo: { icon: "check", tone: "info" },
+  abstract: { icon: "note", tone: "info" },
+  summary: { icon: "note", tone: "info" },
+  tldr: { icon: "note", tone: "info" },
+  tip: { icon: "brain", tone: "success" },
+  hint: { icon: "brain", tone: "success" },
+  important: { icon: "warn", tone: "success" },
+  success: { icon: "check", tone: "success" },
+  check: { icon: "check", tone: "success" },
+  done: { icon: "check", tone: "success" },
+  question: { icon: "info", tone: "warn" },
+  help: { icon: "info", tone: "warn" },
+  faq: { icon: "info", tone: "warn" },
+  warning: { icon: "warn", tone: "warn" },
+  caution: { icon: "warn", tone: "warn" },
+  attention: { icon: "warn", tone: "warn" },
+  failure: { icon: "close", tone: "error" },
+  fail: { icon: "close", tone: "error" },
+  missing: { icon: "close", tone: "error" },
+  danger: { icon: "warn", tone: "error" },
+  error: { icon: "warn", tone: "error" },
+  bug: { icon: "warn", tone: "error" },
+  example: { icon: "file", tone: "" },
+  quote: { icon: "note", tone: "" },
+  cite: { icon: "note", tone: "" }
+};
+function CalloutBlock(props) {
+  const type = String(props.type || "").toLowerCase();
+  const spec = CALLOUT_TONES[type] || { icon: "note", tone: "" };
+  const t3 = getT();
+  const title = String(props.title || "").trim();
+  const foldable = props.fold === "-" || props.fold === "+";
+  const [open, setOpen] = h2(props.fold !== "-");
+  const bodyLines = Array.isArray(props.lines) ? props.lines : [];
+  const hasBody = bodyLines.some((line) => String(line || "").trim() !== "");
+  return h4(
+    "div",
+    {
+      className: "dshgn_callout" + (spec.tone === "" ? "" : " dshgn_callout-" + spec.tone),
+      "data-type": type
+    },
+    h4(
+      foldable ? "button" : "div",
+      {
+        type: foldable ? "button" : void 0,
+        className: "dshgn_calloutHead" + (foldable ? " dshgn_calloutFold" : ""),
+        onClick: foldable ? () => {
+          setOpen((prev) => !prev);
+        } : void 0,
+        title: foldable ? t3(open ? "callout.collapse" : "callout.expand") : void 0
+      },
+      h4(Icon, { name: spec.icon, size: 13, className: "dshgn_calloutIcon" }),
+      h4("span", { className: "dshgn_calloutTitle" }, title !== "" ? title : type),
+      foldable ? h4(Icon, { name: open ? "up" : "down", size: 12 }) : null
+    ),
+    open && hasBody ? h4("div", { className: "dshgn_calloutBody" }, renderBlocks(bodyLines.join("\n"), props.opts)) : null
+  );
+}
 function renderMarkdown(markdown, options) {
   const opts = options || {};
   if (hasMarkdownHost()) {
@@ -10118,6 +10188,20 @@ function renderBlocks(markdown, options) {
       while (index < lines.length && lines[index].trim().startsWith(">")) {
         body.push(lines[index].trim().replace(/^>\s?/, ""));
         index += 1;
+      }
+      const callout = /^\[!([^\]\n]+?)\]([+-]?)\s*(.*)$/.exec(body[0].trim());
+      if (callout) {
+        blocks.push(
+          h4(CalloutBlock, {
+            key: `b${key++}`,
+            type: callout[1],
+            fold: callout[2],
+            title: callout[3],
+            lines: body.slice(1),
+            opts
+          })
+        );
+        continue;
       }
       blocks.push(
         h4(
@@ -10656,6 +10740,32 @@ var CSS = `
   padding-left:8px;margin-left:-8px}
 .dshgn_quote{margin:10px 0;padding:2px 0 2px 12px;border-left:2px solid var(--dsw-alias-border-l2);
   color:var(--dsw-alias-label-secondary)}
+/* callout\uFF1A\u8DDF\u5BBF\u4E3B\u4E00\u6837\u300C\u5DE6\u7AD6\u7EBF + \u6DE1\u5E95 + \u4E00\u884C\u6807\u9898\u300D\u3002\u7C7B\u578B\u53EA\u5F71\u54CD\u7AD6\u7EBF\u4E0E\u6807\u9898\u7684\u989C\u8272\uFF0C
+   \u6B63\u6587\u4E00\u5F8B\u7528\u5E38\u89C4\u8272\u2014\u2014\u6574\u5757\u67D3\u6210\u8B66\u544A\u8272\u4F1A\u8BA9\u4EBA\u4EE5\u4E3A\u7B14\u8BB0\u672C\u8EAB\u51FA\u9519\u4E86\u3002 */
+.dshgn_callout{margin:10px 0;padding:7px 11px;border-radius:0 8px 8px 0;
+  border-left:2.5px solid var(--dsw-alias-border-l2);
+  background:var(--dsw-alias-interactive-bg-hover)}
+.dshgn_callout-info{border-left-color:var(--dsw-alias-brand-primary)}
+.dshgn_callout-success{border-left-color:var(--dsw-alias-state-success-primary)}
+.dshgn_callout-warn{border-left-color:var(--dsw-alias-state-warn-primary)}
+.dshgn_callout-error{border-left-color:var(--dsw-alias-state-error-primary)}
+.dshgn_calloutHead{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;
+  color:var(--dsw-alias-label-primary);line-height:17px}
+.dshgn_callout-info .dshgn_calloutHead{color:var(--dsw-alias-brand-primary)}
+.dshgn_callout-success .dshgn_calloutHead{color:var(--dsw-alias-state-success-primary)}
+.dshgn_callout-warn .dshgn_calloutHead{color:var(--dsw-alias-state-warn-primary)}
+.dshgn_callout-error .dshgn_calloutHead{color:var(--dsw-alias-state-error-primary)}
+/* \u53EF\u6298\u53E0\u65F6\u6807\u9898\u662F\u6309\u94AE\uFF1A\u53BB\u6389\u6309\u94AE\u9ED8\u8BA4\u6837\u5F0F\uFF0C\u53EA\u7559 hover \u7684\u4E00\u70B9\u5E95\u8272\uFF0C
+   \u8BA9\u4EBA\u80FD\u770B\u51FA\u8FD9\u4E00\u884C\u80FD\u70B9\u3002 */
+.dshgn_calloutFold{appearance:none;border:0;background:transparent;padding:0;margin:0;
+  width:100%;font:inherit;font-size:12px;font-weight:600;text-align:left;cursor:pointer;
+  border-radius:5px}
+.dshgn_calloutFold:hover{background:var(--dsw-alias-interactive-bg-hover-accent)}
+.dshgn_calloutIcon{flex:none}
+.dshgn_calloutTitle{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_calloutBody{margin-top:5px;color:var(--dsw-alias-label-secondary);font-size:12.5px}
+.dshgn_calloutBody .dshgn_p:first-child{margin-top:0}
+.dshgn_calloutBody .dshgn_p:last-child{margin-bottom:0}
 .dshgn_mdList{margin:8px 0;padding-left:22px}
 .dshgn_li{margin:3px 0;line-height:1.7}
 .dshgn_liCont{color:var(--dsw-alias-label-secondary)}
