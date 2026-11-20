@@ -13213,6 +13213,11 @@ ${insert}
     setPicked(/* @__PURE__ */ new Set());
     setBatchOpen(false);
   }, []);
+  const previewCard = q2((event, path) => {
+    const target = event.currentTarget;
+    if (!target) return;
+    hoverLink(event, target, path, "");
+  }, []);
   const runBatch = q2(
     async (kind) => {
       if (picked.size === 0) return;
@@ -13897,6 +13902,10 @@ ${insert}
                     } catch {
                     }
                   },
+                  // 停一下就把这一篇预览出来。用 mouseenter 而不是 mouseover：
+                  // 卡片里还有勾选框、命中行这些子元素，mouseover 在它们之间
+                  // 挪一下就会重发一次，宿主那边一卡一顿的。
+                  onMouseEnter: (event) => previewCard(event, entry.path),
                   onClick: (event) => {
                     if (!dirty) {
                       void openNote(entry.path, true);

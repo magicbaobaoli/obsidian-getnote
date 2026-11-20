@@ -8,7 +8,7 @@
 import * as React from 'preact/compat'
 import { error as logError, setDebugLogging } from '../core/log.js'
 
-import { MarkdownView, hasMarkdownHost, openLinkInVault } from './markdown.js'
+import { MarkdownView, hasMarkdownHost, openLinkInVault, hoverLink } from './markdown.js'
 
 // 面板要访问的本地服务地址，由 main.js 在服务监听成功后写入。
 // Obsidian 里没有宿主的 webServer，/getnote 全部走本机 127.0.0.1 回环端口。
@@ -6557,6 +6557,18 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         setBatchOpen(false)
       }, [])
 
+      // 鼠标停在列表卡片上，请宿主弹这一篇的页面预览。
+      //
+      // 宿主自己的文件列表就是这个手感：扫一眼标题、停一下，预览卡片出来，
+      // 不用点进去再点回来。面板以前只有正文里的 [[双链]] 有这个待遇，
+      // 列表里反而没有——而列表恰恰是「这几十篇里到底哪一篇」的场合。
+      // 预览怎么画、多大、要不要锁定都是宿主的事，这里只把「悬停的是谁」告诉它。
+      const previewCard = React.useCallback((event, path) => {
+        const target = event.currentTarget
+        if (!target) return
+        hoverLink(event, target, path, '')
+      }, [])
+
       const runBatch = React.useCallback(
         async (kind) => {
           if (picked.size === 0) return
@@ -7315,6 +7327,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                             // 某些环境不让写 dataTransfer，拖动就退化成没反应，不该炸
                           }
                         },
+                        // 停一下就把这一篇预览出来。用 mouseenter 而不是 mouseover：
+                        // 卡片里还有勾选框、命中行这些子元素，mouseover 在它们之间
+                        // 挪一下就会重发一次，宿主那边一卡一顿的。
+                        onMouseEnter: (event) => previewCard(event, entry.path),
                         onClick: (event) => {
 
                           // 有未保存的草稿才拦一下；没改动时不该弹框

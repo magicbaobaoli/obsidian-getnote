@@ -6296,3 +6296,93 @@ test('写到一半关掉窗口，下次打开那篇会问要不要接着写，�
   }
 })
 
+test('鼠标停在列表卡片上，请宿主把这一篇预览出来，别的地方不乱触发', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const back = window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    if (back) back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox) {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setter.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(400)
+  }
+
+  const createRes = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '预览验收',
+      content: ['# 预览验收', '', '这一篇只是用来把鼠标停上去。'].join('\n'),
+      withDatePrefix: false,
+      requestId: 'seed-card-hover',
+    }),
+  })
+  const created = await createRes.json()
+  const targetPath = created.path
+
+  const tabBtn = Array.from(window.document.querySelectorAll('.dshgn_tab')).find((el) => (el.textContent || '').trim() === '笔记')
+  tabBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const refreshBtn = Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.getAttribute('title') === '刷新')
+  refreshBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+
+  const cardOf = () => Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === targetPath)
+  const card = await waitFor(cardOf, 8000, '列表里该有这一篇')
+
+  // 没注入宿主时（离线环境）悬停什么都不该发生，更不该炸
+  assert.doesNotThrow(() => {
+    card.dispatchEvent(new window.MouseEvent('mouseenter', { bubbles: false }))
+  })
+
+  const md = await import('../src/view/markdown.js')
+  const triggered = []
+  md.setMarkdownHost({
+    app: { workspace: { trigger: (name, payload) => triggered.push({ name, payload }) } },
+    component: { id: 'panel' },
+    MarkdownRenderer: { render: async () => {} },
+  })
+  try {
+    // 宿主没登记预览来源时，事件会被静默丢掉——宁可不触发也不要乱弹
+    md.setHoverSource('')
+    card.dispatchEvent(new window.MouseEvent('mouseenter', { bubbles: false }))
+    assert.equal(triggered.length, 0, '没登记来源时不该触发')
+
+    md.setHoverSource('getnote-brain')
+    card.dispatchEvent(new window.MouseEvent('mouseenter', { bubbles: false }))
+    assert.equal(triggered.length, 1, '登记之后应该请宿主弹预览')
+    assert.equal(triggered[0].name, 'hover-link')
+    const payload = triggered[0].payload
+    assert.equal(payload.source, 'getnote-brain')
+    assert.equal(payload.linktext, targetPath, '预览的应该是鼠标停的那一篇')
+    assert.equal(payload.sourcePath, '', '列表里没有当前笔记，不该瞎报一个来源路径')
+    assert.equal(payload.targetEl, card, '预览要贴着被悬停的那张卡片')
+    assert.equal(payload.hoverParent.id, 'panel')
+
+    // 卡片里的勾选框是子元素：mouseenter 不冒泡，挪进去不该再触发一次
+    const box = card.querySelector('.dshgn_pickBox')
+    box.dispatchEvent(new window.MouseEvent('mouseenter', { bubbles: false }))
+    assert.equal(triggered.length, 1, '在卡片内部挪动不该反复触发')
+
+    // 宿主那边炸了也不能把面板带崩
+    md.setMarkdownHost({
+      app: { workspace: { trigger() { throw new Error('宿主炸了') } } },
+      component: {},
+      MarkdownRenderer: { render: async () => {} },
+    })
+    assert.doesNotThrow(() => {
+      card.dispatchEvent(new window.MouseEvent('mouseenter', { bubbles: false }))
+    })
+  } finally {
+    md.clearMarkdownHost()
+    md.setHoverSource('')
+  }
+})
+
