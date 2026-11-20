@@ -1281,7 +1281,7 @@ export default class GetnoteObsidianPlugin extends Plugin {
    * 面板传进来的是「相对笔记目录」的路径，宿主要的是库内相对路径，这里补上子目录。
    * 拿不到文件或宿主没提供这个方法时返回空串，面板退回原来的绝对路径口径。
    */
-  markdownLinkFor(path) {
+  markdownLinkFor(path, subpath) {
     try {
       const rel = String(path || '').replace(/^\/+/, '')
       if (rel === '') return ''
@@ -1292,7 +1292,7 @@ export default class GetnoteObsidianPlugin extends Plugin {
       if (!file) return ''
       const manager = this.app.fileManager
       if (!manager || typeof manager.generateMarkdownLink !== 'function') return ''
-      const link = manager.generateMarkdownLink(file, '')
+      const link = manager.generateMarkdownLink(file, '', typeof subpath === 'string' ? subpath : '')
       return typeof link === 'string' ? link : ''
     } catch {
       return ''

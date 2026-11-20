@@ -7160,3 +7160,111 @@ test('搜出来之后在搜索框里按回车就打开排在最前面的那篇�
   await sleep(200)
   await clearBox()
 })
+
+
+test('大纲里那一节能抄一条指向它的链接，怎么拼先问宿主、问不到就按 [[路径#小节]] 拼', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+
+  // 前一个用例可能把某篇开着，先退回干净的空态
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    const backBtn = window.document.querySelector('.dshgn_noteBack')
+    if (backBtn) {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    }
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  const box = await waitFor(() => window.document.querySelector('.dshgn_search'), 5000, '搜索框')
+  const setInput = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  setInput.call(box, '')
+  box.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(260)
+
+  const seed = ['# 大纲链接验收', '', '第一节的话。', '', '## 第二节', '', '第二节的话。', ''].join('\n')
+  const res = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '大纲链接验收',
+      content: seed,
+      withDatePrefix: false,
+      requestId: 'seed-outline-copy-link',
+    }),
+  })
+  assert.equal((await res.json()).path, '随手记/大纲链接验收.md')
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  const card = await waitFor(
+    () => {
+      const all = Array.from(window.document.querySelectorAll('.dshgn_card'))
+      return all.find((el) => (el.textContent || '').includes('大纲链接验收')) || null
+    },
+    8000,
+    '列表里的那一篇',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+
+  const rows = await waitFor(
+    () => {
+      const all = Array.from(window.document.querySelectorAll('.dshgn_outlineRow'))
+      return all.length >= 2 ? all : null
+    },
+    8000,
+    '大纲里应该有几行',
+  )
+  // 每一行都得有标题按钮 + 一颗抄链接的按钮，缺一颗这一行就只剩「跳过去」
+  for (const row of rows) {
+    assert.ok(row.querySelector('.dshgn_outlineItem') !== null, '一行里要有标题按钮')
+    assert.ok(row.querySelector('.dshgn_outlineCopy') !== null, '一行里要有抄链接的按钮')
+  }
+
+  // 第二节那一行：点它右边那颗，抄的是「指向这一节」的链接
+  const rowOf = (text) =>
+    Array.from(window.document.querySelectorAll('.dshgn_outlineRow')).find(
+      (el) => (el.querySelector('.dshgn_outlineItem').textContent || '') === text,
+    )
+  const copyOf = (text) => rowOf(text).querySelector('.dshgn_outlineCopy')
+  assert.equal(copyOf('第二节').getAttribute('title'), '复制指向这一节的链接')
+  assert.equal(copyOf('第二节').getAttribute('aria-label'), '复制指向这一节的链接')
+
+  const written = []
+  clipboard.writeText = async (text) => { written.push(String(text)) }
+  const asked = []
+  panel.setMarkdownLink((p, sub) => {
+    asked.push([String(p), String(sub)])
+    return '[[宿主给的这一节]]'
+  })
+  copyOf('第二节').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => written.length > 0, 5000, '抄到剪贴板')
+  assert.equal(written[0], '[[宿主给的这一节]]', '应该用宿主生成的链接，实际 ' + written[0])
+  assert.deepEqual(asked, [['随手记/大纲链接验收.md', '第二节']], '递给宿主的应该是这篇 + 这一节')
+
+  // 宿主给不出（返回空）时按最通用的 [[路径#小节]] 拼一份，不能抄出一段空白
+  panel.setMarkdownLink(() => '')
+  copyOf('第二节').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => written.length > 1, 5000, '第二次抄')
+  assert.equal(written[1], '[[随手记/大纲链接验收.md#第二节]]', '应该退回 [[路径#小节]]，实际 ' + written[1])
+
+  // 宿主实现炸了也不该抄出空白
+  panel.setMarkdownLink(() => { throw new Error('宿主炸了') })
+  copyOf('第二节').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => written.length > 2, 5000, '第三次抄')
+  assert.equal(written[2], '[[随手记/大纲链接验收.md#第二节]]', '宿主炸了也要退回 [[路径#小节]]')
+
+  // 点标题本身还是「跳过去」，不该顺手抄一份（两件事得分开）
+  const before = written.length
+  rowOf('第二节').querySelector('.dshgn_outlineItem').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+  assert.equal(written.length, before, '点标题只跳转，不该抄链接')
+
+  panel.setMarkdownLink(null)
+})

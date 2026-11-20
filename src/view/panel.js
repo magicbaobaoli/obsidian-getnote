@@ -216,10 +216,12 @@ async function saveFile(url, filename) {
     export function setMarkdownLink(fn) {
       __markdownLink = typeof fn === 'function' ? fn : null
     }
-    function markdownLinkOf(path) {
+    // 第二个参数是「小节」：链接到某一节时要拼成 [[笔记#小节]]，
+    // 具体怎么拼（Wiki 还是 Markdown、# 还是 %23）只有宿主知道，一起递过去。
+    function markdownLinkOf(path, subpath) {
       if (__markdownLink === null) return ''
       try {
-        const text = __markdownLink(String(path || ''))
+        const text = __markdownLink(String(path || ''), String(subpath || ''))
         return typeof text === 'string' ? text : ''
       } catch {
         return ''
@@ -692,6 +694,7 @@ async function saveFile(url, filename) {
         'note.menuOpen': '打开这篇',
         'note.localAudio': '本地录音',
         'note.outline': '本文大纲',
+        'note.copyHeadingLink': '复制指向这一节的链接',
         'note.openImage': '在 Obsidian 里打开这张图',
         'note.zoomImage': '点开看大图',
         'note.navBack': '回上一篇',
@@ -1153,6 +1156,7 @@ async function saveFile(url, filename) {
         'note.menuOpen': 'Open this note',
         'note.localAudio': 'Local recording',
         'note.outline': 'Outline',
+        'note.copyHeadingLink': 'Copy a link to this section',
         'note.openImage': 'Open this image in Obsidian',
         'note.zoomImage': 'Click to enlarge',
         'note.navBack': 'Previous note',
@@ -1613,6 +1617,7 @@ async function saveFile(url, filename) {
         'note.menuOpen': 'Deze notitie openen',
         'note.localAudio': 'Lokale opname',
         'note.outline': 'Overzicht',
+        'note.copyHeadingLink': 'Kopieer een link naar dit kopje',
         'note.openImage': 'Open deze afbeelding in Obsidian',
         'note.zoomImage': 'Klik om te vergroten',
         'note.navBack': 'Vorige notitie',
@@ -4366,10 +4371,23 @@ async function saveFile(url, filename) {
   background:rgba(var(--dshgn-tintRgb),.1);font-size:10px;line-height:15px;
   color:var(--dsw-alias-label-tertiary)}
 .dshgn_outlineList{padding:0 0 5px;max-height:220px;overflow-y:auto}
-.dshgn_outlineItem{appearance:none;display:block;width:100%;padding:3px 10px;border:0;
+/* 一行 = 标题 + 一颗「抄链接」的小按钮。按钮平时不显形，鼠标停在那一行
+   或者用键盘聚焦到它才出现——大纲本来就是一列纯文字，多十几颗图标会把
+   「读标题」这件事搅乱。 */
+.dshgn_outlineRow{display:flex;align-items:center;gap:2px}
+.dshgn_outlineItem{appearance:none;display:block;flex:1;min-width:0;padding:3px 10px;border:0;
   background:transparent;font:inherit;font-size:12px;line-height:1.5;
   color:var(--dsw-alias-label-secondary);cursor:pointer;text-align:left;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dshgn_outlineCopy{appearance:none;flex:none;display:inline-flex;align-items:center;
+  justify-content:center;width:20px;height:20px;margin-right:4px;padding:0;border:0;
+  border-radius:5px;background:transparent;color:var(--dsw-alias-label-tertiary);
+  cursor:pointer;opacity:0;transition:opacity .12s}
+.dshgn_outlineRow:hover .dshgn_outlineCopy,
+.dshgn_outlineCopy:focus-visible{opacity:1}
+.dshgn_outlineCopy:hover{background:var(--dsw-alias-interactive-bg-hover-accent);
+  color:var(--dsw-alias-brand-primary)}
+.dshgn_outlineCopy:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dshgn_outlineItem:hover{background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-brand-primary)}
 /* 正在读的那一节：左侧一道竖线 + 主色文字。只加粗上色不动背景，
    否则和「悬停」抢视觉，用户分不清「我点过」和「鼠标正停在这」。 */
@@ -6612,6 +6630,28 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         }
       }, [current, status, showToast, t])
 
+      // 大纲里那一节：把「指向这一节的链接」抄下来。
+      //
+      // 想引用某一节时得自己拼 [[笔记#小节]]，而拼错了不会报错，只会变成一条
+      // 点过去没反应的死链。怎么拼仍然问宿主（Wiki 还是 Markdown、# 要不要转义），
+      // 问不到就按 [[路径#小节]] 拼一份——那是 Obsidian 里最通用的写法。
+      const copyHeadingLink = React.useCallback(
+        async (heading) => {
+          if (current === null) return
+          const name = typeof heading === 'string' ? heading.trim() : ''
+          if (name === '') return
+          const hosted = markdownLinkOf(current.path, name)
+          const text = hosted !== '' ? hosted : `[[${current.path}#${name}]]`
+          try {
+            await navigator.clipboard.writeText(text)
+            showToast(t('action.copied'))
+          } catch {
+            showToast(text)
+          }
+        },
+        [current, showToast, t],
+      )
+
       // 代码块上的「复制」：把那一整段原样搬走。
       // 读笔记时想抄一段示例命令/报错，用鼠标划选很容易漏掉首尾，
       // 还会把旁边的语言标签和缩进一起带上；这里给的是围栏里那一份原文。
@@ -7841,6 +7881,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             onCopyReference: copyReference,
             onDuplicate: () => duplicateNote(current === null ? '' : current.path),
             onCopyText: copyText,
+            // 大纲里那一节 → 抄一条指向它的链接
+            onCopyHeadingLink: copyHeadingLink,
             // 正文里划选一段 → 存成新笔记（摘抄/摘录单独立篇）
             onCreateFromText: createFromText,
             // 就地查找「到头了 / 没有这个词」要说一声：静默不动的话，
@@ -12132,6 +12174,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 正文里划选一段 → 存成新笔记；没接上就只给「复制」，不摆一个按了没反应的按钮
       const onCreateFromText = typeof props.onCreateFromText === 'function' ? props.onCreateFromText : null
     const onDuplicate = typeof props.onDuplicate === 'function' ? props.onDuplicate : null
+      // 大纲里那一节点一下就抄一条链接过去；没接上就不摆那颗按钮
+      const onCopyHeadingLink = typeof props.onCopyHeadingLink === 'function' ? props.onCopyHeadingLink : null
       const anchorRequest = props.anchor
       const onAnchorDone = props.onAnchorDone
       // 嵌入 ![[另一篇笔记]] 时用它把名字解析成路径（与点双链共用一套口径）
@@ -13641,22 +13685,44 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                           'div',
                           { className: 'dshgn_outlineList' },
                           current.outline.map((item, index) =>
+                            // 一行两件事：点标题跳过去，点右边那颗抄一条指向这一节的
+                            // 链接。以前想引用某一节得自己拼 [[笔记#小节]]，拼错了
+                            // 不报错，只是变成一条点了没反应的死链。
                             h(
-                              'button',
-                              {
-                                key: `${index}-${item.text}`,
-                                type: 'button',
-                                className: 'dshgn_outlineItem',
-                                // 缩进跟着标题层级走，三级标题比一级多缩进两格，
-                                // 结构一眼能看出来，不用读文字判断谁是谁的子节。
-                                style: { paddingLeft: 8 + Math.max(0, item.level - 1) * 12 },
-                                // 现在读到哪一节：长笔记滚到一半时，用户会想确认
-                                // 「我看的是第几节」，亮着的那一条就是答案。
-                                'data-on': activeHeading === index ? 'true' : 'false',
-                                'aria-current': activeHeading === index ? 'true' : undefined,
-                                onClick: () => jumpToHeading(index),
-                              },
-                              item.text,
+                              'div',
+                              { key: `${index}-${item.text}`, className: 'dshgn_outlineRow' },
+                              h(
+                                'button',
+                                {
+                                  type: 'button',
+                                  className: 'dshgn_outlineItem',
+                                  // 缩进跟着标题层级走，三级标题比一级多缩进两格，
+                                  // 结构一眼能看出来，不用读文字判断谁是谁的子节。
+                                  style: { paddingLeft: 8 + Math.max(0, item.level - 1) * 12 },
+                                  // 现在读到哪一节：长笔记滚到一半时，用户会想确认
+                                  // 「我看的是第几节」，亮着的那一条就是答案。
+                                  'data-on': activeHeading === index ? 'true' : 'false',
+                                  'aria-current': activeHeading === index ? 'true' : undefined,
+                                  title: item.text,
+                                  onClick: () => jumpToHeading(index),
+                                },
+                                item.text,
+                              ),
+                              onCopyHeadingLink === null
+                                ? null
+                                : h(
+                                    'button',
+                                    {
+                                      type: 'button',
+                                      className: 'dshgn_outlineCopy',
+                                      title: t('note.copyHeadingLink'),
+                                      'aria-label': t('note.copyHeadingLink'),
+                                      onClick: () => {
+                                        void onCopyHeadingLink(item.text)
+                                      },
+                                    },
+                                    h(Icon, { name: 'link', size: 11 }),
+                                  ),
                             ),
                           ),
                         )

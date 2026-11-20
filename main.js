@@ -8052,10 +8052,10 @@ var __markdownLink = null;
 function setMarkdownLink(fn2) {
   __markdownLink = typeof fn2 === "function" ? fn2 : null;
 }
-function markdownLinkOf(path) {
+function markdownLinkOf(path, subpath) {
   if (__markdownLink === null) return "";
   try {
-    const text = __markdownLink(String(path || ""));
+    const text = __markdownLink(String(path || ""), String(subpath || ""));
     return typeof text === "string" ? text : "";
   } catch {
     return "";
@@ -8417,6 +8417,7 @@ var LEX = {
     "note.menuOpen": "\u6253\u5F00\u8FD9\u7BC7",
     "note.localAudio": "\u672C\u5730\u5F55\u97F3",
     "note.outline": "\u672C\u6587\u5927\u7EB2",
+    "note.copyHeadingLink": "\u590D\u5236\u6307\u5411\u8FD9\u4E00\u8282\u7684\u94FE\u63A5",
     "note.openImage": "\u5728 Obsidian \u91CC\u6253\u5F00\u8FD9\u5F20\u56FE",
     "note.zoomImage": "\u70B9\u5F00\u770B\u5927\u56FE",
     "note.navBack": "\u56DE\u4E0A\u4E00\u7BC7",
@@ -8874,6 +8875,7 @@ var LEX = {
     "note.menuOpen": "Open this note",
     "note.localAudio": "Local recording",
     "note.outline": "Outline",
+    "note.copyHeadingLink": "Copy a link to this section",
     "note.openImage": "Open this image in Obsidian",
     "note.zoomImage": "Click to enlarge",
     "note.navBack": "Previous note",
@@ -9331,6 +9333,7 @@ var LEX = {
     "note.menuOpen": "Deze notitie openen",
     "note.localAudio": "Lokale opname",
     "note.outline": "Overzicht",
+    "note.copyHeadingLink": "Kopieer een link naar dit kopje",
     "note.openImage": "Open deze afbeelding in Obsidian",
     "note.zoomImage": "Klik om te vergroten",
     "note.navBack": "Vorige notitie",
@@ -11352,10 +11355,23 @@ var CSS = `
   background:rgba(var(--dshgn-tintRgb),.1);font-size:10px;line-height:15px;
   color:var(--dsw-alias-label-tertiary)}
 .dshgn_outlineList{padding:0 0 5px;max-height:220px;overflow-y:auto}
-.dshgn_outlineItem{appearance:none;display:block;width:100%;padding:3px 10px;border:0;
+/* \u4E00\u884C = \u6807\u9898 + \u4E00\u9897\u300C\u6284\u94FE\u63A5\u300D\u7684\u5C0F\u6309\u94AE\u3002\u6309\u94AE\u5E73\u65F6\u4E0D\u663E\u5F62\uFF0C\u9F20\u6807\u505C\u5728\u90A3\u4E00\u884C
+   \u6216\u8005\u7528\u952E\u76D8\u805A\u7126\u5230\u5B83\u624D\u51FA\u73B0\u2014\u2014\u5927\u7EB2\u672C\u6765\u5C31\u662F\u4E00\u5217\u7EAF\u6587\u5B57\uFF0C\u591A\u5341\u51E0\u9897\u56FE\u6807\u4F1A\u628A
+   \u300C\u8BFB\u6807\u9898\u300D\u8FD9\u4EF6\u4E8B\u6405\u4E71\u3002 */
+.dshgn_outlineRow{display:flex;align-items:center;gap:2px}
+.dshgn_outlineItem{appearance:none;display:block;flex:1;min-width:0;padding:3px 10px;border:0;
   background:transparent;font:inherit;font-size:12px;line-height:1.5;
   color:var(--dsw-alias-label-secondary);cursor:pointer;text-align:left;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dshgn_outlineCopy{appearance:none;flex:none;display:inline-flex;align-items:center;
+  justify-content:center;width:20px;height:20px;margin-right:4px;padding:0;border:0;
+  border-radius:5px;background:transparent;color:var(--dsw-alias-label-tertiary);
+  cursor:pointer;opacity:0;transition:opacity .12s}
+.dshgn_outlineRow:hover .dshgn_outlineCopy,
+.dshgn_outlineCopy:focus-visible{opacity:1}
+.dshgn_outlineCopy:hover{background:var(--dsw-alias-interactive-bg-hover-accent);
+  color:var(--dsw-alias-brand-primary)}
+.dshgn_outlineCopy:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dshgn_outlineItem:hover{background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-brand-primary)}
 /* \u6B63\u5728\u8BFB\u7684\u90A3\u4E00\u8282\uFF1A\u5DE6\u4FA7\u4E00\u9053\u7AD6\u7EBF + \u4E3B\u8272\u6587\u5B57\u3002\u53EA\u52A0\u7C97\u4E0A\u8272\u4E0D\u52A8\u80CC\u666F\uFF0C
    \u5426\u5219\u548C\u300C\u60AC\u505C\u300D\u62A2\u89C6\u89C9\uFF0C\u7528\u6237\u5206\u4E0D\u6E05\u300C\u6211\u70B9\u8FC7\u300D\u548C\u300C\u9F20\u6807\u6B63\u505C\u5728\u8FD9\u300D\u3002 */
@@ -13277,6 +13293,22 @@ ${insert}
       showToast(text);
     }
   }, [current, status, showToast, t4]);
+  const copyHeadingLink = q2(
+    async (heading) => {
+      if (current === null) return;
+      const name = typeof heading === "string" ? heading.trim() : "";
+      if (name === "") return;
+      const hosted = markdownLinkOf(current.path, name);
+      const text = hosted !== "" ? hosted : `[[${current.path}#${name}]]`;
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast(t4("action.copied"));
+      } catch {
+        showToast(text);
+      }
+    },
+    [current, showToast, t4]
+  );
   const copyText = q2(
     async (text) => {
       const body2 = typeof text === "string" ? text : "";
@@ -14366,6 +14398,8 @@ ${insert}
         onCopyReference: copyReference,
         onDuplicate: () => duplicateNote(current === null ? "" : current.path),
         onCopyText: copyText,
+        // 大纲里那一节 → 抄一条指向它的链接
+        onCopyHeadingLink: copyHeadingLink,
         // 正文里划选一段 → 存成新笔记（摘抄/摘录单独立篇）
         onCreateFromText: createFromText,
         // 就地查找「到头了 / 没有这个词」要说一声：静默不动的话，
@@ -17995,6 +18029,7 @@ function NotePane(props) {
   const onJumpToLine = typeof props.onJumpToLine === "function" ? props.onJumpToLine : null;
   const onCreateFromText = typeof props.onCreateFromText === "function" ? props.onCreateFromText : null;
   const onDuplicate = typeof props.onDuplicate === "function" ? props.onDuplicate : null;
+  const onCopyHeadingLink = typeof props.onCopyHeadingLink === "function" ? props.onCopyHeadingLink : null;
   const anchorRequest = props.anchor;
   const onAnchorDone = props.onAnchorDone;
   const resolveNote = props.resolveNote;
@@ -19216,22 +19251,44 @@ function NotePane(props) {
           "div",
           { className: "dshgn_outlineList" },
           current.outline.map(
-            (item, index) => h4(
-              "button",
-              {
-                key: `${index}-${item.text}`,
-                type: "button",
-                className: "dshgn_outlineItem",
-                // 缩进跟着标题层级走，三级标题比一级多缩进两格，
-                // 结构一眼能看出来，不用读文字判断谁是谁的子节。
-                style: { paddingLeft: 8 + Math.max(0, item.level - 1) * 12 },
-                // 现在读到哪一节：长笔记滚到一半时，用户会想确认
-                // 「我看的是第几节」，亮着的那一条就是答案。
-                "data-on": activeHeading === index ? "true" : "false",
-                "aria-current": activeHeading === index ? "true" : void 0,
-                onClick: () => jumpToHeading(index)
-              },
-              item.text
+            (item, index) => (
+              // 一行两件事：点标题跳过去，点右边那颗抄一条指向这一节的
+              // 链接。以前想引用某一节得自己拼 [[笔记#小节]]，拼错了
+              // 不报错，只是变成一条点了没反应的死链。
+              h4(
+                "div",
+                { key: `${index}-${item.text}`, className: "dshgn_outlineRow" },
+                h4(
+                  "button",
+                  {
+                    type: "button",
+                    className: "dshgn_outlineItem",
+                    // 缩进跟着标题层级走，三级标题比一级多缩进两格，
+                    // 结构一眼能看出来，不用读文字判断谁是谁的子节。
+                    style: { paddingLeft: 8 + Math.max(0, item.level - 1) * 12 },
+                    // 现在读到哪一节：长笔记滚到一半时，用户会想确认
+                    // 「我看的是第几节」，亮着的那一条就是答案。
+                    "data-on": activeHeading === index ? "true" : "false",
+                    "aria-current": activeHeading === index ? "true" : void 0,
+                    title: item.text,
+                    onClick: () => jumpToHeading(index)
+                  },
+                  item.text
+                ),
+                onCopyHeadingLink === null ? null : h4(
+                  "button",
+                  {
+                    type: "button",
+                    className: "dshgn_outlineCopy",
+                    title: t4("note.copyHeadingLink"),
+                    "aria-label": t4("note.copyHeadingLink"),
+                    onClick: () => {
+                      void onCopyHeadingLink(item.text);
+                    }
+                  },
+                  h4(Icon, { name: "link", size: 11 })
+                )
+              )
             )
           )
         ) : null
@@ -21035,7 +21092,7 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
    * 面板传进来的是「相对笔记目录」的路径，宿主要的是库内相对路径，这里补上子目录。
    * 拿不到文件或宿主没提供这个方法时返回空串，面板退回原来的绝对路径口径。
    */
-  markdownLinkFor(path) {
+  markdownLinkFor(path, subpath) {
     try {
       const rel = String(path || "").replace(/^\/+/, "");
       if (rel === "") return "";
@@ -21046,7 +21103,7 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       if (!file) return "";
       const manager = this.app.fileManager;
       if (!manager || typeof manager.generateMarkdownLink !== "function") return "";
-      const link = manager.generateMarkdownLink(file, "");
+      const link = manager.generateMarkdownLink(file, "", typeof subpath === "string" ? subpath : "");
       return typeof link === "string" ? link : "";
     } catch {
       return "";
