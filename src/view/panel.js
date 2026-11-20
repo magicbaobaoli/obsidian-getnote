@@ -701,6 +701,7 @@ async function saveFile(url, filename) {
         'note.fontSize.l': '大字',
         'note.wikilinkMissing': '库里找不到「{name}」这篇笔记',
         'note.anchorMissing': '这一篇里没有「{name}」这一节',
+        'note.blockRef': '本页某一段',
         'note.openEmbed': '打开这一篇',
         'note.embedBroken': '这一篇没读出来',
         'callout.expand': '展开',
@@ -1111,6 +1112,7 @@ async function saveFile(url, filename) {
         'note.fontSize.l': 'Large',
         'note.wikilinkMissing': 'No note named "{name}" in this vault',
         'note.anchorMissing': 'No section called "{name}" in this note',
+        'note.blockRef': 'A paragraph on this page',
         'note.openEmbed': 'Open this note',
         'note.embedBroken': 'Could not read this note',
         'callout.expand': 'Expand',
@@ -1520,6 +1522,7 @@ async function saveFile(url, filename) {
         'note.fontSize.l': 'Groot',
         'note.wikilinkMissing': 'Geen notitie met de naam ‘{name}’ in deze map',
         'note.anchorMissing': 'Geen kop met de naam ‘{name}’ in deze notitie',
+        'note.blockRef': 'Een alinea op deze pagina',
         'note.openEmbed': 'Open deze notitie',
         'note.embedBroken': 'Deze notitie kon niet gelezen worden',
         'callout.expand': 'Uitvouwen',
@@ -2394,7 +2397,18 @@ async function saveFile(url, filename) {
                 },
                 // 带小节时显示「笔记 › 小节」：只显示笔记名的话，同一篇被链到
                 // 不同小节看起来一模一样，点进去落在哪儿全靠猜。
-                label || (target === '' ? anchor : anchor === '' ? target : `${target} › ${anchor}`),
+                // 块引用那一串 `^abc123` 对人没有意义，不摆在链接上：
+                // 有笔记名就只显示笔记名，只有块 id 时显示「本页某一段」。
+                label ||
+                  (isBlockAnchor(anchor)
+                    ? target === ''
+                      ? t('note.blockRef')
+                      : target
+                    : target === ''
+                      ? anchor
+                      : anchor === ''
+                        ? target
+                        : `${target} › ${anchor}`),
               ),
             )
           }
@@ -2434,6 +2448,32 @@ async function saveFile(url, filename) {
         .replace(/\s+/g, ' ')
         .trim()
         .toLowerCase()
+    }
+
+    /**
+     * 块引用（block reference）。
+     *
+     * 宿主的写法是「块末尾一个空格加 ^ 再加 id」，双链写成 `[[笔记#^abc123]]`，
+     * 指的是那一篇里标了这个 id 的那**一段**，不是某一节标题。以前我们把它当小节名
+     * 去找标题，永远找不到，于是弹一句「这一篇里没有 ^abc123 这一节」——链接没坏，
+     * 坏的是我们的理解。
+     */
+    const BLOCK_ID_RE = /(?:^|\s)\^([A-Za-z0-9-]{1,64})\s*$/
+
+    /** 双链 # 后面那一段是不是块引用（以 ^ 开头），而不是小节名。 */
+    function isBlockAnchor(text) {
+      return /^\^\s*[A-Za-z0-9-]{1,64}$/.test(String(text || '').trim())
+    }
+
+    /** 一行文字末尾的块 id，没有就返回空串。 */
+    function blockIdIn(text) {
+      const hit = BLOCK_ID_RE.exec(String(text || ''))
+      return hit === null ? '' : hit[1]
+    }
+
+    /** 把块末尾那个 ^id 削掉——它是给链接用的记号，不该显示在正文里。 */
+    function stripBlockId(text) {
+      return String(text || '').replace(BLOCK_ID_RE, '').trim()
     }
 
     /**
@@ -2518,6 +2558,27 @@ async function saveFile(url, filename) {
       if (!host) return false
       scrollHostTo(host, hit)
       return true
+    }
+
+    /**
+     * 滚到正文里标了某个块 id 的那一块。
+     *
+     * 渲染时我们给每一块挂 `data-block-id`，所以这里只是一次属性查找。找不到
+     * （用户刚把 id 删了、或者 id 写在没被渲染成块的容器里）返回 false。
+     */
+    function scrollToBlock(box, id) {
+      const want = String(id || '').trim().replace(/^\^/, '')
+      if (want === '') return false
+      const host = scrollHostOf(box)
+      if (!host) return false
+      let hit = null
+      try {
+        hit = host.querySelector('[data-block-id="' + want + '"]')
+      } catch (error) {
+        hit = null
+      }
+      if (!hit) return false
+      return scrollHostTo(host, hit)
     }
 
     /**
@@ -2648,6 +2709,11 @@ async function saveFile(url, filename) {
       const anchor = typeof props.anchor === 'string' ? props.anchor : ''
       React.useEffect(() => {
         if (anchor === '' || note === null) return
+        // `![[笔记#^abc]]` 嵌的是那一段：块引用要按 id 找，按标题找永远找不到。
+        if (isBlockAnchor(anchor)) {
+          scrollToBlock(boxRef.current, anchor)
+          return
+        }
         scrollToHeading(boxRef.current, anchor)
       }, [anchor, note])
       let body
@@ -2974,11 +3040,17 @@ async function saveFile(url, filename) {
         const heading = /^(#{1,6})\s+(.*)$/.exec(trimmed)
         if (heading) {
           const level = heading[1].length
+          // 标题也能挂块 id（`## 甲节 ^abc`）：挂在标题上的引用要跳到这个标题。
+          const headingId = blockIdIn(heading[2])
           blocks.push(
             h(
               `h${Math.min(level + 0, 6)}`,
-              { key: `b${key++}`, className: `dshgn_h dshgn_h${level}` },
-              renderInline(heading[2], `b${key}`, opts),
+              {
+                key: `b${key++}`,
+                className: `dshgn_h dshgn_h${level}`,
+                'data-block-id': headingId === '' ? undefined : headingId,
+              },
+              renderInline(stripBlockId(heading[2]), `b${key}`, opts),
             ),
           )
           index += 1
@@ -3089,6 +3161,14 @@ async function saveFile(url, filename) {
           while (index < lines.length) {
             const current = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/.exec(lines[index])
             if (!current) {
+              // 单独一行的块 id 属于上一条列表项（宿主两种写法都认：写在行尾，
+              // 或者另起一行）。不接住的话它会被当成一个空段落渲染出来。
+              const loneId = /^\s*\^([A-Za-z0-9-]{1,64})\s*$/.exec(lines[index])
+              if (loneId && items.length > 0) {
+                items[items.length - 1].blockId = loneId[1]
+                index += 1
+                continue
+              }
               // 列表项里的续行
               if (lines[index].trim() !== '' && items.length > 0 && /^\s{2,}\S/.test(lines[index])) {
                 items[items.length - 1].continuation.push(lines[index].trim())
@@ -3097,7 +3177,7 @@ async function saveFile(url, filename) {
               }
               break
             }
-            items.push({ text: current[3], ordered: /\d/.test(current[2]), continuation: [] })
+            items.push({ text: current[3], ordered: /\d/.test(current[2]), continuation: [], blockId: '' })
             index += 1
           }
           blocks.push(
@@ -3106,7 +3186,10 @@ async function saveFile(url, filename) {
               { key: `b${key++}`, className: 'dshgn_mdList' },
               items.map((item, itemIndex) => {
                 const task = /^\[( |x|X)\]\s+(.*)$/.exec(item.text)
-                const content = task ? task[2] : item.text
+                // 行尾的 `^id` 是块引用记号，不该显示出来
+                const tailId = blockIdIn(task ? task[2] : item.text)
+                const content = stripBlockId(task ? task[2] : item.text)
+                const itemId = item.blockId !== '' ? item.blockId : tailId
                 // 只有「可点」时才分配序号：编辑态/冲突比对里渲染的同一篇笔记没有
                 // onToggleTodo，不该悄悄消耗序号（否则会与 host 侧错位）。
                 let todoIndex = -1
@@ -3117,7 +3200,11 @@ async function saveFile(url, filename) {
                 const done = task !== null && task[1].toLowerCase() === 'x'
                 return h(
                   'li',
-                  { key: itemIndex, className: task ? 'dshgn_li dshgn_task' : 'dshgn_li' },
+                  {
+                    key: itemIndex,
+                    className: task ? 'dshgn_li dshgn_task' : 'dshgn_li',
+                    'data-block-id': itemId === '' ? undefined : itemId,
+                  },
                   task
                     ? h('span', {
                         className: 'dshgn_check' + (done ? ' dshgn_checkOn' : '') + (todoIndex >= 0 ? ' dshgn_checkHit' : ''),
@@ -3157,8 +3244,16 @@ async function saveFile(url, filename) {
           paragraph.push(lines[index])
           index += 1
         }
+        // 段落行尾的 `^id` 是块引用记号：这一段挂了 id 之后，
+        // `[[笔记#^id]]` 才跳得到它。记号本身不该显示在正文里。
+        const paraText = paragraph.join('\n')
+        const paraId = blockIdIn(paraText)
         blocks.push(
-          h('p', { key: `b${key++}`, className: 'dshgn_p' }, renderInline(paragraph.join('\n'), `p${key}`, opts)),
+          h(
+            'p',
+            { key: `b${key++}`, className: 'dshgn_p', 'data-block-id': paraId === '' ? undefined : paraId },
+            renderInline(stripBlockId(paraText), `p${key}`, opts),
+          ),
         )
       }
 
@@ -4705,7 +4800,7 @@ async function saveFile(url, filename) {
           path: String(path || ''),
           // 'heading' 是「跳到某一节」，'line' 是「跳到正文里写着这行字的地方」。
           // 搜索卡片上的命中行走后者：那一行往往是普通段落，不是标题。
-          kind: kind === 'line' ? 'line' : 'heading',
+          kind: kind === 'line' ? 'line' : kind === 'block' ? 'block' : 'heading',
           seq: anchorSeq.current,
         })
       }, [])
@@ -4722,9 +4817,11 @@ async function saveFile(url, filename) {
         (target, anchor) => {
           const raw = String(target || '').trim()
           const section = typeof anchor === 'string' ? anchor.trim() : ''
+          // # 后面是 ^id 时那是块引用，不是小节名：找块，别去找标题。
+          const anchorKind = isBlockAnchor(section) ? 'block' : 'heading'
           // `[[#小节]]`：链接的就是当前这一篇里的某个小节，没有别的笔记要打开。
           if (raw === '') {
-            if (section !== '') requestAnchor(section, current !== null ? current.path : '')
+            if (section !== '') requestAnchor(section, current !== null ? current.path : '', anchorKind)
             return
           }
           // 先问宿主的索引：别名、同名取最近、路径前缀这些规则都在它那儿，
@@ -4734,7 +4831,7 @@ async function saveFile(url, filename) {
           const sourceRel = rel === '' ? sub : sub === '' ? rel : `${sub}/${rel}`
           const hosted = resolveViaHost(raw, sourceRel)
           if (hosted !== '') {
-            if (section !== '') requestAnchor(section, hosted)
+            if (section !== '') requestAnchor(section, hosted, anchorKind)
             void openNote(hosted)
             return
           }
@@ -4742,7 +4839,7 @@ async function saveFile(url, filename) {
           const list = entries || []
           const direct = list.find((entry) => entry.path === raw || entry.path === `${wanted}.md`)
           if (direct !== undefined) {
-            if (section !== '') requestAnchor(section, direct.path)
+            if (section !== '') requestAnchor(section, direct.path, anchorKind)
             void openNote(direct.path)
             return
           }
@@ -4751,14 +4848,14 @@ async function saveFile(url, filename) {
             return name === wanted
           })
           if (byName !== undefined) {
-            if (section !== '') requestAnchor(section, byName.path)
+            if (section !== '') requestAnchor(section, byName.path, anchorKind)
             void openNote(byName.path)
             return
           }
           const lowered = wanted.toLowerCase()
           const byTitle = list.find((entry) => String(entry.title || '').toLowerCase() === lowered)
           if (byTitle !== undefined) {
-            if (section !== '') requestAnchor(section, byTitle.path)
+            if (section !== '') requestAnchor(section, byTitle.path, anchorKind)
             void openNote(byTitle.path)
             return
           }
@@ -4769,7 +4866,7 @@ async function saveFile(url, filename) {
             aliasesOf(entry).some((alias) => alias.toLowerCase() === lowered),
           )
           if (byAlias !== undefined) {
-            if (section !== '') requestAnchor(section, byAlias.path)
+            if (section !== '') requestAnchor(section, byAlias.path, anchorKind)
             void openNote(byAlias.path)
             return
           }
@@ -10413,6 +10510,14 @@ async function saveFile(url, filename) {
           if (typeof onAnchorDone === 'function') onAnchorDone()
           return
         }
+        // 块引用（`[[笔记#^abc]]`）：找的是挂了 data-block-id 的那一块，
+        // 不是标题。找不到也不报错——用户可能刚把那个 id 删了。
+        if (anchorRequest.kind === 'block' || isBlockAnchor(anchorRequest.text)) {
+          const blockHost = scrollRef.current
+          if (blockHost) scrollToBlock(blockHost, anchorRequest.text)
+          if (typeof onAnchorDone === 'function') onAnchorDone()
+          return
+        }
         const want = normalizeHeading(anchorRequest.text)
         const host = scrollRef.current
         if (want !== '' && host) {
@@ -11688,4 +11793,5 @@ export const __internals = {
   themeVars, parseHex, rgbToHsl, hslToHex, ConflictPane, ArchiveCard, CardPane,
   TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale,
   reportSync, dailyTemplateOf, frontmatterText, isTagKey, FollowCard, parseTable, countWords,
+  isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock,
 }

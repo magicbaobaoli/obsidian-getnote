@@ -334,11 +334,11 @@ function parseFrontmatter(text) {
   return { data, body: lines.slice(end + 1).join("\n"), raw };
 }
 function unquote(s3) {
-  const t3 = String(s3).trim();
-  if (t3.length >= 2 && (t3.startsWith('"') && t3.endsWith('"') || t3.startsWith("'") && t3.endsWith("'"))) {
-    return t3.slice(1, -1);
+  const t4 = String(s3).trim();
+  if (t4.length >= 2 && (t4.startsWith('"') && t4.endsWith('"') || t4.startsWith("'") && t4.endsWith("'"))) {
+    return t4.slice(1, -1);
   }
-  return t3;
+  return t4;
 }
 function deriveTitle(body, relPath) {
   const m3 = /^#{1,3}\s+(.+)$/m.exec(body || "");
@@ -880,8 +880,8 @@ async function searchNotes(root, query, { limit = 60, perFile = 3, sort = "relev
   if (parsed.tags.length === 0 && parsed.dirs.length === 0 && parsed.terms.length === 0) {
     return { query: parsed.raw, parsed, hits: [], scanned: 0, truncated: false };
   }
-  const needles = parsed.terms.map((t3) => t3.toLowerCase());
-  const tagNeedles = parsed.tags.map((t3) => t3.toLowerCase());
+  const needles = parsed.terms.map((t4) => t4.toLowerCase());
+  const tagNeedles = parsed.tags.map((t4) => t4.toLowerCase());
   const dirNeedles = parsed.dirs.map((d3) => d3.toLowerCase().replace(/^\.?\//, ""));
   const hits = [];
   let scanned = 0;
@@ -926,11 +926,11 @@ async function searchNotes(root, query, { limit = 60, perFile = 3, sort = "relev
         continue;
       }
       const { data, body } = parseFrontmatter(text);
-      const fileTags = mergeTags(normalizeTags(data.tags), extractInlineTags(body)).map((t3) => t3.toLowerCase());
+      const fileTags = mergeTags(normalizeTags(data.tags), extractInlineTags(body)).map((t4) => t4.toLowerCase());
       if (tagNeedles.length > 0) {
         let tagOk = true;
         for (const want of tagNeedles) {
-          if (!fileTags.some((t3) => t3 === want || t3.includes(want))) {
+          if (!fileTags.some((t4) => t4 === want || t4.includes(want))) {
             tagOk = false;
             break;
           }
@@ -1469,8 +1469,8 @@ async function removeTag(root, tagInput, entries, options = {}) {
       const text = note.content;
       const actual = readTags(text);
       const inlineSet = new Set(extractInlineTags(note.body));
-      const base = (actual.length > 0 ? actual : current).filter((t3) => !inlineSet.has(t3));
-      const withHead = rewriteTags(text, base.filter((t3) => t3 !== tag));
+      const base = (actual.length > 0 ? actual : current).filter((t4) => !inlineSet.has(t4));
+      const withHead = rewriteTags(text, base.filter((t4) => t4 !== tag));
       const updated = applyInlineTagEdit(withHead, tag, "");
       if (updated === text) continue;
       if (snapshot) {
@@ -1504,7 +1504,7 @@ async function renameTag(root, fromInput, toInput, entries, options = {}) {
       const text = note.content;
       const actual = readTags(text);
       const inlineSet = new Set(extractInlineTags(note.body));
-      const base = (actual.length > 0 ? actual : current).filter((t3) => !inlineSet.has(t3));
+      const base = (actual.length > 0 ? actual : current).filter((t4) => !inlineSet.has(t4));
       const next = [];
       for (const tag of base) {
         const value = tag === from ? to : tag;
@@ -2974,17 +2974,17 @@ function historyKeyFor(relPath) {
 }
 function stampLabel(now) {
   const ms = now instanceof Date ? now.getTime() : Number(now);
-  const t3 = Number.isFinite(ms) ? ms : Date.now();
-  return new Date(t3).toISOString().replace(/[:.]/g, "-");
+  const t4 = Number.isFinite(ms) ? ms : Date.now();
+  return new Date(t4).toISOString().replace(/[:.]/g, "-");
 }
 function parseStamp(name) {
   const m3 = STAMP_RE.exec(name);
   if (!m3) return null;
   const [, y3, mo, d3, h5, mi, s3, ms] = m3;
   const iso = `${y3}-${mo}-${d3}T${h5}:${mi}:${s3}.${ms}Z`;
-  const t3 = Date.parse(iso);
-  if (!Number.isFinite(t3)) return null;
-  return { ms: t3, iso };
+  const t4 = Date.parse(iso);
+  if (!Number.isFinite(t4)) return null;
+  return { ms: t4, iso };
 }
 function seqOf(name) {
   const m3 = /Z-(\d+)\.md$/i.exec(name);
@@ -3717,7 +3717,7 @@ function tagsOfNote(note) {
     return raw.map((tag) => typeof tag === "string" ? tag : tag && (tag.name || tag.title || tag.tag_name)).filter((tag) => typeof tag === "string" && tag.trim() !== "").map((tag) => tag.trim());
   }
   if (typeof raw === "string" && raw.trim() !== "") {
-    return raw.split(/[,，]/).map((t3) => t3.trim()).filter(Boolean);
+    return raw.split(/[,，]/).map((t4) => t4.trim()).filter(Boolean);
   }
   return [];
 }
@@ -4097,11 +4097,11 @@ function createClient({ apiKey, clientId, grantId, baseUrl = API_BASE, fetchImpl
     const data = await get("/resource/knowledge/list", { page });
     const list = Array.isArray(data?.topics) ? data.topics : Array.isArray(data?.list) ? data.list : Array.isArray(data) ? data : [];
     return {
-      topics: list.map((t3) => ({
-        id: String(t3?.topic_id ?? t3?.id ?? ""),
-        name: String(t3?.name ?? t3?.title ?? "\u672A\u547D\u540D\u77E5\u8BC6\u5E93"),
-        type: t3?.type ?? null
-      })).filter((t3) => t3.id !== ""),
+      topics: list.map((t4) => ({
+        id: String(t4?.topic_id ?? t4?.id ?? ""),
+        name: String(t4?.name ?? t4?.title ?? "\u672A\u547D\u540D\u77E5\u8BC6\u5E93"),
+        type: t4?.type ?? null
+      })).filter((t4) => t4.id !== ""),
       hasMore: data?.has_more === true,
       total: typeof data?.total === "number" ? data.total : null
     };
@@ -4221,8 +4221,8 @@ function normalizeNote(raw, { topicName } = {}) {
   if (!raw || typeof raw !== "object") return null;
   const noteId = String(raw.note_id ?? raw.noteId ?? raw.id ?? "");
   if (noteId === "") return null;
-  const tags = Array.isArray(raw.tags) ? raw.tags.map((t3) => typeof t3 === "string" ? { id: null, name: t3, type: "manual" } : { id: t3?.id != null ? String(t3.id) : null, name: String(t3?.name ?? ""), type: t3?.type ?? "manual" }).filter((t3) => t3.name !== "") : [];
-  const topics = Array.isArray(raw.topics) ? raw.topics.map((t3) => ({ id: String(t3?.id ?? ""), name: String(t3?.name ?? "") })).filter((t3) => t3.id !== "") : [];
+  const tags = Array.isArray(raw.tags) ? raw.tags.map((t4) => typeof t4 === "string" ? { id: null, name: t4, type: "manual" } : { id: t4?.id != null ? String(t4.id) : null, name: String(t4?.name ?? ""), type: t4?.type ?? "manual" }).filter((t4) => t4.name !== "") : [];
+  const topics = Array.isArray(raw.topics) ? raw.topics.map((t4) => ({ id: String(t4?.id ?? ""), name: String(t4?.name ?? "") })).filter((t4) => t4.id !== "") : [];
   const audio = extractAudio(raw);
   const original = extractOriginal(raw);
   const moments = raw.timeline && Array.isArray(raw.timeline.moments) ? raw.timeline.moments.map((m3) => ({
@@ -4230,7 +4230,7 @@ function normalizeNote(raw, { topicName } = {}) {
     endMs: typeof m3?.end_ms === "number" ? m3.end_ms : 0,
     text: String(m3?.text ?? "")
   })).filter((m3) => m3.text !== "") : [];
-  const todos = raw.meeting_todos && Array.isArray(raw.meeting_todos.items) ? raw.meeting_todos.items.map((t3) => ({ text: String(t3?.text ?? ""), completed: t3?.completed === true })).filter((t3) => t3.text !== "") : [];
+  const todos = raw.meeting_todos && Array.isArray(raw.meeting_todos.items) ? raw.meeting_todos.items.map((t4) => ({ text: String(t4?.text ?? ""), completed: t4?.completed === true })).filter((t4) => t4.text !== "") : [];
   return {
     noteId,
     title: String(raw.title ?? "").trim(),
@@ -4255,7 +4255,7 @@ function normalizeNote(raw, { topicName } = {}) {
     createdAt: raw.created_at ?? null,
     updatedAt: raw.updated_at ?? null,
     // 内容指纹：同步时用来判断「云端真的改过吗」，避免每次刷新都重写文件
-    fingerprint: fingerprintOf({ title: raw.title, content: original, updatedAt: raw.updated_at, tags: tags.map((t3) => t3.name) })
+    fingerprint: fingerprintOf({ title: raw.title, content: original, updatedAt: raw.updated_at, tags: tags.map((t4) => t4.name) })
   };
 }
 function fingerprintOf(parts) {
@@ -4500,7 +4500,7 @@ function stripSourceFooter(body) {
   return String(body || "").replace(/^[ \t]*（源自得到大脑[^\n]*）[ \t]*\n?/gm, "").replace(/\n+(?:-[ \t]*-[ \t]*-[ \t]*\n*)+$/, "\n");
 }
 function renderNote({ note, topicName, archiveDate }) {
-  const tags = note.tags.map((t3) => t3.name).filter(Boolean);
+  const tags = note.tags.map((t4) => t4.name).filter(Boolean);
   const allTags = ["\u5F97\u5230\u5927\u8111", ...topicName ? [topicName] : [], ...tags];
   const uniq = [...new Set(allTags)];
   const fm = [
@@ -4539,7 +4539,7 @@ function renderNote({ note, topicName, archiveDate }) {
   }
   if (note.todos.length > 0) {
     parts.push("## \u5F85\u529E", "");
-    for (const t3 of note.todos) parts.push(`- [${t3.completed ? "x" : " "}] ${t3.text}`);
+    for (const t4 of note.todos) parts.push(`- [${t4.completed ? "x" : " "}] ${t4.text}`);
     parts.push("");
   }
   if (note.audio.length > 0) {
@@ -4670,7 +4670,7 @@ async function runSync({ client, root, state, full = false, log = () => {
       const listFp = contentFingerprint({
         title: summary.title,
         content: extractOriginal(raw) || summary.content,
-        tags: summary.tags.map((t3) => t3.name)
+        tags: summary.tags.map((t4) => t4.name)
       });
       if (known && known.listFp === listFp) {
         next[summary.noteId] = known;
@@ -4770,7 +4770,7 @@ async function pullNote({ client, root, note, relPath, known, log, archiveDate, 
     }
   }
   const full = detail ? normalizeNote(detail) : note;
-  const cloudFp = contentFingerprint({ title: full.title, content: full.original || full.content, tags: full.tags.map((t3) => t3.name) });
+  const cloudFp = contentFingerprint({ title: full.title, content: full.original || full.content, tags: full.tags.map((t4) => t4.name) });
   const { abs } = resolveInside(root, relPath);
   const localFp = await localFingerprintOf(abs);
   const rendered = renderNote({ note: full, topicName: topicName || topicNameFor(full, {}), archiveDate });
@@ -4835,7 +4835,7 @@ async function syncSingleNote({ client, root, state, noteId, log = () => {
   });
   const archiveDate = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
   const outcome = await pullNote({ client, root, note, relPath, known, log, archiveDate, topicName: topicNameFor(note, topicNames) });
-  const listFp = contentFingerprint({ title: note.title, content: note.original || note.content, tags: note.tags.map((t3) => t3.name) });
+  const listFp = contentFingerprint({ title: note.title, content: note.original || note.content, tags: note.tags.map((t4) => t4.name) });
   return {
     path: outcome.path,
     action: outcome.action,
@@ -4856,7 +4856,7 @@ function pushPayloadOf(fileText) {
   const noteId = typeof data.note_id === "string" ? data.note_id.replace(/^"|"$/g, "") : null;
   const title = (typeof data.title === "string" ? data.title : firstHeading(body)) || "";
   const content = stripSourceFooter(body).replace(/^\s+/, "").replace(/^#\s+.+\n+/, "").trim();
-  const tags = Array.isArray(data.tags) ? data.tags.map(String).filter((t3) => t3 !== "\u5F97\u5230\u5927\u8111") : void 0;
+  const tags = Array.isArray(data.tags) ? data.tags.map(String).filter((t4) => t4 !== "\u5F97\u5230\u5927\u8111") : void 0;
   return { noteId, title, content, tags };
 }
 async function pushNote({ client, root, relPath, noteId } = {}) {
@@ -5290,10 +5290,10 @@ function createHandler(config) {
     const tag = (url.searchParams.get("tag") || "").trim();
     let filtered = entries;
     if (dir !== "") filtered = filtered.filter((e3) => e3.dir === dir || e3.path.startsWith(`${dir}/`));
-    if (tag !== "") filtered = filtered.filter((e3) => e3.tags.some((t3) => t3 === tag));
+    if (tag !== "") filtered = filtered.filter((e3) => e3.tags.some((t4) => t4 === tag));
     if (q4 !== "") {
       filtered = filtered.filter(
-        (e3) => e3.title.toLowerCase().includes(q4) || e3.path.toLowerCase().includes(q4) || (e3.excerpt || "").toLowerCase().includes(q4) || e3.tags.some((t3) => t3.toLowerCase().includes(q4))
+        (e3) => e3.title.toLowerCase().includes(q4) || e3.path.toLowerCase().includes(q4) || (e3.excerpt || "").toLowerCase().includes(q4) || e3.tags.some((t4) => t4.toLowerCase().includes(q4))
       );
     }
     const limit = Math.min(Number(url.searchParams.get("limit")) || 300, 2e3);
@@ -6890,7 +6890,7 @@ __export(compat_exports, {
 var n;
 var l;
 var u;
-var t;
+var t2;
 var i;
 var o;
 var r;
@@ -6910,14 +6910,14 @@ function d(n2, l3) {
 function w(n2) {
   n2 && n2.parentNode && n2.parentNode.removeChild(n2);
 }
-function _(l3, u3, t3) {
+function _(l3, u3, t4) {
   var i3, o3, r3, f3 = {};
   for (r3 in u3) "key" == r3 ? i3 = u3[r3] : "ref" == r3 ? o3 = u3[r3] : f3[r3] = u3[r3];
-  if (arguments.length > 2 && (f3.children = arguments.length > 3 ? n.call(arguments, 2) : t3), "function" == typeof l3 && null != l3.defaultProps) for (r3 in l3.defaultProps) void 0 === f3[r3] && (f3[r3] = l3.defaultProps[r3]);
+  if (arguments.length > 2 && (f3.children = arguments.length > 3 ? n.call(arguments, 2) : t4), "function" == typeof l3 && null != l3.defaultProps) for (r3 in l3.defaultProps) void 0 === f3[r3] && (f3[r3] = l3.defaultProps[r3]);
   return g(l3, f3, i3, o3, null);
 }
-function g(n2, t3, i3, o3, r3) {
-  var f3 = { type: n2, props: t3, key: i3, ref: o3, __k: null, __: null, __b: 0, __e: null, __d: void 0, __c: null, constructor: void 0, __v: null == r3 ? ++u : r3, __i: -1, __u: 0 };
+function g(n2, t4, i3, o3, r3) {
+  var f3 = { type: n2, props: t4, key: i3, ref: o3, __k: null, __: null, __b: 0, __e: null, __d: void 0, __c: null, constructor: void 0, __v: null == r3 ? ++u : r3, __i: -1, __u: 0 };
   return null == r3 && null != l.vnode && l.vnode(f3), f3;
 }
 function m() {
@@ -6948,24 +6948,24 @@ function S(n2) {
   (!n2.__d && (n2.__d = true) && i.push(n2) && !M.__r++ || o !== l.debounceRendering) && ((o = l.debounceRendering) || r)(M);
 }
 function M() {
-  var n2, u3, t3, o3, r3, e3, c3, s3;
-  for (i.sort(f); n2 = i.shift(); ) n2.__d && (u3 = i.length, o3 = void 0, e3 = (r3 = (t3 = n2).__v).__e, c3 = [], s3 = [], t3.__P && ((o3 = d({}, r3)).__v = r3.__v + 1, l.vnode && l.vnode(o3), O(t3.__P, o3, r3, t3.__n, t3.__P.namespaceURI, 32 & r3.__u ? [e3] : null, c3, null == e3 ? x(r3) : e3, !!(32 & r3.__u), s3), o3.__v = r3.__v, o3.__.__k[o3.__i] = o3, j(c3, o3, s3), o3.__e != e3 && C(o3)), i.length > u3 && i.sort(f));
+  var n2, u3, t4, o3, r3, e3, c3, s3;
+  for (i.sort(f); n2 = i.shift(); ) n2.__d && (u3 = i.length, o3 = void 0, e3 = (r3 = (t4 = n2).__v).__e, c3 = [], s3 = [], t4.__P && ((o3 = d({}, r3)).__v = r3.__v + 1, l.vnode && l.vnode(o3), O(t4.__P, o3, r3, t4.__n, t4.__P.namespaceURI, 32 & r3.__u ? [e3] : null, c3, null == e3 ? x(r3) : e3, !!(32 & r3.__u), s3), o3.__v = r3.__v, o3.__.__k[o3.__i] = o3, j(c3, o3, s3), o3.__e != e3 && C(o3)), i.length > u3 && i.sort(f));
   M.__r = 0;
 }
-function P(n2, l3, u3, t3, i3, o3, r3, f3, e3, c3, s3) {
-  var a3, p3, y3, d3, w4, _3 = t3 && t3.__k || v, g4 = l3.length;
+function P(n2, l3, u3, t4, i3, o3, r3, f3, e3, c3, s3) {
+  var a3, p3, y3, d3, w4, _3 = t4 && t4.__k || v, g4 = l3.length;
   for (u3.__d = e3, $(u3, l3, _3), e3 = u3.__d, a3 = 0; a3 < g4; a3++) null != (y3 = u3.__k[a3]) && (p3 = -1 === y3.__i ? h : _3[y3.__i] || h, y3.__i = a3, O(n2, y3, p3, i3, o3, r3, f3, e3, c3, s3), d3 = y3.__e, y3.ref && p3.ref != y3.ref && (p3.ref && E(p3.ref, null, y3), s3.push(y3.ref, y3.__c || d3, y3)), null == w4 && null != d3 && (w4 = d3), 65536 & y3.__u || p3.__k === y3.__k ? e3 = I(y3, e3, n2) : "function" == typeof y3.type && void 0 !== y3.__d ? e3 = y3.__d : d3 && (e3 = d3.nextSibling), y3.__d = void 0, y3.__u &= -196609);
   u3.__d = e3, u3.__e = w4;
 }
 function $(n2, l3, u3) {
-  var t3, i3, o3, r3, f3, e3 = l3.length, c3 = u3.length, s3 = c3, a3 = 0;
-  for (n2.__k = [], t3 = 0; t3 < e3; t3++) null != (i3 = l3[t3]) && "boolean" != typeof i3 && "function" != typeof i3 ? (r3 = t3 + a3, (i3 = n2.__k[t3] = "string" == typeof i3 || "number" == typeof i3 || "bigint" == typeof i3 || i3.constructor == String ? g(null, i3, null, null, null) : y(i3) ? g(b, { children: i3 }, null, null, null) : void 0 === i3.constructor && i3.__b > 0 ? g(i3.type, i3.props, i3.key, i3.ref ? i3.ref : null, i3.__v) : i3).__ = n2, i3.__b = n2.__b + 1, o3 = null, -1 !== (f3 = i3.__i = L(i3, u3, r3, s3)) && (s3--, (o3 = u3[f3]) && (o3.__u |= 131072)), null == o3 || null === o3.__v ? (-1 == f3 && a3--, "function" != typeof i3.type && (i3.__u |= 65536)) : f3 !== r3 && (f3 == r3 - 1 ? a3-- : f3 == r3 + 1 ? a3++ : (f3 > r3 ? a3-- : a3++, i3.__u |= 65536))) : i3 = n2.__k[t3] = null;
-  if (s3) for (t3 = 0; t3 < c3; t3++) null != (o3 = u3[t3]) && 0 == (131072 & o3.__u) && (o3.__e == n2.__d && (n2.__d = x(o3)), N(o3, o3));
+  var t4, i3, o3, r3, f3, e3 = l3.length, c3 = u3.length, s3 = c3, a3 = 0;
+  for (n2.__k = [], t4 = 0; t4 < e3; t4++) null != (i3 = l3[t4]) && "boolean" != typeof i3 && "function" != typeof i3 ? (r3 = t4 + a3, (i3 = n2.__k[t4] = "string" == typeof i3 || "number" == typeof i3 || "bigint" == typeof i3 || i3.constructor == String ? g(null, i3, null, null, null) : y(i3) ? g(b, { children: i3 }, null, null, null) : void 0 === i3.constructor && i3.__b > 0 ? g(i3.type, i3.props, i3.key, i3.ref ? i3.ref : null, i3.__v) : i3).__ = n2, i3.__b = n2.__b + 1, o3 = null, -1 !== (f3 = i3.__i = L(i3, u3, r3, s3)) && (s3--, (o3 = u3[f3]) && (o3.__u |= 131072)), null == o3 || null === o3.__v ? (-1 == f3 && a3--, "function" != typeof i3.type && (i3.__u |= 65536)) : f3 !== r3 && (f3 == r3 - 1 ? a3-- : f3 == r3 + 1 ? a3++ : (f3 > r3 ? a3-- : a3++, i3.__u |= 65536))) : i3 = n2.__k[t4] = null;
+  if (s3) for (t4 = 0; t4 < c3; t4++) null != (o3 = u3[t4]) && 0 == (131072 & o3.__u) && (o3.__e == n2.__d && (n2.__d = x(o3)), N(o3, o3));
 }
 function I(n2, l3, u3) {
-  var t3, i3;
+  var t4, i3;
   if ("function" == typeof n2.type) {
-    for (t3 = n2.__k, i3 = 0; t3 && i3 < t3.length; i3++) t3[i3] && (t3[i3].__ = n2, l3 = I(t3[i3], l3, u3));
+    for (t4 = n2.__k, i3 = 0; t4 && i3 < t4.length; i3++) t4[i3] && (t4[i3].__ = n2, l3 = I(t4[i3], l3, u3));
     return l3;
   }
   n2.__e != l3 && (l3 && n2.type && !u3.contains(l3) && (l3 = x(n2)), u3.insertBefore(n2.__e, l3 || null), l3 = n2.__e);
@@ -6979,10 +6979,10 @@ function H(n2, l3) {
     H(n3, l3);
   }) : l3.push(n2)), l3;
 }
-function L(n2, l3, u3, t3) {
+function L(n2, l3, u3, t4) {
   var i3 = n2.key, o3 = n2.type, r3 = u3 - 1, f3 = u3 + 1, e3 = l3[u3];
   if (null === e3 || e3 && i3 == e3.key && o3 === e3.type && 0 == (131072 & e3.__u)) return u3;
-  if (("function" != typeof o3 || o3 === b || i3) && t3 > (null != e3 && 0 == (131072 & e3.__u) ? 1 : 0)) for (; r3 >= 0 || f3 < l3.length; ) {
+  if (("function" != typeof o3 || o3 === b || i3) && t4 > (null != e3 && 0 == (131072 & e3.__u) ? 1 : 0)) for (; r3 >= 0 || f3 < l3.length; ) {
     if (r3 >= 0) {
       if ((e3 = l3[r3]) && 0 == (131072 & e3.__u) && i3 == e3.key && o3 === e3.type) return r3;
       r3--;
@@ -6997,14 +6997,14 @@ function L(n2, l3, u3, t3) {
 function T(n2, l3, u3) {
   "-" === l3[0] ? n2.setProperty(l3, null == u3 ? "" : u3) : n2[l3] = null == u3 ? "" : "number" != typeof u3 || p.test(l3) ? u3 : u3 + "px";
 }
-function A(n2, l3, u3, t3, i3) {
+function A(n2, l3, u3, t4, i3) {
   var o3;
   n: if ("style" === l3) if ("string" == typeof u3) n2.style.cssText = u3;
   else {
-    if ("string" == typeof t3 && (n2.style.cssText = t3 = ""), t3) for (l3 in t3) u3 && l3 in u3 || T(n2.style, l3, "");
-    if (u3) for (l3 in u3) t3 && u3[l3] === t3[l3] || T(n2.style, l3, u3[l3]);
+    if ("string" == typeof t4 && (n2.style.cssText = t4 = ""), t4) for (l3 in t4) u3 && l3 in u3 || T(n2.style, l3, "");
+    if (u3) for (l3 in u3) t4 && u3[l3] === t4[l3] || T(n2.style, l3, u3[l3]);
   }
-  else if ("o" === l3[0] && "n" === l3[1]) o3 = l3 !== (l3 = l3.replace(/(PointerCapture)$|Capture$/i, "$1")), l3 = l3.toLowerCase() in n2 || "onFocusOut" === l3 || "onFocusIn" === l3 ? l3.toLowerCase().slice(2) : l3.slice(2), n2.l || (n2.l = {}), n2.l[l3 + o3] = u3, u3 ? t3 ? u3.u = t3.u : (u3.u = e, n2.addEventListener(l3, o3 ? s : c, o3)) : n2.removeEventListener(l3, o3 ? s : c, o3);
+  else if ("o" === l3[0] && "n" === l3[1]) o3 = l3 !== (l3 = l3.replace(/(PointerCapture)$|Capture$/i, "$1")), l3 = l3.toLowerCase() in n2 || "onFocusOut" === l3 || "onFocusIn" === l3 ? l3.toLowerCase().slice(2) : l3.slice(2), n2.l || (n2.l = {}), n2.l[l3 + o3] = u3, u3 ? t4 ? u3.u = t4.u : (u3.u = e, n2.addEventListener(l3, o3 ? s : c, o3)) : n2.removeEventListener(l3, o3 ? s : c, o3);
   else {
     if ("http://www.w3.org/2000/svg" == i3) l3 = l3.replace(/xlink(H|:h)/, "h").replace(/sName$/, "s");
     else if ("width" != l3 && "height" != l3 && "href" != l3 && "list" != l3 && "form" != l3 && "tabIndex" != l3 && "download" != l3 && "rowSpan" != l3 && "colSpan" != l3 && "role" != l3 && "popover" != l3 && l3 in n2) try {
@@ -7018,22 +7018,22 @@ function A(n2, l3, u3, t3, i3) {
 function F(n2) {
   return function(u3) {
     if (this.l) {
-      var t3 = this.l[u3.type + n2];
+      var t4 = this.l[u3.type + n2];
       if (null == u3.t) u3.t = e++;
-      else if (u3.t < t3.u) return;
-      return l.event && (u3 = l.event(u3)), "handleEvent" in t3 ? t3.handleEvent(u3) : t3(u3);
+      else if (u3.t < t4.u) return;
+      return l.event && (u3 = l.event(u3)), "handleEvent" in t4 ? t4.handleEvent(u3) : t4(u3);
     }
   };
 }
-function O(n2, u3, t3, i3, o3, r3, f3, e3, c3, s3) {
+function O(n2, u3, t4, i3, o3, r3, f3, e3, c3, s3) {
   var a3, h5, v3, p3, w4, _3, g4, m3, x4, C4, S2, M3, $3, I3, H3, L3, T4 = u3.type;
   if (void 0 !== u3.constructor) return null;
-  128 & t3.__u && (c3 = !!(32 & t3.__u), r3 = [e3 = u3.__e = t3.__e]), (a3 = l.__b) && a3(u3);
+  128 & t4.__u && (c3 = !!(32 & t4.__u), r3 = [e3 = u3.__e = t4.__e]), (a3 = l.__b) && a3(u3);
   n: if ("function" == typeof T4) try {
-    if (m3 = u3.props, x4 = "prototype" in T4 && T4.prototype.render, C4 = (a3 = T4.contextType) && i3[a3.__c], S2 = a3 ? C4 ? C4.props.value : a3.__ : i3, t3.__c ? g4 = (h5 = u3.__c = t3.__c).__ = h5.__E : (x4 ? u3.__c = h5 = new T4(m3, S2) : (u3.__c = h5 = new k(m3, S2), h5.constructor = T4, h5.render = V), C4 && C4.sub(h5), h5.props = m3, h5.state || (h5.state = {}), h5.context = S2, h5.__n = i3, v3 = h5.__d = true, h5.__h = [], h5._sb = []), x4 && null == h5.__s && (h5.__s = h5.state), x4 && null != T4.getDerivedStateFromProps && (h5.__s == h5.state && (h5.__s = d({}, h5.__s)), d(h5.__s, T4.getDerivedStateFromProps(m3, h5.__s))), p3 = h5.props, w4 = h5.state, h5.__v = u3, v3) x4 && null == T4.getDerivedStateFromProps && null != h5.componentWillMount && h5.componentWillMount(), x4 && null != h5.componentDidMount && h5.__h.push(h5.componentDidMount);
+    if (m3 = u3.props, x4 = "prototype" in T4 && T4.prototype.render, C4 = (a3 = T4.contextType) && i3[a3.__c], S2 = a3 ? C4 ? C4.props.value : a3.__ : i3, t4.__c ? g4 = (h5 = u3.__c = t4.__c).__ = h5.__E : (x4 ? u3.__c = h5 = new T4(m3, S2) : (u3.__c = h5 = new k(m3, S2), h5.constructor = T4, h5.render = V), C4 && C4.sub(h5), h5.props = m3, h5.state || (h5.state = {}), h5.context = S2, h5.__n = i3, v3 = h5.__d = true, h5.__h = [], h5._sb = []), x4 && null == h5.__s && (h5.__s = h5.state), x4 && null != T4.getDerivedStateFromProps && (h5.__s == h5.state && (h5.__s = d({}, h5.__s)), d(h5.__s, T4.getDerivedStateFromProps(m3, h5.__s))), p3 = h5.props, w4 = h5.state, h5.__v = u3, v3) x4 && null == T4.getDerivedStateFromProps && null != h5.componentWillMount && h5.componentWillMount(), x4 && null != h5.componentDidMount && h5.__h.push(h5.componentDidMount);
     else {
-      if (x4 && null == T4.getDerivedStateFromProps && m3 !== p3 && null != h5.componentWillReceiveProps && h5.componentWillReceiveProps(m3, S2), !h5.__e && (null != h5.shouldComponentUpdate && false === h5.shouldComponentUpdate(m3, h5.__s, S2) || u3.__v === t3.__v)) {
-        for (u3.__v !== t3.__v && (h5.props = m3, h5.state = h5.__s, h5.__d = false), u3.__e = t3.__e, u3.__k = t3.__k, u3.__k.some(function(n3) {
+      if (x4 && null == T4.getDerivedStateFromProps && m3 !== p3 && null != h5.componentWillReceiveProps && h5.componentWillReceiveProps(m3, S2), !h5.__e && (null != h5.shouldComponentUpdate && false === h5.shouldComponentUpdate(m3, h5.__s, S2) || u3.__v === t4.__v)) {
+        for (u3.__v !== t4.__v && (h5.props = m3, h5.state = h5.__s, h5.__d = false), u3.__e = t4.__e, u3.__k = t4.__k, u3.__k.some(function(n3) {
           n3 && (n3.__ = u3);
         }), M3 = 0; M3 < h5._sb.length; M3++) h5.__h.push(h5._sb[M3]);
         h5._sb = [], h5.__h.length && f3.push(h5);
@@ -7049,20 +7049,20 @@ function O(n2, u3, t3, i3, o3, r3, f3, e3, c3, s3) {
     } else do {
       h5.__d = false, $3 && $3(u3), a3 = h5.render(h5.props, h5.state, h5.context), h5.state = h5.__s;
     } while (h5.__d && ++I3 < 25);
-    h5.state = h5.__s, null != h5.getChildContext && (i3 = d(d({}, i3), h5.getChildContext())), x4 && !v3 && null != h5.getSnapshotBeforeUpdate && (_3 = h5.getSnapshotBeforeUpdate(p3, w4)), P(n2, y(L3 = null != a3 && a3.type === b && null == a3.key ? a3.props.children : a3) ? L3 : [L3], u3, t3, i3, o3, r3, f3, e3, c3, s3), h5.base = u3.__e, u3.__u &= -161, h5.__h.length && f3.push(h5), g4 && (h5.__E = h5.__ = null);
+    h5.state = h5.__s, null != h5.getChildContext && (i3 = d(d({}, i3), h5.getChildContext())), x4 && !v3 && null != h5.getSnapshotBeforeUpdate && (_3 = h5.getSnapshotBeforeUpdate(p3, w4)), P(n2, y(L3 = null != a3 && a3.type === b && null == a3.key ? a3.props.children : a3) ? L3 : [L3], u3, t4, i3, o3, r3, f3, e3, c3, s3), h5.base = u3.__e, u3.__u &= -161, h5.__h.length && f3.push(h5), g4 && (h5.__E = h5.__ = null);
   } catch (n3) {
     if (u3.__v = null, c3 || null != r3) {
       for (u3.__u |= c3 ? 160 : 128; e3 && 8 === e3.nodeType && e3.nextSibling; ) e3 = e3.nextSibling;
       r3[r3.indexOf(e3)] = null, u3.__e = e3;
-    } else u3.__e = t3.__e, u3.__k = t3.__k;
-    l.__e(n3, u3, t3);
+    } else u3.__e = t4.__e, u3.__k = t4.__k;
+    l.__e(n3, u3, t4);
   }
-  else null == r3 && u3.__v === t3.__v ? (u3.__k = t3.__k, u3.__e = t3.__e) : u3.__e = z(t3.__e, u3, t3, i3, o3, r3, f3, c3, s3);
+  else null == r3 && u3.__v === t4.__v ? (u3.__k = t4.__k, u3.__e = t4.__e) : u3.__e = z(t4.__e, u3, t4, i3, o3, r3, f3, c3, s3);
   (a3 = l.diffed) && a3(u3);
 }
-function j(n2, u3, t3) {
+function j(n2, u3, t4) {
   u3.__d = void 0;
-  for (var i3 = 0; i3 < t3.length; i3++) E(t3[i3], t3[++i3], t3[++i3]);
+  for (var i3 = 0; i3 < t4.length; i3++) E(t4[i3], t4[++i3], t4[++i3]);
   l.__c && l.__c(u3, n2), n2.some(function(u4) {
     try {
       n2 = u4.__h, u4.__h = [], n2.some(function(n3) {
@@ -7073,8 +7073,8 @@ function j(n2, u3, t3) {
     }
   });
 }
-function z(u3, t3, i3, o3, r3, f3, e3, c3, s3) {
-  var a3, v3, p3, d3, _3, g4, m3, b3 = i3.props, k4 = t3.props, C4 = t3.type;
+function z(u3, t4, i3, o3, r3, f3, e3, c3, s3) {
+  var a3, v3, p3, d3, _3, g4, m3, b3 = i3.props, k4 = t4.props, C4 = t4.type;
   if ("svg" === C4 ? r3 = "http://www.w3.org/2000/svg" : "math" === C4 ? r3 = "http://www.w3.org/1998/Math/MathML" : r3 || (r3 = "http://www.w3.org/1999/xhtml"), null != f3) {
     for (a3 = 0; a3 < f3.length; a3++) if ((_3 = f3[a3]) && "setAttribute" in _3 == !!C4 && (C4 ? _3.localName === C4 : 3 === _3.nodeType)) {
       u3 = _3, f3[a3] = null;
@@ -7083,7 +7083,7 @@ function z(u3, t3, i3, o3, r3, f3, e3, c3, s3) {
   }
   if (null == u3) {
     if (null === C4) return document.createTextNode(k4);
-    u3 = document.createElementNS(r3, C4, k4.is && k4), c3 && (l.__m && l.__m(t3, f3), c3 = false), f3 = null;
+    u3 = document.createElementNS(r3, C4, k4.is && k4), c3 && (l.__m && l.__m(t4, f3), c3 = false), f3 = null;
   }
   if (null === C4) b3 === k4 || c3 && u3.data === k4 || (u3.data = k4);
   else {
@@ -7095,23 +7095,23 @@ function z(u3, t3, i3, o3, r3, f3, e3, c3, s3) {
       A(u3, a3, null, _3, r3);
     }
     for (a3 in k4) _3 = k4[a3], "children" == a3 ? d3 = _3 : "dangerouslySetInnerHTML" == a3 ? v3 = _3 : "value" == a3 ? g4 = _3 : "checked" == a3 ? m3 = _3 : c3 && "function" != typeof _3 || b3[a3] === _3 || A(u3, a3, _3, b3[a3], r3);
-    if (v3) c3 || p3 && (v3.__html === p3.__html || v3.__html === u3.innerHTML) || (u3.innerHTML = v3.__html), t3.__k = [];
-    else if (p3 && (u3.innerHTML = ""), P(u3, y(d3) ? d3 : [d3], t3, i3, o3, "foreignObject" === C4 ? "http://www.w3.org/1999/xhtml" : r3, f3, e3, f3 ? f3[0] : i3.__k && x(i3, 0), c3, s3), null != f3) for (a3 = f3.length; a3--; ) w(f3[a3]);
+    if (v3) c3 || p3 && (v3.__html === p3.__html || v3.__html === u3.innerHTML) || (u3.innerHTML = v3.__html), t4.__k = [];
+    else if (p3 && (u3.innerHTML = ""), P(u3, y(d3) ? d3 : [d3], t4, i3, o3, "foreignObject" === C4 ? "http://www.w3.org/1999/xhtml" : r3, f3, e3, f3 ? f3[0] : i3.__k && x(i3, 0), c3, s3), null != f3) for (a3 = f3.length; a3--; ) w(f3[a3]);
     c3 || (a3 = "value", "progress" === C4 && null == g4 ? u3.removeAttribute("value") : void 0 !== g4 && (g4 !== u3[a3] || "progress" === C4 && !g4 || "option" === C4 && g4 !== b3[a3]) && A(u3, a3, g4, b3[a3], r3), a3 = "checked", void 0 !== m3 && m3 !== u3[a3] && A(u3, a3, m3, b3[a3], r3));
   }
   return u3;
 }
-function E(n2, u3, t3) {
+function E(n2, u3, t4) {
   try {
     if ("function" == typeof n2) {
       var i3 = "function" == typeof n2.__u;
       i3 && n2.__u(), i3 && null == u3 || (n2.__u = n2(u3));
     } else n2.current = u3;
   } catch (n3) {
-    l.__e(n3, t3);
+    l.__e(n3, t4);
   }
 }
-function N(n2, u3, t3) {
+function N(n2, u3, t4) {
   var i3, o3;
   if (l.unmount && l.unmount(n2), (i3 = n2.ref) && (i3.current && i3.current !== n2.__e || E(i3, null, u3)), null != (i3 = n2.__c)) {
     if (i3.componentWillUnmount) try {
@@ -7121,31 +7121,31 @@ function N(n2, u3, t3) {
     }
     i3.base = i3.__P = null;
   }
-  if (i3 = n2.__k) for (o3 = 0; o3 < i3.length; o3++) i3[o3] && N(i3[o3], u3, t3 || "function" != typeof n2.type);
-  t3 || w(n2.__e), n2.__c = n2.__ = n2.__e = n2.__d = void 0;
+  if (i3 = n2.__k) for (o3 = 0; o3 < i3.length; o3++) i3[o3] && N(i3[o3], u3, t4 || "function" != typeof n2.type);
+  t4 || w(n2.__e), n2.__c = n2.__ = n2.__e = n2.__d = void 0;
 }
 function V(n2, l3, u3) {
   return this.constructor(n2, u3);
 }
-function q(u3, t3, i3) {
+function q(u3, t4, i3) {
   var o3, r3, f3, e3;
-  l.__ && l.__(u3, t3), r3 = (o3 = "function" == typeof i3) ? null : i3 && i3.__k || t3.__k, f3 = [], e3 = [], O(t3, u3 = (!o3 && i3 || t3).__k = _(b, null, [u3]), r3 || h, h, t3.namespaceURI, !o3 && i3 ? [i3] : r3 ? null : t3.firstChild ? n.call(t3.childNodes) : null, f3, !o3 && i3 ? i3 : r3 ? r3.__e : t3.firstChild, o3, e3), j(f3, u3, e3);
+  l.__ && l.__(u3, t4), r3 = (o3 = "function" == typeof i3) ? null : i3 && i3.__k || t4.__k, f3 = [], e3 = [], O(t4, u3 = (!o3 && i3 || t4).__k = _(b, null, [u3]), r3 || h, h, t4.namespaceURI, !o3 && i3 ? [i3] : r3 ? null : t4.firstChild ? n.call(t4.childNodes) : null, f3, !o3 && i3 ? i3 : r3 ? r3.__e : t4.firstChild, o3, e3), j(f3, u3, e3);
 }
 function B(n2, l3) {
   q(n2, l3, B);
 }
-function D(l3, u3, t3) {
+function D(l3, u3, t4) {
   var i3, o3, r3, f3, e3 = d({}, l3.props);
   for (r3 in l3.type && l3.type.defaultProps && (f3 = l3.type.defaultProps), u3) "key" == r3 ? i3 = u3[r3] : "ref" == r3 ? o3 = u3[r3] : e3[r3] = void 0 === u3[r3] && void 0 !== f3 ? f3[r3] : u3[r3];
-  return arguments.length > 2 && (e3.children = arguments.length > 3 ? n.call(arguments, 2) : t3), g(l3.type, e3, i3 || l3.key, o3 || l3.ref, null);
+  return arguments.length > 2 && (e3.children = arguments.length > 3 ? n.call(arguments, 2) : t4), g(l3.type, e3, i3 || l3.key, o3 || l3.ref, null);
 }
 function G(n2, l3) {
   var u3 = { __c: l3 = "__cC" + a++, __: n2, Consumer: function(n3, l4) {
     return n3.children(l4);
   }, Provider: function(n3) {
-    var u4, t3;
-    return this.getChildContext || (u4 = /* @__PURE__ */ new Set(), (t3 = {})[l3] = this, this.getChildContext = function() {
-      return t3;
+    var u4, t4;
+    return this.getChildContext || (u4 = /* @__PURE__ */ new Set(), (t4 = {})[l3] = this, this.getChildContext = function() {
+      return t4;
     }, this.componentWillUnmount = function() {
       u4 = null;
     }, this.shouldComponentUpdate = function(n4) {
@@ -7162,14 +7162,14 @@ function G(n2, l3) {
   } };
   return u3.Provider.__ = u3.Consumer.contextType = u3;
 }
-n = v.slice, l = { __e: function(n2, l3, u3, t3) {
+n = v.slice, l = { __e: function(n2, l3, u3, t4) {
   for (var i3, o3, r3; l3 = l3.__; ) if ((i3 = l3.__c) && !i3.__) try {
-    if ((o3 = i3.constructor) && null != o3.getDerivedStateFromError && (i3.setState(o3.getDerivedStateFromError(n2)), r3 = i3.__d), null != i3.componentDidCatch && (i3.componentDidCatch(n2, t3 || {}), r3 = i3.__d), r3) return i3.__E = i3;
+    if ((o3 = i3.constructor) && null != o3.getDerivedStateFromError && (i3.setState(o3.getDerivedStateFromError(n2)), r3 = i3.__d), null != i3.componentDidCatch && (i3.componentDidCatch(n2, t4 || {}), r3 = i3.__d), r3) return i3.__E = i3;
   } catch (l4) {
     n2 = l4;
   }
   throw n2;
-} }, u = 0, t = function(n2) {
+} }, u = 0, t2 = function(n2) {
   return null != n2 && null == n2.constructor;
 }, k.prototype.setState = function(n2, l3) {
   var u3;
@@ -7181,7 +7181,7 @@ n = v.slice, l = { __e: function(n2, l3, u3, t3) {
 }, M.__r = 0, e = 0, c = F(false), s = F(true), a = 0;
 
 // node_modules/preact/hooks/dist/hooks.mjs
-var t2;
+var t3;
 var r2;
 var u2;
 var i2;
@@ -7194,8 +7194,8 @@ var v2 = c2.diffed;
 var l2 = c2.__c;
 var m2 = c2.unmount;
 var s2 = c2.__;
-function d2(n2, t3) {
-  c2.__h && c2.__h(r2, n2, o2 || t3), o2 = 0;
+function d2(n2, t4) {
+  c2.__h && c2.__h(r2, n2, o2 || t4), o2 = 0;
   var u3 = r2.__H || (r2.__H = { __: [], __h: [] });
   return n2 >= u3.__.length && u3.__.push({}), u3.__[n2];
 }
@@ -7203,45 +7203,45 @@ function h2(n2) {
   return o2 = 1, p2(D2, n2);
 }
 function p2(n2, u3, i3) {
-  var o3 = d2(t2++, 2);
+  var o3 = d2(t3++, 2);
   if (o3.t = n2, !o3.__c && (o3.__ = [i3 ? i3(u3) : D2(void 0, u3), function(n3) {
-    var t3 = o3.__N ? o3.__N[0] : o3.__[0], r3 = o3.t(t3, n3);
-    t3 !== r3 && (o3.__N = [r3, o3.__[1]], o3.__c.setState({}));
+    var t4 = o3.__N ? o3.__N[0] : o3.__[0], r3 = o3.t(t4, n3);
+    t4 !== r3 && (o3.__N = [r3, o3.__[1]], o3.__c.setState({}));
   }], o3.__c = r2, !r2.u)) {
-    var f3 = function(n3, t3, r3) {
+    var f3 = function(n3, t4, r3) {
       if (!o3.__c.__H) return true;
       var u4 = o3.__c.__H.__.filter(function(n4) {
         return !!n4.__c;
       });
       if (u4.every(function(n4) {
         return !n4.__N;
-      })) return !c3 || c3.call(this, n3, t3, r3);
+      })) return !c3 || c3.call(this, n3, t4, r3);
       var i4 = o3.__c.props !== n3;
       return u4.forEach(function(n4) {
         if (n4.__N) {
-          var t4 = n4.__[0];
-          n4.__ = n4.__N, n4.__N = void 0, t4 !== n4.__[0] && (i4 = true);
+          var t5 = n4.__[0];
+          n4.__ = n4.__N, n4.__N = void 0, t5 !== n4.__[0] && (i4 = true);
         }
-      }), c3 && c3.call(this, n3, t3, r3) || i4;
+      }), c3 && c3.call(this, n3, t4, r3) || i4;
     };
     r2.u = true;
     var c3 = r2.shouldComponentUpdate, e3 = r2.componentWillUpdate;
-    r2.componentWillUpdate = function(n3, t3, r3) {
+    r2.componentWillUpdate = function(n3, t4, r3) {
       if (this.__e) {
         var u4 = c3;
-        c3 = void 0, f3(n3, t3, r3), c3 = u4;
+        c3 = void 0, f3(n3, t4, r3), c3 = u4;
       }
-      e3 && e3.call(this, n3, t3, r3);
+      e3 && e3.call(this, n3, t4, r3);
     }, r2.shouldComponentUpdate = f3;
   }
   return o3.__N || o3.__;
 }
 function y2(n2, u3) {
-  var i3 = d2(t2++, 3);
+  var i3 = d2(t3++, 3);
   !c2.__s && C2(i3.__H, u3) && (i3.__ = n2, i3.i = u3, r2.__H.__h.push(i3));
 }
 function _2(n2, u3) {
-  var i3 = d2(t2++, 4);
+  var i3 = d2(t3++, 4);
   !c2.__s && C2(i3.__H, u3) && (i3.__ = n2, i3.i = u3, r2.__h.push(i3));
 }
 function A2(n2) {
@@ -7249,41 +7249,41 @@ function A2(n2) {
     return { current: n2 };
   }, []);
 }
-function F2(n2, t3, r3) {
+function F2(n2, t4, r3) {
   o2 = 6, _2(function() {
-    return "function" == typeof n2 ? (n2(t3()), function() {
+    return "function" == typeof n2 ? (n2(t4()), function() {
       return n2(null);
-    }) : n2 ? (n2.current = t3(), function() {
+    }) : n2 ? (n2.current = t4(), function() {
       return n2.current = null;
     }) : void 0;
   }, null == r3 ? r3 : r3.concat(n2));
 }
 function T2(n2, r3) {
-  var u3 = d2(t2++, 7);
+  var u3 = d2(t3++, 7);
   return C2(u3.__H, r3) && (u3.__ = n2(), u3.__H = r3, u3.__h = n2), u3.__;
 }
-function q2(n2, t3) {
+function q2(n2, t4) {
   return o2 = 8, T2(function() {
     return n2;
-  }, t3);
+  }, t4);
 }
 function x2(n2) {
-  var u3 = r2.context[n2.__c], i3 = d2(t2++, 9);
+  var u3 = r2.context[n2.__c], i3 = d2(t3++, 9);
   return i3.c = n2, u3 ? (null == i3.__ && (i3.__ = true, u3.sub(r2)), u3.props.value) : n2.__;
 }
-function P2(n2, t3) {
-  c2.useDebugValue && c2.useDebugValue(t3 ? t3(n2) : n2);
+function P2(n2, t4) {
+  c2.useDebugValue && c2.useDebugValue(t4 ? t4(n2) : n2);
 }
 function b2(n2) {
-  var u3 = d2(t2++, 10), i3 = h2();
-  return u3.__ = n2, r2.componentDidCatch || (r2.componentDidCatch = function(n3, t3) {
-    u3.__ && u3.__(n3, t3), i3[1](n3);
+  var u3 = d2(t3++, 10), i3 = h2();
+  return u3.__ = n2, r2.componentDidCatch || (r2.componentDidCatch = function(n3, t4) {
+    u3.__ && u3.__(n3, t4), i3[1](n3);
   }), [i3[0], function() {
     i3[1](void 0);
   }];
 }
 function g2() {
-  var n2 = d2(t2++, 11);
+  var n2 = d2(t3++, 11);
   if (!n2.__) {
     for (var u3 = r2.__v; null !== u3 && !u3.__m && null !== u3.__; ) u3 = u3.__;
     var i3 = u3.__m || (u3.__m = [0, 0]);
@@ -7294,94 +7294,94 @@ function g2() {
 function j2() {
   for (var n2; n2 = f2.shift(); ) if (n2.__P && n2.__H) try {
     n2.__H.__h.forEach(z2), n2.__H.__h.forEach(B2), n2.__H.__h = [];
-  } catch (t3) {
-    n2.__H.__h = [], c2.__e(t3, n2.__v);
+  } catch (t4) {
+    n2.__H.__h = [], c2.__e(t4, n2.__v);
   }
 }
 c2.__b = function(n2) {
   r2 = null, e2 && e2(n2);
-}, c2.__ = function(n2, t3) {
-  n2 && t3.__k && t3.__k.__m && (n2.__m = t3.__k.__m), s2 && s2(n2, t3);
+}, c2.__ = function(n2, t4) {
+  n2 && t4.__k && t4.__k.__m && (n2.__m = t4.__k.__m), s2 && s2(n2, t4);
 }, c2.__r = function(n2) {
-  a2 && a2(n2), t2 = 0;
+  a2 && a2(n2), t3 = 0;
   var i3 = (r2 = n2.__c).__H;
   i3 && (u2 === r2 ? (i3.__h = [], r2.__h = [], i3.__.forEach(function(n3) {
     n3.__N && (n3.__ = n3.__N), n3.i = n3.__N = void 0;
-  })) : (i3.__h.forEach(z2), i3.__h.forEach(B2), i3.__h = [], t2 = 0)), u2 = r2;
+  })) : (i3.__h.forEach(z2), i3.__h.forEach(B2), i3.__h = [], t3 = 0)), u2 = r2;
 }, c2.diffed = function(n2) {
   v2 && v2(n2);
-  var t3 = n2.__c;
-  t3 && t3.__H && (t3.__H.__h.length && (1 !== f2.push(t3) && i2 === c2.requestAnimationFrame || ((i2 = c2.requestAnimationFrame) || w2)(j2)), t3.__H.__.forEach(function(n3) {
+  var t4 = n2.__c;
+  t4 && t4.__H && (t4.__H.__h.length && (1 !== f2.push(t4) && i2 === c2.requestAnimationFrame || ((i2 = c2.requestAnimationFrame) || w2)(j2)), t4.__H.__.forEach(function(n3) {
     n3.i && (n3.__H = n3.i), n3.i = void 0;
   })), u2 = r2 = null;
-}, c2.__c = function(n2, t3) {
-  t3.some(function(n3) {
+}, c2.__c = function(n2, t4) {
+  t4.some(function(n3) {
     try {
       n3.__h.forEach(z2), n3.__h = n3.__h.filter(function(n4) {
         return !n4.__ || B2(n4);
       });
     } catch (r3) {
-      t3.some(function(n4) {
+      t4.some(function(n4) {
         n4.__h && (n4.__h = []);
-      }), t3 = [], c2.__e(r3, n3.__v);
+      }), t4 = [], c2.__e(r3, n3.__v);
     }
-  }), l2 && l2(n2, t3);
+  }), l2 && l2(n2, t4);
 }, c2.unmount = function(n2) {
   m2 && m2(n2);
-  var t3, r3 = n2.__c;
+  var t4, r3 = n2.__c;
   r3 && r3.__H && (r3.__H.__.forEach(function(n3) {
     try {
       z2(n3);
     } catch (n4) {
-      t3 = n4;
+      t4 = n4;
     }
-  }), r3.__H = void 0, t3 && c2.__e(t3, r3.__v));
+  }), r3.__H = void 0, t4 && c2.__e(t4, r3.__v));
 };
 var k2 = "function" == typeof requestAnimationFrame;
 function w2(n2) {
-  var t3, r3 = function() {
-    clearTimeout(u3), k2 && cancelAnimationFrame(t3), setTimeout(n2);
+  var t4, r3 = function() {
+    clearTimeout(u3), k2 && cancelAnimationFrame(t4), setTimeout(n2);
   }, u3 = setTimeout(r3, 100);
-  k2 && (t3 = requestAnimationFrame(r3));
+  k2 && (t4 = requestAnimationFrame(r3));
 }
 function z2(n2) {
-  var t3 = r2, u3 = n2.__c;
-  "function" == typeof u3 && (n2.__c = void 0, u3()), r2 = t3;
+  var t4 = r2, u3 = n2.__c;
+  "function" == typeof u3 && (n2.__c = void 0, u3()), r2 = t4;
 }
 function B2(n2) {
-  var t3 = r2;
-  n2.__c = n2.__(), r2 = t3;
+  var t4 = r2;
+  n2.__c = n2.__(), r2 = t4;
 }
-function C2(n2, t3) {
-  return !n2 || n2.length !== t3.length || t3.some(function(t4, r3) {
-    return t4 !== n2[r3];
+function C2(n2, t4) {
+  return !n2 || n2.length !== t4.length || t4.some(function(t5, r3) {
+    return t5 !== n2[r3];
   });
 }
-function D2(n2, t3) {
-  return "function" == typeof t3 ? t3(n2) : t3;
+function D2(n2, t4) {
+  return "function" == typeof t4 ? t4(n2) : t4;
 }
 
 // node_modules/preact/compat/dist/compat.mjs
-function g3(n2, t3) {
-  for (var e3 in n2) if ("__source" !== e3 && !(e3 in t3)) return true;
-  for (var r3 in t3) if ("__source" !== r3 && n2[r3] !== t3[r3]) return true;
+function g3(n2, t4) {
+  for (var e3 in n2) if ("__source" !== e3 && !(e3 in t4)) return true;
+  for (var r3 in t4) if ("__source" !== r3 && n2[r3] !== t4[r3]) return true;
   return false;
 }
-function E2(n2, t3) {
-  var e3 = t3(), r3 = h2({ t: { __: e3, u: t3 } }), u3 = r3[0].t, o3 = r3[1];
+function E2(n2, t4) {
+  var e3 = t4(), r3 = h2({ t: { __: e3, u: t4 } }), u3 = r3[0].t, o3 = r3[1];
   return _2(function() {
-    u3.__ = e3, u3.u = t3, C3(u3) && o3({ t: u3 });
-  }, [n2, e3, t3]), y2(function() {
+    u3.__ = e3, u3.u = t4, C3(u3) && o3({ t: u3 });
+  }, [n2, e3, t4]), y2(function() {
     return C3(u3) && o3({ t: u3 }), n2(function() {
       C3(u3) && o3({ t: u3 });
     });
   }, [n2]), e3;
 }
 function C3(n2) {
-  var t3, e3, r3 = n2.u, u3 = n2.__;
+  var t4, e3, r3 = n2.u, u3 = n2.__;
   try {
     var o3 = r3();
-    return !((t3 = u3) === (e3 = o3) && (0 !== t3 || 1 / t3 == 1 / e3) || t3 != t3 && e3 != e3);
+    return !((t4 = u3) === (e3 = o3) && (0 !== t4 || 1 / t4 == 1 / e3) || t4 != t4 && e3 != e3);
   } catch (n3) {
     return true;
   }
@@ -7396,21 +7396,21 @@ function w3() {
   return [false, x3];
 }
 var k3 = _2;
-function I2(n2, t3) {
-  this.props = n2, this.context = t3;
+function I2(n2, t4) {
+  this.props = n2, this.context = t4;
 }
 function N2(n2, e3) {
   function r3(n3) {
-    var t3 = this.props.ref, r4 = t3 == n3.ref;
-    return !r4 && t3 && (t3.call ? t3(null) : t3.current = null), e3 ? !e3(this.props, n3) || !r4 : g3(this.props, n3);
+    var t4 = this.props.ref, r4 = t4 == n3.ref;
+    return !r4 && t4 && (t4.call ? t4(null) : t4.current = null), e3 ? !e3(this.props, n3) || !r4 : g3(this.props, n3);
   }
   function u3(e4) {
     return this.shouldComponentUpdate = r3, _(n2, e4);
   }
   return u3.displayName = "Memo(" + (n2.displayName || n2.name) + ")", u3.prototype.isReactComponent = true, u3.__f = true, u3;
 }
-(I2.prototype = new k()).isPureReactComponent = true, I2.prototype.shouldComponentUpdate = function(n2, t3) {
-  return g3(this.props, n2) || g3(this.state, t3);
+(I2.prototype = new k()).isPureReactComponent = true, I2.prototype.shouldComponentUpdate = function(n2, t4) {
+  return g3(this.props, n2) || g3(this.state, t4);
 };
 var M2 = l.__b;
 l.__b = function(n2) {
@@ -7418,54 +7418,54 @@ l.__b = function(n2) {
 };
 var T3 = "undefined" != typeof Symbol && Symbol.for && Symbol.for("react.forward_ref") || 3911;
 function A3(n2) {
-  function t3(t4) {
-    if (!("ref" in t4)) return n2(t4, null);
-    var e3 = t4.ref;
-    delete t4.ref;
-    var r3 = n2(t4, e3);
-    return t4.ref = e3, r3;
+  function t4(t5) {
+    if (!("ref" in t5)) return n2(t5, null);
+    var e3 = t5.ref;
+    delete t5.ref;
+    var r3 = n2(t5, e3);
+    return t5.ref = e3, r3;
   }
-  return t3.$$typeof = T3, t3.render = t3, t3.prototype.isReactComponent = t3.__f = true, t3.displayName = "ForwardRef(" + (n2.displayName || n2.name) + ")", t3;
+  return t4.$$typeof = T3, t4.render = t4, t4.prototype.isReactComponent = t4.__f = true, t4.displayName = "ForwardRef(" + (n2.displayName || n2.name) + ")", t4;
 }
-var D3 = function(n2, t3) {
-  return null == n2 ? null : H(H(n2).map(t3));
+var D3 = function(n2, t4) {
+  return null == n2 ? null : H(H(n2).map(t4));
 };
 var L2 = { map: D3, forEach: D3, count: function(n2) {
   return n2 ? H(n2).length : 0;
 }, only: function(n2) {
-  var t3 = H(n2);
-  if (1 !== t3.length) throw "Children.only";
-  return t3[0];
+  var t4 = H(n2);
+  if (1 !== t4.length) throw "Children.only";
+  return t4[0];
 }, toArray: H };
 var O2 = l.__e;
-l.__e = function(n2, t3, e3, r3) {
+l.__e = function(n2, t4, e3, r3) {
   if (n2.then) {
-    for (var u3, o3 = t3; o3 = o3.__; ) if ((u3 = o3.__c) && u3.__c) return null == t3.__e && (t3.__e = e3.__e, t3.__k = e3.__k), u3.__c(n2, t3);
+    for (var u3, o3 = t4; o3 = o3.__; ) if ((u3 = o3.__c) && u3.__c) return null == t4.__e && (t4.__e = e3.__e, t4.__k = e3.__k), u3.__c(n2, t4);
   }
-  O2(n2, t3, e3, r3);
+  O2(n2, t4, e3, r3);
 };
 var F3 = l.unmount;
-function U(n2, t3, e3) {
+function U(n2, t4, e3) {
   return n2 && (n2.__c && n2.__c.__H && (n2.__c.__H.__.forEach(function(n3) {
     "function" == typeof n3.__c && n3.__c();
-  }), n2.__c.__H = null), null != (n2 = (function(n3, t4) {
-    for (var e4 in t4) n3[e4] = t4[e4];
+  }), n2.__c.__H = null), null != (n2 = (function(n3, t5) {
+    for (var e4 in t5) n3[e4] = t5[e4];
     return n3;
-  })({}, n2)).__c && (n2.__c.__P === e3 && (n2.__c.__P = t3), n2.__c = null), n2.__k = n2.__k && n2.__k.map(function(n3) {
-    return U(n3, t3, e3);
+  })({}, n2)).__c && (n2.__c.__P === e3 && (n2.__c.__P = t4), n2.__c = null), n2.__k = n2.__k && n2.__k.map(function(n3) {
+    return U(n3, t4, e3);
   })), n2;
 }
-function V2(n2, t3, e3) {
+function V2(n2, t4, e3) {
   return n2 && e3 && (n2.__v = null, n2.__k = n2.__k && n2.__k.map(function(n3) {
-    return V2(n3, t3, e3);
-  }), n2.__c && n2.__c.__P === t3 && (n2.__e && e3.appendChild(n2.__e), n2.__c.__e = true, n2.__c.__P = e3)), n2;
+    return V2(n3, t4, e3);
+  }), n2.__c && n2.__c.__P === t4 && (n2.__e && e3.appendChild(n2.__e), n2.__c.__e = true, n2.__c.__P = e3)), n2;
 }
 function W() {
   this.__u = 0, this.o = null, this.__b = null;
 }
 function P3(n2) {
-  var t3 = n2.__.__c;
-  return t3 && t3.__a && t3.__a(n2);
+  var t4 = n2.__.__c;
+  return t4 && t4.__a && t4.__a(n2);
 }
 function j3(n2) {
   var e3, r3, u3;
@@ -7484,10 +7484,10 @@ function z3() {
   this.i = null, this.l = null;
 }
 l.unmount = function(n2) {
-  var t3 = n2.__c;
-  t3 && t3.__R && t3.__R(), t3 && 32 & n2.__u && (n2.type = null), F3 && F3(n2);
-}, (W.prototype = new k()).__c = function(n2, t3) {
-  var e3 = t3.__c, r3 = this;
+  var t4 = n2.__c;
+  t4 && t4.__R && t4.__R(), t4 && 32 & n2.__u && (n2.type = null), F3 && F3(n2);
+}, (W.prototype = new k()).__c = function(n2, t4) {
+  var e3 = t4.__c, r3 = this;
   null == r3.o && (r3.o = []), r3.o.push(e3);
   var u3 = P3(r3.__v), o3 = false, i3 = function() {
     o3 || (o3 = true, e3.__R = null, u3 ? u3(c3) : c3());
@@ -7499,11 +7499,11 @@ l.unmount = function(n2) {
         var n3 = r3.state.__a;
         r3.__v.__k[0] = V2(n3, n3.__c.__P, n3.__c.__O);
       }
-      var t4;
-      for (r3.setState({ __a: r3.__b = null }); t4 = r3.o.pop(); ) t4.forceUpdate();
+      var t5;
+      for (r3.setState({ __a: r3.__b = null }); t5 = r3.o.pop(); ) t5.forceUpdate();
     }
   };
-  r3.__u++ || 32 & t3.__u || r3.setState({ __a: r3.__b = r3.__v.__k[0] }), n2.then(i3, i3);
+  r3.__u++ || 32 & t4.__u || r3.setState({ __a: r3.__b = r3.__v.__k[0] }), n2.then(i3, i3);
 }, W.prototype.componentWillUnmount = function() {
   this.o = [];
 }, W.prototype.render = function(n2, e3) {
@@ -7517,8 +7517,8 @@ l.unmount = function(n2) {
   var i3 = e3.__a && _(b, null, n2.fallback);
   return i3 && (i3.__u &= -33), [_(b, null, e3.__a ? null : n2.children), i3];
 };
-var B3 = function(n2, t3, e3) {
-  if (++e3[1] === e3[0] && n2.l.delete(t3), n2.props.revealOrder && ("t" !== n2.props.revealOrder[0] || !n2.l.size)) for (e3 = n2.i; e3; ) {
+var B3 = function(n2, t4, e3) {
+  if (++e3[1] === e3[0] && n2.l.delete(t4), n2.props.revealOrder && ("t" !== n2.props.revealOrder[0] || !n2.l.size)) for (e3 = n2.i; e3; ) {
     for (; e3.length > 3; ) e3.pop()();
     if (e3[1] < e3[0]) break;
     n2.i = e3 = e3[2];
@@ -7537,7 +7537,7 @@ function Z(n2) {
     return true;
   }, appendChild: function(n3) {
     this.childNodes.push(n3), e3.h.appendChild(n3);
-  }, insertBefore: function(n3, t3) {
+  }, insertBefore: function(n3, t4) {
     this.childNodes.push(n3), e3.h.appendChild(n3);
   }, removeChild: function(n3) {
     this.childNodes.splice(this.childNodes.indexOf(n3) >>> 1, 1), e3.h.removeChild(n3);
@@ -7548,23 +7548,23 @@ function Y(n2, e3) {
   return r3.containerInfo = e3, r3;
 }
 (z3.prototype = new k()).__a = function(n2) {
-  var t3 = this, e3 = P3(t3.__v), r3 = t3.l.get(n2);
+  var t4 = this, e3 = P3(t4.__v), r3 = t4.l.get(n2);
   return r3[0]++, function(u3) {
     var o3 = function() {
-      t3.props.revealOrder ? (r3.push(u3), B3(t3, n2, r3)) : u3();
+      t4.props.revealOrder ? (r3.push(u3), B3(t4, n2, r3)) : u3();
     };
     e3 ? e3(o3) : o3();
   };
 }, z3.prototype.render = function(n2) {
   this.i = null, this.l = /* @__PURE__ */ new Map();
-  var t3 = H(n2.children);
-  n2.revealOrder && "b" === n2.revealOrder[0] && t3.reverse();
-  for (var e3 = t3.length; e3--; ) this.l.set(t3[e3], this.i = [1, 0, this.i]);
+  var t4 = H(n2.children);
+  n2.revealOrder && "b" === n2.revealOrder[0] && t4.reverse();
+  for (var e3 = t4.length; e3--; ) this.l.set(t4[e3], this.i = [1, 0, this.i]);
   return n2.children;
 }, z3.prototype.componentDidUpdate = z3.prototype.componentDidMount = function() {
   var n2 = this;
-  this.l.forEach(function(t3, e3) {
-    B3(n2, e3, t3);
+  this.l.forEach(function(t4, e3) {
+    B3(n2, e3, t4);
   });
 };
 var $2 = "undefined" != typeof Symbol && Symbol.for && Symbol.for("react.element") || 60103;
@@ -7575,17 +7575,17 @@ var K = "undefined" != typeof document;
 var Q = function(n2) {
   return ("undefined" != typeof Symbol && "symbol" == typeof Symbol() ? /fil|che|rad/ : /fil|che|ra/).test(n2);
 };
-function X(n2, t3, e3) {
-  return null == t3.__k && (t3.textContent = ""), q(n2, t3), "function" == typeof e3 && e3(), n2 ? n2.__c : null;
+function X(n2, t4, e3) {
+  return null == t4.__k && (t4.textContent = ""), q(n2, t4), "function" == typeof e3 && e3(), n2 ? n2.__c : null;
 }
-function nn(n2, t3, e3) {
-  return B(n2, t3), "function" == typeof e3 && e3(), n2 ? n2.__c : null;
+function nn(n2, t4, e3) {
+  return B(n2, t4), "function" == typeof e3 && e3(), n2 ? n2.__c : null;
 }
-k.prototype.isReactComponent = {}, ["componentWillMount", "componentWillReceiveProps", "componentWillUpdate"].forEach(function(t3) {
-  Object.defineProperty(k.prototype, t3, { configurable: true, get: function() {
-    return this["UNSAFE_" + t3];
+k.prototype.isReactComponent = {}, ["componentWillMount", "componentWillReceiveProps", "componentWillUpdate"].forEach(function(t4) {
+  Object.defineProperty(k.prototype, t4, { configurable: true, get: function() {
+    return this["UNSAFE_" + t4];
   }, set: function(n2) {
-    Object.defineProperty(this, t3, { configurable: true, writable: true, value: n2 });
+    Object.defineProperty(this, t4, { configurable: true, writable: true, value: n2 });
   } });
 });
 var tn = l.event;
@@ -7607,19 +7607,19 @@ var cn = { enumerable: false, configurable: true, get: function() {
 var fn = l.vnode;
 l.vnode = function(n2) {
   "string" == typeof n2.type && (function(n3) {
-    var t3 = n3.props, e3 = n3.type, u3 = {}, o3 = -1 === e3.indexOf("-");
-    for (var i3 in t3) {
-      var c3 = t3[i3];
-      if (!("value" === i3 && "defaultValue" in t3 && null == c3 || K && "children" === i3 && "noscript" === e3 || "class" === i3 || "className" === i3)) {
+    var t4 = n3.props, e3 = n3.type, u3 = {}, o3 = -1 === e3.indexOf("-");
+    for (var i3 in t4) {
+      var c3 = t4[i3];
+      if (!("value" === i3 && "defaultValue" in t4 && null == c3 || K && "children" === i3 && "noscript" === e3 || "class" === i3 || "className" === i3)) {
         var f3 = i3.toLowerCase();
-        "defaultValue" === i3 && "value" in t3 && null == t3.value ? i3 = "value" : "download" === i3 && true === c3 ? c3 = "" : "translate" === f3 && "no" === c3 ? c3 = false : "o" === f3[0] && "n" === f3[1] ? "ondoubleclick" === f3 ? i3 = "ondblclick" : "onchange" !== f3 || "input" !== e3 && "textarea" !== e3 || Q(t3.type) ? "onfocus" === f3 ? i3 = "onfocusin" : "onblur" === f3 ? i3 = "onfocusout" : G2.test(i3) && (i3 = f3) : f3 = i3 = "oninput" : o3 && q3.test(i3) ? i3 = i3.replace(J, "-$&").toLowerCase() : null === c3 && (c3 = void 0), "oninput" === f3 && u3[i3 = f3] && (i3 = "oninputCapture"), u3[i3] = c3;
+        "defaultValue" === i3 && "value" in t4 && null == t4.value ? i3 = "value" : "download" === i3 && true === c3 ? c3 = "" : "translate" === f3 && "no" === c3 ? c3 = false : "o" === f3[0] && "n" === f3[1] ? "ondoubleclick" === f3 ? i3 = "ondblclick" : "onchange" !== f3 || "input" !== e3 && "textarea" !== e3 || Q(t4.type) ? "onfocus" === f3 ? i3 = "onfocusin" : "onblur" === f3 ? i3 = "onfocusout" : G2.test(i3) && (i3 = f3) : f3 = i3 = "oninput" : o3 && q3.test(i3) ? i3 = i3.replace(J, "-$&").toLowerCase() : null === c3 && (c3 = void 0), "oninput" === f3 && u3[i3 = f3] && (i3 = "oninputCapture"), u3[i3] = c3;
       }
     }
-    "select" == e3 && u3.multiple && Array.isArray(u3.value) && (u3.value = H(t3.children).forEach(function(n4) {
+    "select" == e3 && u3.multiple && Array.isArray(u3.value) && (u3.value = H(t4.children).forEach(function(n4) {
       n4.props.selected = -1 != u3.value.indexOf(n4.props.value);
-    })), "select" == e3 && null != u3.defaultValue && (u3.value = H(t3.children).forEach(function(n4) {
+    })), "select" == e3 && null != u3.defaultValue && (u3.value = H(t4.children).forEach(function(n4) {
       n4.props.selected = u3.multiple ? -1 != u3.defaultValue.indexOf(n4.props.value) : u3.defaultValue == n4.props.value;
-    })), t3.class && !t3.className ? (u3.class = t3.class, Object.defineProperty(u3, "className", cn)) : (t3.className && !t3.class || t3.class && t3.className) && (u3.class = u3.className = t3.className), n3.props = u3;
+    })), t4.class && !t4.className ? (u3.class = t4.class, Object.defineProperty(u3, "className", cn)) : (t4.className && !t4.class || t4.class && t4.className) && (u3.class = u3.className = t4.className), n3.props = u3;
   })(n2), n2.$$typeof = $2, fn && fn(n2);
 };
 var ln = l.__r;
@@ -7629,8 +7629,8 @@ l.__r = function(n2) {
 var an = l.diffed;
 l.diffed = function(n2) {
   an && an(n2);
-  var t3 = n2.props, e3 = n2.__e;
-  null != e3 && "textarea" === n2.type && "value" in t3 && t3.value !== e3.value && (e3.value = null == t3.value ? "" : t3.value), on = null;
+  var t4 = n2.props, e3 = n2.__e;
+  null != e3 && "textarea" === n2.type && "value" in t4 && t4.value !== e3.value && (e3.value = null == t4.value ? "" : t4.value), on = null;
 };
 var sn = { ReactCurrentDispatcher: { current: { readContext: function(n2) {
   return on.__n[n2.__c].props.value;
@@ -7657,11 +7657,11 @@ function _n(n2) {
 function bn(n2) {
   return n2 && (n2.base || 1 === n2.nodeType && n2) || null;
 }
-var Sn = function(n2, t3) {
-  return n2(t3);
+var Sn = function(n2, t4) {
+  return n2(t4);
 };
-var gn = function(n2, t3) {
-  return n2(t3);
+var gn = function(n2, t4) {
+  return n2(t4);
 };
 var En = b;
 var Cn = dn;
@@ -8332,6 +8332,7 @@ var LEX = {
     "note.fontSize.l": "\u5927\u5B57",
     "note.wikilinkMissing": "\u5E93\u91CC\u627E\u4E0D\u5230\u300C{name}\u300D\u8FD9\u7BC7\u7B14\u8BB0",
     "note.anchorMissing": "\u8FD9\u4E00\u7BC7\u91CC\u6CA1\u6709\u300C{name}\u300D\u8FD9\u4E00\u8282",
+    "note.blockRef": "\u672C\u9875\u67D0\u4E00\u6BB5",
     "note.openEmbed": "\u6253\u5F00\u8FD9\u4E00\u7BC7",
     "note.embedBroken": "\u8FD9\u4E00\u7BC7\u6CA1\u8BFB\u51FA\u6765",
     "callout.expand": "\u5C55\u5F00",
@@ -8738,6 +8739,7 @@ var LEX = {
     "note.fontSize.l": "Large",
     "note.wikilinkMissing": 'No note named "{name}" in this vault',
     "note.anchorMissing": 'No section called "{name}" in this note',
+    "note.blockRef": "A paragraph on this page",
     "note.openEmbed": "Open this note",
     "note.embedBroken": "Could not read this note",
     "callout.expand": "Expand",
@@ -9144,6 +9146,7 @@ var LEX = {
     "note.fontSize.l": "Groot",
     "note.wikilinkMissing": "Geen notitie met de naam \u2018{name}\u2019 in deze map",
     "note.anchorMissing": "Geen kop met de naam \u2018{name}\u2019 in deze notitie",
+    "note.blockRef": "Een alinea op deze pagina",
     "note.openEmbed": "Open deze notitie",
     "note.embedBroken": "Deze notitie kon niet gelezen worden",
     "callout.expand": "Uitvouwen",
@@ -9548,8 +9551,8 @@ function hslToHex(h5, s3, l3) {
   }
   const q4 = lig < 0.5 ? lig * (1 + sat) : lig + sat - lig * sat;
   const p3 = 2 * lig - q4;
-  const channel = (t3) => {
-    let tt = t3;
+  const channel = (t4) => {
+    let tt = t4;
     if (tt < 0) tt += 1;
     if (tt > 1) tt -= 1;
     let value;
@@ -9828,7 +9831,9 @@ function renderInline(text, keyPrefix, options) {
             },
             // 带小节时显示「笔记 › 小节」：只显示笔记名的话，同一篇被链到
             // 不同小节看起来一模一样，点进去落在哪儿全靠猜。
-            label || (target === "" ? anchor : anchor === "" ? target : `${target} \u203A ${anchor}`)
+            // 块引用那一串 `^abc123` 对人没有意义，不摆在链接上：
+            // 有笔记名就只显示笔记名，只有块 id 时显示「本页某一段」。
+            label || (isBlockAnchor(anchor) ? target === "" ? t("note.blockRef") : target : target === "" ? anchor : anchor === "" ? target : `${target} \u203A ${anchor}`)
           )
         );
       }
@@ -9855,6 +9860,17 @@ function renderInline(text, keyPrefix, options) {
 }
 function normalizeHeading(text) {
   return String(text || "").replace(/^#+\s*/, "").replace(/\s+#+\s*$/, "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+var BLOCK_ID_RE = /(?:^|\s)\^([A-Za-z0-9-]{1,64})\s*$/;
+function isBlockAnchor(text) {
+  return /^\^\s*[A-Za-z0-9-]{1,64}$/.test(String(text || "").trim());
+}
+function blockIdIn(text) {
+  const hit = BLOCK_ID_RE.exec(String(text || ""));
+  return hit === null ? "" : hit[1];
+}
+function stripBlockId(text) {
+  return String(text || "").replace(BLOCK_ID_RE, "").trim();
 }
 function headingNodes(host) {
   if (!host) return [];
@@ -9901,6 +9917,20 @@ function scrollToHeading(box, text) {
   if (!host) return false;
   scrollHostTo(host, hit);
   return true;
+}
+function scrollToBlock(box, id) {
+  const want = String(id || "").trim().replace(/^\^/, "");
+  if (want === "") return false;
+  const host = scrollHostOf(box);
+  if (!host) return false;
+  let hit = null;
+  try {
+    hit = host.querySelector('[data-block-id="' + want + '"]');
+  } catch (error2) {
+    hit = null;
+  }
+  if (!hit) return false;
+  return scrollHostTo(host, hit);
 }
 function scrollHostOf(box) {
   if (!box) return null;
@@ -9961,7 +9991,7 @@ function NoteEmbed(props) {
       alive = false;
     };
   }, [path]);
-  const t3 = typeof props.t === "function" ? props.t : getT();
+  const t4 = typeof props.t === "function" ? props.t : getT();
   const title = typeof props.label === "string" && props.label.trim() !== "" ? props.label.trim() : note !== null && typeof note.title === "string" ? note.title : path;
   const open = () => {
     if (typeof props.onOpen === "function") props.onOpen(path);
@@ -9969,13 +9999,17 @@ function NoteEmbed(props) {
   const anchor = typeof props.anchor === "string" ? props.anchor : "";
   y2(() => {
     if (anchor === "" || note === null) return;
+    if (isBlockAnchor(anchor)) {
+      scrollToBlock(boxRef.current, anchor);
+      return;
+    }
     scrollToHeading(boxRef.current, anchor);
   }, [anchor, note]);
   let body;
   if (failed) {
-    body = h4("div", { className: "dshgn_embedEmpty" }, t3("note.embedBroken"));
+    body = h4("div", { className: "dshgn_embedEmpty" }, t4("note.embedBroken"));
   } else if (note === null) {
-    body = h4("div", { className: "dshgn_embedEmpty" }, t3("panel.loading"));
+    body = h4("div", { className: "dshgn_embedEmpty" }, t4("panel.loading"));
   } else {
     body = h4(
       "div",
@@ -9990,7 +10024,7 @@ function NoteEmbed(props) {
         // 再往下一层不再嵌笔记：两篇互相嵌入时递归没有尽头
         embedDepth: props.depth,
         resolveNote: props.resolveNote,
-        t: t3
+        t: t4
       })
     );
   }
@@ -10001,7 +10035,7 @@ function NoteEmbed(props) {
       "div",
       { className: "dshgn_embedHead" },
       h4(Icon, { name: "file", size: 12 }),
-      h4("button", { type: "button", className: "dshgn_embedTitle", title: t3("note.openEmbed"), onClick: open }, title)
+      h4("button", { type: "button", className: "dshgn_embedTitle", title: t4("note.openEmbed"), onClick: open }, title)
     ),
     body
   );
@@ -10115,7 +10149,7 @@ var CALLOUT_TONES = {
 function CalloutBlock(props) {
   const type = String(props.type || "").toLowerCase();
   const spec = CALLOUT_TONES[type] || { icon: "note", tone: "" };
-  const t3 = getT();
+  const t4 = getT();
   const title = String(props.title || "").trim();
   const foldable = props.fold === "-" || props.fold === "+";
   const [open, setOpen] = h2(props.fold !== "-");
@@ -10135,7 +10169,7 @@ function CalloutBlock(props) {
         onClick: foldable ? () => {
           setOpen((prev) => !prev);
         } : void 0,
-        title: foldable ? t3(open ? "callout.collapse" : "callout.expand") : void 0
+        title: foldable ? t4(open ? "callout.collapse" : "callout.expand") : void 0
       },
       h4(Icon, { name: spec.icon, size: 13, className: "dshgn_calloutIcon" }),
       h4("span", { className: "dshgn_calloutTitle" }, title !== "" ? title : type),
@@ -10207,11 +10241,16 @@ function renderBlocks(markdown, options) {
     const heading = /^(#{1,6})\s+(.*)$/.exec(trimmed);
     if (heading) {
       const level = heading[1].length;
+      const headingId = blockIdIn(heading[2]);
       blocks.push(
         h4(
           `h${Math.min(level + 0, 6)}`,
-          { key: `b${key++}`, className: `dshgn_h dshgn_h${level}` },
-          renderInline(heading[2], `b${key}`, opts)
+          {
+            key: `b${key++}`,
+            className: `dshgn_h dshgn_h${level}`,
+            "data-block-id": headingId === "" ? void 0 : headingId
+          },
+          renderInline(stripBlockId(heading[2]), `b${key}`, opts)
         )
       );
       index += 1;
@@ -10310,6 +10349,12 @@ function renderBlocks(markdown, options) {
       while (index < lines.length) {
         const current = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/.exec(lines[index]);
         if (!current) {
+          const loneId = /^\s*\^([A-Za-z0-9-]{1,64})\s*$/.exec(lines[index]);
+          if (loneId && items.length > 0) {
+            items[items.length - 1].blockId = loneId[1];
+            index += 1;
+            continue;
+          }
           if (lines[index].trim() !== "" && items.length > 0 && /^\s{2,}\S/.test(lines[index])) {
             items[items.length - 1].continuation.push(lines[index].trim());
             index += 1;
@@ -10317,7 +10362,7 @@ function renderBlocks(markdown, options) {
           }
           break;
         }
-        items.push({ text: current[3], ordered: /\d/.test(current[2]), continuation: [] });
+        items.push({ text: current[3], ordered: /\d/.test(current[2]), continuation: [], blockId: "" });
         index += 1;
       }
       blocks.push(
@@ -10326,7 +10371,9 @@ function renderBlocks(markdown, options) {
           { key: `b${key++}`, className: "dshgn_mdList" },
           items.map((item, itemIndex) => {
             const task = /^\[( |x|X)\]\s+(.*)$/.exec(item.text);
-            const content = task ? task[2] : item.text;
+            const tailId = blockIdIn(task ? task[2] : item.text);
+            const content = stripBlockId(task ? task[2] : item.text);
+            const itemId = item.blockId !== "" ? item.blockId : tailId;
             let todoIndex = -1;
             if (task && todoCounter !== null) {
               todoIndex = todoCounter.n;
@@ -10335,7 +10382,11 @@ function renderBlocks(markdown, options) {
             const done = task !== null && task[1].toLowerCase() === "x";
             return h4(
               "li",
-              { key: itemIndex, className: task ? "dshgn_li dshgn_task" : "dshgn_li" },
+              {
+                key: itemIndex,
+                className: task ? "dshgn_li dshgn_task" : "dshgn_li",
+                "data-block-id": itemId === "" ? void 0 : itemId
+              },
               task ? h4("span", {
                 className: "dshgn_check" + (done ? " dshgn_checkOn" : "") + (todoIndex >= 0 ? " dshgn_checkHit" : ""),
                 "aria-hidden": "true",
@@ -10361,8 +10412,14 @@ function renderBlocks(markdown, options) {
       paragraph.push(lines[index]);
       index += 1;
     }
+    const paraText = paragraph.join("\n");
+    const paraId = blockIdIn(paraText);
     blocks.push(
-      h4("p", { key: `b${key++}`, className: "dshgn_p" }, renderInline(paragraph.join("\n"), `p${key}`, opts))
+      h4(
+        "p",
+        { key: `b${key++}`, className: "dshgn_p", "data-block-id": paraId === "" ? void 0 : paraId },
+        renderInline(stripBlockId(paraText), `p${key}`, opts)
+      )
     );
   }
   return blocks;
@@ -11453,7 +11510,7 @@ function PanelIcon(props) {
 function GetnotePage() {
   const [locale, setLocale] = h2(() => activeUiLocale());
   setUiLocale(locale);
-  const t3 = T2(() => makeT(), [locale]);
+  const t4 = T2(() => makeT(), [locale]);
   const [bootSession] = h2(() => readSession());
   const [tab, setTab] = h2(bootSession.tab === "" ? "notes" : bootSession.tab);
   const [status, setStatus] = h2(null);
@@ -11740,7 +11797,7 @@ function GetnotePage() {
       path: String(path || ""),
       // 'heading' 是「跳到某一节」，'line' 是「跳到正文里写着这行字的地方」。
       // 搜索卡片上的命中行走后者：那一行往往是普通段落，不是标题。
-      kind: kind === "line" ? "line" : "heading",
+      kind: kind === "line" ? "line" : kind === "block" ? "block" : "heading",
       seq: anchorSeq.current
     });
   }, []);
@@ -11748,8 +11805,9 @@ function GetnotePage() {
     (target, anchor) => {
       const raw = String(target || "").trim();
       const section = typeof anchor === "string" ? anchor.trim() : "";
+      const anchorKind = isBlockAnchor(section) ? "block" : "heading";
       if (raw === "") {
-        if (section !== "") requestAnchor(section, current !== null ? current.path : "");
+        if (section !== "") requestAnchor(section, current !== null ? current.path : "", anchorKind);
         return;
       }
       const sub = status !== null && typeof status.subfolder === "string" ? status.subfolder.replace(/^\/+|\/+$/g, "") : "";
@@ -11757,7 +11815,7 @@ function GetnotePage() {
       const sourceRel = rel === "" ? sub : sub === "" ? rel : `${sub}/${rel}`;
       const hosted = resolveViaHost(raw, sourceRel);
       if (hosted !== "") {
-        if (section !== "") requestAnchor(section, hosted);
+        if (section !== "") requestAnchor(section, hosted, anchorKind);
         void openNote(hosted);
         return;
       }
@@ -11765,7 +11823,7 @@ function GetnotePage() {
       const list = entries || [];
       const direct = list.find((entry) => entry.path === raw || entry.path === `${wanted}.md`);
       if (direct !== void 0) {
-        if (section !== "") requestAnchor(section, direct.path);
+        if (section !== "") requestAnchor(section, direct.path, anchorKind);
         void openNote(direct.path);
         return;
       }
@@ -11774,14 +11832,14 @@ function GetnotePage() {
         return name === wanted;
       });
       if (byName !== void 0) {
-        if (section !== "") requestAnchor(section, byName.path);
+        if (section !== "") requestAnchor(section, byName.path, anchorKind);
         void openNote(byName.path);
         return;
       }
       const lowered = wanted.toLowerCase();
       const byTitle = list.find((entry) => String(entry.title || "").toLowerCase() === lowered);
       if (byTitle !== void 0) {
-        if (section !== "") requestAnchor(section, byTitle.path);
+        if (section !== "") requestAnchor(section, byTitle.path, anchorKind);
         void openNote(byTitle.path);
         return;
       }
@@ -11789,13 +11847,13 @@ function GetnotePage() {
         (entry) => aliasesOf(entry).some((alias) => alias.toLowerCase() === lowered)
       );
       if (byAlias !== void 0) {
-        if (section !== "") requestAnchor(section, byAlias.path);
+        if (section !== "") requestAnchor(section, byAlias.path, anchorKind);
         void openNote(byAlias.path);
         return;
       }
-      setError(t3("note.wikilinkMissing").replace("{name}", wanted));
+      setError(t4("note.wikilinkMissing").replace("{name}", wanted));
     },
-    [current, entries, openNote, requestAnchor, status, t3]
+    [current, entries, openNote, requestAnchor, status, t4]
   );
   const resolveNotePath = q2(
     (target) => {
@@ -11837,11 +11895,11 @@ function GetnotePage() {
         go();
         return;
       }
-      void confirmDialog(t3("note.unsaved")).then((ok) => {
+      void confirmDialog(t4("note.unsaved")).then((ok) => {
         if (ok) go();
       });
     },
-    [dirty, openNote, requestAnchor, t3]
+    [dirty, openNote, requestAnchor, t4]
   );
   const saveNote = q2(async () => {
     if (current === null || draft === null) return;
@@ -11854,7 +11912,7 @@ function GetnotePage() {
         body: JSON.stringify({ path: current.path, content: draft, requestId: requestId() })
       });
       setCurrent({ ...current, content: draft });
-      showToast(t3("note.saved"));
+      showToast(t4("note.saved"));
       void refresh();
     } catch (err) {
       selfSavedRef.current = null;
@@ -11862,7 +11920,7 @@ function GetnotePage() {
     } finally {
       setBusy(false);
     }
-  }, [current, draft, refresh, showToast, t3]);
+  }, [current, draft, refresh, showToast, t4]);
   const customTemplates = T2(() => {
     const list = status !== null && Array.isArray(status.templates) ? status.templates : [];
     return list.filter((item) => item !== null && typeof item === "object" && typeof item.name === "string" && item.name.trim() !== "");
@@ -11895,7 +11953,7 @@ function GetnotePage() {
     }
     if (id === "book") {
       return {
-        title: t3("new.bookTitle"),
+        title: t4("new.bookTitle"),
         content: `
 ## \u8FD9\u672C\u4E66\u5728\u8BB2\u4EC0\u4E48
 
@@ -11911,7 +11969,7 @@ function GetnotePage() {
     }
     if (id === "meeting") {
       return {
-        title: `${day} ${t3("new.meetingTitle")}`,
+        title: `${day} ${t4("new.meetingTitle")}`,
         content: `
 - \u65F6\u95F4\uFF1A${day} ${hm}
 - \u53C2\u4E0E\uFF1A
@@ -11929,7 +11987,7 @@ function GetnotePage() {
       };
     }
     return { title: `${day} ${weekday} \u968F\u624B\u8BB0`, content: "" };
-  }, [customTemplates, t3]);
+  }, [customTemplates, t4]);
   const newTemplates = T2(() => {
     const builtin = [
       { id: "daily", icon: "calendar" },
@@ -11942,7 +12000,7 @@ function GetnotePage() {
   }, [customTemplates]);
   const newNote = q2(
     async (templateId) => {
-      const spec = typeof templateId === "string" ? templateContent(templateId) : { title: t3("action.new"), content: "" };
+      const spec = typeof templateId === "string" ? templateContent(templateId) : { title: t4("action.new"), content: "" };
       setTemplatesOpen(false);
       setBusy(true);
       const dir = activeDir !== "" ? activeDir : newNotePlacementOf();
@@ -11957,7 +12015,7 @@ function GetnotePage() {
             requestId: requestId()
           })
         });
-        showToast(t3("note.created"));
+        showToast(t4("note.created"));
         await refresh();
         await openNote(created.path);
       } catch (err) {
@@ -11966,7 +12024,7 @@ function GetnotePage() {
         setBusy(false);
       }
     },
-    [activeDir, openNote, refresh, showToast, t3, templateContent]
+    [activeDir, openNote, refresh, showToast, t4, templateContent]
   );
   const waitForSync = q2(async () => {
     const deadline = Date.now() + 5 * 60 * 1e3;
@@ -12047,7 +12105,7 @@ function GetnotePage() {
             })
           })
         ).then(async (created) => {
-          showToast(t3("note.created"));
+          showToast(t4("note.created"));
           await refresh();
           await openNote(created.path);
         }).catch((err) => setError(err && err.message ? err.message : String(err))).finally(() => setBusy(false));
@@ -12058,7 +12116,7 @@ function GetnotePage() {
         if (text === "") return;
         setTab("notes");
         if (status === null || status.vaultMissing) return;
-        const firstLine = text.split("\n").map((line) => line.trim()).filter((line) => line !== "")[0] || t3("capture.title");
+        const firstLine = text.split("\n").map((line) => line.trim()).filter((line) => line !== "")[0] || t4("capture.title");
         const title = firstLine.length > 40 ? `${firstLine.slice(0, 40)}\u2026` : firstLine;
         const quoted = text.split("\n").map((line) => line === "" ? ">" : `> ${line}`).join("\n");
         const from = typeof intent.source === "string" && intent.source !== "" ? `
@@ -12076,7 +12134,7 @@ function GetnotePage() {
             requestId: requestId()
           })
         }).then(async (created) => {
-          showToast(t3("capture.saved"));
+          showToast(t4("capture.saved"));
           await refresh();
           await openNote(created.path);
         }).catch((err) => setError(err && err.message ? err.message : String(err))).finally(() => setBusy(false));
@@ -12090,7 +12148,7 @@ function GetnotePage() {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ full: false })
         }).then(() => {
-          showToast(t3("sync.running"));
+          showToast(t4("sync.running"));
           return waitForSync();
         }).catch((err) => setError(err && err.message ? err.message : String(err))).finally(() => setBusy(false));
         return;
@@ -12100,18 +12158,18 @@ function GetnotePage() {
         setBusy(true);
         void api("/card/scan?timeout=8").then((json) => {
           const count = Array.isArray(json && json.cards) ? json.cards.length : 0;
-          showToast(count > 0 ? `${t3("card.scanFound")}\uFF1A${count}` : t3("card.scanNone"));
+          showToast(count > 0 ? `${t4("card.scanFound")}\uFF1A${count}` : t4("card.scanNone"));
         }).catch((err) => setError(err && err.message ? err.message : String(err))).finally(() => setBusy(false));
       }
     }),
-    [activeDir, entries, newNote, openNote, refresh, showToast, status, t3]
+    [activeDir, entries, newNote, openNote, refresh, showToast, status, t4]
   );
   const attachFiles = q2(
     async (fileList) => {
       const files = Array.from(fileList || []).filter((file) => file !== null && typeof file === "object");
       if (files.length === 0) return;
       if (current === null) {
-        showToast(t3("attach.needNote"));
+        showToast(t4("attach.needNote"));
         return;
       }
       setBusy(true);
@@ -12127,7 +12185,7 @@ function GetnotePage() {
           }
         }
         if (names.length === 0) {
-          showToast(t3("attach.failed"));
+          showToast(t4("attach.failed"));
           return;
         }
         const base = draft !== null ? draft : current.content;
@@ -12148,30 +12206,30 @@ ${insert}
           });
           await openNote(current.path);
         }
-        showToast(failed > 0 ? t3("attach.failed") : t3("attach.added"));
+        showToast(failed > 0 ? t4("attach.failed") : t4("attach.added"));
       } catch (err) {
         setError(err && err.message ? err.message : String(err));
       } finally {
         setBusy(false);
       }
     },
-    [current, draft, openNote, setDraft, showToast, t3]
+    [current, draft, openNote, setDraft, showToast, t4]
   );
   const renameNote = q2(
     async (path) => {
       const target = String(path || "");
       if (target === "") return;
       if (current !== null && current.path === target && draft !== null && draft !== current.content) {
-        showToast(t3("note.renameUnsaved"));
+        showToast(t4("note.renameUnsaved"));
         return;
       }
       const next = await renameNoteInHost(target);
       if (next === "") return;
-      showToast(t3("action.renamed"));
+      showToast(t4("action.renamed"));
       await refresh();
       await openNote(next);
     },
-    [current, draft, openNote, refresh, showToast, t3]
+    [current, draft, openNote, refresh, showToast, t4]
   );
   const deleteNote = q2(async () => {
     if (current === null) return;
@@ -12184,14 +12242,14 @@ ${insert}
       });
       setCurrent(null);
       setDraft(null);
-      showToast(t3("note.deleted"));
+      showToast(t4("note.deleted"));
       void refresh();
     } catch (err) {
       setError(err && err.message ? err.message : String(err));
     } finally {
       setBusy(false);
     }
-  }, [current, refresh, showToast, t3]);
+  }, [current, refresh, showToast, t4]);
   const copyReference = q2(async () => {
     if (current === null || status === null) return;
     const hosted = markdownLinkOf(current.path);
@@ -12202,11 +12260,11 @@ ${insert}
     }
     try {
       await navigator.clipboard.writeText(text);
-      showToast(t3("action.copied"));
+      showToast(t4("action.copied"));
     } catch {
       showToast(text);
     }
-  }, [current, status, showToast, t3]);
+  }, [current, status, showToast, t4]);
   const syncCurrent = q2(
     async (direction) => {
       if (current === null) return;
@@ -12217,7 +12275,7 @@ ${insert}
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ path: current.path })
         });
-        showToast(direction === "push" ? t3("sync.pushedOne") : t3("sync.pulledOne"));
+        showToast(direction === "push" ? t4("sync.pushedOne") : t4("sync.pulledOne"));
         await refresh();
         await openNote(current.path);
         return json;
@@ -12228,7 +12286,7 @@ ${insert}
         setBusy(false);
       }
     },
-    [current, openNote, refresh, setBusy, showToast, t3]
+    [current, openNote, refresh, setBusy, showToast, t4]
   );
   const [picked, setPicked] = h2(() => /* @__PURE__ */ new Set());
   const [batchTag, setBatchTag] = h2("");
@@ -12262,7 +12320,7 @@ ${insert}
             dir: kind === "move" ? batchDir.trim() : void 0
           })
         });
-        showToast(`${t3("batch.done")} ${json.changed || 0}`);
+        showToast(`${t4("batch.done")} ${json.changed || 0}`);
         clearPicked();
         await refresh();
         if (current !== null && picked.has(current.path)) setCurrent(null);
@@ -12272,13 +12330,13 @@ ${insert}
         setBusy(false);
       }
     },
-    [batchDir, batchTag, clearPicked, current, picked, refresh, setBusy, setError, showToast, t3]
+    [batchDir, batchTag, clearPicked, current, picked, refresh, setBusy, setError, showToast, t4]
   );
   const dropIntoDir = q2(
     async (rawPaths) => {
       const target = activeDir;
       if (target === "") {
-        showToast(t3("drop.pickDirFirst"));
+        showToast(t4("drop.pickDirFirst"));
         return;
       }
       const sub = status !== null && typeof status.subfolder === "string" ? status.subfolder.replace(/^\/+|\/+$/g, "") : "";
@@ -12299,7 +12357,7 @@ ${insert}
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ action: "move", paths, dir: target })
         });
-        showToast(`${t3("batch.done")} ${json.changed || 0}`);
+        showToast(`${t4("batch.done")} ${json.changed || 0}`);
         await refresh();
       } catch (err) {
         setError(err && err.message ? err.message : String(err));
@@ -12307,7 +12365,7 @@ ${insert}
         setBusy(false);
       }
     },
-    [activeDir, refresh, setBusy, setError, showToast, status, t3]
+    [activeDir, refresh, setBusy, setError, showToast, status, t4]
   );
   const vaultReady = status !== null && !status.vaultMissing;
   y2(() => {
@@ -12378,7 +12436,7 @@ ${insert}
       {
         type: "button",
         className: "dshgn_iconBtn dshgn_treeToggle",
-        title: t3("panel.toggleTree"),
+        title: t4("panel.toggleTree"),
         "aria-expanded": treeOpen ? "true" : "false",
         onClick: () => setTreeOpen((prev) => !prev)
       },
@@ -12387,11 +12445,11 @@ ${insert}
     h4(
       "div",
       { className: "dshgn_headMain" },
-      h4("div", { className: "dshgn_title" }, t3("panel.title")),
+      h4("div", { className: "dshgn_title" }, t4("panel.title")),
       h4(
         "div",
         { className: "dshgn_sub", title: status ? status.vaultRoot : "" },
-        status === null ? "" : status.vaultMissing ? t3("empty.noVault") : status.vaultRoot
+        status === null ? "" : status.vaultMissing ? t4("empty.noVault") : status.vaultRoot
       )
     ),
     // 动作按钮放在页签**左边**：页签是「去哪」（导航），按钮是「对当前页做什么」（动作）。
@@ -12410,7 +12468,7 @@ ${insert}
             {
               type: "button",
               className: "dshgn_iconBtn",
-              title: t3("action.new"),
+              title: t4("action.new"),
               onClick: () => setTemplatesOpen((prev) => !prev),
               disabled: busy || !vaultReady,
               "data-on": templatesOpen ? "true" : "false"
@@ -12427,7 +12485,7 @@ ${insert}
             h4(
               "div",
               { className: "dshgn_menu", role: "menu" },
-              h4("div", { className: "dshgn_menuTitle" }, t3("new.template")),
+              h4("div", { className: "dshgn_menuTitle" }, t4("new.template")),
               newTemplates.map(
                 (item) => h4(
                   "button",
@@ -12441,11 +12499,11 @@ ${insert}
                   h4(Icon, { name: item.icon, size: 13 }),
                   // 自定义模板直接显示模板名（用户自己起的，没有译文可查），
                   // 提示行说明它带的是自己写的骨架，而不是空白。
-                  h4("span", null, item.custom ? item.id.slice("custom:".length) : t3(`new.${item.id}`)),
+                  h4("span", null, item.custom ? item.id.slice("custom:".length) : t4(`new.${item.id}`)),
                   h4(
                     "span",
                     { className: "dshgn_menuHint" },
-                    item.custom ? t3("new.customHint") : t3(`new.${item.id}Hint`)
+                    item.custom ? t4("new.customHint") : t4(`new.${item.id}Hint`)
                   )
                 )
               )
@@ -12457,7 +12515,7 @@ ${insert}
           {
             type: "button",
             className: "dshgn_iconBtn" + (refreshState === "ok" ? " dshgn_iconBtnOk" : refreshState === "fail" ? " dshgn_iconBtnFail" : ""),
-            title: t3("action.refresh"),
+            title: t4("action.refresh"),
             onClick: refresh,
             disabled: busy
           },
@@ -12468,8 +12526,8 @@ ${insert}
     h4(
       "div",
       { className: "dshgn_tabs" },
-      tabButton("notes", t3("tab.notes")),
-      tabButton("cloud", t3("tab.cloud")),
+      tabButton("notes", t4("tab.notes")),
+      tabButton("cloud", t4("tab.cloud")),
       // 「同步」不再单独占一个页签，收进了设置页。自动同步本质上是「设置」：
       // 设一次间隔就不管了，不是每天要看的东西，占一个一级入口反而挤掉了
       // 真正要翻的笔记/云端。
@@ -12478,19 +12536,19 @@ ${insert}
       // 只有未处理的数量挂在旁边当角标——数字没了就说明手头清干净了。
       tabButton(
         "conflict",
-        t3("tab.conflict"),
+        t4("tab.conflict"),
         status !== null && status.conflicts > 0 ? status.conflicts : void 0
       ),
-      tabButton("card", t3("tab.card")),
-      tabButton("broken", t3("tab.broken")),
-      tabButton("settings", t3("tab.settings")),
-      tabButton("trash", t3("tab.trash"))
+      tabButton("card", t4("tab.card")),
+      tabButton("broken", t4("tab.broken")),
+      tabButton("settings", t4("tab.settings")),
+      tabButton("trash", t4("tab.trash"))
     )
   );
   let body;
   if (tab === "cloud") {
     body = h4(CloudPane, {
-      t: t3,
+      t: t4,
       status,
       showToast,
       onError: (message) => setError(message),
@@ -12500,7 +12558,7 @@ ${insert}
     });
   } else if (tab === "settings") {
     body = h4(SettingsPane, {
-      t: t3,
+      t: t4,
       status,
       onSaved: async (message) => {
         showToast(message);
@@ -12519,7 +12577,7 @@ ${insert}
     });
   } else if (tab === "card") {
     body = h4(CardPane, {
-      t: t3,
+      t: t4,
       status,
       showToast,
       onError: (message) => setError(message),
@@ -12529,7 +12587,7 @@ ${insert}
     });
   } else if (tab === "conflict") {
     body = h4(ConflictPane, {
-      t: t3,
+      t: t4,
       status,
       onChanged: async () => {
         await refresh();
@@ -12539,7 +12597,7 @@ ${insert}
     });
   } else if (tab === "broken") {
     body = h4(BrokenPane, {
-      t: t3,
+      t: t4,
       status,
       onError: (message) => setError(message),
       onOpen: (path) => {
@@ -12549,7 +12607,7 @@ ${insert}
     });
   } else if (tab === "trash") {
     body = h4(TrashPane, {
-      t: t3,
+      t: t4,
       status,
       onChanged: async () => {
         await refresh();
@@ -12558,13 +12616,13 @@ ${insert}
       showToast
     });
   } else if (status === null) {
-    body = h4(SkeletonPane, { t: t3 });
+    body = h4(SkeletonPane, { t: t4 });
   } else {
     body = h4(
       "div",
       { className: "dshgn_body" },
       h4(TreePane, {
-        t: t3,
+        t: t4,
         tree,
         // 窄窗口抽屉里点完目录要自己收回去，否则它还盖在列表上
         onNarrowPick: () => setTreeOpen(false),
@@ -12598,7 +12656,7 @@ ${insert}
               headers: { "content-type": "application/json" },
               body: JSON.stringify({ dir: name })
             });
-            showToast(t3("tree.dirCreated"));
+            showToast(t4("tree.dirCreated"));
             await refresh();
           } catch (err) {
             setError(err && err.message ? err.message : String(err));
@@ -12611,12 +12669,12 @@ ${insert}
               headers: { "content-type": "application/json" },
               body: JSON.stringify({ dir: name })
             });
-            showToast(t3("tree.deletedDir"));
+            showToast(t4("tree.deletedDir"));
             if (activeDir === name) setActiveDir("");
             await refresh();
           } catch (err) {
             const message = err && err.message ? err.message : String(err);
-            setError(/还有|not empty|409/.test(message) ? t3("tree.dirNotEmpty") : message);
+            setError(/还有|not empty|409/.test(message) ? t4("tree.dirNotEmpty") : message);
           }
         },
         onDeleteTag: async (name) => {
@@ -12626,7 +12684,7 @@ ${insert}
               headers: { "content-type": "application/json" },
               body: JSON.stringify({ tag: name })
             });
-            showToast(t3("tree.deletedTag"));
+            showToast(t4("tree.deletedTag"));
             if (activeTag === name) setActiveTag("");
             await refresh();
           } catch (err) {
@@ -12635,7 +12693,7 @@ ${insert}
         },
         onCreateTag: async (name) => {
           if (current === null || current.path === void 0) {
-            showToast(t3("tree.tagNeedNote"));
+            showToast(t4("tree.tagNeedNote"));
             return;
           }
           try {
@@ -12644,7 +12702,7 @@ ${insert}
               headers: { "content-type": "application/json" },
               body: JSON.stringify({ action: "tag", paths: [current.path], tag: name })
             });
-            showToast(t3("tree.tagCreated"));
+            showToast(t4("tree.tagCreated"));
             await refresh();
           } catch (err) {
             setError(err && err.message ? err.message : String(err));
@@ -12659,7 +12717,7 @@ ${insert}
             });
             if (activeTag === from) setActiveTag(to);
             const changed = json && typeof json.changed === "number" ? json.changed : 0;
-            showToast(`${t3("tree.tagRenamed")} \xB7 ${changed}`);
+            showToast(`${t4("tree.tagRenamed")} \xB7 ${changed}`);
             await refresh();
           } catch (err) {
             setError(err && err.message ? err.message : String(err));
@@ -12669,7 +12727,7 @@ ${insert}
         heatmap: status !== null && status.heatmap ? status.heatmap : null
       }),
       h4(ColSplitter, {
-        label: t3("col.treeWidth"),
+        label: t4("col.treeWidth"),
         value: colWidths.tree,
         min: TREE_MIN_W,
         max: TREE_MAX_W,
@@ -12686,25 +12744,25 @@ ${insert}
             className: "dshgn_search",
             type: "search",
             value: query,
-            placeholder: t3("search.placeholder"),
+            placeholder: t4("search.placeholder"),
             onChange: (event) => setQuery(event.target.value)
           }),
-          searching ? h4("span", { className: "dshgn_searching" }, t3("search.searching")) : null
+          searching ? h4("span", { className: "dshgn_searching" }, t4("search.searching")) : null
         ),
         // 限定语法提示：`tag:` / `dir:` 是隐藏功能，不提示没人会知道。
         // 只在输入框有内容时出现，平时不占位置。
-        query.trim() !== "" ? h4("div", { className: "dshgn_searchHint" }, t3("search.hint")) : null,
+        query.trim() !== "" ? h4("div", { className: "dshgn_searchHint" }, t4("search.hint")) : null,
         // D2 批量工具栏：只在有选中时出现，不占常态空间。
         pickedCount > 0 ? h4(
           "div",
           { className: "dshgn_batchBar" },
-          h4("span", { className: "dshgn_batchCount" }, `${pickedCount} ${t3("batch.picked")}`),
+          h4("span", { className: "dshgn_batchCount" }, `${pickedCount} ${t4("batch.picked")}`),
           h4(
             "button",
             { type: "button", className: "dshgn_batchBtn", onClick: () => setBatchOpen(!batchOpen) },
-            t3("batch.actions")
+            t4("batch.actions")
           ),
-          h4("button", { type: "button", className: "dshgn_batchBtn", onClick: clearPicked }, t3("batch.clear")),
+          h4("button", { type: "button", className: "dshgn_batchBtn", onClick: clearPicked }, t4("batch.clear")),
           batchOpen ? h4(
             "div",
             { className: "dshgn_batchMenu" },
@@ -12715,7 +12773,7 @@ ${insert}
                 className: "dshgn_input dshgn_batchInput",
                 type: "text",
                 value: batchTag,
-                placeholder: t3("batch.tagPlaceholder"),
+                placeholder: t4("batch.tagPlaceholder"),
                 onChange: (event) => setBatchTag(event.target.value)
               }),
               h4(
@@ -12726,7 +12784,7 @@ ${insert}
                   disabled: busy || batchTag.trim() === "",
                   onClick: () => void runBatch("tag")
                 },
-                t3("batch.addTag")
+                t4("batch.addTag")
               )
             ),
             h4(
@@ -12736,7 +12794,7 @@ ${insert}
                 className: "dshgn_input dshgn_batchInput",
                 type: "text",
                 value: batchDir,
-                placeholder: t3("batch.dirPlaceholder"),
+                placeholder: t4("batch.dirPlaceholder"),
                 onChange: (event) => setBatchDir(event.target.value)
               }),
               h4(
@@ -12747,7 +12805,7 @@ ${insert}
                   disabled: busy || batchDir.trim() === "",
                   onClick: () => void runBatch("move")
                 },
-                t3("batch.move")
+                t4("batch.move")
               )
             ),
             h4(
@@ -12757,12 +12815,12 @@ ${insert}
                 className: "dshgn_btn dshgn_btnDanger",
                 disabled: busy,
                 onClick: () => {
-                  void confirmDialog(`${t3("batch.confirmDelete")} ${pickedCount}`).then((ok) => {
+                  void confirmDialog(`${t4("batch.confirmDelete")} ${pickedCount}`).then((ok) => {
                     if (ok) void runBatch("delete");
                   });
                 }
               },
-              t3("batch.delete")
+              t4("batch.delete")
             )
           ) : null
         ) : null,
@@ -12788,13 +12846,13 @@ ${insert}
           visible.length === 0 && !searchMode ? h4(
             "div",
             { className: "dshgn_empty", style: { padding: "24px 12px" } },
-            h4("div", { className: "dshgn_emptyTitle" }, query.trim() !== "" ? t3("empty.search") : t3("empty.noNotes")),
+            h4("div", { className: "dshgn_emptyTitle" }, query.trim() !== "" ? t4("empty.search") : t4("empty.noNotes")),
             // 空列表最需要的不是一句「没有笔记」，而是一个能马上动手的按钮
             query.trim() === "" && vaultReady ? h4(
               "button",
               { type: "button", className: "dshgn_btn dshgn_btnPrimary", style: { marginTop: 10 }, onClick: () => void newNote() },
               h4(Icon, { name: "plus", size: 13 }),
-              t3("action.new")
+              t4("action.new")
             ) : null
           ) : [
             shownSlice.map(
@@ -12827,7 +12885,7 @@ ${insert}
                       void openNote(entry.path, true);
                       return;
                     }
-                    void confirmDialog(t3("note.unsaved")).then((ok) => {
+                    void confirmDialog(t4("note.unsaved")).then((ok) => {
                       if (ok) void openNote(entry.path, true);
                     });
                   },
@@ -12838,13 +12896,13 @@ ${insert}
                     const items = [
                       {
                         id: "open",
-                        label: t3("note.menuOpen"),
+                        label: t4("note.menuOpen"),
                         run: () => {
                           if (!dirty) {
                             void openNote(entry.path, true);
                             return;
                           }
-                          void confirmDialog(t3("note.unsaved")).then((ok) => {
+                          void confirmDialog(t4("note.unsaved")).then((ok) => {
                             if (ok) void openNote(entry.path, true);
                           });
                         }
@@ -12853,49 +12911,49 @@ ${insert}
                       // 扫到一篇、想拿宿主的补全/Vim 去改，而不是先点开再找按钮。
                       hasOpenInEditor() ? {
                         id: "open-in-editor",
-                        label: t3("action.openInEditor"),
+                        label: t4("action.openInEditor"),
                         run: () => {
                           openInEditor(entry.path);
                         }
                       } : null,
                       hasRevealInVault() ? {
                         id: "reveal-in-vault",
-                        label: t3("tree.menuReveal"),
+                        label: t4("tree.menuReveal"),
                         run: () => {
                           revealInVault(entry.path);
                         }
                       } : null,
                       hasRenameNote() ? {
                         id: "rename",
-                        label: t3("action.rename"),
+                        label: t4("action.rename"),
                         run: () => {
                           void renameNote(entry.path);
                         }
                       } : null,
                       {
                         id: "copy-ref",
-                        label: t3("action.copyRef"),
+                        label: t4("action.copyRef"),
                         run: () => {
                           void openNote(entry.path, true).then(() => copyReference());
                         }
                       },
                       {
                         id: "push-one",
-                        label: t3("sync.pushOne"),
+                        label: t4("sync.pushOne"),
                         run: () => {
                           void openNote(entry.path, true).then(() => syncCurrent("push"));
                         }
                       },
                       {
                         id: "pull-one",
-                        label: t3("sync.pullOne"),
+                        label: t4("sync.pullOne"),
                         run: () => {
                           void openNote(entry.path, true).then(() => syncCurrent("pull"));
                         }
                       },
                       {
                         id: "delete",
-                        label: t3("action.delete"),
+                        label: t4("action.delete"),
                         danger: true,
                         // 不二次确认：删除是进回收站，可还原，和面板里的删除按钮一致
                         run: () => {
@@ -12918,7 +12976,7 @@ ${insert}
                       className: "dshgn_pickBox" + (picked.has(entry.path) ? " dshgn_pickBoxOn" : ""),
                       role: "checkbox",
                       "aria-checked": picked.has(entry.path) ? "true" : "false",
-                      "aria-label": t3("batch.pick"),
+                      "aria-label": t4("batch.pick"),
                       onClick: (event) => {
                         event.stopPropagation();
                         togglePick(entry.path);
@@ -12956,7 +13014,7 @@ ${insert}
                         key: `${index}-${match.line}`,
                         type: "button",
                         className: "dshgn_matchLine",
-                        title: t3("search.jumpToLine"),
+                        title: t4("search.jumpToLine"),
                         onClick: (event) => {
                           event.stopPropagation();
                           jumpToMatch(entry.path, match);
@@ -13002,20 +13060,20 @@ ${insert}
                 className: "dshgn_btn dshgn_moreBtn",
                 onClick: () => setListLimit((prev) => prev + LIST_PAGE_SIZE)
               },
-              `${t3("list.more")}\uFF08${shown.length - shownSlice.length}\uFF09`
+              `${t4("list.more")}\uFF08${shown.length - shownSlice.length}\uFF09`
             ) : null
           ]
         )
       ),
       h4(ColSplitter, {
-        label: t3("col.listWidth"),
+        label: t4("col.listWidth"),
         value: colWidths.list,
         min: LIST_MIN_W,
         max: LIST_MAX_W,
         onChange: (next) => setColWidths((prev) => ({ ...prev, list: next }))
       }),
       h4(NotePane, {
-        t: t3,
+        t: t4,
         status,
         current,
         draft,
@@ -13027,7 +13085,7 @@ ${insert}
         // 只是想看一眼列表，不是想丢掉刚写的半句。
         onClose: () => {
           if (dirty) {
-            void confirmDialog(t3("note.unsaved")).then((ok) => {
+            void confirmDialog(t4("note.unsaved")).then((ok) => {
               if (!ok) return;
               openSeq.current += 1;
               setCurrent(null);
@@ -13070,7 +13128,7 @@ ${insert}
               body: JSON.stringify({ path: current.path, index })
             });
             await openNote(current.path);
-            showToast(`${done ? t3("todo.done") : t3("todo.undone")}`);
+            showToast(`${done ? t4("todo.done") : t4("todo.undone")}`);
           } catch (err) {
             setError(err && err.message ? err.message : String(err));
           }
@@ -13104,7 +13162,7 @@ ${insert}
         "data-has-note": current !== null ? "true" : "false"
       },
       head,
-      error2 !== null ? h4("div", { className: "dshgn_error", role: "alert" }, `${t3("error.prefix")}: ${error2}`) : null,
+      error2 !== null ? h4("div", { className: "dshgn_error", role: "alert" }, `${t4("error.prefix")}: ${error2}`) : null,
       // key 用 tab：切换页签时 React 会换掉整个节点，动画才会从头播一遍。
       // 不加 key 的话 React 复用同一个 DOM，transition 没有「变化」可播，
       // 表现就是切页签时内容硬跳一下。
@@ -13114,7 +13172,7 @@ ${insert}
   );
 }
 function AudioPlayer(props) {
-  const { t: t3, track, onTimeChange, seekRequest, trackIndex } = props;
+  const { t: t4, track, onTimeChange, seekRequest, trackIndex } = props;
   const audioRef = A2(null);
   const [playing, setPlaying] = h2(false);
   const [current, setCurrent] = h2(0);
@@ -13252,7 +13310,7 @@ function AudioPlayer(props) {
       "div",
       { className: "dshgn_audioLabel" },
       h4(Icon, { name: "audio", size: 13 }),
-      h4("span", null, track.kind === "local" ? t3("note.localAudio") : t3("cloud.audio")),
+      h4("span", null, track.kind === "local" ? t4("note.localAudio") : t4("cloud.audio")),
       track.title ? h4("span", { className: "dshgn_treeCount" }, track.title) : null
     ),
     h4(
@@ -13264,8 +13322,8 @@ function AudioPlayer(props) {
           type: "button",
           className: "dshgn_audioBtn",
           onClick: toggle,
-          title: playing ? t3("cloud.pause") : t3("cloud.play"),
-          "aria-label": playing ? t3("cloud.pause") : t3("cloud.play")
+          title: playing ? t4("cloud.pause") : t4("cloud.play"),
+          "aria-label": playing ? t4("cloud.pause") : t4("cloud.play")
         },
         h4(Icon, { name: playing ? "pause" : "play", size: 14 })
       ),
@@ -13276,7 +13334,7 @@ function AudioPlayer(props) {
           className: "dshgn_audioSeek",
           role: "slider",
           tabIndex: 0,
-          "aria-label": t3("cloud.audio"),
+          "aria-label": t4("cloud.audio"),
           "aria-valuemin": 0,
           "aria-valuemax": Math.max(1, Math.round(duration)),
           "aria-valuenow": Math.round(dragging ? dragValue : current),
@@ -13321,7 +13379,7 @@ function AudioPlayer(props) {
   );
 }
 function CloudPane(props) {
-  const { t: t3, status, showToast, onError, onSynced } = props;
+  const { t: t4, status, showToast, onError, onSynced } = props;
   const configured = status !== null && status.api !== void 0 && status.api.configured === true;
   const [list, setList] = h2([]);
   const [cursor, setCursor] = h2(null);
@@ -13431,7 +13489,7 @@ function CloudPane(props) {
           topicId: activeTopic !== null ? activeTopic.topicId || activeTopic.id : void 0
         })
       });
-      showToast(t3("cloud.created"));
+      showToast(t4("cloud.created"));
       setComposing(false);
       setNewTitle("");
       setNewBody("");
@@ -13444,7 +13502,7 @@ function CloudPane(props) {
     } finally {
       setBusy(false);
     }
-  }, [activeTopic, loadFirst, newBody, newTitle, onError, showToast, t3]);
+  }, [activeTopic, loadFirst, newBody, newTitle, onError, showToast, t4]);
   const openCloudNote = q2(
     async (note, toggle = false) => {
       if (toggle && selected !== null && selected.noteId === note.noteId) {
@@ -13482,7 +13540,7 @@ function CloudPane(props) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ noteId: detail.noteId, title: draftTitle, content: draftBody })
       });
-      showToast(t3("cloud.savedCloud"));
+      showToast(t4("cloud.savedCloud"));
       setEditing(false);
       await openCloudNote(detail);
       if (typeof onSynced === "function") onSynced();
@@ -13491,10 +13549,10 @@ function CloudPane(props) {
     } finally {
       setBusy(false);
     }
-  }, [detail, draftTitle, draftBody, openCloudNote, onError, onSynced, showToast, t3]);
+  }, [detail, draftTitle, draftBody, openCloudNote, onError, onSynced, showToast, t4]);
   const deleteCloud = q2(async () => {
     if (!detail) return;
-    if (!await confirmDialog(`${t3("cloud.deleteCloud")}\uFF1A${detail.title || detail.noteId}\uFF1F`)) return;
+    if (!await confirmDialog(`${t4("cloud.deleteCloud")}\uFF1A${detail.title || detail.noteId}\uFF1F`)) return;
     setBusy(true);
     try {
       await api("/cloud/delete", {
@@ -13502,7 +13560,7 @@ function CloudPane(props) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ noteId: detail.noteId })
       });
-      showToast(t3("cloud.deletedCloud"));
+      showToast(t4("cloud.deletedCloud"));
       setSelected(null);
       setDetail(null);
       await loadFirst();
@@ -13512,7 +13570,7 @@ function CloudPane(props) {
     } finally {
       setBusy(false);
     }
-  }, [detail, loadFirst, onError, onSynced, showToast, t3]);
+  }, [detail, loadFirst, onError, onSynced, showToast, t4]);
   const pullOne = q2(async () => {
     if (!detail) return;
     setBusy(true);
@@ -13522,14 +13580,14 @@ function CloudPane(props) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ noteId: detail.noteId, title: detail.title, content: detail.content || detail.original || "" })
       });
-      showToast(result.local && result.local.path ? result.local.path : t3("cloud.localCopy"));
+      showToast(result.local && result.local.path ? result.local.path : t4("cloud.localCopy"));
       if (typeof onSynced === "function") onSynced();
     } catch (err) {
       onError(err && err.message ? err.message : String(err));
     } finally {
       setBusy(false);
     }
-  }, [detail, onError, onSynced, showToast, t3]);
+  }, [detail, onError, onSynced, showToast, t4]);
   const doRecall = q2(async () => {
     const q4 = query.trim();
     if (q4 === "") return;
@@ -13559,7 +13617,7 @@ function CloudPane(props) {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ noteId: detail.noteId, tags: [name] })
         });
-        showToast(t3("cloud.tagAdded"));
+        showToast(t4("cloud.tagAdded"));
         await openCloudNote(detail);
         await loadFirst();
       } catch (err) {
@@ -13568,7 +13626,7 @@ function CloudPane(props) {
         setBusy(false);
       }
     },
-    [detail, loadFirst, onError, openCloudNote, showToast, t3]
+    [detail, loadFirst, onError, openCloudNote, showToast, t4]
   );
   const removeCloudTag = q2(
     async (tag) => {
@@ -13581,7 +13639,7 @@ function CloudPane(props) {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ noteId: detail.noteId, tagId })
         });
-        showToast(t3("cloud.tagRemoved"));
+        showToast(t4("cloud.tagRemoved"));
         await openCloudNote(detail);
         await loadFirst();
       } catch (err) {
@@ -13590,7 +13648,7 @@ function CloudPane(props) {
         setBusy(false);
       }
     },
-    [detail, loadFirst, onError, openCloudNote, showToast, t3]
+    [detail, loadFirst, onError, openCloudNote, showToast, t4]
   );
   const shareCloud = q2(
     async (excludeAudio) => {
@@ -13607,12 +13665,12 @@ function CloudPane(props) {
           setShareUrl(url);
           try {
             await navigator.clipboard.writeText(url);
-            showToast(t3("cloud.copied"));
+            showToast(t4("cloud.copied"));
           } catch {
-            showToast(t3("cloud.shareCreated"));
+            showToast(t4("cloud.shareCreated"));
           }
         } else {
-          showToast(t3("cloud.shareCreated"));
+          showToast(t4("cloud.shareCreated"));
         }
       } catch (err) {
         onError(err && err.message ? err.message : String(err));
@@ -13620,18 +13678,18 @@ function CloudPane(props) {
         setBusy(false);
       }
     },
-    [detail, onError, showToast, t3]
+    [detail, onError, showToast, t4]
   );
   const pushLocalOne = q2(async () => {
     if (!detail) return;
     const localPath = detail.localPath || "";
     if (localPath === "") {
-      onError(t3("cloud.noLocalCopy"));
+      onError(t4("cloud.noLocalCopy"));
       return;
     }
-    if (!await confirmDialog(`${t3("cloud.pushLocal")}
+    if (!await confirmDialog(`${t4("cloud.pushLocal")}
 
-${t3("cloud.pushHint")}`)) return;
+${t4("cloud.pushHint")}`)) return;
     setBusy(true);
     try {
       await api("/sync/push", {
@@ -13639,14 +13697,14 @@ ${t3("cloud.pushHint")}`)) return;
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ path: localPath })
       });
-      showToast(t3("cloud.pushed"));
+      showToast(t4("cloud.pushed"));
       await openCloudNote(detail);
     } catch (err) {
       onError(err && err.message ? err.message : String(err));
     } finally {
       setBusy(false);
     }
-  }, [detail, onError, openCloudNote, showToast, t3]);
+  }, [detail, onError, openCloudNote, showToast, t4]);
   if (!configured) {
     return h4(
       "div",
@@ -13655,8 +13713,8 @@ ${t3("cloud.pushHint")}`)) return;
         "div",
         { className: "dshgn_banner" },
         h4(Icon, { name: "cloud", size: 26 }),
-        h4("div", { className: "dshgn_emptyTitle" }, t3("cloud.notConfigured")),
-        h4("div", { className: "dshgn_emptyDesc" }, t3("cloud.notConfiguredDesc"))
+        h4("div", { className: "dshgn_emptyTitle" }, t4("cloud.notConfigured")),
+        h4("div", { className: "dshgn_emptyDesc" }, t4("cloud.notConfiguredDesc"))
       )
     );
   }
@@ -13672,7 +13730,7 @@ ${t3("cloud.pushHint")}`)) return;
         className: "dshgn_search",
         type: "search",
         value: query,
-        placeholder: t3("search.placeholder"),
+        placeholder: t4("search.placeholder"),
         onChange: (event) => {
           setQuery(event.target.value);
           if (event.target.value.trim() === "") setRecallHits(null);
@@ -13693,7 +13751,7 @@ ${t3("cloud.pushHint")}`)) return;
           className: "dshgn_chip" + (activeTopic === null ? " dshgn_chipOn" : ""),
           onClick: () => void pickTopic(null)
         },
-        t3("cloud.allTopics")
+        t4("cloud.allTopics")
       ),
       topics.map(
         (topic) => h4(
@@ -13722,7 +13780,7 @@ ${t3("cloud.pushHint")}`)) return;
         "button",
         { type: "button", className: "dshgn_btn", onClick: () => setComposing(true), disabled: busy },
         h4(Icon, { name: "plus", size: 12 }),
-        t3("cloud.newNote")
+        t4("cloud.newNote")
       ),
       recallHits !== null ? h4(
         "button",
@@ -13734,13 +13792,13 @@ ${t3("cloud.pushHint")}`)) return;
             void loadFirst();
           }
         },
-        t3("action.cancel")
+        t4("action.cancel")
       ) : null
     ),
     h4(
       "div",
       { className: "dshgn_listBody" },
-      loading && shown.length === 0 ? h4("div", { className: "dshgn_empty" }, h4("span", { className: "dshgn_spin" }), h4("span", null, t3("cloud.loading"))) : shown.length === 0 ? h4("div", { className: "dshgn_empty" }, h4("div", { className: "dshgn_emptyTitle" }, t3("cloud.empty"))) : shown.map(
+      loading && shown.length === 0 ? h4("div", { className: "dshgn_empty" }, h4("span", { className: "dshgn_spin" }), h4("span", null, t4("cloud.loading"))) : shown.length === 0 ? h4("div", { className: "dshgn_empty" }, h4("div", { className: "dshgn_emptyTitle" }, t4("cloud.empty"))) : shown.map(
         (note) => h4(
           "div",
           {
@@ -13770,7 +13828,7 @@ ${t3("cloud.pushHint")}`)) return;
     hasMore && recallHits === null ? h4(
       "div",
       { style: { padding: "6px 10px 10px" } },
-      h4("button", { type: "button", className: "dshgn_btn", onClick: loadMore, disabled: loading }, loading ? h4("span", { className: "dshgn_spin" }) : null, t3("cloud.loadMore"))
+      h4("button", { type: "button", className: "dshgn_btn", onClick: loadMore, disabled: loading }, loading ? h4("span", { className: "dshgn_spin" }) : null, t4("cloud.loadMore"))
     ) : null
   );
   const readerPane = h4(
@@ -13785,13 +13843,13 @@ ${t3("cloud.pushHint")}`)) return;
         h4(
           "div",
           { className: "dshgn_sectionHead" },
-          h4("span", { className: "dshgn_sectionTitle" }, t3("cloud.newNote")),
+          h4("span", { className: "dshgn_sectionTitle" }, t4("cloud.newNote")),
           activeTopic !== null ? h4("span", { className: "dshgn_badge" }, activeTopic.name) : null
         ),
         h4(
           "div",
           { className: "dshgn_field" },
-          h4("span", { className: "dshgn_fieldLabel" }, t3("cloud.newNoteTitle")),
+          h4("span", { className: "dshgn_fieldLabel" }, t4("cloud.newNoteTitle")),
           h4("input", {
             className: "dshgn_input",
             value: newTitle,
@@ -13802,7 +13860,7 @@ ${t3("cloud.pushHint")}`)) return;
         h4(
           "div",
           { className: "dshgn_field" },
-          h4("span", { className: "dshgn_fieldLabel" }, t3("cloud.newNoteBody")),
+          h4("span", { className: "dshgn_fieldLabel" }, t4("cloud.newNoteBody")),
           h4("textarea", {
             className: "dshgn_textarea",
             value: newBody,
@@ -13821,7 +13879,7 @@ ${t3("cloud.pushHint")}`)) return;
               disabled: busy || newTitle.trim() === ""
             },
             busy ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "check", size: 12 }),
-            t3("cloud.create")
+            t4("cloud.create")
           ),
           h4(
             "button",
@@ -13835,11 +13893,11 @@ ${t3("cloud.pushHint")}`)) return;
               },
               disabled: busy
             },
-            t3("action.cancel")
+            t4("action.cancel")
           )
         )
       )
-    ) : selected === null ? h4("div", { className: "dshgn_empty" }, h4(Icon, { name: "cloud", size: 26 }), h4("div", { className: "dshgn_emptyTitle" }, t3("cloud.title")), h4("div", { className: "dshgn_emptyDesc" }, t3("cloud.desc"))) : h4(
+    ) : selected === null ? h4("div", { className: "dshgn_empty" }, h4(Icon, { name: "cloud", size: 26 }), h4("div", { className: "dshgn_emptyTitle" }, t4("cloud.title")), h4("div", { className: "dshgn_emptyDesc" }, t4("cloud.desc"))) : h4(
       b,
       null,
       h4(
@@ -13849,15 +13907,15 @@ ${t3("cloud.pushHint")}`)) return;
         detail !== null && !editing ? h4(
           b,
           null,
-          h4("button", { type: "button", className: "dshgn_iconBtn", title: t3("action.edit"), onClick: () => setEditing(true), disabled: busy }, h4(Icon, { name: "edit" })),
-          h4("button", { type: "button", className: "dshgn_iconBtn", title: t3("cloud.pullOne"), onClick: pullOne, disabled: busy }, h4(Icon, { name: "up" })),
+          h4("button", { type: "button", className: "dshgn_iconBtn", title: t4("action.edit"), onClick: () => setEditing(true), disabled: busy }, h4(Icon, { name: "edit" })),
+          h4("button", { type: "button", className: "dshgn_iconBtn", title: t4("cloud.pullOne"), onClick: pullOne, disabled: busy }, h4(Icon, { name: "up" })),
           // 把本地改动推到云端：以前只能单向「云端 → 本地」，用户在本地
           // 改完笔记就没有任何办法把它送回云端，只能去得到大脑里重写一遍。
-          h4("button", { type: "button", className: "dshgn_iconBtn", title: t3("cloud.pushLocal"), onClick: pushLocalOne, disabled: busy }, h4(Icon, { name: "cloud" })),
-          h4("button", { type: "button", className: "dshgn_iconBtn", title: t3("cloud.deleteCloud"), onClick: deleteCloud, disabled: busy }, h4(Icon, { name: "trash" }))
+          h4("button", { type: "button", className: "dshgn_iconBtn", title: t4("cloud.pushLocal"), onClick: pushLocalOne, disabled: busy }, h4(Icon, { name: "cloud" })),
+          h4("button", { type: "button", className: "dshgn_iconBtn", title: t4("cloud.deleteCloud"), onClick: deleteCloud, disabled: busy }, h4(Icon, { name: "trash" }))
         ) : null
       ),
-      detailLoading ? h4("div", { className: "dshgn_emptyState" }, h4("span", { className: "dshgn_spin" }), h4("span", { style: { marginLeft: 8 } }, t3("cloud.polling"))) : detail === null ? h4("div", { className: "dshgn_emptyState" }, t3("cloud.polling")) : editing ? h4(
+      detailLoading ? h4("div", { className: "dshgn_emptyState" }, h4("span", { className: "dshgn_spin" }), h4("span", { style: { marginLeft: 8 } }, t4("cloud.polling"))) : detail === null ? h4("div", { className: "dshgn_emptyState" }, t4("cloud.polling")) : editing ? h4(
         "div",
         { className: "dshgn_pane" },
         h4(
@@ -13866,20 +13924,20 @@ ${t3("cloud.pushHint")}`)) return;
           h4(
             "div",
             { className: "dshgn_field" },
-            h4("span", { className: "dshgn_fieldLabel" }, t3("cloud.editTitle")),
+            h4("span", { className: "dshgn_fieldLabel" }, t4("cloud.editTitle")),
             h4("input", { className: "dshgn_input", value: draftTitle, onChange: (e3) => setDraftTitle(e3.target.value) })
           ),
           h4(
             "div",
             { className: "dshgn_field" },
-            h4("span", { className: "dshgn_fieldLabel" }, t3("cloud.editBody")),
+            h4("span", { className: "dshgn_fieldLabel" }, t4("cloud.editBody")),
             h4("textarea", { className: "dshgn_textarea", value: draftBody, onChange: (e3) => setDraftBody(e3.target.value) })
           ),
           h4(
             "div",
             { className: "dshgn_rowLine" },
-            h4("button", { type: "button", className: "dshgn_btn dshgn_btnPri", onClick: saveCloud, disabled: busy }, busy ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "check", size: 12 }), t3("cloud.saveCloud")),
-            h4("button", { type: "button", className: "dshgn_btn", onClick: () => setEditing(false), disabled: busy }, t3("action.cancel"))
+            h4("button", { type: "button", className: "dshgn_btn dshgn_btnPri", onClick: saveCloud, disabled: busy }, busy ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "check", size: 12 }), t4("cloud.saveCloud")),
+            h4("button", { type: "button", className: "dshgn_btn", onClick: () => setEditing(false), disabled: busy }, t4("action.cancel"))
           )
         )
       ) : h4(
@@ -13904,7 +13962,7 @@ ${t3("cloud.pushHint")}`)) return;
                   {
                     type: "button",
                     className: "dshgn_tagX",
-                    title: t3("cloud.removeTag"),
+                    title: t4("cloud.removeTag"),
                     disabled: busy,
                     onClick: () => void removeCloudTag(tag)
                   },
@@ -13922,7 +13980,7 @@ ${t3("cloud.pushHint")}`)) return;
               className: "dshgn_input",
               style: { maxWidth: 180, height: 26 },
               value: tagDraft,
-              placeholder: t3("cloud.addTagHint"),
+              placeholder: t4("cloud.addTagHint"),
               onChange: (event) => setTagDraft(event.target.value),
               onKeyDown: (event) => {
                 if (event.key === "Enter") {
@@ -13946,7 +14004,7 @@ ${t3("cloud.pushHint")}`)) return;
                 }
               },
               h4(Icon, { name: "plus", size: 12 }),
-              t3("cloud.tags")
+              t4("cloud.tags")
             ),
             h4(
               "button",
@@ -13957,14 +14015,14 @@ ${t3("cloud.pushHint")}`)) return;
                 onClick: () => void shareCloud(false)
               },
               h4(Icon, { name: "link", size: 12 }),
-              t3("cloud.shareLink")
+              t4("cloud.shareLink")
             )
           ),
           // 分享出来的链接直接显示出来，用户能选中复制（剪贴板可能被拒）
           shareUrl !== null ? h4(
             "div",
             { className: "dshgn_section", style: { marginBottom: 12 } },
-            h4("div", { className: "dshgn_sectionTitle" }, t3("cloud.shareCreated")),
+            h4("div", { className: "dshgn_sectionTitle" }, t4("cloud.shareCreated")),
             h4(
               "div",
               { className: "dshgn_rowLine", style: { gap: 6 } },
@@ -13976,12 +14034,12 @@ ${t3("cloud.pushHint")}`)) return;
                   className: "dshgn_btn",
                   onClick: () => {
                     void navigator.clipboard.writeText(shareUrl).then(
-                      () => showToast(t3("cloud.copied")),
-                      () => showToast(t3("cloud.shareCreated"))
+                      () => showToast(t4("cloud.copied")),
+                      () => showToast(t4("cloud.shareCreated"))
                     );
                   }
                 },
-                t3("cloud.copyLink")
+                t4("cloud.copyLink")
               )
             )
           ) : null,
@@ -13989,7 +14047,7 @@ ${t3("cloud.pushHint")}`)) return;
           detail.audio.length > 0 ? detail.audio.map(
             (track, index) => h4(AudioPlayer, {
               key: `${track.url}-${index}`,
-              t: t3,
+              t: t4,
               track,
               trackIndex: index,
               seekRequest,
@@ -14000,7 +14058,7 @@ ${t3("cloud.pushHint")}`)) return;
           detail.moments.length > 0 ? h4(
             "div",
             { className: "dshgn_section", style: { marginTop: 12 } },
-            h4("div", { className: "dshgn_sectionTitle" }, t3("cloud.moments")),
+            h4("div", { className: "dshgn_sectionTitle" }, t4("cloud.moments")),
             h4(
               "div",
               null,
@@ -14017,7 +14075,7 @@ ${t3("cloud.pushHint")}`)) return;
           detail.todos.length > 0 ? h4(
             "div",
             { className: "dshgn_section", style: { marginTop: 12 } },
-            h4("div", { className: "dshgn_sectionTitle" }, t3("cloud.todos")),
+            h4("div", { className: "dshgn_sectionTitle" }, t4("cloud.todos")),
             h4(
               "ul",
               { className: "dshgn_mdList" },
@@ -14038,7 +14096,7 @@ ${t3("cloud.pushHint")}`)) return;
           detail.hasTranscript && detail.original !== detail.content ? h4(
             b,
             null,
-            h4("h2", { className: "dshgn_h dshgn_h2" }, t3("cloud.transcript")),
+            h4("h2", { className: "dshgn_h dshgn_h2" }, t4("cloud.transcript")),
             h4(TranscriptBlock, {
               text: detail.original,
               activeSeconds: detail.audio.length > 0 ? playhead : null,
@@ -14098,7 +14156,7 @@ function TranscriptBlock(props) {
   const onSeek = props && typeof props.onSeek === "function" ? props.onSeek : null;
   const activeSeconds = props && Number.isFinite(props.activeSeconds) ? props.activeSeconds : null;
   const activeIndex = activeSeconds === null ? -1 : activeTranscriptIndex(entries, activeSeconds);
-  const t3 = getT();
+  const t4 = getT();
   const children = entries.map((entry, index) => {
     const seconds = stampToSeconds(entry.stamp);
     const stampClass = "dshgn_ts" + (index === activeIndex ? " dshgn_tsOn" : "");
@@ -14108,8 +14166,8 @@ function TranscriptBlock(props) {
       {
         type: "button",
         className: stampClass + " dshgn_tsBtn",
-        title: t3("cloud.seekTo"),
-        "aria-label": `${t3("cloud.seekTo")} ${entry.stamp}`,
+        title: t4("cloud.seekTo"),
+        "aria-label": `${t4("cloud.seekTo")} ${entry.stamp}`,
         onClick: () => {
           if (onSeek !== null && seconds !== null) onSeek(seconds);
         }
@@ -14137,10 +14195,10 @@ function formatMoment(ms) {
   return `${String(m3).padStart(2, "0")}:${String(s3).padStart(2, "0")}`;
 }
 function LanguageCard(props) {
-  const { t: t3, locale, onSaved, onError, onLocaleChange } = props;
+  const { t: t4, locale, onSaved, onError, onLocaleChange } = props;
   const [busy, setBusy] = h2(false);
   const options = [
-    { id: null, label: t3("lang.auto") },
+    { id: null, label: t4("lang.auto") },
     { id: "zh", label: "\u4E2D\u6587" },
     { id: "en", label: "English" },
     { id: "nl", label: "Nederlands" }
@@ -14156,20 +14214,20 @@ function LanguageCard(props) {
           body: JSON.stringify({ uiLocale: next })
         });
         onLocaleChange(next);
-        await onSaved(t3("lang.saved"));
+        await onSaved(t4("lang.saved"));
       } catch (err) {
         onError(err && err.message ? err.message : String(err));
       } finally {
         setBusy(false);
       }
     },
-    [busy, onError, onLocaleChange, onSaved, t3]
+    [busy, onError, onLocaleChange, onSaved, t4]
   );
   return h4(
     "div",
     { className: "dshgn_section" },
-    h4("div", { className: "dshgn_sectionHead" }, h4("span", null, t3("lang.title"))),
-    h4("div", { className: "dshgn_sectionDesc" }, t3("lang.desc")),
+    h4("div", { className: "dshgn_sectionHead" }, h4("span", null, t4("lang.title"))),
+    h4("div", { className: "dshgn_sectionDesc" }, t4("lang.desc")),
     h4(
       "div",
       { className: "dshgn_langRow" },
@@ -14190,7 +14248,7 @@ function LanguageCard(props) {
   );
 }
 function FollowCard(props) {
-  const { t: t3, status, onSaved, onError } = props;
+  const { t: t4, status, onSaved, onError } = props;
   const [busy, setBusy] = h2(false);
   const on2 = status !== null && status.followActive === true;
   const flip = q2(
@@ -14203,20 +14261,20 @@ function FollowCard(props) {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ followActive: next })
         });
-        await onSaved(t3("settings.followSaved"));
+        await onSaved(t4("settings.followSaved"));
       } catch (err) {
         onError(err && err.message ? err.message : String(err));
       } finally {
         setBusy(false);
       }
     },
-    [busy, onError, onSaved, t3]
+    [busy, onError, onSaved, t4]
   );
   return h4(
     "div",
     { className: "dshgn_section" },
-    h4("div", { className: "dshgn_sectionHead" }, h4("span", null, t3("settings.followTitle"))),
-    h4("div", { className: "dshgn_sectionDesc" }, t3("settings.followDesc")),
+    h4("div", { className: "dshgn_sectionHead" }, h4("span", null, t4("settings.followTitle"))),
+    h4("div", { className: "dshgn_sectionDesc" }, t4("settings.followDesc")),
     h4(
       "label",
       { className: "dshgn_rowLine", style: { fontSize: 11.5, color: "var(--dsw-alias-label-secondary)" } },
@@ -14226,12 +14284,12 @@ function FollowCard(props) {
         disabled: busy || status === null,
         onChange: (event) => void flip(event.target.checked === true)
       }),
-      t3("settings.followToggle")
+      t4("settings.followToggle")
     )
   );
 }
 function TemplateCard(props) {
-  const { t: t3, status, onSaved, onError } = props;
+  const { t: t4, status, onSaved, onError } = props;
   const [draft, setDraft] = h2(null);
   const [busy, setBusy] = h2(false);
   const [adding, setAdding] = h2(false);
@@ -14268,24 +14326,24 @@ function TemplateCard(props) {
         body: JSON.stringify({ templates: draft !== null ? draft : [] })
       });
       setDraft(null);
-      await onSaved(t3("settings.templateSaved"));
+      await onSaved(t4("settings.templateSaved"));
     } catch (err) {
       onError(err && err.message ? err.message : String(err));
     } finally {
       setBusy(false);
     }
-  }, [busy, draft, onError, onSaved, t3]);
+  }, [busy, draft, onError, onSaved, t4]);
   return h4(
     "div",
     { className: "dshgn_section" },
     h4(
       "div",
       { className: "dshgn_sectionHead" },
-      h4("span", null, t3("settings.templateTitle")),
+      h4("span", null, t4("settings.templateTitle")),
       h4("span", { className: "dshgn_sectionHint" }, `${list.length} / 12`)
     ),
-    h4("div", { className: "dshgn_sectionDesc" }, t3("settings.templateDesc")),
-    list.length === 0 ? h4("div", { className: "dshgn_emptyRow" }, t3("settings.templateEmpty")) : h4(
+    h4("div", { className: "dshgn_sectionDesc" }, t4("settings.templateDesc")),
+    list.length === 0 ? h4("div", { className: "dshgn_emptyRow" }, t4("settings.templateEmpty")) : h4(
       "div",
       { className: "dshgn_tplList" },
       list.map(
@@ -14305,7 +14363,7 @@ function TemplateCard(props) {
               className: "dshgn_rowBtn dshgn_rowBtnDanger",
               onClick: () => remove(item.name)
             },
-            t3("settings.templateRemove")
+            t4("settings.templateRemove")
           )
         )
       )
@@ -14316,7 +14374,7 @@ function TemplateCard(props) {
       h4("input", {
         className: "dshgn_input",
         value: name,
-        placeholder: t3("settings.templateName"),
+        placeholder: t4("settings.templateName"),
         maxLength: 24,
         onChange: (event) => setName(event.target.value),
         onKeyDown: (event) => {
@@ -14328,28 +14386,28 @@ function TemplateCard(props) {
           }
         }
       }),
-      h4("div", { className: "dshgn_fieldHint" }, t3("settings.templateNameHint")),
+      h4("div", { className: "dshgn_fieldHint" }, t4("settings.templateNameHint")),
       h4("textarea", {
         className: "dshgn_textarea",
         value: body,
-        placeholder: t3("settings.templateBody"),
+        placeholder: t4("settings.templateBody"),
         rows: 5,
         maxLength: 4e3,
         onChange: (event) => setBody(event.target.value)
       }),
-      h4("div", { className: "dshgn_fieldHint" }, t3("settings.templateBodyHint")),
+      h4("div", { className: "dshgn_fieldHint" }, t4("settings.templateBodyHint")),
       h4(
         "div",
         { className: "dshgn_btnRow" },
         h4(
           "button",
           { type: "button", className: "dshgn_btn dshgn_btnPri", onClick: add, disabled: name.trim() === "" },
-          t3("settings.templateAdd")
+          t4("settings.templateAdd")
         ),
         h4(
           "button",
           { type: "button", className: "dshgn_btn", onClick: () => setAdding(false) },
-          t3("action.cancel")
+          t4("action.cancel")
         )
       )
     ) : h4(
@@ -14358,18 +14416,18 @@ function TemplateCard(props) {
       h4(
         "button",
         { type: "button", className: "dshgn_btn", onClick: () => setAdding(true), disabled: list.length >= 12 },
-        t3("settings.templateAdd")
+        t4("settings.templateAdd")
       ),
       h4(
         "button",
         { type: "button", className: "dshgn_btn dshgn_btnPri", onClick: () => void save(), disabled: busy || !dirty },
-        t3("settings.templateSave")
+        t4("settings.templateSave")
       )
     )
   );
 }
 function CardPane(props) {
-  const { t: t3, status, showToast, onError, onChanged } = props;
+  const { t: t4, status, showToast, onError, onChanged } = props;
   const [env, setEnv] = h2(null);
   const [envBusy, setEnvBusy] = h2(false);
   const [scanning, setScanning] = h2(false);
@@ -14415,7 +14473,7 @@ function CardPane(props) {
         if (json.running !== true) {
           if (json.error) onError(json.error);
           else if (json.result) {
-            showToast(`${t3("card.imported")}\uFF1A${json.result.downloaded}`);
+            showToast(`${t4("card.imported")}\uFF1A${json.result.downloaded}`);
             void onChanged();
           }
         }
@@ -14428,7 +14486,7 @@ function CardPane(props) {
         timerRef.current = null;
       }
     };
-  }, [run, onChanged, onError, showToast, t3]);
+  }, [run, onChanged, onError, showToast, t4]);
   const doScan = q2(async () => {
     setScanning(true);
     setFound(null);
@@ -14436,17 +14494,17 @@ function CardPane(props) {
       const json = await api("/card/scan?timeout=8");
       setFound(json);
       if (Array.isArray(json.cards) && json.cards.length > 0) {
-        showToast(`${t3("card.scanFound")}\uFF1A${json.cards.length}`);
+        showToast(`${t4("card.scanFound")}\uFF1A${json.cards.length}`);
         void checkEnv();
       } else {
-        onError(t3("card.scanNone"));
+        onError(t4("card.scanNone"));
       }
     } catch (err) {
       onError(err && err.message ? err.message : String(err));
     } finally {
       setScanning(false);
     }
-  }, [checkEnv, onError, showToast, t3]);
+  }, [checkEnv, onError, showToast, t4]);
   const loadList = q2(async () => {
     setListBusy(true);
     try {
@@ -14473,14 +14531,14 @@ function CardPane(props) {
         body: JSON.stringify({ all: true, dir, deleteAfter })
       });
       if (json.ok !== true) {
-        onError(json.error || t3("card.alreadyRunning"));
+        onError(json.error || t4("card.alreadyRunning"));
         return;
       }
       setRun({ running: true, lines: [] });
     } catch (err) {
       onError(err && err.message ? err.message : String(err));
     }
-  }, [deleteAfter, dir, onError, t3]);
+  }, [deleteAfter, dir, onError, t4]);
   const wifiRefresh = q2(async () => {
     try {
       const json = await api("/card/wifi-scan");
@@ -14505,11 +14563,11 @@ function CardPane(props) {
       });
       setWifiHot(json);
       if (json && json.ok === true && json.hotspot) {
-        showToast(`${t3("card.wifiOn")}\uFF1A${json.hotspot}`);
+        showToast(`${t4("card.wifiOn")}\uFF1A${json.hotspot}`);
       } else if (json && json.ok === true) {
-        onError(t3("card.wifiNoHotspot"));
+        onError(t4("card.wifiNoHotspot"));
       } else {
-        onError(json && json.error || t3("card.wifiFail"));
+        onError(json && json.error || t4("card.wifiFail"));
       }
     } catch (err) {
       onError(err && err.message ? err.message : String(err));
@@ -14517,11 +14575,11 @@ function CardPane(props) {
       setWifiBusy(false);
       void wifiRefresh();
     }
-  }, [onError, showToast, t3, wifiRefresh]);
+  }, [onError, showToast, t4, wifiRefresh]);
   const wifiJoinManual = q2(async () => {
     const ssid = wifiManual.ssid.trim();
     if (ssid === "") {
-      onError(t3("card.wifiNeedSsid"));
+      onError(t4("card.wifiNeedSsid"));
       return;
     }
     setWifiBusy(true);
@@ -14538,28 +14596,28 @@ function CardPane(props) {
         })
       });
       setWifiHot(json);
-      if (json && json.ok === true) showToast(`${t3("card.wifiOn")}\uFF1A${ssid}`);
-      else onError(json && json.error || t3("card.wifiFail"));
+      if (json && json.ok === true) showToast(`${t4("card.wifiOn")}\uFF1A${ssid}`);
+      else onError(json && json.error || t4("card.wifiFail"));
     } catch (err) {
       onError(err && err.message ? err.message : String(err));
     } finally {
       setWifiBusy(false);
       void wifiRefresh();
     }
-  }, [onError, showToast, t3, wifiManual, wifiRefresh]);
+  }, [onError, showToast, t4, wifiManual, wifiRefresh]);
   const wifiOff = q2(async () => {
     setWifiBusy(true);
     try {
       const json = await api("/card/wifi-leave", { method: "POST" });
       setWifiHot(null);
-      if (json && json.ok === true) showToast(t3("card.wifiLeft"));
+      if (json && json.ok === true) showToast(t4("card.wifiLeft"));
     } catch (err) {
       onError(err && err.message ? err.message : String(err));
     } finally {
       setWifiBusy(false);
       void wifiRefresh();
     }
-  }, [onError, showToast, t3, wifiRefresh]);
+  }, [onError, showToast, t4, wifiRefresh]);
   const ready = env !== null && env.ready === true;
   const running = run !== null && run.running === true;
   const result = run !== null ? run.result : null;
@@ -14570,8 +14628,8 @@ function CardPane(props) {
     h4(
       "div",
       { className: "dshgn_paneInner" },
-      h4("h2", { className: "dshgn_h dshgn_h2" }, t3("card.title")),
-      h4("div", { className: "dshgn_paneDesc" }, t3("card.desc")),
+      h4("h2", { className: "dshgn_h dshgn_h2" }, t4("card.title")),
+      h4("div", { className: "dshgn_paneDesc" }, t4("card.desc")),
       // ── 环境自检 ──
       h4(
         "div",
@@ -14579,19 +14637,19 @@ function CardPane(props) {
         h4(
           "div",
           { className: "dshgn_sectionHead" },
-          h4("span", null, t3("card.envBridge")),
+          h4("span", null, t4("card.envBridge")),
           h4(
             "span",
             {
               className: "dshgn_badge " + (ready ? "dshgn_badgeOk" : "dshgn_badgeWarn")
             },
-            ready ? t3("card.envOk") : t3("card.envMissing")
+            ready ? t4("card.envOk") : t4("card.envMissing")
           )
         ),
         env === null ? h4("div", { className: "dshgn_sectionDesc" }, "\u2026") : h4(
           "div",
           { className: "dshgn_sectionDesc" },
-          ready ? `Python ${env.python || "?"} \xB7 bleak ${env.bleak || "?"}` : t3("card.envHint")
+          ready ? `Python ${env.python || "?"} \xB7 bleak ${env.bleak || "?"}` : t4("card.envHint")
         ),
         !ready && env !== null && env.error ? h4("pre", { className: "dshgn_log" }, String(env.error)) : null,
         h4(
@@ -14605,7 +14663,7 @@ function CardPane(props) {
               onClick: () => void checkEnv(),
               disabled: envBusy
             },
-            t3("card.envBridge")
+            t4("card.envBridge")
           ),
           h4(
             "button",
@@ -14615,7 +14673,7 @@ function CardPane(props) {
               onClick: () => void doScan(),
               disabled: scanning || !ready
             },
-            scanning ? t3("card.scanning") : t3("card.scan")
+            scanning ? t4("card.scanning") : t4("card.scan")
           ),
           h4(
             "button",
@@ -14625,13 +14683,13 @@ function CardPane(props) {
               onClick: () => void loadList(),
               disabled: listBusy || !ready
             },
-            t3("card.refresh")
+            t4("card.refresh")
           )
         ),
         found !== null && Array.isArray(found.cards) ? h4(
           "div",
           { className: "dshgn_sectionDesc" },
-          found.cards.length === 0 ? t3("card.scanNone") : found.cards.map((card) => `${card.name || "?"} (${card.address || ""})`).join("  \xB7  ")
+          found.cards.length === 0 ? t4("card.scanNone") : found.cards.map((card) => `${card.name || "?"} (${card.address || ""})`).join("  \xB7  ")
         ) : null
       ),
       // ── 热点快传 ──
@@ -14644,15 +14702,15 @@ function CardPane(props) {
         h4(
           "div",
           { className: "dshgn_sectionHead" },
-          h4("span", null, t3("card.wifiTitle")),
+          h4("span", null, t4("card.wifiTitle")),
           wifiNet !== null && wifiNet.current ? h4("span", { className: "dshgn_badge" }, wifiNet.current) : null
         ),
-        h4("div", { className: "dshgn_sectionDesc" }, t3("card.wifiDesc")),
+        h4("div", { className: "dshgn_sectionDesc" }, t4("card.wifiDesc")),
         // 连上之后必须一眼看到「现在挂在卡片热点上」——不然用户会以为断网。
         wifiNet !== null && wifiNet.cardLike && wifiNet.cardLike.length > 0 ? h4(
           "div",
           { className: "dshgn_sectionDesc" },
-          `${t3("card.wifiAvailable")}\uFF1A${wifiNet.cardLike.join("  \xB7  ")}`
+          `${t4("card.wifiAvailable")}\uFF1A${wifiNet.cardLike.join("  \xB7  ")}`
         ) : null,
         h4(
           "div",
@@ -14665,7 +14723,7 @@ function CardPane(props) {
               onClick: () => void wifiGo(),
               disabled: wifiBusy || !ready
             },
-            wifiBusy ? t3("card.wifiBusy") : t3("card.wifiGo")
+            wifiBusy ? t4("card.wifiBusy") : t4("card.wifiGo")
           ),
           h4(
             "button",
@@ -14675,7 +14733,7 @@ function CardPane(props) {
               onClick: () => void wifiRefresh(),
               disabled: wifiBusy
             },
-            t3("card.wifiRescan")
+            t4("card.wifiRescan")
           ),
           h4(
             "button",
@@ -14685,7 +14743,7 @@ function CardPane(props) {
               onClick: () => void wifiOff(),
               disabled: wifiBusy
             },
-            t3("card.wifiOff")
+            t4("card.wifiOff")
           )
         ),
         // 连上了但没找到服务，或者卡片热点名/密码拿不到时，手输是最后一条路。
@@ -14695,13 +14753,13 @@ function CardPane(props) {
           h4("input", {
             className: "dshgn_input",
             value: wifiManual.ssid,
-            placeholder: t3("card.wifiSsid"),
+            placeholder: t4("card.wifiSsid"),
             onChange: (event) => setWifiManual({ ssid: event.target.value, password: wifiManual.password })
           }),
           h4("input", {
             className: "dshgn_input",
             value: wifiManual.password,
-            placeholder: t3("card.wifiPassword"),
+            placeholder: t4("card.wifiPassword"),
             onChange: (event) => setWifiManual({ ssid: wifiManual.ssid, password: event.target.value })
           }),
           h4(
@@ -14712,16 +14770,16 @@ function CardPane(props) {
               onClick: () => void wifiJoinManual(),
               disabled: wifiBusy || !ready
             },
-            t3("card.wifiJoin")
+            t4("card.wifiJoin")
           )
         ),
         wifiHot !== null && wifiHot.ok === true ? h4(
           "div",
           { className: "dshgn_sectionDesc" },
           [
-            wifiHot.hotspot ? `${t3("card.wifiHotspot")}\uFF1A${wifiHot.hotspot}` : null,
+            wifiHot.hotspot ? `${t4("card.wifiHotspot")}\uFF1A${wifiHot.hotspot}` : null,
             wifiHot.ip ? `IP ${wifiHot.ip}` : null,
-            Array.isArray(wifiHot.openPorts) && wifiHot.openPorts.length > 0 ? `${t3("card.wifiPorts")}\uFF1A${wifiHot.openPorts.join(", ")}` : null
+            Array.isArray(wifiHot.openPorts) && wifiHot.openPorts.length > 0 ? `${t4("card.wifiPorts")}\uFF1A${wifiHot.openPorts.join(", ")}` : null
           ].filter(Boolean).join("  \xB7  ") || "\u2014"
         ) : null,
         // 探测到的传输服务：面板不给下载按钮（协议还没对上），但把路径摊开，
@@ -14750,10 +14808,10 @@ function CardPane(props) {
         h4(
           "div",
           { className: "dshgn_sectionHead" },
-          h4("span", null, t3("card.pending")),
+          h4("span", null, t4("card.pending")),
           files === null ? null : h4("span", { className: "dshgn_badge" }, String(files.length))
         ),
-        files === null ? h4("div", { className: "dshgn_sectionDesc" }, "\u2014") : files.length === 0 ? h4("div", { className: "dshgn_sectionDesc" }, t3("card.none")) : h4(
+        files === null ? h4("div", { className: "dshgn_sectionDesc" }, "\u2014") : files.length === 0 ? h4("div", { className: "dshgn_sectionDesc" }, t4("card.none")) : h4(
           "div",
           { className: "dshgn_fileList" },
           files.map(
@@ -14770,18 +14828,18 @@ function CardPane(props) {
       h4(
         "div",
         { className: "dshgn_section" },
-        h4("div", { className: "dshgn_sectionHead" }, h4("span", null, t3("card.import"))),
+        h4("div", { className: "dshgn_sectionHead" }, h4("span", null, t4("card.import"))),
         h4(
           "div",
           { className: "dshgn_field" },
-          h4("div", { className: "dshgn_fieldLabel" }, t3("card.dir")),
+          h4("div", { className: "dshgn_fieldLabel" }, t4("card.dir")),
           h4("input", {
             className: "dshgn_input",
             value: dir,
             placeholder: "\u5F55\u97F3\u5361",
             onChange: (event) => setDir(event.target.value)
           }),
-          h4("div", { className: "dshgn_fieldHint" }, t3("card.dirHint"))
+          h4("div", { className: "dshgn_fieldHint" }, t4("card.dirHint"))
         ),
         // 删原件是唯一不可逆的操作，所以单独一行、默认关、开关旁写清后果。
         h4(
@@ -14792,9 +14850,9 @@ function CardPane(props) {
             checked: deleteAfter,
             onChange: (event) => setDeleteAfter(event.target.checked)
           }),
-          h4("span", null, t3("card.deleteAfter"))
+          h4("span", null, t4("card.deleteAfter"))
         ),
-        h4("div", { className: "dshgn_fieldHint" }, t3("card.deleteAfterHint")),
+        h4("div", { className: "dshgn_fieldHint" }, t4("card.deleteAfterHint")),
         h4(
           "div",
           { className: "dshgn_row" },
@@ -14806,7 +14864,7 @@ function CardPane(props) {
               onClick: () => void startImport(),
               disabled: running || !ready
             },
-            running ? t3("card.importing") : t3("card.import")
+            running ? t4("card.importing") : t4("card.import")
           )
         ),
         lines.length > 0 ? h4("pre", { className: "dshgn_log" }, lines.join("\n")) : null,
@@ -14817,19 +14875,19 @@ function CardPane(props) {
             "div",
             { className: "dshgn_stat" },
             h4("div", { className: "dshgn_statNum" }, String(result.downloaded || 0)),
-            h4("div", { className: "dshgn_statLabel" }, t3("card.downloaded"))
+            h4("div", { className: "dshgn_statLabel" }, t4("card.downloaded"))
           ),
           h4(
             "div",
             { className: "dshgn_stat" },
             h4("div", { className: "dshgn_statNum" }, String(result.skipped || 0)),
-            h4("div", { className: "dshgn_statLabel" }, t3("card.skipped"))
+            h4("div", { className: "dshgn_statLabel" }, t4("card.skipped"))
           ),
           h4(
             "div",
             { className: "dshgn_stat" },
             h4("div", { className: "dshgn_statNum" }, String(result.failed || 0)),
-            h4("div", { className: "dshgn_statLabel" }, t3("card.failed"))
+            h4("div", { className: "dshgn_statLabel" }, t4("card.failed"))
           )
         ) : null
       )
@@ -14837,7 +14895,7 @@ function CardPane(props) {
   );
 }
 function ArchiveCard(props) {
-  const { t: t3, status, onChanged, onError, showToast } = props;
+  const { t: t4, status, onChanged, onError, showToast } = props;
   const [info, setInfo] = h2(null);
   const [busy, setBusy] = h2(false);
   const [importMode, setImportMode] = h2("rename");
@@ -14861,7 +14919,7 @@ function ArchiveCard(props) {
       const name = "\u5F97\u5230\u5927\u8111\u5F52\u6863" + suffix + "-" + (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) + ".zip";
       const saved = await saveFile(url, name);
       if (saved) {
-        showToast(t3("archive.exported"));
+        showToast(t4("archive.exported"));
         return;
       }
       const doc = panelDocument();
@@ -14872,11 +14930,11 @@ function ArchiveCard(props) {
       doc.body.appendChild(anchor);
       anchor.click();
       doc.body.removeChild(anchor);
-      showToast(t3("archive.exporting"));
+      showToast(t4("archive.exporting"));
     } finally {
       window.setTimeout(() => setBusy(false), 1200);
     }
-  }, [exportScope, showToast, t3]);
+  }, [exportScope, showToast, t4]);
   const doImport = q2(
     async (file) => {
       if (!file) return;
@@ -14894,7 +14952,7 @@ function ArchiveCard(props) {
         });
         const json = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(json.error || `HTTP ${response.status}`);
-        showToast(`${t3("archive.imported")} ${json.written || 0} / ${json.skipped || 0}`);
+        showToast(`${t4("archive.imported")} ${json.written || 0} / ${json.skipped || 0}`);
         if (typeof onChanged === "function") await onChanged();
       } catch (err) {
         onError(err && err.message ? err.message : String(err));
@@ -14903,7 +14961,7 @@ function ArchiveCard(props) {
         if (fileRef.current) fileRef.current.value = "";
       }
     },
-    [importMode, onChanged, onError, showToast, t3]
+    [importMode, onChanged, onError, showToast, t4]
   );
   return h4(
     "div",
@@ -14911,7 +14969,7 @@ function ArchiveCard(props) {
     h4(
       "div",
       { className: "dshgn_sectionHead" },
-      h4("div", { className: "dshgn_sectionTitle" }, t3("archive.title")),
+      h4("div", { className: "dshgn_sectionTitle" }, t4("archive.title")),
       h4(
         "div",
         { className: "dshgn_rowLine", style: { gap: 6 } },
@@ -14920,26 +14978,26 @@ function ArchiveCard(props) {
           {
             className: "dshgn_input dshgn_selectSm",
             value: exportScope,
-            title: t3("archive.scope"),
-            "aria-label": t3("archive.scope"),
+            title: t4("archive.scope"),
+            "aria-label": t4("archive.scope"),
             onChange: (event) => setExportScope(event.target.value),
             disabled: busy
           },
-          h4("option", { value: "all" }, t3("archive.scopeAll")),
-          h4("option", { value: "notes" }, t3("archive.scopeNotes")),
-          h4("option", { value: "assets" }, t3("archive.scopeAssets"))
+          h4("option", { value: "all" }, t4("archive.scopeAll")),
+          h4("option", { value: "notes" }, t4("archive.scopeNotes")),
+          h4("option", { value: "assets" }, t4("archive.scopeAssets"))
         ),
         h4(
           "button",
           { type: "button", className: "dshgn_btn dshgn_btnPri", onClick: exportZip, disabled: busy },
           h4(Icon, { name: "up", size: 12 }),
-          t3("archive.export")
+          t4("archive.export")
         ),
         h4(
           "button",
           { type: "button", className: "dshgn_btn", onClick: () => fileRef.current && fileRef.current.click(), disabled: busy },
           h4(Icon, { name: "folder", size: 12 }),
-          t3("archive.import")
+          t4("archive.import")
         ),
         h4("input", {
           ref: fileRef,
@@ -14950,7 +15008,7 @@ function ArchiveCard(props) {
         })
       )
     ),
-    h4("div", { className: "dshgn_sectionDesc" }, t3("archive.desc")),
+    h4("div", { className: "dshgn_sectionDesc" }, t4("archive.desc")),
     info !== null ? h4(
       "div",
       { className: "dshgn_fieldHint" },
@@ -14959,7 +15017,7 @@ function ArchiveCard(props) {
     h4(
       "label",
       { className: "dshgn_rowLine", style: { fontSize: 11.5, color: "var(--dsw-alias-label-secondary)" } },
-      t3("archive.importMode"),
+      t4("archive.importMode"),
       ["rename", "skip"].map(
         (mode) => h4(
           "button",
@@ -14970,14 +15028,14 @@ function ArchiveCard(props) {
             onClick: () => setImportMode(mode),
             disabled: busy
           },
-          t3(`archive.mode.${mode}`)
+          t4(`archive.mode.${mode}`)
         )
       )
     )
   );
 }
 function ConflictPane(props) {
-  const { t: t3, status, onChanged, onError, showToast } = props;
+  const { t: t4, status, onChanged, onError, showToast } = props;
   const [items, setItems] = h2(null);
   const [loading, setLoading] = h2(false);
   const [busy, setBusy] = h2(false);
@@ -15022,7 +15080,7 @@ function ConflictPane(props) {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ path: detail.path, keepLocal })
         });
-        showToast(keepLocal ? t3("conflict.keptLocal") : t3("conflict.tookCloud"));
+        showToast(keepLocal ? t4("conflict.keptLocal") : t4("conflict.tookCloud"));
         setDetail(null);
         await load();
         if (typeof onChanged === "function") await onChanged();
@@ -15034,7 +15092,7 @@ function ConflictPane(props) {
         setBusy(false);
       }
     },
-    [detail, load, onChanged, onError, showToast, t3]
+    [detail, load, onChanged, onError, showToast, t4]
   );
   const undo = q2(async () => {
     if (detail === null) return;
@@ -15045,7 +15103,7 @@ function ConflictPane(props) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ path: detail.path })
       });
-      showToast(t3("conflict.undone"));
+      showToast(t4("conflict.undone"));
       try {
         const fresh = await api(`/conflict/read?path=${encodeURIComponent(detail.path)}`);
         setDetail(fresh);
@@ -15059,7 +15117,7 @@ function ConflictPane(props) {
     } finally {
       setBusy(false);
     }
-  }, [detail, load, onChanged, onError, showToast, t3]);
+  }, [detail, load, onChanged, onError, showToast, t4]);
   const list = items === null ? [] : items;
   const pendingItems = list.filter((item) => item.resolved !== true);
   const resolvedItems = list.filter((item) => item.resolved === true);
@@ -15085,13 +15143,13 @@ function ConflictPane(props) {
       h4(
         "div",
         { className: "dshgn_cardMeta" },
-        `${formatTime(item.savedAt)} \xB7 ${formatBytes2(item.bytes)}` + (item.resolved === true ? ` \xB7 ${item.keptLocal === true ? t3("conflict.pickedLocal") : t3("conflict.pickedCloud")}` : "")
+        `${formatTime(item.savedAt)} \xB7 ${formatBytes2(item.bytes)}` + (item.resolved === true ? ` \xB7 ${item.keptLocal === true ? t4("conflict.pickedLocal") : t4("conflict.pickedCloud")}` : "")
       )
     ),
     h4(
       "button",
       { type: "button", className: "dshgn_btn dshgn_btnPri", onClick: () => void openDetail(item), disabled: busy },
-      item.resolved === true ? t3("conflict.review") : t3("conflict.compare")
+      item.resolved === true ? t4("conflict.review") : t4("conflict.compare")
     )
   );
   if (detail !== null) {
@@ -15110,7 +15168,7 @@ function ConflictPane(props) {
         h4(
           "div",
           { className: "dshgn_sectionHead" },
-          h4("div", { className: "dshgn_sectionTitle" }, t3("conflict.compare")),
+          h4("div", { className: "dshgn_sectionTitle" }, t4("conflict.compare")),
           h4(
             "div",
             { className: "dshgn_rowLine", style: { gap: 6 } },
@@ -15126,7 +15184,7 @@ function ConflictPane(props) {
                 onClick: () => void resolve5(true),
                 disabled: busy
               },
-              t3("conflict.keepLocal")
+              t4("conflict.keepLocal")
             ),
             h4(
               "button",
@@ -15136,15 +15194,15 @@ function ConflictPane(props) {
                 onClick: () => void resolve5(false),
                 disabled: busy
               },
-              t3("conflict.takeCloud")
+              t4("conflict.takeCloud")
             ),
-            h4("button", { type: "button", className: "dshgn_btn", onClick: () => setDetail(null), disabled: busy }, t3("conflict.back")),
+            h4("button", { type: "button", className: "dshgn_btn", onClick: () => setDetail(null), disabled: busy }, t4("conflict.back")),
             // 已处理的条目给一个「退回未处理」：改主意是这个功能最正常的
             // 用法，没有它就只能去文件系统删 .resolved.json。
             detail.resolved === true && h4(
               "button",
               { type: "button", className: "dshgn_btn", onClick: () => void undo(), disabled: busy },
-              t3("conflict.undo")
+              t4("conflict.undo")
             )
           )
         ),
@@ -15153,7 +15211,7 @@ function ConflictPane(props) {
           { className: "dshgn_sectionDesc", style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } },
           h4("span", null, detail.originalName),
           h4("span", { className: "dshgn_dot" }, "\xB7"),
-          h4("span", null, t3("conflict.savedAt")),
+          h4("span", null, t4("conflict.savedAt")),
           h4("span", null, formatTime(detail.savedAt)),
           h4(
             "div",
@@ -15165,7 +15223,7 @@ function ConflictPane(props) {
                 className: "dshgn_chip" + (diffMode === "rendered" ? " dshgn_chipOn" : ""),
                 onClick: () => setDiffMode("rendered")
               },
-              t3("conflict.modeRendered")
+              t4("conflict.modeRendered")
             ),
             h4(
               "button",
@@ -15174,7 +15232,7 @@ function ConflictPane(props) {
                 className: "dshgn_chip" + (diffMode === "raw" ? " dshgn_chipOn" : ""),
                 onClick: () => setDiffMode("raw")
               },
-              t3("conflict.modeRaw")
+              t4("conflict.modeRaw")
             )
           )
         )
@@ -15185,14 +15243,14 @@ function ConflictPane(props) {
         h4(
           "div",
           { className: "dshgn_diffCol" },
-          h4("div", { className: "dshgn_diffHead" }, t3("conflict.sideLocal")),
-          sideBlock(localBody, t3("conflict.noLocal"))
+          h4("div", { className: "dshgn_diffHead" }, t4("conflict.sideLocal")),
+          sideBlock(localBody, t4("conflict.noLocal"))
         ),
         h4(
           "div",
           { className: "dshgn_diffCol" },
-          h4("div", { className: "dshgn_diffHead" }, t3("conflict.sideCloud")),
-          sideBlock(cloudBody, t3("conflict.noCloud"))
+          h4("div", { className: "dshgn_diffHead" }, t4("conflict.sideCloud")),
+          sideBlock(cloudBody, t4("conflict.noCloud"))
         )
       )
     );
@@ -15206,22 +15264,22 @@ function ConflictPane(props) {
       h4(
         "div",
         { className: "dshgn_sectionHead" },
-        h4("div", { className: "dshgn_sectionTitle" }, t3("tab.conflict")),
+        h4("div", { className: "dshgn_sectionTitle" }, t4("tab.conflict")),
         h4(
           "button",
           { type: "button", className: "dshgn_btn", onClick: () => void load(), disabled: loading || busy },
           loading ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "refresh", size: 12 }),
-          t3("action.refresh")
+          t4("action.refresh")
         )
       ),
-      h4("div", { className: "dshgn_sectionDesc" }, t3("conflict.desc"))
+      h4("div", { className: "dshgn_sectionDesc" }, t4("conflict.desc"))
     ),
     loading && list.length === 0 ? h4("div", { className: "dshgn_emptyState" }, h4("span", { className: "dshgn_spin" })) : list.length === 0 ? h4(
       "div",
       { className: "dshgn_empty" },
       h4(Icon, { name: "check", size: 24 }),
-      h4("div", { className: "dshgn_emptyTitle" }, t3("conflict.empty")),
-      h4("div", { className: "dshgn_emptyDesc" }, t3("conflict.emptyHint"))
+      h4("div", { className: "dshgn_emptyTitle" }, t4("conflict.empty")),
+      h4("div", { className: "dshgn_emptyDesc" }, t4("conflict.emptyHint"))
     ) : h4(
       "div",
       { className: "dshgn_cardBox" },
@@ -15230,8 +15288,8 @@ function ConflictPane(props) {
         "div",
         { className: "dshgn_empty" },
         h4(Icon, { name: "check", size: 24 }),
-        h4("div", { className: "dshgn_emptyTitle" }, t3("conflict.empty")),
-        h4("div", { className: "dshgn_emptyDesc" }, t3("conflict.emptyHint"))
+        h4("div", { className: "dshgn_emptyTitle" }, t4("conflict.empty")),
+        h4("div", { className: "dshgn_emptyDesc" }, t4("conflict.emptyHint"))
       ) : pendingItems.map(renderRow),
       // 已处理区：默认折叠。这些是「已经决定过」的归档，留着是为了
       // 能反悔和复查，不该占据一进页面就能看到的视觉重心。
@@ -15250,7 +15308,7 @@ function ConflictPane(props) {
             { className: "dshgn_foldArrow", "data-open": resolvedOpen ? "true" : "false" },
             h4(Icon, { name: "chevron", size: 12 })
           ),
-          h4("span", null, t3("conflict.resolvedSection")),
+          h4("span", null, t4("conflict.resolvedSection")),
           h4("span", { className: "dshgn_foldCount" }, String(resolvedItems.length))
         ),
         resolvedOpen && resolvedItems.map(renderRow)
@@ -15259,7 +15317,7 @@ function ConflictPane(props) {
   );
 }
 function BrokenPane(props) {
-  const { t: t3, status, onError, onOpen } = props;
+  const { t: t4, status, onError, onOpen } = props;
   const [hits, setHits] = h2(null);
   const [scanned, setScanned] = h2(0);
   const [truncated, setTruncated] = h2(false);
@@ -15281,7 +15339,7 @@ function BrokenPane(props) {
     void load();
   }, [load]);
   const list = hits === null ? [] : hits;
-  const summary = t3("broken.found").replace("{n}", String(list.length)).replace("{scanned}", String(scanned));
+  const summary = t4("broken.found").replace("{n}", String(list.length)).replace("{scanned}", String(scanned));
   return h4(
     "div",
     { className: "dshgn_pane" },
@@ -15291,24 +15349,24 @@ function BrokenPane(props) {
       h4(
         "div",
         { className: "dshgn_sectionHead" },
-        h4("div", { className: "dshgn_sectionTitle" }, t3("tab.broken")),
+        h4("div", { className: "dshgn_sectionTitle" }, t4("tab.broken")),
         h4(
           "button",
           { type: "button", className: "dshgn_btn", onClick: () => void load(), disabled: loading },
           loading ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "refresh", size: 12 }),
-          t3("action.refresh")
+          t4("action.refresh")
         )
       ),
-      h4("div", { className: "dshgn_sectionDesc" }, t3("broken.desc")),
+      h4("div", { className: "dshgn_sectionDesc" }, t4("broken.desc")),
       hits !== null && list.length > 0 ? h4("div", { className: "dshgn_sectionDesc" }, summary) : null,
-      truncated ? h4("div", { className: "dshgn_sectionDesc" }, t3("broken.truncated")) : null
+      truncated ? h4("div", { className: "dshgn_sectionDesc" }, t4("broken.truncated")) : null
     ),
     loading && list.length === 0 ? h4("div", { className: "dshgn_emptyState" }, h4("span", { className: "dshgn_spin" })) : list.length === 0 ? h4(
       "div",
       { className: "dshgn_empty" },
       h4(Icon, { name: "check", size: 24 }),
-      h4("div", { className: "dshgn_emptyTitle" }, t3("broken.empty")),
-      h4("div", { className: "dshgn_emptyDesc" }, t3("broken.emptyHint"))
+      h4("div", { className: "dshgn_emptyTitle" }, t4("broken.empty")),
+      h4("div", { className: "dshgn_emptyDesc" }, t4("broken.emptyHint"))
     ) : h4(
       "div",
       { className: "dshgn_cardBox" },
@@ -15325,7 +15383,7 @@ function BrokenPane(props) {
             }
           },
           h4("span", { className: "dshgn_brokenTarget" }, hit.target),
-          h4("span", { className: "dshgn_brokenWhere" }, `${hit.title || hit.path} \xB7 ${t3("broken.line")} ${hit.line}`),
+          h4("span", { className: "dshgn_brokenWhere" }, `${hit.title || hit.path} \xB7 ${t4("broken.line")} ${hit.line}`),
           hit.text === "" ? null : h4("span", { className: "dshgn_brokenSnip" }, hit.text)
         )
       )
@@ -15333,7 +15391,7 @@ function BrokenPane(props) {
   );
 }
 function TrashPane(props) {
-  const { t: t3, status, onChanged, onError, showToast } = props;
+  const { t: t4, status, onChanged, onError, showToast } = props;
   const [items, setItems] = h2(null);
   const [loading, setLoading] = h2(false);
   const [busy, setBusy] = h2(false);
@@ -15360,7 +15418,7 @@ function TrashPane(props) {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ path: item.path })
         });
-        showToast(`${t3("trash.restored")}${result && result.path ? "\uFF1A" + result.path : ""}`);
+        showToast(`${t4("trash.restored")}${result && result.path ? "\uFF1A" + result.path : ""}`);
         await load();
         if (typeof onChanged === "function") await onChanged();
       } catch (err) {
@@ -15369,11 +15427,11 @@ function TrashPane(props) {
         setBusy(false);
       }
     },
-    [load, onChanged, onError, showToast, t3]
+    [load, onChanged, onError, showToast, t4]
   );
   const purgeOne = q2(
     async (item) => {
-      if (!await confirmDialog(t3("trash.purgeOneConfirm"))) return;
+      if (!await confirmDialog(t4("trash.purgeOneConfirm"))) return;
       setBusy(true);
       try {
         await api("/trash/purge", {
@@ -15381,7 +15439,7 @@ function TrashPane(props) {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ path: item.path })
         });
-        showToast(t3("trash.purged"));
+        showToast(t4("trash.purged"));
         await load();
         if (typeof onChanged === "function") await onChanged();
       } catch (err) {
@@ -15390,10 +15448,10 @@ function TrashPane(props) {
         setBusy(false);
       }
     },
-    [load, onChanged, onError, showToast, t3]
+    [load, onChanged, onError, showToast, t4]
   );
   const purgeAll = q2(async () => {
-    if (!await confirmDialog(t3("trash.purgeConfirm"))) return;
+    if (!await confirmDialog(t4("trash.purgeConfirm"))) return;
     setBusy(true);
     try {
       await api("/trash/purge", {
@@ -15401,7 +15459,7 @@ function TrashPane(props) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({})
       });
-      showToast(t3("trash.purged"));
+      showToast(t4("trash.purged"));
       await load();
       if (typeof onChanged === "function") await onChanged();
     } catch (err) {
@@ -15409,7 +15467,7 @@ function TrashPane(props) {
     } finally {
       setBusy(false);
     }
-  }, [load, onChanged, onError, showToast, t3]);
+  }, [load, onChanged, onError, showToast, t4]);
   const list = items === null ? [] : items;
   return h4(
     "div",
@@ -15420,7 +15478,7 @@ function TrashPane(props) {
       h4(
         "div",
         { className: "dshgn_sectionHead" },
-        h4("div", { className: "dshgn_sectionTitle" }, t3("tab.trash")),
+        h4("div", { className: "dshgn_sectionTitle" }, t4("tab.trash")),
         h4(
           "div",
           { className: "dshgn_rowLine", style: { gap: 6 } },
@@ -15428,24 +15486,24 @@ function TrashPane(props) {
             "button",
             { type: "button", className: "dshgn_btn", onClick: () => void load(), disabled: loading || busy },
             loading ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "refresh", size: 12 }),
-            t3("action.refresh")
+            t4("action.refresh")
           ),
           h4(
             "button",
             { type: "button", className: "dshgn_btn dshgn_btnDanger", onClick: purgeAll, disabled: busy || list.length === 0 },
             h4(Icon, { name: "trash", size: 12 }),
-            t3("trash.purgeAll")
+            t4("trash.purgeAll")
           )
         )
       ),
-      h4("div", { className: "dshgn_sectionDesc" }, t3("trash.desc"))
+      h4("div", { className: "dshgn_sectionDesc" }, t4("trash.desc"))
     ),
     loading && list.length === 0 ? h4("div", { className: "dshgn_emptyState" }, h4("span", { className: "dshgn_spin" })) : list.length === 0 ? h4(
       "div",
       { className: "dshgn_empty" },
       h4(Icon, { name: "trash", size: 24 }),
-      h4("div", { className: "dshgn_emptyTitle" }, t3("trash.empty")),
-      h4("div", { className: "dshgn_emptyDesc" }, t3("trash.emptyHint"))
+      h4("div", { className: "dshgn_emptyTitle" }, t4("trash.empty")),
+      h4("div", { className: "dshgn_emptyDesc" }, t4("trash.emptyHint"))
     ) : h4(
       "div",
       { className: "dshgn_cardBox" },
@@ -15460,7 +15518,7 @@ function TrashPane(props) {
             h4(
               "div",
               { className: "dshgn_cardMeta" },
-              `${t3("trash.deletedAt")} ${formatTime(item.trashedAt)} \xB7 ${formatBytes2(item.bytes)}`
+              `${t4("trash.deletedAt")} ${formatTime(item.trashedAt)} \xB7 ${formatBytes2(item.bytes)}`
             )
           ),
           h4(
@@ -15470,12 +15528,12 @@ function TrashPane(props) {
               "button",
               { type: "button", className: "dshgn_btn dshgn_btnPri", onClick: () => void restore(item), disabled: busy },
               h4(Icon, { name: "up", size: 12 }),
-              t3("trash.restore")
+              t4("trash.restore")
             ),
             h4(
               "button",
               { type: "button", className: "dshgn_btn dshgn_btnDanger", onClick: () => void purgeOne(item), disabled: busy },
-              t3("trash.purgeOne")
+              t4("trash.purgeOne")
             )
           )
         )
@@ -15484,7 +15542,7 @@ function TrashPane(props) {
   );
 }
 function SyncPane(props) {
-  const { t: t3, status, onChanged, onError, showToast } = props;
+  const { t: t4, status, onChanged, onError, showToast } = props;
   const configured = status !== null && status.api !== void 0 && status.api.configured === true;
   const auto = status !== null && status.autoSync ? status.autoSync : { enabled: false, minutes: 15, incremental: true };
   const [enabled, setEnabled] = h2(auto.enabled === true);
@@ -15531,8 +15589,8 @@ function SyncPane(props) {
     const next = !enabled;
     setEnabled(next);
     void persist({ enabled: next, minutes, incremental });
-    showToast(next ? `${t3("sync.enabled")} \xB7 ${minutes}${t3("sync.minutes")}` : t3("sync.enabled"));
-  }, [enabled, minutes, incremental, persist, showToast, t3]);
+    showToast(next ? `${t4("sync.enabled")} \xB7 ${minutes}${t4("sync.minutes")}` : t4("sync.enabled"));
+  }, [enabled, minutes, incremental, persist, showToast, t4]);
   const changeMinutes = q2(
     (value) => {
       const parsed = Number(value);
@@ -15561,9 +15619,9 @@ function SyncPane(props) {
   }, [fullScan, onError]);
   const [pushReport, setPushReport] = h2(null);
   const pushAll = q2(async () => {
-    if (!await confirmDialog(`${t3("sync.pushAll")}
+    if (!await confirmDialog(`${t4("sync.pushAll")}
 
-${t3("sync.pushAllHint")}`)) return;
+${t4("sync.pushAllHint")}`)) return;
     setBusy(true);
     setLastError(null);
     try {
@@ -15573,21 +15631,21 @@ ${t3("sync.pushAllHint")}`)) return;
         body: JSON.stringify({ dir: "", limit: 200 })
       });
       setPushReport(json);
-      showToast(`${t3("sync.pushAllDone")}\uFF1A${json.pushed}`);
+      showToast(`${t4("sync.pushAllDone")}\uFF1A${json.pushed}`);
       if (typeof onChanged === "function") await onChanged();
     } catch (err) {
       onError(err && err.message ? err.message : String(err));
     } finally {
       setBusy(false);
     }
-  }, [onChanged, onError, showToast, t3]);
+  }, [onChanged, onError, showToast, t4]);
   const resultStats = lastResult ? [
-    { label: t3("sync.pulled"), num: lastResult.pulled ?? 0 },
-    { label: t3("sync.skipped"), num: lastResult.skipped ?? 0 },
-    { label: t3("sync.adopted"), num: lastResult.adopted ?? 0 },
-    { label: t3("sync.conflicts"), num: lastResult.conflicts ?? 0 },
-    { label: t3("sync.deleted"), num: lastResult.deleted ?? 0 },
-    { label: t3("sync.errors"), num: lastResult.errors ?? 0 }
+    { label: t4("sync.pulled"), num: lastResult.pulled ?? 0 },
+    { label: t4("sync.skipped"), num: lastResult.skipped ?? 0 },
+    { label: t4("sync.adopted"), num: lastResult.adopted ?? 0 },
+    { label: t4("sync.conflicts"), num: lastResult.conflicts ?? 0 },
+    { label: t4("sync.deleted"), num: lastResult.deleted ?? 0 },
+    { label: t4("sync.errors"), num: lastResult.errors ?? 0 }
   ] : [];
   return h4(
     b,
@@ -15595,19 +15653,19 @@ ${t3("sync.pushAllHint")}`)) return;
     h4(
       "div",
       { className: "dshgn_section" },
-      h4("div", { className: "dshgn_sectionTitle" }, t3("sync.title")),
-      h4("div", { className: "dshgn_sectionDesc" }, t3("sync.desc")),
+      h4("div", { className: "dshgn_sectionTitle" }, t4("sync.title")),
+      h4("div", { className: "dshgn_sectionDesc" }, t4("sync.desc")),
       h4(
         "div",
         { className: "dshgn_toggleRow" },
         h4(
           "div",
           { className: "dshgn_toggleLabel" },
-          h4("span", { className: "dshgn_toggleTitle" }, t3("sync.enabled")),
+          h4("span", { className: "dshgn_toggleTitle" }, t4("sync.enabled")),
           h4(
             "span",
             { className: "dshgn_toggleDesc" },
-            status !== null && status.api && status.api.lastRunAt ? `${t3("sync.lastRun")}: ${formatTime(status.api.lastRunAt)}` : `${t3("sync.lastRun")}: ${t3("sync.never")}`
+            status !== null && status.api && status.api.lastRunAt ? `${t4("sync.lastRun")}: ${formatTime(status.api.lastRunAt)}` : `${t4("sync.lastRun")}: ${t4("sync.never")}`
           )
         ),
         h4("button", {
@@ -15616,13 +15674,13 @@ ${t3("sync.pushAllHint")}`)) return;
           "data-on": enabled ? "true" : "false",
           onClick: toggle,
           disabled: !configured,
-          "aria-label": t3("sync.enabled")
+          "aria-label": t4("sync.enabled")
         })
       ),
       h4(
         "div",
         { className: "dshgn_rowLine" },
-        h4("span", { className: "dshgn_fieldLabel" }, t3("sync.interval")),
+        h4("span", { className: "dshgn_fieldLabel" }, t4("sync.interval")),
         h4("input", {
           className: "dshgn_input",
           style: { flex: "none", width: 76 },
@@ -15634,7 +15692,7 @@ ${t3("sync.pushAllHint")}`)) return;
           onChange: (e3) => changeMinutes(e3.target.value),
           disabled: !configured
         }),
-        h4("span", { className: "dshgn_fieldHint" }, t3("sync.minutes")),
+        h4("span", { className: "dshgn_fieldHint" }, t4("sync.minutes")),
         [5, 15, 60].map(
           (preset) => h4(
             "button",
@@ -15645,7 +15703,7 @@ ${t3("sync.pushAllHint")}`)) return;
               onClick: () => changeMinutes(preset),
               disabled: !configured
             },
-            `${preset}${t3("sync.minutes")}`
+            `${preset}${t4("sync.minutes")}`
           )
         )
       ),
@@ -15661,7 +15719,7 @@ ${t3("sync.pushAllHint")}`)) return;
           },
           disabled: !configured
         }),
-        t3("sync.incremental")
+        t4("sync.incremental")
       ),
       h4(
         "label",
@@ -15675,10 +15733,10 @@ ${t3("sync.pushAllHint")}`)) return;
           },
           disabled: !configured
         }),
-        t3("sync.foregroundOnly")
+        t4("sync.foregroundOnly")
       ),
-      h4("div", { className: "dshgn_fieldHint" }, t3("sync.foregroundHint")),
-      h4("div", { className: "dshgn_fieldHint" }, t3("sync.quotaHint"))
+      h4("div", { className: "dshgn_fieldHint" }, t4("sync.foregroundHint")),
+      h4("div", { className: "dshgn_fieldHint" }, t4("sync.quotaHint"))
     ),
     h4(
       "div",
@@ -15686,24 +15744,24 @@ ${t3("sync.pushAllHint")}`)) return;
       h4(
         "div",
         { className: "dshgn_rowLine" },
-        h4("button", { type: "button", className: "dshgn_btn dshgn_btnPri", onClick: runNow, disabled: busy || running || !configured }, running ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "sync", size: 12 }), running ? t3("sync.running") : t3("sync.now")),
-        h4("button", { type: "button", className: "dshgn_btn", onClick: pushAll, disabled: busy || running || !configured, title: t3("sync.pushAllHint") }, t3("sync.pushAll")),
+        h4("button", { type: "button", className: "dshgn_btn dshgn_btnPri", onClick: runNow, disabled: busy || running || !configured }, running ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "sync", size: 12 }), running ? t4("sync.running") : t4("sync.now")),
+        h4("button", { type: "button", className: "dshgn_btn", onClick: pushAll, disabled: busy || running || !configured, title: t4("sync.pushAllHint") }, t4("sync.pushAll")),
         h4(
           "label",
           { className: "dshgn_rowLine", style: { fontSize: 11.5, color: "var(--dsw-alias-label-secondary)" } },
           h4("input", { type: "checkbox", checked: fullScan, onChange: (e3) => setFullScan(e3.target.checked), disabled: !configured }),
-          t3("sync.fullScan")
+          t4("sync.fullScan")
         )
       ),
-      !configured ? h4("div", { className: "dshgn_fieldHint" }, t3("cloud.notConfiguredDesc")) : null,
+      !configured ? h4("div", { className: "dshgn_fieldHint" }, t4("cloud.notConfiguredDesc")) : null,
       lastError !== null ? h4("div", { className: "dshgn_error" }, lastError) : null,
       resultStats.length > 0 ? h4("div", { className: "dshgn_statGrid" }, resultStats.map((s3) => h4("div", { key: s3.label, className: "dshgn_stat" }, h4("span", { className: "dshgn_statNum" }, String(s3.num)), h4("span", { className: "dshgn_statLabel" }, s3.label)))) : null,
       pushReport !== null ? h4(
         "div",
         { className: "dshgn_fieldHint" },
-        `${t3("sync.pushAllDone")}\uFF1A${t3("sync.pushAllPushed")} ${pushReport.pushed}\uFF0C${t3("sync.pushAllSkipped")} ${pushReport.skipped}${pushReport.failed > 0 ? `\uFF0C${t3("sync.pushAllFailed")} ${pushReport.failed}` : ""}${pushReport.truncated ? `\uFF08${t3("sync.pushAllTruncated")}\uFF09` : ""}`
+        `${t4("sync.pushAllDone")}\uFF1A${t4("sync.pushAllPushed")} ${pushReport.pushed}\uFF0C${t4("sync.pushAllSkipped")} ${pushReport.skipped}${pushReport.failed > 0 ? `\uFF0C${t4("sync.pushAllFailed")} ${pushReport.failed}` : ""}${pushReport.truncated ? `\uFF08${t4("sync.pushAllTruncated")}\uFF09` : ""}`
       ) : null,
-      lastResult !== null && lastResult.at ? h4("div", { className: "dshgn_fieldHint" }, `${t3("sync.result")}: ${formatTime(lastResult.at)}`) : null
+      lastResult !== null && lastResult.at ? h4("div", { className: "dshgn_fieldHint" }, `${t4("sync.result")}: ${formatTime(lastResult.at)}`) : null
     ),
     h4(LegacyImport)
   );
@@ -15713,12 +15771,12 @@ ${t3("sync.pushAllHint")}`)) return;
       return h4(
         "div",
         { className: "dshgn_rowLine", style: { justifyContent: "center" } },
-        h4("button", { type: "button", className: "dshgn_btn", onClick: () => setOpen(true) }, t3("sync.legacy")),
-        h4("span", { className: "dshgn_fieldHint" }, t3("sync.legacyHint"))
+        h4("button", { type: "button", className: "dshgn_btn", onClick: () => setOpen(true) }, t4("sync.legacy")),
+        h4("span", { className: "dshgn_fieldHint" }, t4("sync.legacyHint"))
       );
     }
     return h4(ImportPane, {
-      t: t3,
+      t: t4,
       status,
       onRefresh: async () => {
         if (typeof onChanged === "function") await onChanged();
@@ -15730,11 +15788,11 @@ ${t3("sync.pushAllHint")}`)) return;
   }
 }
 function SkeletonPane(props) {
-  const { t: t3 } = props;
+  const { t: t4 } = props;
   const row = (width, height) => h4("div", { className: "dshgn_skRow", style: { width, height } });
   return h4(
     "div",
-    { className: "dshgn_body", "aria-busy": "true", "aria-label": t3("panel.loading") },
+    { className: "dshgn_body", "aria-busy": "true", "aria-label": t4("panel.loading") },
     h4(
       "div",
       { className: "dshgn_tree dshgn_skTree" },
@@ -15782,7 +15840,7 @@ function SkeletonPane(props) {
   );
 }
 function HeatmapStrip(props) {
-  const { t: t3, heatmap } = props;
+  const { t: t4, heatmap } = props;
   if (heatmap === null || heatmap === void 0 || !Array.isArray(heatmap.days) || heatmap.days.length === 0) {
     return null;
   }
@@ -15801,11 +15859,11 @@ function HeatmapStrip(props) {
     h4(
       "div",
       { className: "dshgn_heatHead" },
-      h4("span", { className: "dshgn_heatTitle" }, t3("heat.title")),
+      h4("span", { className: "dshgn_heatTitle" }, t4("heat.title")),
       h4(
         "span",
-        { className: "dshgn_heatStat", title: `${heatmap.total} ${t3("heat.totalHint")}` },
-        `${heatmap.streak} ${t3("heat.streak")}`
+        { className: "dshgn_heatStat", title: `${heatmap.total} ${t4("heat.totalHint")}` },
+        `${heatmap.streak} ${t4("heat.streak")}`
       )
     ),
     h4(
@@ -15817,7 +15875,7 @@ function HeatmapStrip(props) {
           className: "dshgn_heatCell",
           "data-lv": String(level(day.count)),
           "data-future": day.future === true ? "true" : "false",
-          title: `${day.date} \xB7 ${day.count} ${t3("heat.unit")}`
+          title: `${day.date} \xB7 ${day.count} ${t4("heat.unit")}`
         })
       )
     )
@@ -15928,7 +15986,7 @@ function ColSplitter(props) {
 }
 function TreePane(props) {
   const {
-    t: t3,
+    t: t4,
     tree,
     dirs,
     entries,
@@ -16085,14 +16143,14 @@ function TreePane(props) {
         {
           type: "button",
           className: "dshgn_rowBtn",
-          title: t3("tree.menuRename"),
+          title: t4("tree.menuRename"),
           onClick: () => {
             setRenaming({ from: target.name, to: target.name });
             setMenu(null);
           }
         },
         h4(Icon, { name: "edit", size: 11 }),
-        h4("span", null, t3("tree.menuRename"))
+        h4("span", null, t4("tree.menuRename"))
       ) : null,
       // 「在文件列表里定位」：面板的列表是平的，用户想知道这个目录在库里
       // 的哪儿、旁边还有什么时，把它交给宿主的文件列表比自己解释路径直观。
@@ -16102,39 +16160,39 @@ function TreePane(props) {
         {
           type: "button",
           className: "dshgn_rowBtn",
-          title: t3("tree.menuReveal"),
+          title: t4("tree.menuReveal"),
           onClick: () => {
             revealInVault(target.name);
             setMenu(null);
           }
         },
         h4(Icon, { name: "external-link", size: 11 }),
-        h4("span", null, t3("tree.menuReveal"))
+        h4("span", null, t4("tree.menuReveal"))
       ) : null,
       h4(
         "button",
         {
           type: "button",
           className: "dshgn_rowBtn dshgn_rowBtnDanger",
-          title: target.kind === "dir" ? t3("tree.deleteDir") : t3("tree.deleteTag"),
+          title: target.kind === "dir" ? t4("tree.deleteDir") : t4("tree.deleteTag"),
           onClick: () => {
             setConfirm({ kind: target.kind, name: target.name });
             setMenu(null);
           }
         },
         h4(Icon, { name: "trash", size: 11 }),
-        h4("span", null, t3("tree.menuDelete"))
+        h4("span", null, t4("tree.menuDelete"))
       ),
       h4(
         "button",
         {
           type: "button",
           className: "dshgn_rowBtn",
-          title: t3("tree.menuCancel"),
+          title: t4("tree.menuCancel"),
           onClick: () => setMenu(null)
         },
         h4(Icon, { name: "close", size: 11 }),
-        h4("span", null, t3("tree.menuCancel"))
+        h4("span", null, t4("tree.menuCancel"))
       )
     );
   };
@@ -16150,7 +16208,7 @@ function TreePane(props) {
         {
           type: "button",
           className: "dshgn_treeSort",
-          title: `${t3("tree.sort")}\uFF1A${t3(`tree.sort${mode === "time" ? "Time" : mode === "name" ? "Name" : "Count"}`)}`,
+          title: `${t4("tree.sort")}\uFF1A${t4(`tree.sort${mode === "time" ? "Time" : mode === "name" ? "Name" : "Count"}`)}`,
           onClick: () => setMode(nextMode)
         },
         mode === "time" ? "\u23F1" : mode === "name" ? "A\u2192Z" : "#"
@@ -16182,18 +16240,18 @@ function TreePane(props) {
         onClick: picked(() => onPickDir(""))
       },
       h4(Icon, { name: "brain", size: 14 }),
-      h4("span", { className: "dshgn_treeName" }, t3("tree.all")),
+      h4("span", { className: "dshgn_treeName" }, t4("tree.all")),
       h4("span", { className: "dshgn_treeCount" }, String(total))
     ),
     // 热力图放在「全部笔记」正下方：它是「这个库整体在长」的视角，
     // 跟下面按目录/标签切分是两种维度，夹在中间会让人以为它属于某个目录。
-    h4(HeatmapStrip, { t: t3, heatmap }),
+    h4(HeatmapStrip, { t: t4, heatmap }),
     // 目录区
     h4(
       "div",
       { className: "dshgn_treeHead" },
-      h4("span", { className: "dshgn_treeHeadTitle" }, t3("tree.dirs")),
-      headActions("dir", t3("tree.newDir"), true)
+      h4("span", { className: "dshgn_treeHeadTitle" }, t4("tree.dirs")),
+      headActions("dir", t4("tree.newDir"), true)
     ),
     creating === "dir" ? h4(
       "div",
@@ -16203,7 +16261,7 @@ function TreePane(props) {
         type: "text",
         autoFocus: true,
         value: draft,
-        placeholder: t3("tree.newDirHint"),
+        placeholder: t4("tree.newDirHint"),
         onChange: (event) => setDraft(event.target.value),
         onKeyDown: (event) => {
           if (event.key === "Enter") void runCreate();
@@ -16232,7 +16290,7 @@ function TreePane(props) {
           onClick: picked(() => onPickDir(node.path)),
           onContextMenu: (event) => openMenu(event, "dir", node.path),
           title: `${node.path}
-${t3("tree.menuDelete")}\uFF1A\u53F3\u952E`
+${t4("tree.menuDelete")}\uFF1A\u53F3\u952E`
         },
         h4(Icon, { name: "folder", size: 13 }),
         h4("span", { className: "dshgn_treeName" }, node.name),
@@ -16243,8 +16301,8 @@ ${t3("tree.menuDelete")}\uFF1A\u53F3\u952E`
     h4(
       "div",
       { className: "dshgn_treeHead" },
-      h4("span", { className: "dshgn_treeHeadTitle" }, t3("tree.tags")),
-      headActions("tag", t3("tree.newTag"), true)
+      h4("span", { className: "dshgn_treeHeadTitle" }, t4("tree.tags")),
+      headActions("tag", t4("tree.newTag"), true)
     ),
     creating === "tag" ? h4(
       "div",
@@ -16254,7 +16312,7 @@ ${t3("tree.menuDelete")}\uFF1A\u53F3\u952E`
         type: "text",
         autoFocus: true,
         value: draft,
-        placeholder: t3("tree.newTagHint"),
+        placeholder: t4("tree.newTagHint"),
         onChange: (event) => setDraft(event.target.value),
         onKeyDown: (event) => {
           if (event.key === "Enter") void runCreate();
@@ -16331,12 +16389,12 @@ ${t3("tree.menuDelete")}\uFF1A\u53F3\u952E`
         h4(
           "div",
           { className: "dshgn_modalTitle" },
-          confirm.kind === "dir" ? t3("tree.deleteDir") : t3("tree.deleteTag")
+          confirm.kind === "dir" ? t4("tree.deleteDir") : t4("tree.deleteTag")
         ),
         h4(
           "div",
           { className: "dshgn_modalBody" },
-          (confirm.kind === "dir" ? t3("tree.deleteDirConfirm") : t3("tree.deleteTagConfirm")).replace(
+          (confirm.kind === "dir" ? t4("tree.deleteDirConfirm") : t4("tree.deleteTagConfirm")).replace(
             "{name}",
             confirm.name
           )
@@ -16347,7 +16405,7 @@ ${t3("tree.menuDelete")}\uFF1A\u53F3\u952E`
           h4(
             "button",
             { type: "button", className: "dshgn_btn", onClick: () => setConfirm(null), disabled: busy },
-            t3("action.cancel")
+            t4("action.cancel")
           ),
           h4(
             "button",
@@ -16357,7 +16415,7 @@ ${t3("tree.menuDelete")}\uFF1A\u53F3\u952E`
               onClick: () => void runDelete(),
               disabled: busy
             },
-            t3("action.delete")
+            t4("action.delete")
           )
         )
       )
@@ -16365,7 +16423,7 @@ ${t3("tree.menuDelete")}\uFF1A\u53F3\u952E`
   );
 }
 function NotePane(props) {
-  const { t: t3, status, current, draft, setDraft, dirty, busy, onSave, onRename, onDelete, onCopyReference, onOpenWikiLink: onOpenWikiLink2, onSyncOne, onRestored, onError, onToggleTodo, onClose, onAttach } = props;
+  const { t: t4, status, current, draft, setDraft, dirty, busy, onSave, onRename, onDelete, onCopyReference, onOpenWikiLink: onOpenWikiLink2, onSyncOne, onRestored, onError, onToggleTodo, onClose, onAttach } = props;
   const anchorRequest = props.anchor;
   const onAnchorDone = props.onAnchorDone;
   const resolveNote = props.resolveNote;
@@ -16560,6 +16618,12 @@ function NotePane(props) {
       if (typeof onAnchorDone === "function") onAnchorDone();
       return;
     }
+    if (anchorRequest.kind === "block" || isBlockAnchor(anchorRequest.text)) {
+      const blockHost = scrollRef.current;
+      if (blockHost) scrollToBlock(blockHost, anchorRequest.text);
+      if (typeof onAnchorDone === "function") onAnchorDone();
+      return;
+    }
     const want = normalizeHeading(anchorRequest.text);
     const host = scrollRef.current;
     if (want !== "" && host) {
@@ -16575,11 +16639,11 @@ function NotePane(props) {
         const offset = hit.getBoundingClientRect().top - host.getBoundingClientRect().top + host.scrollTop - 8;
         host.scrollTo({ top: Math.max(0, offset), behavior: "smooth" });
       } else if (typeof onError === "function") {
-        onError(t3("note.anchorMissing").replace("{name}", anchorRequest.text));
+        onError(t4("note.anchorMissing").replace("{name}", anchorRequest.text));
       }
     }
     if (typeof onAnchorDone === "function") onAnchorDone();
-  }, [anchorRequest, currentPath, onAnchorDone, onError, t3]);
+  }, [anchorRequest, currentPath, onAnchorDone, onError, t4]);
   if (current === null) {
     return h4(
       "section",
@@ -16588,8 +16652,8 @@ function NotePane(props) {
         "div",
         { className: "dshgn_empty" },
         h4(Icon, { name: "brain", size: 26 }),
-        h4("div", { className: "dshgn_emptyTitle" }, t3("empty.select")),
-        h4("div", { className: "dshgn_emptyDesc" }, t3("empty.selectDesc"))
+        h4("div", { className: "dshgn_emptyTitle" }, t4("empty.select")),
+        h4("div", { className: "dshgn_emptyDesc" }, t4("empty.selectDesc"))
       )
     );
   }
@@ -16618,7 +16682,7 @@ function NotePane(props) {
         {
           type: "button",
           className: "dshgn_iconBtn dshgn_noteBack",
-          title: t3("action.back"),
+          title: t4("action.back"),
           onClick: () => {
             if (typeof onClose === "function") onClose();
           }
@@ -16631,7 +16695,7 @@ function NotePane(props) {
       // 想调它，跑到设置页去调完再回来，会打断阅读。
       h4(
         "div",
-        { className: "dshgn_scaleGroup", role: "group", title: t3("note.fontSize") },
+        { className: "dshgn_scaleGroup", role: "group", title: t4("note.fontSize") },
         ["s", "m", "l"].map(
           (size) => h4(
             "button",
@@ -16640,14 +16704,14 @@ function NotePane(props) {
               type: "button",
               className: "dshgn_scaleBtn" + (textScale === size ? " dshgn_scaleBtnOn" : ""),
               onClick: () => pickScale(size),
-              title: t3(`note.fontSize.${size}`)
+              title: t4(`note.fontSize.${size}`)
             },
             // 三个 A 用不同字号画，比写「小/中/大」省位置，也比图标直观
             h4("span", { style: { fontSize: size === "s" ? 10 : size === "m" ? 12 : 14, lineHeight: 1 } }, "A")
           )
         )
       ),
-      dirty ? h4("span", { className: "dshgn_badge" }, t3("note.unsaved")) : null,
+      dirty ? h4("span", { className: "dshgn_badge" }, t4("note.unsaved")) : null,
       editing ? h4(
         b,
         null,
@@ -16655,7 +16719,7 @@ function NotePane(props) {
           "button",
           { type: "button", className: "dshgn_btn dshgn_btnPrimary", onClick: onSave, disabled: busy || !dirty },
           h4(Icon, { name: "check", size: 13 }),
-          t3("action.save")
+          t4("action.save")
         ),
         h4(
           "button",
@@ -16663,14 +16727,14 @@ function NotePane(props) {
             setDraft(current.content);
             setEditing(false);
           }, disabled: busy },
-          t3("action.cancel")
+          t4("action.cancel")
         )
       ) : h4(
         b,
         null,
         h4(
           "button",
-          { type: "button", className: "dshgn_iconBtn", title: t3("action.edit"), onClick: () => setEditing(true) },
+          { type: "button", className: "dshgn_iconBtn", title: t4("action.edit"), onClick: () => setEditing(true) },
           h4(Icon, { name: "edit", size: 15 })
         ),
         // 改名走宿主的对话框：它会把全库双链一起改掉，自己改文件就会留死链。
@@ -16679,7 +16743,7 @@ function NotePane(props) {
           {
             type: "button",
             className: "dshgn_iconBtn",
-            title: t3("action.rename"),
+            title: t4("action.rename"),
             onClick: () => {
               if (typeof onRename === "function") onRename(current.path);
             }
@@ -16688,7 +16752,7 @@ function NotePane(props) {
         ) : null,
         h4(
           "button",
-          { type: "button", className: "dshgn_iconBtn", title: t3("action.copyRef"), onClick: onCopyReference },
+          { type: "button", className: "dshgn_iconBtn", title: t4("action.copyRef"), onClick: onCopyReference },
           h4(Icon, { name: "link", size: 15 })
         ),
         // B1：单篇推云端 / 单篇拉云端。只有这篇确实在云端有 note_id 时
@@ -16696,12 +16760,12 @@ function NotePane(props) {
         // 那还不如不给这个按钮。
         current.noteId ? h4(
           "button",
-          { type: "button", className: "dshgn_iconBtn", title: t3("sync.pushOne"), onClick: () => onSyncOne("push"), disabled: busy },
+          { type: "button", className: "dshgn_iconBtn", title: t4("sync.pushOne"), onClick: () => onSyncOne("push"), disabled: busy },
           h4(Icon, { name: "cloud", size: 15 })
         ) : null,
         current.noteId ? h4(
           "button",
-          { type: "button", className: "dshgn_iconBtn", title: t3("sync.pullOne"), onClick: () => onSyncOne("pull"), disabled: busy },
+          { type: "button", className: "dshgn_iconBtn", title: t4("sync.pullOne"), onClick: () => onSyncOne("pull"), disabled: busy },
           h4(Icon, { name: "sync", size: 15 })
         ) : null,
         h4(
@@ -16709,7 +16773,7 @@ function NotePane(props) {
           {
             type: "button",
             className: "dshgn_iconBtn",
-            title: t3("history.title"),
+            title: t4("history.title"),
             "data-on": historyOpen ? "true" : "false",
             onClick: () => {
               const next = !historyOpen;
@@ -16726,7 +16790,7 @@ function NotePane(props) {
           {
             type: "button",
             className: "dshgn_iconBtn",
-            title: t3("action.openInEditor"),
+            title: t4("action.openInEditor"),
             onClick: () => openInEditor(absolute)
           },
           h4(Icon, { name: "external-link", size: 15 })
@@ -16739,7 +16803,7 @@ function NotePane(props) {
             {
               type: "button",
               className: "dshgn_iconBtn",
-              title: t3("note.attach"),
+              title: t4("note.attach"),
               onClick: () => {
                 if (attachRef.current) attachRef.current.click();
               },
@@ -16763,7 +16827,7 @@ function NotePane(props) {
         ) : null,
         h4(
           "button",
-          { type: "button", className: "dshgn_iconBtn", title: t3("action.delete"), onClick: onDelete, disabled: busy },
+          { type: "button", className: "dshgn_iconBtn", title: t4("action.delete"), onClick: onDelete, disabled: busy },
           h4(Icon, { name: "trash", size: 15 })
         )
       )
@@ -16791,8 +16855,8 @@ function NotePane(props) {
       h4(
         "div",
         { className: "dshgn_editorFoot" },
-        h4("span", null, t3("editor.words").replace("{n}", String(countWords(draft)))),
-        h4("span", { className: "dshgn_editorHint" }, t3("editor.saveHint"))
+        h4("span", null, t4("editor.words").replace("{n}", String(countWords(draft)))),
+        h4("span", { className: "dshgn_editorHint" }, t4("editor.saveHint"))
       )
     ) : historyOpen ? h4(
       "div",
@@ -16801,7 +16865,7 @@ function NotePane(props) {
         "div",
         { className: "dshgn_historyHead" },
         h4(Icon, { name: "clock", size: 13 }),
-        h4("span", null, t3("history.title")),
+        h4("span", null, t4("history.title")),
         h4("span", { className: "dshgn_outlineCount" }, historyItems === null ? "\u2026" : String(historyItems.length)),
         h4(
           "button",
@@ -16809,7 +16873,7 @@ function NotePane(props) {
             setHistoryOpen(false);
             setHistoryPreview(null);
           } },
-          t3("action.close")
+          t4("action.close")
         )
       ),
       historyPreview !== null ? h4(
@@ -16822,17 +16886,17 @@ function NotePane(props) {
           h4(
             "button",
             { type: "button", className: "dshgn_btn dshgn_btnPri", style: { marginLeft: "auto" }, onClick: () => void restoreHistory(historyPreview.name), disabled: historyBusy },
-            t3("history.restore")
+            t4("history.restore")
           ),
-          h4("button", { type: "button", className: "dshgn_btn", onClick: () => setHistoryPreview(null), disabled: historyBusy }, t3("action.back"))
+          h4("button", { type: "button", className: "dshgn_btn", onClick: () => setHistoryPreview(null), disabled: historyBusy }, t4("action.back"))
         ),
         h4("pre", { className: "dshgn_diffBody", style: { flex: 1, minHeight: 0 } }, historyPreview.content)
       ) : historyItems === null ? h4("div", { className: "dshgn_emptyState" }, h4("span", { className: "dshgn_spin" })) : historyItems.length === 0 ? h4(
         "div",
         { className: "dshgn_empty" },
         h4(Icon, { name: "clock", size: 22 }),
-        h4("div", { className: "dshgn_emptyTitle" }, t3("history.empty")),
-        h4("div", { className: "dshgn_emptyDesc" }, t3("history.emptyHint"))
+        h4("div", { className: "dshgn_emptyTitle" }, t4("history.empty")),
+        h4("div", { className: "dshgn_emptyDesc" }, t4("history.emptyHint"))
       ) : h4(
         "div",
         { className: "dshgn_historyList" },
@@ -16866,10 +16930,10 @@ function NotePane(props) {
             type: "button",
             className: "dshgn_outlineToggle",
             onClick: () => setShowProps((prev) => !prev),
-            title: t3("reader.frontmatter")
+            title: t4("reader.frontmatter")
           },
           h4(Icon, { name: showProps ? "up" : "file", size: 12 }),
-          t3("reader.frontmatter"),
+          t4("reader.frontmatter"),
           h4("span", { className: "dshgn_outlineCount" }, String(propRows.length))
         ),
         showProps ? h4(
@@ -16915,10 +16979,10 @@ function NotePane(props) {
             type: "button",
             className: "dshgn_outlineToggle",
             onClick: () => setShowOutline((prev) => !prev),
-            title: t3("note.outline")
+            title: t4("note.outline")
           },
           h4(Icon, { name: showOutline ? "up" : "file", size: 12 }),
-          t3("note.outline"),
+          t4("note.outline"),
           h4("span", { className: "dshgn_outlineCount" }, String(current.outline.length))
         ),
         showOutline ? h4(
@@ -16946,7 +17010,7 @@ function NotePane(props) {
       (current.assets || []).filter((asset) => asset.kind === "audio").map(
         (asset, index) => h4(AudioPlayer, {
           key: `${asset.path}-${index}`,
-          t: t3,
+          t: t4,
           track: {
             // 宿主给了资源地址就用它（Range、缓存都归宿主管），否则退回本地服务
             url: assetUrlOf(asset.path) !== "" ? assetUrlOf(asset.path) : withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(asset.path)}`),
@@ -16967,7 +17031,7 @@ function NotePane(props) {
             className: "dshgn_img" + (hasOpenAsset() ? " dshgn_imgOpen" : ""),
             src: assetUrlOf(asset.path) !== "" ? assetUrlOf(asset.path) : withToken(`${apiOrigin()}/getnote/asset?path=${encodeURIComponent(asset.path)}`),
             alt: asset.name,
-            title: hasOpenAsset() ? `${t3("note.openImage")} \xB7 ${asset.name}` : asset.name,
+            title: hasOpenAsset() ? `${t4("note.openImage")} \xB7 ${asset.name}` : asset.name,
             loading: "lazy",
             onClick: hasOpenAsset() ? (event) => {
               if (event && typeof event.stopPropagation === "function") event.stopPropagation();
@@ -17001,7 +17065,7 @@ function NotePane(props) {
             // 共用一套，否则会出现「点得过去、嵌不进来」。
             resolveNote,
             embedDepth: 0,
-            t: t3
+            t: t4
           }
         )
       ),
@@ -17010,7 +17074,7 @@ function NotePane(props) {
       backlinks !== null && Array.isArray(backlinks.hits) && backlinks.hits.length > 0 ? h4(
         "div",
         { className: "dshgn_backlinks" },
-        h4("div", { className: "dshgn_backlinksHead" }, h4(Icon, { name: "link", size: 12 }), t3("note.backlinks"), h4("span", { className: "dshgn_outlineCount" }, String(backlinks.hits.length))),
+        h4("div", { className: "dshgn_backlinksHead" }, h4(Icon, { name: "link", size: 12 }), t4("note.backlinks"), h4("span", { className: "dshgn_outlineCount" }, String(backlinks.hits.length))),
         backlinks.hits.map(
           (hit) => h4(
             "button",
@@ -17040,7 +17104,7 @@ function NotePane(props) {
       outlinkChips.length > 0 ? h4(
         "div",
         { className: "dshgn_outlinks" },
-        h4("div", { className: "dshgn_outlinksHead" }, h4(Icon, { name: "link", size: 12 }), t3("note.outlinks"), h4("span", { className: "dshgn_outlineCount" }, String(outlinkChips.length))),
+        h4("div", { className: "dshgn_outlinksHead" }, h4(Icon, { name: "link", size: 12 }), t4("note.outlinks"), h4("span", { className: "dshgn_outlineCount" }, String(outlinkChips.length))),
         h4(
           "div",
           { className: "dshgn_outlinkRow" },
@@ -17063,7 +17127,7 @@ function NotePane(props) {
   );
 }
 function ImportPane(props) {
-  const { t: t3, status, onRefresh, onDone } = props;
+  const { t: t4, status, onRefresh, onDone } = props;
   const [state, setState] = h2(null);
   const [authUrl, setAuthUrl] = h2(null);
   const [waiting, setWaiting] = h2(false);
@@ -17164,8 +17228,8 @@ function ImportPane(props) {
       h4(
         "div",
         { className: "dshgn_section" },
-        h4("div", { className: "dshgn_sectionTitle" }, t3("import.title")),
-        h4("div", { className: "dshgn_sectionDesc" }, t3("import.desc")),
+        h4("div", { className: "dshgn_sectionTitle" }, t4("import.title")),
+        h4("div", { className: "dshgn_sectionDesc" }, t4("import.desc")),
         h4(
           "div",
           { className: "dshgn_rowLine" },
@@ -17173,10 +17237,10 @@ function ImportPane(props) {
             "span",
             { className: loggedIn ? "dshgn_badge dshgn_badgeOk" : "dshgn_badge" },
             h4(Icon, { name: "cloud", size: 11 }),
-            loggedIn ? t3("import.loggedIn") : t3("import.notLoggedIn")
+            loggedIn ? t4("import.loggedIn") : t4("import.notLoggedIn")
           ),
-          status !== null && status.lastSyncAt ? h4("span", { className: "dshgn_badge" }, `${t3("import.lastSync")}: ${formatTime(status.lastSyncAt)}`) : h4("span", { className: "dshgn_badge" }, `${t3("import.lastSync")}: ${t3("import.never")}`),
-          status !== null && status.notes > 0 ? h4("span", { className: "dshgn_badge" }, `${status.notes} ${t3("meta.notes")}`) : null
+          status !== null && status.lastSyncAt ? h4("span", { className: "dshgn_badge" }, `${t4("import.lastSync")}: ${formatTime(status.lastSyncAt)}`) : h4("span", { className: "dshgn_badge" }, `${t4("import.lastSync")}: ${t4("import.never")}`),
+          status !== null && status.notes > 0 ? h4("span", { className: "dshgn_badge" }, `${status.notes} ${t4("meta.notes")}`) : null
         ),
         h4(
           "div",
@@ -17188,9 +17252,9 @@ function ImportPane(props) {
               "button",
               { type: "button", className: "dshgn_btn dshgn_btnPrimary", onClick: startImport, disabled: busy || running },
               running ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "cloud", size: 13 }),
-              running ? t3("import.running") : t3("import.start")
+              running ? t4("import.running") : t4("import.start")
             ),
-            h4("button", { type: "button", className: "dshgn_btn", onClick: logout, disabled: busy || running }, t3("import.logout"))
+            h4("button", { type: "button", className: "dshgn_btn", onClick: logout, disabled: busy || running }, t4("import.logout"))
           ) : h4(
             b,
             null,
@@ -17198,16 +17262,16 @@ function ImportPane(props) {
               "button",
               { type: "button", className: "dshgn_btn dshgn_btnPrimary", onClick: startLogin, disabled: busy },
               h4(Icon, { name: "cloud", size: 13 }),
-              t3("import.login")
+              t4("import.login")
             ),
-            h4("span", { className: "dshgn_sectionDesc" }, t3("import.loginHint"))
+            h4("span", { className: "dshgn_sectionDesc" }, t4("import.loginHint"))
           )
         ),
-        !loggedIn ? h4("div", { className: "dshgn_sectionDesc" }, t3("import.cloudHint")) : null,
+        !loggedIn ? h4("div", { className: "dshgn_sectionDesc" }, t4("import.cloudHint")) : null,
         authUrl !== null ? h4(
           "div",
           { className: "dshgn_sectionDesc" },
-          waiting ? `${t3("import.authorizeWait")} ` : "",
+          waiting ? `${t4("import.authorizeWait")} ` : "",
           // 用按钮而不是 a[target=_blank]：Obsidian 的自定义视图里点外链
           // 有时会把整个应用导航走，比打开浏览器难收拾得多。
           h4(
@@ -17217,7 +17281,7 @@ function ImportPane(props) {
               className: "dshgn_link dshgn_linkBtn",
               onClick: () => openExternal(authUrl)
             },
-            t3("import.openLink")
+            t4("import.openLink")
           )
         ) : null
       ),
@@ -17225,13 +17289,13 @@ function ImportPane(props) {
       result !== null ? h4(
         "div",
         { className: "dshgn_section" },
-        h4("div", { className: "dshgn_sectionTitle" }, t3("import.result")),
+        h4("div", { className: "dshgn_sectionTitle" }, t4("import.result")),
         h4(
           "div",
           { className: "dshgn_rowLine" },
-          h4("span", { className: "dshgn_badge dshgn_badgeOk" }, `${t3("import.newNotes")} ${result.created}`),
-          h4("span", { className: "dshgn_badge" }, `${t3("import.skipped")} ${result.skipped}`),
-          h4("span", { className: "dshgn_badge" }, `${t3("import.failed")} ${result.failed}`),
+          h4("span", { className: "dshgn_badge dshgn_badgeOk" }, `${t4("import.newNotes")} ${result.created}`),
+          h4("span", { className: "dshgn_badge" }, `${t4("import.skipped")} ${result.skipped}`),
+          h4("span", { className: "dshgn_badge" }, `${t4("import.failed")} ${result.failed}`),
           h4("span", { className: "dshgn_badge" }, `${Math.round((result.durationMs || 0) / 1e3)}s`)
         ),
         h4("div", { className: "dshgn_sectionDesc" }, result.root)
@@ -17241,7 +17305,7 @@ function ImportPane(props) {
   );
 }
 function SettingsPane(props) {
-  const { t: t3, status, onSaved, onError, onThemePreview, showToast, locale, onLocaleChange, onSyncChanged } = props;
+  const { t: t4, status, onSaved, onError, onThemePreview, showToast, locale, onLocaleChange, onSyncChanged } = props;
   const [input, setInput] = h2("");
   const [busy, setBusy] = h2(false);
   const [touched, setTouched] = h2(false);
@@ -17258,14 +17322,14 @@ function SettingsPane(props) {
           body: JSON.stringify({ vaultPath: path })
         });
         setTouched(false);
-        await onSaved(t3("settings.saved"));
+        await onSaved(t4("settings.saved"));
       } catch (err) {
         onError(err && err.message ? err.message : String(err));
       } finally {
         setBusy(false);
       }
     },
-    [onError, onSaved, t3]
+    [onError, onSaved, t4]
   );
   const suggestions = status !== null && Array.isArray(status.suggestions) ? status.suggestions : [];
   const cloudApi = status !== null && status.api ? status.api : null;
@@ -17279,8 +17343,8 @@ function SettingsPane(props) {
       h4(
         "div",
         { className: "dshgn_section" },
-        h4("div", { className: "dshgn_sectionTitle" }, t3("settings.vault")),
-        h4("div", { className: "dshgn_sectionDesc" }, t3("settings.vaultHint")),
+        h4("div", { className: "dshgn_sectionTitle" }, t4("settings.vault")),
+        h4("div", { className: "dshgn_sectionDesc" }, t4("settings.vaultHint")),
         h4(
           "div",
           { className: "dshgn_rowLine" },
@@ -17294,45 +17358,45 @@ function SettingsPane(props) {
               setInput(event.target.value);
             }
           }),
-          h4("button", { type: "button", className: "dshgn_btn dshgn_btnPrimary", onClick: () => save(input), disabled: busy }, t3("settings.save"))
+          h4("button", { type: "button", className: "dshgn_btn dshgn_btnPrimary", onClick: () => save(input), disabled: busy }, t4("settings.save"))
         ),
         status !== null && status.vaultMissing ? h4("div", { className: "dshgn_error" }, `\u2715 ${status.vaultMissing}`) : null,
-        status !== null ? h4("div", { className: "dshgn_sectionDesc" }, `${status.notes} ${t3("meta.notes")} \xB7 ${status.dirs} ${t3("meta.dirs")} \xB7 ${formatBytes2(status.bytes)}`) : null
+        status !== null ? h4("div", { className: "dshgn_sectionDesc" }, `${status.notes} ${t4("meta.notes")} \xB7 ${status.dirs} ${t4("meta.dirs")} \xB7 ${formatBytes2(status.bytes)}`) : null
       ),
       suggestions.length > 0 ? h4(
         "div",
         { className: "dshgn_section" },
-        h4("div", { className: "dshgn_sectionTitle" }, t3("settings.suggest")),
+        h4("div", { className: "dshgn_sectionTitle" }, t4("settings.suggest")),
         suggestions.map(
           (item) => h4(
             "div",
             { key: item.path, className: "dshgn_rowLine" },
-            h4("div", { className: "dshgn_sectionDesc", style: { flex: 1, minWidth: 0, wordBreak: "break-all" } }, `${item.path} \u2014 ${item.notes} ${t3("meta.notes")}`),
-            h4("button", { type: "button", className: "dshgn_btn", onClick: () => save(item.path), disabled: busy }, t3("settings.use"))
+            h4("div", { className: "dshgn_sectionDesc", style: { flex: 1, minWidth: 0, wordBreak: "break-all" } }, `${item.path} \u2014 ${item.notes} ${t4("meta.notes")}`),
+            h4("button", { type: "button", className: "dshgn_btn", onClick: () => save(item.path), disabled: busy }, t4("settings.use"))
           )
         )
       ) : null,
-      h4(CloudCredCard, { t: t3, api: cloudApi, onSaved, onError }),
+      h4(CloudCredCard, { t: t4, api: cloudApi, onSaved, onError }),
       // 自动同步紧跟在云端接入卡后面：它俩是同一件事的两半——上面说「用哪条
       // 通道连云端」，这里说「多久自动拉一次」。中间隔着主题色/语言会让这层
       // 关系看不出来。
-      h4(SyncPane, { t: t3, status, onChanged: onSyncChanged, onError, showToast }),
-      h4(ThemeCard, { t: t3, themeColor: status !== null ? status.themeColor : null, onSaved, onError, onPreview: onThemePreview }),
-      h4(LanguageCard, { t: t3, locale, onSaved, onError, onLocaleChange }),
+      h4(SyncPane, { t: t4, status, onChanged: onSyncChanged, onError, showToast }),
+      h4(ThemeCard, { t: t4, themeColor: status !== null ? status.themeColor : null, onSaved, onError, onPreview: onThemePreview }),
+      h4(LanguageCard, { t: t4, locale, onSaved, onError, onLocaleChange }),
       // 跟随卡片紧跟在语言之后：它和「面板长什么样」属于同一类设置（怎么跟
       // 宿主配合），而不是「库里有什么」。
-      h4(FollowCard, { t: t3, status, onSaved, onError }),
+      h4(FollowCard, { t: t4, status, onSaved, onError }),
       // 模板卡放在语言之后、备份之前：它属于「写作习惯」这一类，跟主题色/语言
       // 挨着；备份是整库操作，应该留在最后。
-      h4(TemplateCard, { t: t3, status, onSaved, onError }),
-      h4(ArchiveCard, { t: t3, status, onChanged: onSaved, onError, showToast }),
+      h4(TemplateCard, { t: t4, status, onSaved, onError }),
+      h4(ArchiveCard, { t: t4, status, onChanged: onSaved, onError, showToast }),
       h4(
         "div",
         { className: "dshgn_section" },
         h4(
           "div",
           { className: "dshgn_sectionHead" },
-          h4("div", { className: "dshgn_sectionTitle" }, t3("settings.authFile")),
+          h4("div", { className: "dshgn_sectionTitle" }, t4("settings.authFile")),
           h4(
             "span",
             {
@@ -17341,17 +17405,17 @@ function SettingsPane(props) {
               // 走的是 API Key 那条通道。所以按 expiresAt 分三态。
               className: "dshgn_badge" + (loginState === "ok" ? " dshgn_badgeOk" : loginState === "expired" ? " dshgn_badgeWarn" : "")
             },
-            loginState === "ok" ? t3("settings.loggedIn") : loginState === "expired" ? t3("settings.loginExpired") : t3("settings.loggedOut")
+            loginState === "ok" ? t4("settings.loggedIn") : loginState === "expired" ? t4("settings.loginExpired") : t4("settings.loggedOut")
           )
         ),
         h4("div", { className: "dshgn_sectionDesc" }, status !== null ? status.authPath : ""),
-        h4("div", { className: "dshgn_sectionDesc" }, t3("settings.storeHint"))
+        h4("div", { className: "dshgn_sectionDesc" }, t4("settings.storeHint"))
       )
     )
   );
 }
 function ThemeCard(props) {
-  const { t: t3, themeColor, onSaved, onError, onPreview } = props;
+  const { t: t4, themeColor, onSaved, onError, onPreview } = props;
   const [draft, setDraft] = h2(null);
   const [busy, setBusy] = h2(false);
   const [custom, setCustom] = h2(false);
@@ -17371,7 +17435,7 @@ function ThemeCard(props) {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ themeColor: value })
         });
-        await onSaved(t3("theme.saved"));
+        await onSaved(t4("theme.saved"));
         setDraft(null);
       } catch (err) {
         onError(err && err.message ? err.message : String(err));
@@ -17379,14 +17443,14 @@ function ThemeCard(props) {
         setBusy(false);
       }
     },
-    [onError, onSaved, t3]
+    [onError, onSaved, t4]
   );
   const presets = ["#0a2a52", "#14342b", "#4a2036", "#3b2d5c", "#5c3a1e", "#22434f", "#40202c", "#333333"];
   return h4(
     "div",
     { className: "dshgn_section" },
-    h4("div", { className: "dshgn_sectionTitle" }, t3("theme.title")),
-    h4("div", { className: "dshgn_sectionDesc" }, t3("theme.desc")),
+    h4("div", { className: "dshgn_sectionTitle" }, t4("theme.title")),
+    h4("div", { className: "dshgn_sectionDesc" }, t4("theme.desc")),
     h4(
       "div",
       { className: "dshgn_themeRow" },
@@ -17404,7 +17468,7 @@ function ThemeCard(props) {
       h4(
         "button",
         { type: "button", className: "dshgn_btn", onClick: () => setCustom(!custom) },
-        custom ? t3("theme.preset") : t3("theme.custom")
+        custom ? t4("theme.preset") : t4("theme.custom")
       )
     ),
     custom ? h4(
@@ -17432,21 +17496,21 @@ function ThemeCard(props) {
       return h4(
         "div",
         { className: "dshgn_previewBar", "aria-hidden": "true" },
-        h4("div", { className: "dshgn_previewCell", style: { background: preview["--dshgn-deep"], color: preview["--dshgn-deepFg"] } }, t3("theme.previewLeft")),
-        h4("div", { className: "dshgn_previewCell", style: { background: preview["--dshgn-mid"], color: preview["--dshgn-midFg"] } }, t3("theme.previewMid")),
-        h4("div", { className: "dshgn_previewCell", style: { background: preview["--dshgn-light"], color: preview["--dshgn-lightFg"] } }, t3("theme.previewRight"))
+        h4("div", { className: "dshgn_previewCell", style: { background: preview["--dshgn-deep"], color: preview["--dshgn-deepFg"] } }, t4("theme.previewLeft")),
+        h4("div", { className: "dshgn_previewCell", style: { background: preview["--dshgn-mid"], color: preview["--dshgn-midFg"] } }, t4("theme.previewMid")),
+        h4("div", { className: "dshgn_previewCell", style: { background: preview["--dshgn-light"], color: preview["--dshgn-lightFg"] } }, t4("theme.previewRight"))
       );
     })(),
     h4(
       "div",
       { className: "dshgn_rowLine", style: { marginTop: 10 } },
-      h4("button", { type: "button", className: "dshgn_btn dshgn_btnPrimary", onClick: () => save(active), disabled: busy || draft === null }, t3("theme.apply")),
-      h4("button", { type: "button", className: "dshgn_btn", onClick: () => save(null), disabled: busy }, t3("theme.reset"))
+      h4("button", { type: "button", className: "dshgn_btn dshgn_btnPrimary", onClick: () => save(active), disabled: busy || draft === null }, t4("theme.apply")),
+      h4("button", { type: "button", className: "dshgn_btn", onClick: () => save(null), disabled: busy }, t4("theme.reset"))
     )
   );
 }
 function CloudCredCard(props) {
-  const { t: t3, api: apiInfo, onSaved, onError } = props;
+  const { t: t4, api: apiInfo, onSaved, onError } = props;
   const configured = apiInfo !== null && apiInfo.configured === true;
   const [apiKey, setApiKey] = h2("");
   const [clientId, setClientId] = h2("");
@@ -17456,7 +17520,7 @@ function CloudCredCard(props) {
   const [probe, setProbe] = h2(null);
   const save = q2(async () => {
     if (apiKey.trim() === "" || clientId.trim() === "") {
-      onError(t3("api.needKey"));
+      onError(t4("api.needKey"));
       return;
     }
     setBusy(true);
@@ -17470,110 +17534,110 @@ function CloudCredCard(props) {
       setApiKey("");
       setClientId("");
       setGrantId("");
-      await onSaved(t3("api.saved"));
+      await onSaved(t4("api.saved"));
     } catch (err) {
       onError(err && err.message ? err.message : String(err));
     } finally {
       setBusy(false);
     }
-  }, [apiKey, clientId, grantId, onSaved, onError, t3]);
+  }, [apiKey, clientId, grantId, onSaved, onError, t4]);
   const test = q2(async () => {
     setTesting(true);
     setProbe(null);
     try {
       const result = await api("/api/probe");
-      setProbe({ ok: true, text: `${t3("api.ok")}${result.total !== void 0 ? ` \xB7 ${result.total}` : ""}` });
+      setProbe({ ok: true, text: `${t4("api.ok")}${result.total !== void 0 ? ` \xB7 ${result.total}` : ""}` });
     } catch (err) {
       setProbe({ ok: false, text: err && err.message ? err.message : String(err) });
       onError(err && err.message ? err.message : String(err));
     } finally {
       setTesting(false);
     }
-  }, [onError, t3]);
+  }, [onError, t4]);
   const clear = q2(async () => {
-    if (!await confirmDialog(t3("api.clear"))) return;
+    if (!await confirmDialog(t4("api.clear"))) return;
     setBusy(true);
     setProbe(null);
     try {
       await api("/api/clear", { method: "POST" });
-      await onSaved(t3("api.cleared"));
+      await onSaved(t4("api.cleared"));
     } catch (err) {
       onError(err && err.message ? err.message : String(err));
     } finally {
       setBusy(false);
     }
-  }, [onSaved, onError, t3]);
+  }, [onSaved, onError, t4]);
   return h4(
     "div",
     { className: "dshgn_section" },
     h4(
       "div",
       { className: "dshgn_rowLine" },
-      h4("div", { className: "dshgn_sectionTitle" }, t3("api.title")),
-      h4("span", { className: "dshgn_badge" + (configured ? " dshgn_badgeOk" : "") }, configured ? t3("api.ready") : t3("api.notReady")),
+      h4("div", { className: "dshgn_sectionTitle" }, t4("api.title")),
+      h4("span", { className: "dshgn_badge" + (configured ? " dshgn_badgeOk" : "") }, configured ? t4("api.ready") : t4("api.notReady")),
       configured && apiInfo.apiKeyMasked ? h4("span", { className: "dshgn_treeCount" }, `${apiInfo.apiKeyMasked} \xB7 ${apiInfo.clientIdMasked || ""}`) : null
     ),
-    h4("div", { className: "dshgn_sectionDesc" }, t3("api.desc")),
+    h4("div", { className: "dshgn_sectionDesc" }, t4("api.desc")),
     // Key 被服务端拒过：这条必须显眼。用户填完 Key 看到「已接入」，然后云端每个
     // 操作都失败，却不知道为什么——那是这个插件最糟的体验。
     apiInfo !== null && apiInfo.keyRejected === true ? h4(
       "div",
       { className: "dshgn_banner dshgn_bannerWarn" },
-      h4("div", { className: "dshgn_bannerTitle" }, t3("api.keyRejected")),
+      h4("div", { className: "dshgn_bannerTitle" }, t4("api.keyRejected")),
       h4("div", { className: "dshgn_bannerDesc" }, apiInfo.keyError || ""),
-      apiInfo.fallbackAvailable === true ? h4("div", { className: "dshgn_bannerDesc" }, t3("api.usingFallback")) : null
+      apiInfo.fallbackAvailable === true ? h4("div", { className: "dshgn_bannerDesc" }, t4("api.usingFallback")) : null
     ) : null,
     // 走的是登录通道（不是 Key）：说明清楚，省得用户以为 Key 没存住
-    apiInfo !== null && apiInfo.effectiveTransport === "mcp" && apiInfo.keyRejected !== true ? h4("div", { className: "dshgn_fieldHint" }, t3("api.viaLogin")) : null,
+    apiInfo !== null && apiInfo.effectiveTransport === "mcp" && apiInfo.keyRejected !== true ? h4("div", { className: "dshgn_fieldHint" }, t4("api.viaLogin")) : null,
     h4(
       "div",
       { className: "dshgn_field" },
-      h4("span", { className: "dshgn_fieldLabel" }, t3("api.apiKey")),
+      h4("span", { className: "dshgn_fieldLabel" }, t4("api.apiKey")),
       h4("input", {
         className: "dshgn_input",
         type: "password",
         autoComplete: "off",
         spellCheck: false,
         value: apiKey,
-        placeholder: configured ? "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\uFF08\u5DF2\u4FDD\u5B58\uFF0C\u91CD\u65B0\u586B\u53EF\u66FF\u6362\uFF09" : t3("api.keyPlaceholder"),
+        placeholder: configured ? "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\uFF08\u5DF2\u4FDD\u5B58\uFF0C\u91CD\u65B0\u586B\u53EF\u66FF\u6362\uFF09" : t4("api.keyPlaceholder"),
         onChange: (event) => setApiKey(event.target.value)
       })
     ),
     h4(
       "div",
       { className: "dshgn_field" },
-      h4("span", { className: "dshgn_fieldLabel" }, t3("api.clientId")),
+      h4("span", { className: "dshgn_fieldLabel" }, t4("api.clientId")),
       h4("input", {
         className: "dshgn_input",
         spellCheck: false,
         value: clientId,
-        placeholder: configured ? "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\uFF08\u5DF2\u4FDD\u5B58\uFF0C\u91CD\u65B0\u586B\u53EF\u66FF\u6362\uFF09" : t3("api.idPlaceholder"),
+        placeholder: configured ? "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\uFF08\u5DF2\u4FDD\u5B58\uFF0C\u91CD\u65B0\u586B\u53EF\u66FF\u6362\uFF09" : t4("api.idPlaceholder"),
         onChange: (event) => setClientId(event.target.value)
       })
     ),
     h4(
       "div",
       { className: "dshgn_field" },
-      h4("span", { className: "dshgn_fieldLabel" }, t3("api.grantId")),
+      h4("span", { className: "dshgn_fieldLabel" }, t4("api.grantId")),
       h4("input", {
         className: "dshgn_input",
         spellCheck: false,
         value: grantId,
-        placeholder: configured && apiInfo.hasGrantId ? "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" : t3("api.grantPlaceholder"),
+        placeholder: configured && apiInfo.hasGrantId ? "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022" : t4("api.grantPlaceholder"),
         onChange: (event) => setGrantId(event.target.value)
       })
     ),
     h4(
       "div",
       { className: "dshgn_rowLine" },
-      h4("button", { type: "button", className: "dshgn_btn dshgn_btnPrimary", onClick: save, disabled: busy }, busy ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "check", size: 12 }), t3("api.save")),
-      configured ? h4("button", { type: "button", className: "dshgn_btn", onClick: test, disabled: testing }, testing ? h4("span", { className: "dshgn_spin" }) : null, testing ? t3("api.testing") : t3("api.test")) : null,
-      configured ? h4("button", { type: "button", className: "dshgn_btn dshgn_btnDanger", onClick: clear, disabled: busy }, t3("api.clear")) : null
+      h4("button", { type: "button", className: "dshgn_btn dshgn_btnPrimary", onClick: save, disabled: busy }, busy ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "check", size: 12 }), t4("api.save")),
+      configured ? h4("button", { type: "button", className: "dshgn_btn", onClick: test, disabled: testing }, testing ? h4("span", { className: "dshgn_spin" }) : null, testing ? t4("api.testing") : t4("api.test")) : null,
+      configured ? h4("button", { type: "button", className: "dshgn_btn dshgn_btnDanger", onClick: clear, disabled: busy }, t4("api.clear")) : null
     ),
     probe !== null ? h4("div", { className: probe.ok ? "dshgn_fieldHint" : "dshgn_error", style: probe.ok ? { color: "var(--dsw-alias-state-success-primary)" } : void 0 }, `${probe.ok ? "\u2713" : "\u2715"} ${probe.text}`) : null,
-    h4("div", { className: "dshgn_fieldHint" }, t3("api.consoleHint")),
-    h4("div", { className: "dshgn_fieldHint" }, t3("api.neverEcho")),
-    apiInfo !== null && apiInfo.credentialsPath ? h4("div", { className: "dshgn_fieldHint" }, `${t3("api.file")}: ${apiInfo.credentialsPath}`) : null
+    h4("div", { className: "dshgn_fieldHint" }, t4("api.consoleHint")),
+    h4("div", { className: "dshgn_fieldHint" }, t4("api.neverEcho")),
+    apiInfo !== null && apiInfo.credentialsPath ? h4("div", { className: "dshgn_fieldHint" }, `${t4("api.file")}: ${apiInfo.credentialsPath}`) : null
   );
 }
 var ErrorBoundaryBase = typeof compat_exports !== "undefined" && compat_exports && k ? k : class {

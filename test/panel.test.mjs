@@ -3503,3 +3503,84 @@ test('编辑时脚下看得见字数和保存办法', async () => {
   window.document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
   await sleep(120)
 })
+test('块引用指向的是一段而不是一节，记号也不露在正文里', async () => {
+  // 宿主写法是「行尾一个 ^id」，双链写成 [[笔记#^id]]。以前我们把它当小节名去
+  // 找标题，永远找不到，还会弹一句「这一篇里没有 ^abc 这一节」。
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const backBtn = window.document.querySelector('.dshgn_noteBack')
+  if (backBtn) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    try {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+  }
+
+  const body = [
+    '# 块引用验收',
+    '',
+    '这一段挂了块 id，它才是要跳过去的那一段 ^para01',
+    '',
+    '- 列表里的第一项 ^item01',
+    '- 列表里的第二项',
+  ].join('\n')
+  const res = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({ dir: '随手记', title: '块引用验收', content: body, withDatePrefix: false, requestId: 'seed-blockref' }),
+  })
+  assert.equal((await res.json()).path, '随手记/块引用验收.md')
+
+  await clickTab('笔记')
+  Array.from(window.document.querySelectorAll('.dshgn_iconBtn'))
+    .find((el) => el.title === '刷新')
+    .dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+  const card = await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) =>
+        (el.textContent || '').includes('块引用验收'),
+      ) || null,
+    8000,
+    '列表里应该有这一篇',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const note = await waitFor(
+    () => {
+      const el = window.document.querySelector('.dshgn_note')
+      return el !== null && (el.textContent || '').includes('这一段挂了块 id') ? el : null
+    },
+    8000,
+    '正文渲染出来',
+  )
+
+  // 记号本身不该露出来
+  const text = note.textContent || ''
+  assert.ok(!text.includes('^para01'), '段落末尾的块记号不该显示')
+  assert.ok(!text.includes('^item01'), '列表项末尾的块记号也不该显示')
+
+  // 但块要认得出来：挂着 data-block-id
+  const para = note.querySelector('[data-block-id="para01"]')
+  assert.ok(para !== null, '段落要挂上块 id')
+  assert.ok((para.textContent || '').includes('这一段挂了块 id'))
+  const item = note.querySelector('[data-block-id="item01"]')
+  assert.ok(item !== null, '列表项也要挂上块 id')
+
+  // 按 id 滚得过去；不存在的 id 老实返回 false
+  const scroller = window.document.querySelector('.dshgn_scroll')
+  const { scrollToBlock, isBlockAnchor, blockIdIn, stripBlockId } = panel.__internals
+  assert.equal(scrollToBlock(scroller, '^para01'), true)
+  assert.equal(scrollToBlock(scroller, 'para01'), true)
+  assert.equal(scrollToBlock(scroller, '^没有这个'), false)
+  assert.equal(scrollToBlock(scroller, ''), false)
+
+  assert.equal(isBlockAnchor('^abc123'), true)
+  assert.equal(isBlockAnchor('  ^abc123  '), true)
+  assert.equal(isBlockAnchor('甲节'), false, '普通小节名不是块引用')
+  assert.equal(blockIdIn('一段话 ^abc123'), 'abc123')
+  assert.equal(blockIdIn('一段话'), '')
+  assert.equal(stripBlockId('一段话 ^abc123'), '一段话')
+  assert.equal(stripBlockId('一段话'), '一段话')
+})
