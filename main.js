@@ -11881,8 +11881,16 @@ var CSS = `
   border-radius:7px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;
   font-size:12px;outline:none}
 .dshgn_search:focus{border-color:var(--dsw-alias-brand-primary)}
+/* \u6D4F\u89C8\u5668\u81EA\u5E26\u7684\u90A3\u4E2A \xD7 \u5404\u5BB6\u957F\u5F97\u4E0D\u4E00\u6837\u3001\u4F4D\u7F6E\u4E5F\u4E0D\u53D7\u63A7\uFF0C\u6211\u4EEC\u81EA\u5DF1\u6446\u4E00\u9897\uFF0C\u628A\u5B83\u85CF\u6389 */
+.dshgn_search::-webkit-search-cancel-button{display:none}
 /* \u641C\u7D22\u6846\u5DE6\u4FA7\u7684\u653E\u5927\u955C\uFF1A\u4EE5\u524D\u6CA1\u6709\u89C4\u5219\uFF0C\u56FE\u6807\u4F1A\u88AB input \u7684 flex:1 \u6324\u5230\u8D34\u8FB9 */
 .dshgn_searchIcon{flex:none;color:var(--dsw-alias-label-tertiary);pointer-events:none}
+/* \u6E05\u7A7A\uFF1A\u6709\u5B57\u624D\u6446\u3002\u641C\u7D22\u6846\u91CC\u90A3\u70B9\u4E1C\u897F\u5220\u8D77\u6765\u770B\u7740\u5BB9\u6613\uFF0C\u771F\u5220\u8FC7\u4E00\u6574\u53E5\u624D\u77E5\u9053\u8D39\u52B2\u3002 */
+.dshgn_searchClear{flex:none;display:inline-flex;align-items:center;justify-content:center;
+  width:18px;height:18px;margin-left:-2px;padding:0;border:0;border-radius:50%;
+  background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer}
+.dshgn_searchClear:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dshgn_searchClear:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 /* \u5217\u8868\u6392\u5E8F\u5F00\u5173\uFF1A\u4E0E\u5DE6\u680F\u90A3\u4E24\u9897\u540C\u6B3E\u5C0F\u65B9\u94AE\uFF0C\u4F46\u5217\u8868\u5E95\u8272\u662F\u6D45\u7684\uFF0C\u6240\u4EE5\u989C\u8272\u8D70\u522B\u540D */
 .dshgn_listSort{flex:none;display:inline-flex;align-items:center;justify-content:center;
   height:20px;min-width:20px;padding:0 4px;border:0;border-radius:5px;background:transparent;
@@ -14319,6 +14327,26 @@ ${insert}
             }
           }),
           searching ? h4("span", { className: "dshgn_searching" }, t4("search.searching")) : null,
+          // 清空那颗 ×：搜索框里打了半截才发现想搜的是另一件事，以前得把
+          // 光标挪回去、按住退格一路删，或者按 Esc——而 Esc 在候选摆着时
+          // 只收候选，两下才清得掉。有字才摆，空框上不留一颗按了没反应的按钮。
+          query === "" ? null : h4(
+            "button",
+            {
+              type: "button",
+              className: "dshgn_searchClear",
+              title: t4("search.clear"),
+              "aria-label": t4("search.clear"),
+              onClick: () => {
+                setQuery("");
+                setSuggestAt(null);
+                setSuggestIndex(null);
+                const box = findInPanel(".dshgn_search");
+                if (box !== null) box.focus();
+              }
+            },
+            h4(Icon, { name: "close", size: 11 })
+          ),
           // 排序开关。搜索态不显示：那边的顺序是相关度排的，换成本地排序
           // 反而把最该看的那篇挤下去。
           searchMode ? null : h4(

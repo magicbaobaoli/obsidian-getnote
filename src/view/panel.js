@@ -4906,8 +4906,16 @@ async function saveFile(url, filename) {
   border-radius:7px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;
   font-size:12px;outline:none}
 .dshgn_search:focus{border-color:var(--dsw-alias-brand-primary)}
+/* 浏览器自带的那个 × 各家长得不一样、位置也不受控，我们自己摆一颗，把它藏掉 */
+.dshgn_search::-webkit-search-cancel-button{display:none}
 /* 搜索框左侧的放大镜：以前没有规则，图标会被 input 的 flex:1 挤到贴边 */
 .dshgn_searchIcon{flex:none;color:var(--dsw-alias-label-tertiary);pointer-events:none}
+/* 清空：有字才摆。搜索框里那点东西删起来看着容易，真删过一整句才知道费劲。 */
+.dshgn_searchClear{flex:none;display:inline-flex;align-items:center;justify-content:center;
+  width:18px;height:18px;margin-left:-2px;padding:0;border:0;border-radius:50%;
+  background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer}
+.dshgn_searchClear:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dshgn_searchClear:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 /* 列表排序开关：与左栏那两颗同款小方钮，但列表底色是浅的，所以颜色走别名 */
 .dshgn_listSort{flex:none;display:inline-flex;align-items:center;justify-content:center;
   height:20px;min-width:20px;padding:0 4px;border:0;border-radius:5px;background:transparent;
@@ -7791,6 +7799,28 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                 },
               }),
               searching ? h('span', { className: 'dshgn_searching' }, t('search.searching')) : null,
+              // 清空那颗 ×：搜索框里打了半截才发现想搜的是另一件事，以前得把
+              // 光标挪回去、按住退格一路删，或者按 Esc——而 Esc 在候选摆着时
+              // 只收候选，两下才清得掉。有字才摆，空框上不留一颗按了没反应的按钮。
+              query === ''
+                ? null
+                : h(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'dshgn_searchClear',
+                      title: t('search.clear'),
+                      'aria-label': t('search.clear'),
+                      onClick: () => {
+                        setQuery('')
+                        setSuggestAt(null)
+                        setSuggestIndex(null)
+                        const box = findInPanel('.dshgn_search')
+                        if (box !== null) box.focus()
+                      },
+                    },
+                    h(Icon, { name: 'close', size: 11 }),
+                  ),
               // 排序开关。搜索态不显示：那边的顺序是相关度排的，换成本地排序
               // 反而把最该看的那篇挤下去。
               searchMode

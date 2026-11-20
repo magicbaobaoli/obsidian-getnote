@@ -6952,7 +6952,9 @@ test('搜索里引号把一串词绑在一起、减号把它排掉，结果当�
     const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
     setter.call(box, text)
     box.dispatchEvent(new window.Event('input', { bubbles: true }))
-    await sleep(500)
+    // 搜索有 220ms 防抖 + 一次请求：只睡固定时间偶尔会在结果回来之前就断言
+    await sleep(300)
+    await waitFor(() => window.document.querySelector('.dshgn_searching') === null, 8000, '搜索结果回来')
   }
   const titles = () =>
     Array.from(window.document.querySelectorAll('.dshgn_card .dshgn_cardTitle'))
@@ -9076,4 +9078,92 @@ test('出链里指向还不存在的笔记暗一档、悬停说清是哪一篇�
   } finally {
     panel.setConfirmDialog(null)
   }
+})
+
+
+test('搜索框里打了字就摆一颗清空，点一下退回整份列表、光标还在框里', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+  await clickTab('笔记')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+  const made = await post('/getnote/create', {
+    dir: '随手记',
+    title: '清空验收-这一篇',
+    content: ['# 清空验收', '', '这一篇是为了让搜索框里能敲出字来。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-search-clear',
+  })
+  assert.ok(made && made.path, '造笔记失败：' + JSON.stringify(made))
+
+  // 退回空态
+  const backBtn = () => window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(async () => true)
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = backBtn()
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(220)
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+
+  const box = () => window.document.querySelector('.dshgn_search')
+  const clearOf = () => window.document.querySelector('.dshgn_searchClear')
+  const cards = () => Array.from(window.document.querySelectorAll('.dshgn_card'))
+  const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  const type = async (text) => {
+    setValue.call(box(), text)
+    box().dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(120)
+  }
+
+  // 先把搜索框清空，量一下「整份列表」有多少篇
+  if (box() !== null && box().value !== '') {
+    await type('')
+    await sleep(400)
+  }
+  await waitFor(() => cards().length > 0, 8000, '列表里有卡片')
+  const allCount = cards().length
+  assert.equal(clearOf(), null, '空搜索框上不该摆一颗清空')
+
+  // 打两个字：清空出现，列表跟着筛
+  await type('清空验收')
+  const btn = clearOf()
+  assert.ok(btn !== null, '搜索框里有字时该摆一颗清空')
+  assert.equal(btn.getAttribute('title'), '清空')
+  assert.equal(btn.getAttribute('aria-label'), '清空')
+  await waitFor(() => window.document.querySelector('.dshgn_searching') === null, 8000, '搜索结果回来')
+  assert.ok(cards().length < allCount, '筛过之后卡片该变少，实际：' + cards().length + ' / ' + allCount)
+
+  // 点一下：搜索框清空、清空按钮收掉、列表回到整份
+  btn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(500)
+  assert.equal(box().value, '', '点清空之后搜索框该是空的')
+  assert.equal(clearOf(), null, '清空之后那颗按钮自己也收掉')
+  assert.equal(cards().length, allCount, '列表该回到整份，实际：' + cards().length + ' / ' + allCount)
+  assert.equal(window.document.activeElement, box(), '点完光标还在搜索框里，好接着敲下一个词')
+
+  // 再敲一次、用 Esc 也能清掉（这条路上本来就通，这里顺手确认没被新按钮挡住）
+  await type('清空验收')
+  await sleep(300)
+  assert.ok(clearOf() !== null, '又出现一颗清空')
+  box().dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  await sleep(400)
+  assert.equal(box().value, '', 'Esc 仍然能把搜索词清掉')
+  assert.equal(clearOf(), null, 'Esc 之后清空按钮也收掉')
 })
