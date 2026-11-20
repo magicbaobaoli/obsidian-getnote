@@ -8315,6 +8315,7 @@ var LEX = {
     "help.save": "\u4FDD\u5B58",
     "help.esc": "\u53D6\u6D88\u7F16\u8F91\u3001\u6536\u8D77\u67E5\u627E\u6761",
     "help.format": "\u52A0\u7C97 / \u659C\u4F53 / \u5220\u9664\u7EBF",
+    "help.pick": "\u628A\u8FD9\u4E00\u7BC7\u9009\u8FDB\u6279\u91CF\u64CD\u4F5C\uFF08Esc \u53D6\u6D88\u9009\u62E9\uFF09",
     "help.indent": "\u6E05\u5355\u7F29\u8FDB",
     "help.complete": "\u53CC\u94FE\u3001\u6807\u7B7E\u8865\u5168",
     "help.help": "\u6253\u5F00\u8FD9\u5F20\u8868",
@@ -8773,6 +8774,7 @@ var LEX = {
     "help.save": "Save",
     "help.esc": "Cancel editing, close the find bar",
     "help.format": "Bold / italic / strikethrough",
+    "help.pick": "Add this note to the batch selection (Esc clears it)",
     "help.indent": "Indent list lines",
     "help.complete": "Complete links and tags",
     "help.help": "Open this sheet",
@@ -9228,6 +9230,7 @@ var LEX = {
     "help.save": "Opslaan",
     "help.esc": "Bewerken annuleren, zoekbalk sluiten",
     "help.format": "Vet / cursief / doorhalen",
+    "help.pick": "Deze notitie aan de bulkselectie toevoegen (Esc wist het)",
     "help.indent": "Lijstregels inspringen",
     "help.complete": "Links en tags aanvullen",
     "help.help": "Dit overzicht openen",
@@ -13479,6 +13482,10 @@ ${insert}
           setHelpOpen(false);
           return;
         }
+        if (pickedCount > 0) {
+          clearPicked();
+          return;
+        }
         return;
       }
       if (typing) return;
@@ -13503,6 +13510,15 @@ ${insert}
         return;
       }
       if (tab !== "notes") return;
+      if (event.key === "x" && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
+        const targetPath = current !== null && current !== void 0 ? String(current.path || "") : "";
+        const first = shown.length > 0 ? shown[0] : null;
+        const pickPath = targetPath !== "" ? targetPath : first === null ? "" : String(first.path || "");
+        if (pickPath === "") return;
+        event.preventDefault();
+        togglePick(pickPath);
+        return;
+      }
       if (event.key === "j" || event.key === "k") {
         if (shown.length === 0) return;
         const index = current === null ? -1 : shown.findIndex((entry) => entry.path === current.path);
@@ -13515,7 +13531,7 @@ ${insert}
       }
     };
     return attachOnPanelWindows("keydown", onKey);
-  }, [current, navBack, navForward, newNote, openNote, shown, tab, vaultReady]);
+  }, [clearPicked, current, navBack, navForward, newNote, openNote, pickedCount, shown, tab, togglePick, vaultReady]);
   y2(() => {
     const onDragOver = (event) => {
       if (!inPanel(event)) return;
@@ -13533,6 +13549,7 @@ ${insert}
     { keys: ["Ctrl", "K"], what: "help.search" },
     { keys: ["Ctrl", "N"], what: "help.new" },
     { keys: ["J", "K"], what: "help.move" },
+    { keys: ["X"], what: "help.pick" },
     { keys: ["Alt", "\u2190"], what: "help.nav" },
     { keys: ["Ctrl", "F"], what: "help.find" },
     { keys: ["Ctrl", "E"], what: "help.edit" },

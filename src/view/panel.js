@@ -589,6 +589,7 @@ async function saveFile(url, filename) {
         'help.save': '保存',
         'help.esc': '取消编辑、收起查找条',
         'help.format': '加粗 / 斜体 / 删除线',
+        'help.pick': '把这一篇选进批量操作（Esc 取消选择）',
         'help.indent': '清单缩进',
         'help.complete': '双链、标签补全',
         'help.help': '打开这张表',
@@ -1051,6 +1052,7 @@ async function saveFile(url, filename) {
         'help.save': 'Save',
         'help.esc': 'Cancel editing, close the find bar',
         'help.format': 'Bold / italic / strikethrough',
+        'help.pick': 'Add this note to the batch selection (Esc clears it)',
         'help.indent': 'Indent list lines',
         'help.complete': 'Complete links and tags',
         'help.help': 'Open this sheet',
@@ -1510,6 +1512,7 @@ async function saveFile(url, filename) {
         'help.save': 'Opslaan',
         'help.esc': 'Bewerken annuleren, zoekbalk sluiten',
         'help.format': 'Vet / cursief / doorhalen',
+        'help.pick': 'Deze notitie aan de bulkselectie toevoegen (Esc wist het)',
         'help.indent': 'Lijstregels inspringen',
         'help.complete': 'Links en tags aanvullen',
         'help.help': 'Dit overzicht openen',
@@ -6865,6 +6868,12 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
               setHelpOpen(false)
               return
             }
+            // 批量选中也是一种「临时状态」，Esc 该把它收掉：
+            // 用户按了 x 之后多半想回到「只是看列表」。
+            if (pickedCount > 0) {
+              clearPicked()
+              return
+            }
             return
           }
           if (typing) return
@@ -6892,6 +6901,18 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             return
           }
           if (tab !== 'notes') return
+          // X 把「现在这一篇」选进批量操作：勾选框得先悬停或已经选过才显形，
+          // 想连着挑几篇时先去每张卡上找那个小方块很别扭。没有打开的笔记时
+          // 落在列表第一篇上——用户刚按 j/k 浏览完，视线就在那儿。
+          if (event.key === 'x' && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
+            const targetPath = current !== null && current !== undefined ? String(current.path || '') : ''
+            const first = shown.length > 0 ? shown[0] : null
+            const pickPath = targetPath !== '' ? targetPath : first === null ? '' : String(first.path || '')
+            if (pickPath === '') return
+            event.preventDefault()
+            togglePick(pickPath)
+            return
+          }
           // J/K 上下移：和 vim、Gmail、GitHub 的列表浏览一致
           if (event.key === 'j' || event.key === 'k') {
             if (shown.length === 0) return
@@ -6906,7 +6927,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         }
         // 每个面板窗口各挂一份：popout 里按 Ctrl+K 也得能聚焦搜索框。
         return attachOnPanelWindows('keydown', onKey)
-      }, [current, navBack, navForward, newNote, openNote, shown, tab, vaultReady])
+      }, [clearPicked, current, navBack, navForward, newNote, openNote, pickedCount, shown, tab, togglePick, vaultReady])
 
       // 把宿主的文件拖进面板时，别让浏览器把它当成「打开这个文件」。
       //
@@ -6936,6 +6957,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         { keys: ['Ctrl', 'K'], what: 'help.search' },
         { keys: ['Ctrl', 'N'], what: 'help.new' },
         { keys: ['J', 'K'], what: 'help.move' },
+        { keys: ['X'], what: 'help.pick' },
         { keys: ['Alt', '←'], what: 'help.nav' },
         { keys: ['Ctrl', 'F'], what: 'help.find' },
         { keys: ['Ctrl', 'E'], what: 'help.edit' },
