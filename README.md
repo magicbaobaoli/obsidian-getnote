@@ -339,10 +339,15 @@
 
 ## 安装
 
-### 手动安装（推荐，暂未上架社区市场）
+### 从社区市场安装
+
+Obsidian 设置 → 第三方插件 → 浏览 → 搜「得到大脑」。目录里的条目还在审核队列里时，
+用下面的手动方式。
+
+### 手动安装
 
 1. 下载 `main.js`、`manifest.json`、`styles.css`，以及 `card/`、`locale/` 两个目录。
-2. 放进 `<你的库>/.obsidian/plugins/getnote-obsidian/`。
+2. 放进 `<你的库>/.obsidian/plugins/getnote-brain/`。
 3. Obsidian 设置 → 第三方插件 → 关闭安全模式 → 启用「得到大脑 Get笔记」。
 
 > `card/` 是录音卡用的 Python 桥脚本，`locale/` 是界面文案。**这两个目录必须一起放**，
@@ -364,8 +369,10 @@ npm test           # 830 项离线测试（需 Node ≥ 22，jsdom 31 依赖 Nod
 或重建后忘提交）会直接判失败，免得用户下到的是旧代码。
 
 打标签即发布（`.github/workflows/release.yml`）：`git tag 0.1.0 && git push --tags`
-会重跑测试、打包出 `getnote-obsidian-<tag>.zip`（含 `main.js` / `manifest.json` /
-`styles.css` / `card/` / `locale/`）挂到 Release 上，可以直接下载解压进插件目录。
+会重跑测试、打包出 `getnote-brain-<tag>.zip`（含 `main.js` / `manifest.json` /
+`styles.css` / `card/` / `locale/`）挂到 Release 上，可以直接下载解压进插件目录；
+同一份 Release 里还单独挂了 `main.js` / `manifest.json` / `styles.css` 三个文件，
+社区目录校验和 Obsidian 的自动更新都按这三个文件取，少一个就更新不了。
 
 ---
 

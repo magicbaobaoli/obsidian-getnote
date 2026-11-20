@@ -653,7 +653,7 @@ async function saveFile(url, filename) {
         'import.needLogin': '先登录得到大脑，才能读取云端笔记。',
         'import.cloudHint': '这一步之后就不再需要会员了。',
         'settings.vault': '笔记目录',
-        'settings.vaultHint': '相对库根的目录名，比如「得到大脑」或「李欣颀/知识库/得到大脑归档」。只能选库内的目录，插件不会写到库外面去。',
+        'settings.vaultHint': '相对库根的目录名，比如「得到大脑」或「笔记/知识库/得到大脑归档」。只能选库内的目录，插件不会写到库外面去。',
         'settings.save': '保存目录',
         'settings.saved': '已保存',
         'settings.suggest': '在这个位置发现了已有笔记',

@@ -279,12 +279,12 @@ test('鼠标停在内链上请宿主弹页面预览，没登记来源就不乱�
     anchor.dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true }))
     assert.equal(triggered.length, 0, '没登记来源时不该触发')
 
-    setHoverSource('getnote-obsidian')
+    setHoverSource('getnote-brain')
     anchor.dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true }))
     assert.equal(triggered.length, 1, '登记之后应该请宿主弹预览')
     assert.equal(triggered[0].name, 'hover-link')
     const payload = triggered[0].payload
-    assert.equal(payload.source, 'getnote-obsidian')
+    assert.equal(payload.source, 'getnote-brain')
     assert.equal(payload.linktext, '另一篇')
     assert.equal(payload.sourcePath, '得到大脑/a.md')
     assert.equal(payload.targetEl, anchor, '预览要贴着被悬停的那个链接')

@@ -1,9 +1,9 @@
 {
-  "id": "getnote-obsidian",
+  "id": "getnote-brain",
   "name": "得到大脑 Get笔记",
   "version": "0.1.0",
   "minAppVersion": "1.4.0",
-  "description": "把「得到大脑（Get笔记）」搬进 Obsidian：本地优先的 Markdown 笔记库面板，浏览/搜索/编辑全部离线可用；云端同步与录音卡导入是可选增强。",
+  "description": "把「得到大脑（Get笔记）」搬进本地库：三栏 Markdown 笔记面板，浏览、搜索、编辑、反链、大纲、标签全部离线可用；云端同步与录音卡导入是可选增强.",
   "author": "magicbaobaoli",
   "authorUrl": "https://github.com/magicbaobaoli",
   "isDesktopOnly": true

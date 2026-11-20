@@ -235,12 +235,12 @@ const app = {
   },
 }
 
-const plugin = new GetnotePlugin(app, { id: 'getnote-obsidian', version: '0.1.0' })
+const plugin = new GetnotePlugin(app, { id: 'getnote-brain', version: '0.1.0' })
 await plugin.onload()
 
 test('视图工厂能被注册出来', () => {
   assert.equal(calls.views.length, 1)
-  assert.equal(calls.views[0].type, 'getnote-obsidian-view')
+  assert.equal(calls.views[0].type, 'getnote-brain-view')
 })
 
 test('onOpen 把面板挂进 contentEl，并注入样式', async () => {

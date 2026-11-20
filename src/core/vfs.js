@@ -183,7 +183,7 @@ export async function access(file) {
  *
  * Obsidian 的 adapter.mkdir 跟 fs.mkdir 一样**不建父级**：直接 mkdir('a/b/c') 在
  * 'a' 不存在时会抛 ENOENT。而插件里到处是「库根/主题/子目录」这种多级路径
- * （用户完全可能把笔记目录设成「李欣颀/知识库/得到大脑归档」），所以这里自己补齐。
+ * （用户完全可能把笔记目录设成「笔记/知识库/得到大脑归档」），所以这里自己补齐。
  */
 async function ensureDir(rel) {
   if (rel === '' || (await adapterExists(rel))) return

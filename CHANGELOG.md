@@ -440,7 +440,7 @@
 - **页面预览也走宿主**：鼠标停在面板正文的 `[[双链]]` 上，请宿主弹它自己的预览卡片
   （`workspace.trigger('hover-link', ...)`）。宿主要求先 `registerHoverLinkSource` 登记
   来源，否则它不知道该用哪套规则预览，事件会被静默丢掉——所以插件在 onload 里登记
-  一次 `getnote-obsidian`。没登记来源、或宿主没有这个能力时，悬停什么都不做，不会误触发。
+  一次 `getnote-brain`。没登记来源、或宿主没有这个能力时，悬停什么都不做，不会误触发。
 - **在得到大脑里打开当前笔记**：命令面板里一条，把宿主正在读/改的那篇切到面板里。
   在 Obsidian 里读一篇时想知道「谁引用过它、同步过没有、有没有历史版本」，得回面板、
   翻目录、找同名那篇——笔记一多就找不着。面板不会自己跟着宿主的活动笔记走（用户切
@@ -474,7 +474,7 @@
 - 本地服务补 `Access-Control-Allow-Private-Network` 预检头：渲染进程的源是 `app://obsidian.md`，访问 `127.0.0.1` 属 Chromium 的 Private Network Access，缺这个头会让面板里所有接口在浏览器层被拦掉。
 - 录音卡桥脚本路径改为可注入（`configureCardScripts`），不再依赖 `import.meta.url`。
 - `vfs.mkdir` / `writeFile` / `rename` 自己逐级补父目录：Obsidian 的 `adapter.mkdir` 和
-  `fs.mkdir` 一样不建父级，而笔记目录允许写成「李欣颀/知识库/得到大脑归档」这种多级路径。
+  `fs.mkdir` 一样不建父级，而笔记目录允许写成「笔记/知识库/得到大脑归档」这种多级路径。
 - 整库导出不再依赖 `a[download]`：Electron 的下载管理器在 Obsidian 里没被接管，
   点了可能静默无反应。改为由宿主把 zip 拉到临时目录、再在系统文件管理器里定位到它。
 - 面板设置页的「笔记目录」输入框改为显示**库内相对路径**（`/settings` 多回一个
@@ -533,7 +533,14 @@
   或重建后忘提交，都会让两者分叉，用户下到的就是旧代码。
 - **Release 自动化**：推 tag 触发 `.github/workflows/release.yml`，重跑测试后把
   `main.js` / `manifest.json` / `styles.css` / `card/` / `locale/` 打成
-  `getnote-obsidian-<tag>.zip` 挂到 Release，附自动生成的更新说明。
+  `getnote-brain-<tag>.zip` 挂到 Release，附自动生成的更新说明。同一个 Release 里还
+  单独挂了 `main.js` / `manifest.json` / `styles.css` 三个文件：社区目录的条目校验与
+  Obsidian 的自动更新都只认这三个，只给 zip 的话用户能手动装、却永远收不到更新。
+- **插件 id 与市场名**：原来是 `getnote-obsidian`，社区目录不接受 id 里带
+  `obsidian`（会与宿主自身混淆），所以改成 `getnote-brain`；改名连带视图类型
+  `getnote-brain-view`、悬停来源、安装目录与打包目录，全套测试与 `styles.css`
+  里的选择器一起跟过去。manifest 的 description 也去掉了 `Obsidian` 字样并以句点
+  收尾——这两条都是目录校验的硬性要求，不满足连 PR 都过不了。
 
 ### 测试
 

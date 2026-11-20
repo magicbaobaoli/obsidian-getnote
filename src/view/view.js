@@ -11,7 +11,7 @@ import { createRoot } from 'preact/compat/client'
 import { PanelRoot, PanelIcon, injectCss } from './panel.js'
 import { setMarkdownHost, clearMarkdownHost } from './markdown.js'
 
-export const VIEW_TYPE_GETNOTE = 'getnote-obsidian-view'
+export const VIEW_TYPE_GETNOTE = 'getnote-brain-view'
 
 export class GetnoteView extends ItemView {
   constructor(leaf, plugin) {

@@ -358,8 +358,8 @@ export default class GetnoteObsidianPlugin extends Plugin {
     // 老版本宿主没有这个方法，跳过即可——面板照常能用，只是没有预览。
     if (typeof this.registerHoverLinkSource === 'function') {
       try {
-        this.registerHoverLinkSource('getnote-obsidian', { display: '得到大脑', defaultMod: false })
-        setHoverSource('getnote-obsidian')
+        this.registerHoverLinkSource('getnote-brain', { display: '得到大脑', defaultMod: false })
+        setHoverSource('getnote-brain')
       } catch {
         // 登记失败就当作没有预览
       }

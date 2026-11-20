@@ -51,7 +51,7 @@ body {
 }
 
 /* 面板要贴满整个叶子，Obsidian 默认的 padding 会把三栏挤变形 */
-.workspace-leaf-content[data-type='getnote-obsidian-view'] .view-content {
+.workspace-leaf-content[data-type='getnote-brain-view'] .view-content {
   padding: 0;
   overflow: hidden;
 }

@@ -21,8 +21,8 @@ test('Bases 模板：限定在笔记目录里，带三个视图', () => {
   assert.match(text, /name: 按标签/)
   assert.match(text, /name: 按日期/)
   // 目录名带斜杠时不能被当成路径分隔符之外的什么奇怪东西
-  const nested = basesTemplate({ subfolder: '/李欣颀/知识库/得到大脑归档/' })
-  assert.match(nested, /file\.inFolder\("李欣颀\/知识库\/得到大脑归档"\)/)
+  const nested = basesTemplate({ subfolder: '/笔记/知识库/得到大脑归档/' })
+  assert.match(nested, /file\.inFolder\("笔记\/知识库\/得到大脑归档"\)/)
 })
 
 test('画布：空画布是合法 JSON，加节点不改原对象', () => {

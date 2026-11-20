@@ -203,7 +203,7 @@ const mod = require(bundlePath)
 const GetnotePlugin = mod.default
 
 // ── 内存文件系统（adapter 后端）──────────────────────────────────────────────
-// 库根故意用「临时目录 + 中文 + 空格」：真实用户的库就长这样（D:\xinqi\应用\嘿嘿），
+// 库根故意用「临时目录 + 中文 + 空格」：真实用户的库就长这样，
 // 而 vfs 的 relOf() 要做大小写无关的前缀比较、要处理反斜杠与结尾斜杠，这些分支
 // 在 'C:/fake-vault' 这种干净的 ASCII 路径上根本走不到。
 // 用 mkdtemp 而不是写死路径，是因为插件数据目录（设置、凭证）走的是真 node:fs，
@@ -394,14 +394,14 @@ const app = {
   },
 }
 
-const plugin = new GetnotePlugin(app, { id: 'getnote-obsidian', version: '0.1.0' })
+const plugin = new GetnotePlugin(app, { id: 'getnote-brain', version: '0.1.0' })
 
 test('onload 能把插件拉起来', async () => {
   await plugin.onload()
   assert.equal(typeof plugin.server?.origin, 'string', '应该起了本地服务')
   assert.match(plugin.server.origin, /^http:\/\/127\.0\.0\.1:\d+$/)
   assert.equal(calls.views.length, 1, '注册了一个视图')
-  assert.equal(calls.views[0].type, 'getnote-obsidian-view')
+  assert.equal(calls.views[0].type, 'getnote-brain-view')
   assert.equal(calls.ribbons.length, 1, '注册了一个 ribbon')
   assert.equal(calls.ribbons[0].icon, 'brain')
   assert.deepEqual(calls.commands.map((c) => c.id), [
@@ -602,7 +602,7 @@ test('扫描缓存不会给出过期数据：库在别处被改，面板立刻�
 test('插件自己的状态落在库内 .obsidian/plugins/<id>，不往库里撒野', async () => {
   // 设置与凭证走的是真 node:fs（它们不在库里，属于插件自己的数据），
   // 所以这一条只有真跑起来才能验：路径拼错的话文件会落到别处。
-  const dataDir = join(BASE, '.obsidian', 'plugins', 'getnote-obsidian')
+  const dataDir = join(BASE, '.obsidian', 'plugins', 'getnote-brain')
   await access(join(dataDir, 'dsh-getnote.json'))
 
   const status = await fetch(plugin.server.origin + '/getnote/status', {
@@ -637,15 +637,15 @@ test('面板改笔记目录 = 在库里换个子目录，换不到库外面去',
   }).then((r) => r.json())
   assert.equal(before.subfolder, '得到大脑')
 
-  const moved = await post('/settings', { vaultPath: '李欣颀/知识库/得到大脑归档' })
+  const moved = await post('/settings', { vaultPath: '笔记/知识库/得到大脑归档' })
   assert.equal(moved.status, 200, JSON.stringify(moved.json).slice(0, 200))
-  assert.equal(moved.json.subfolder, '李欣颀/知识库/得到大脑归档')
-  assert.equal(moved.json.effectiveRoot.replace(/\\/g, '/'), BASE + '/李欣颀/知识库/得到大脑归档')
+  assert.equal(moved.json.subfolder, '笔记/知识库/得到大脑归档')
+  assert.equal(moved.json.effectiveRoot.replace(/\\/g, '/'), BASE + '/笔记/知识库/得到大脑归档')
 
   // 新目录里写东西要落进 adapter，而且真的建了嵌套目录
   const created = await post('/create', { dir: '', title: '换目录之后', content: '# 换目录之后\n' })
   assert.equal(created.status, 200, JSON.stringify(created.json).slice(0, 200))
-  assert.ok(adapter._dump().some((p) => p.startsWith('李欣颀/知识库/得到大脑归档/')), adapter._dump().join(', '))
+  assert.ok(adapter._dump().some((p) => p.startsWith('笔记/知识库/得到大脑归档/')), adapter._dump().join(', '))
 
   // 库外的绝对路径一律拒绝（Obsidian 的 adapter 只能碰库内文件）。
   // 两种写法都要测：盘符路径和 POSIX 根路径。node:path 的 isAbsolute 是按平台
@@ -810,12 +810,12 @@ test('深链接住之后会去把面板叫起来，面板开不出来也不抛',
   })
   try {
     await plugin.handleDeepLink({ action: 'open', path: '得到大脑/随手记/深链验收.md' })
-    assert.deepEqual(opened, ['getnote-obsidian-view'], '深链应该把面板开出来')
+    assert.deepEqual(opened, ['getnote-brain-view'], '深链应该把面板开出来')
 
     // 认不出的动作：面板照开（只是不投意图）
     opened.length = 0
     await plugin.handleDeepLink({ action: '什么鬼' })
-    assert.deepEqual(opened, ['getnote-obsidian-view'])
+    assert.deepEqual(opened, ['getnote-brain-view'])
 
     // activateView 抛错时也不能把深链这条线弄断
     app.workspace.getLeaf = () => { throw new Error('宿主不给叶子') }
@@ -1385,7 +1385,7 @@ test('双链指向哪一篇由宿主的索引说了算，问不到才自己找',
 
 test('页面预览的来源登记给宿主了，鼠标停在内链上才弹得出来', async () => {
   assert.equal(calls.hoverSources.length, 1, '应该登记了一个预览来源')
-  assert.equal(calls.hoverSources[0].id, 'getnote-obsidian')
+  assert.equal(calls.hoverSources[0].id, 'getnote-brain')
   assert.equal(calls.hoverSources[0].info.display, '得到大脑')
 })
 
@@ -1406,7 +1406,7 @@ test('「在得到大脑里打开当前笔记」把宿主正在看的那篇交�
 
   app.workspace.activeFile = { path: '得到大脑/随手记/跟随验收.md' }
   await plugin.openActiveNote()
-  assert.deepEqual(opened, ['getnote-obsidian-view'], '应该把面板叫起来')
+  assert.deepEqual(opened, ['getnote-brain-view'], '应该把面板叫起来')
 
   // 目录外的文件、没开笔记：都不该炸，也不该把面板叫起来
   const notices = calls.notices.length
@@ -1630,7 +1630,7 @@ test('跟着宿主切换笔记：面板开着才跟、开关关着不跟', async
 
   // 面板开着：宿主里翻到笔记目录里的某一篇，就投递一条「打开这篇」的意图
   const realLeaves = app.workspace.getLeavesOfType
-  app.workspace.getLeavesOfType = (type) => (type === 'getnote-obsidian-view' ? [{}, {}] : [])
+  app.workspace.getLeavesOfType = (type) => (type === 'getnote-brain-view' ? [{}, {}] : [])
 
   await setFollow(false)
   assert.equal(
@@ -1655,7 +1655,7 @@ test('跟着宿主切换笔记：面板开着才跟、开关关着不跟', async
   )
 
   // 不在笔记目录里的文件：连面板路径都算不出来，直接不跟
-  app.workspace.getLeavesOfType = (type) => (type === 'getnote-obsidian-view' ? [{}, {}] : [])
+  app.workspace.getLeavesOfType = (type) => (type === 'getnote-brain-view' ? [{}, {}] : [])
   assert.equal(await plugin.followActiveNote({ path: '别处的目录/甲.md' }), 'outside')
   assert.equal(await plugin.followActiveNote(null), 'outside')
   assert.equal(await plugin.followActiveNote({ path: '得到大脑/随手记/图.png' }), 'outside')

@@ -1,8 +1,15 @@
 import { readFile, writeFile } from 'node:fs/promises'
 
 const BT = String.fromCharCode(96)
-const SRC = 'D:/xinqi/应用/应用DSH/dsh-getnote-official/lib/client.js'
-const OUT = 'D:/xinqi/应用/应用DSH/obsidian-getnote/src/view/panel.js'
+// 两个路径由调用方给：移植脚本只在本机用，不能把开发机的目录结构写进仓库。
+//   DSHGN_SRC=<上游 dsh-getnote 的 lib/client.js>
+//   DSHGN_OUT=<本仓库的 src/view/panel.js>
+const SRC = process.env.DSHGN_SRC || ''
+const OUT = process.env.DSHGN_OUT || ''
+if (SRC === '' || OUT === '') {
+  console.error('用法：DSHGN_SRC=<上游 client.js> DSHGN_OUT=<目标 panel.js> node scripts/port-client.mjs')
+  process.exit(1)
+}
 
 const text = await readFile(SRC, 'utf8')
 const lines = text.split('\n')

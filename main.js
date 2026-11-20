@@ -8359,7 +8359,7 @@ var LEX = {
     "import.needLogin": "\u5148\u767B\u5F55\u5F97\u5230\u5927\u8111\uFF0C\u624D\u80FD\u8BFB\u53D6\u4E91\u7AEF\u7B14\u8BB0\u3002",
     "import.cloudHint": "\u8FD9\u4E00\u6B65\u4E4B\u540E\u5C31\u4E0D\u518D\u9700\u8981\u4F1A\u5458\u4E86\u3002",
     "settings.vault": "\u7B14\u8BB0\u76EE\u5F55",
-    "settings.vaultHint": "\u76F8\u5BF9\u5E93\u6839\u7684\u76EE\u5F55\u540D\uFF0C\u6BD4\u5982\u300C\u5F97\u5230\u5927\u8111\u300D\u6216\u300C\u674E\u6B23\u9880/\u77E5\u8BC6\u5E93/\u5F97\u5230\u5927\u8111\u5F52\u6863\u300D\u3002\u53EA\u80FD\u9009\u5E93\u5185\u7684\u76EE\u5F55\uFF0C\u63D2\u4EF6\u4E0D\u4F1A\u5199\u5230\u5E93\u5916\u9762\u53BB\u3002",
+    "settings.vaultHint": "\u76F8\u5BF9\u5E93\u6839\u7684\u76EE\u5F55\u540D\uFF0C\u6BD4\u5982\u300C\u5F97\u5230\u5927\u8111\u300D\u6216\u300C\u7B14\u8BB0/\u77E5\u8BC6\u5E93/\u5F97\u5230\u5927\u8111\u5F52\u6863\u300D\u3002\u53EA\u80FD\u9009\u5E93\u5185\u7684\u76EE\u5F55\uFF0C\u63D2\u4EF6\u4E0D\u4F1A\u5199\u5230\u5E93\u5916\u9762\u53BB\u3002",
     "settings.save": "\u4FDD\u5B58\u76EE\u5F55",
     "settings.saved": "\u5DF2\u4FDD\u5B58",
     "settings.suggest": "\u5728\u8FD9\u4E2A\u4F4D\u7F6E\u53D1\u73B0\u4E86\u5DF2\u6709\u7B14\u8BB0",
@@ -19498,7 +19498,7 @@ function createRoot(container) {
 }
 
 // src/view/view.js
-var VIEW_TYPE_GETNOTE = "getnote-obsidian-view";
+var VIEW_TYPE_GETNOTE = "getnote-brain-view";
 var GetnoteView = class extends import_obsidian.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
@@ -19745,8 +19745,8 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     }
     if (typeof this.registerHoverLinkSource === "function") {
       try {
-        this.registerHoverLinkSource("getnote-obsidian", { display: "\u5F97\u5230\u5927\u8111", defaultMod: false });
-        setHoverSource("getnote-obsidian");
+        this.registerHoverLinkSource("getnote-brain", { display: "\u5F97\u5230\u5927\u8111", defaultMod: false });
+        setHoverSource("getnote-brain");
       } catch {
       }
     }

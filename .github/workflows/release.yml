@@ -1,7 +1,7 @@
 name: release
 
 # 打 tag 就发版：把构建产物和 manifest / styles.css / card / locale 一起打包成
-# 一个可以直接解压进 .obsidian/plugins/getnote-obsidian/ 的 zip。
+# 一个可以直接解压进 .obsidian/plugins/getnote-brain/ 的 zip。
 #
 # 为什么不把构建产物提交到仓库里完事：main.js 是产物，手改源码不重新构建、
 # 或者构建后忘了提交，都会让「仓库里的 main.js」和源码悄悄分叉。所以 CI 里
@@ -32,13 +32,19 @@ jobs:
 
       - name: 打包
         run: |
-          mkdir -p dist/getnote-obsidian
-          cp main.js manifest.json styles.css dist/getnote-obsidian/
-          cp -r card locale dist/getnote-obsidian/
-          cd dist && zip -r "../getnote-obsidian-${GITHUB_REF_NAME}.zip" getnote-obsidian
+          mkdir -p dist/getnote-brain
+          cp main.js manifest.json styles.css dist/getnote-brain/
+          cp -r card locale dist/getnote-brain/
+          cd dist && zip -r "../getnote-brain-${GITHUB_REF_NAME}.zip" getnote-brain
 
+      # 社区市场的审核要求 Release 里能直接下到这三件套；zip 是给人手动装库用的，
+      # 单文件是给目录校验与自动更新用的，两种都给。
       - name: 发布
         uses: softprops/action-gh-release@v2
         with:
-          files: getnote-obsidian-*.zip
+          files: |
+            getnote-brain-*.zip
+            main.js
+            manifest.json
+            styles.css
           generate_release_notes: true

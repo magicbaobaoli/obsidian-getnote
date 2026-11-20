@@ -124,12 +124,12 @@ test('readdir：adapter.list 返回完整路径时收敛成裸文件名', async 
 
 test('mkdir 逐级补齐父目录（adapter 自己不建父级）', async () => {
   await withAdapter({ listReturnsFullPath: false }, async (adapter) => {
-    // 笔记目录允许设成「李欣颀/知识库/得到大脑归档」这种多级路径
-    await mkdir('/vault/李欣颀/知识库/得到大脑归档', { recursive: true })
+    // 笔记目录允许设成「笔记/知识库/得到大脑归档」这种多级路径
+    await mkdir('/vault/笔记/知识库/得到大脑归档', { recursive: true })
     const dump = adapter._dump()
-    assert.ok(dump.includes('李欣颀'), dump.join(','))
-    assert.ok(dump.includes('李欣颀/知识库'), dump.join(','))
-    assert.ok(dump.includes('李欣颀/知识库/得到大脑归档'), dump.join(','))
+    assert.ok(dump.includes('笔记'), dump.join(','))
+    assert.ok(dump.includes('笔记/知识库'), dump.join(','))
+    assert.ok(dump.includes('笔记/知识库/得到大脑归档'), dump.join(','))
   })
 })
 
