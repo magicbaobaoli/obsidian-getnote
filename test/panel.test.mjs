@@ -4996,3 +4996,143 @@ test('读到哪儿记到哪儿，回来还停在那儿；没记过的那篇从�
   window.localStorage.removeItem(SCROLL_KEY)
 })
 
+
+
+test('正文里就地找一句话，回车往下走、Shift+回车往回走，到头了明说', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+
+  // 前一个用例可能把某篇开着、搜索框里还留着词，先退回干净的空态
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    const backBtn = window.document.querySelector('.dshgn_noteBack')
+    if (backBtn) {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    }
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  const searchBox = await waitFor(() => window.document.querySelector('.dshgn_search'), 5000, '搜索框')
+  const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  setValue.call(searchBox, '')
+  searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(260)
+
+  const res = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '就地查找验收',
+      content: '# 就地查找验收\n\n开头一段没有那个词。\n\n中间写着 桂圆 两个字。\n\n结尾又提到 桂圆 一次。\n',
+      withDatePrefix: false,
+      requestId: 'seed-find-in-body',
+    }),
+  })
+  assert.equal((await res.json()).path, '随手记/就地查找验收.md')
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  const card = await waitFor(
+    () => {
+      const all = Array.from(window.document.querySelectorAll('.dshgn_card'))
+      return all.find((el) => (el.textContent || '').includes('就地查找验收')) || null
+    },
+    8000,
+    '列表里的那一篇',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 8000, '打开笔记')
+
+  // jsdom 没有排版：所有元素的 getBoundingClientRect 都是 0，那样「哪个块在视野上方」
+  // 全都没有答案，查找会一直停在同一处。这里给正文里的块补一份假排版（每条往下
+  // 挪 100px，再减去已经滚过去的距离），让「下一处」真的存在。
+  const realRect = window.HTMLElement.prototype.getBoundingClientRect
+  const realScrollTo = window.HTMLElement.prototype.scrollTo
+  const BLOCKS = 'p, li, h1, h2, h3, h4, h5, h6, blockquote, pre, td, th'
+  // 每个块都是「第几条 × 100px」，滚动之后减去已滚的距离——与浏览器里一样，
+  // 滚过去的块 top 会变成负数。
+  const blockTopOf = (node) => {
+    const note = node.closest ? node.closest('.dshgn_note .dshgn_scroll') : null
+    if (note === null || note === undefined) return null
+    const index = Array.from(note.querySelectorAll(BLOCKS)).indexOf(node)
+    return index < 0 ? null : index * 100
+  }
+  window.HTMLElement.prototype.getBoundingClientRect = function fakeRect() {
+    const note = this.classList && this.classList.contains('dshgn_scroll') && this.closest('.dshgn_note')
+    if (note) return { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0, x: 0, y: 0 }
+    const base = blockTopOf(this)
+    if (base !== null) {
+      const top = base - (this.closest('.dshgn_scroll').scrollTop || 0)
+      return { top, bottom: top + 40, left: 0, right: 0, width: 0, height: 40, x: 0, y: top }
+    }
+    return realRect.call(this)
+  }
+  // jsdom 的 scrollTo 是空实现，滚完位置不会变；这里让它真把 scrollTop 挪过去，
+  // 下一处才能「在视野下方」变成「在视野上方」。
+  window.HTMLElement.prototype.scrollTo = function fakeScrollToTo(options) {
+    if (options && typeof options.top === 'number') this.scrollTop = options.top
+  }
+  try {
+    // 打开查找条：笔记头那颗放大镜，点一次展开、再点一次收起
+    const findBtn = () => Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '在这篇里找')
+    assert.ok(findBtn() !== undefined, '笔记头上应该有个「在这篇里找」')
+    findBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    const input = await waitFor(() => window.document.querySelector('.dshgn_findInput'), 5000, '查找输入框')
+    assert.equal(findBtn().getAttribute('data-on'), 'true', '开着的时候按钮要亮')
+
+    // 敲词、回车：视野落到第一个含这个词的块上（滚动容器自己重查，别攥旧节点）
+    const liveScroller = () => window.document.querySelector('.dshgn_note .dshgn_scroll')
+    setValue.call(input, '桂圆')
+    input.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(120)
+    input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    await sleep(150)
+    const first = liveScroller().scrollTop
+    assert.ok(first > 0, '回车应该落到第一处「桂圆」')
+
+    // 再回车：往下走到第二处
+    input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    await sleep(150)
+    const second = liveScroller().scrollTop
+    assert.ok(second > first, '再回车应该继续往下走')
+
+    // Shift+回车：回到上一处
+    input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true }))
+    await sleep(150)
+    assert.ok(liveScroller().scrollTop < second, 'Shift+回车应该往回走')
+
+    // 到头了要明说，别静默不动让人以为敲错了词
+    const toast = () => window.document.querySelector('.dshgn_toast')
+    input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    await sleep(200)
+    assert.ok(toast() !== null && (toast().textContent || '').includes('到头了'), '到头了要说一声')
+
+    // 一个词都找不到：说的是「这篇里没有」
+    setValue.call(input, '根本没有这个词')
+    input.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(120)
+    input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    await sleep(200)
+    assert.ok((toast().textContent || '').includes('这篇里没有'), '找不到要说「这篇里没有」')
+
+    // Esc 收起查找条
+    input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await sleep(150)
+    assert.equal(window.document.querySelector('.dshgn_findInput'), null, 'Esc 应该收起查找条')
+
+    // 渲染器层：空词直接当没找，不滚也不报
+    assert.equal(panel.__internals.findInBody(window.document.body, ''), null)
+    assert.equal(panel.__internals.findInBody(window.document.body, '   '), null)
+  } finally {
+    window.HTMLElement.prototype.getBoundingClientRect = realRect
+    window.HTMLElement.prototype.scrollTo = realScrollTo
+  }
+})
+

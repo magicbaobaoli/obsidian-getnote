@@ -8368,6 +8368,12 @@ var LEX = {
     "note.outline": "\u672C\u6587\u5927\u7EB2",
     "note.openImage": "\u5728 Obsidian \u91CC\u6253\u5F00\u8FD9\u5F20\u56FE",
     "note.zoomImage": "\u70B9\u5F00\u770B\u5927\u56FE",
+    "note.find": "\u5728\u8FD9\u7BC7\u91CC\u627E",
+    "note.findPlaceholder": "\u627E\u4EC0\u4E48\u2026",
+    "note.findNext": "\u627E\u4E0B\u4E00\u5904",
+    "note.findPrev": "\u627E\u4E0A\u4E00\u5904",
+    "note.findMiss": "\u8FD9\u7BC7\u91CC\u6CA1\u6709\u300C{text}\u300D",
+    "note.findEnd": "\u5DF2\u7ECF\u5230\u5934\u4E86",
     "note.attach": "\u63D2\u5165\u9644\u4EF6",
     "attach.added": "\u9644\u4EF6\u5DF2\u63D2\u5165",
     "attach.failed": "\u6709\u51E0\u4E2A\u9644\u4EF6\u6CA1\u4F20\u4E0A\u53BB",
@@ -8786,6 +8792,12 @@ var LEX = {
     "note.outline": "Outline",
     "note.openImage": "Open this image in Obsidian",
     "note.zoomImage": "Click to enlarge",
+    "note.find": "Find in this note",
+    "note.findPlaceholder": "Find\u2026",
+    "note.findNext": "Find next",
+    "note.findPrev": "Find previous",
+    "note.findMiss": 'No "{text}" in this note',
+    "note.findEnd": "No more matches",
     "note.attach": "Attach a file",
     "attach.added": "Attachment inserted",
     "attach.failed": "Some files could not be uploaded",
@@ -9204,6 +9216,12 @@ var LEX = {
     "note.outline": "Overzicht",
     "note.openImage": "Open deze afbeelding in Obsidian",
     "note.zoomImage": "Klik om te vergroten",
+    "note.find": "Zoek in deze notitie",
+    "note.findPlaceholder": "Zoeken\u2026",
+    "note.findNext": "Volgende",
+    "note.findPrev": "Vorige",
+    "note.findMiss": 'Geen "{text}" in deze notitie',
+    "note.findEnd": "Geen verdere treffers",
     "note.attach": "Bestand toevoegen",
     "attach.added": "Bijlage ingevoegd",
     "attach.failed": "Sommige bestanden zijn niet ge\xFCpload",
@@ -10245,6 +10263,30 @@ function scrollToText(box, text) {
     if (String(node.textContent || "").replace(/\s+/g, " ").includes(needle)) return scrollHostTo(host, node);
   }
   return false;
+}
+function findInBodyMatch(box, text, forward = true) {
+  const needle = lineNeedle(text);
+  if (needle === "") return null;
+  const host = scrollHostOf(box);
+  if (!host) return null;
+  const blocks = host.querySelectorAll("p, li, h1, h2, h3, h4, h5, h6, blockquote, pre, td, th");
+  const matches = [];
+  for (let i3 = 0; i3 < blocks.length; i3 += 1) {
+    const node = blocks[i3];
+    if (node.querySelector("p, li, blockquote, pre")) continue;
+    if (String(node.textContent || "").replace(/\s+/g, " ").includes(needle)) matches.push(node);
+  }
+  if (matches.length === 0) return null;
+  const top = host.getBoundingClientRect().top;
+  const offsetOf = (node) => node.getBoundingClientRect().top - top;
+  return forward ? matches.find((node) => offsetOf(node) > 12) || null : [...matches].reverse().find((node) => offsetOf(node) < -12) || null;
+}
+function findInBody(box, text, forward = true) {
+  const target = findInBodyMatch(box, text, forward);
+  if (!target) return null;
+  const host = scrollHostOf(box);
+  if (!host) return null;
+  return scrollHostTo(host, target) ? target : null;
 }
 var IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|avif|svg|bmp)$/i;
 var FILE_EXT_RE = /\.(pdf|docx?|xlsx?|pptx?|zip|rar|7z|tar|gz|mp3|wav|m4a|aac|ogg|flac|mp4|mov|webm|mkv|canvas|excalidraw|txt|csv|tsv|json|html?|js|css)$/i;
@@ -11502,6 +11544,13 @@ var CSS = `
 .dshgn_linkPickItem:hover{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-primary)}
 .dshgn_linkPickItem[data-on='true']{border-color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-label-primary)}
 .dshgn_linkPickName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_findBar{display:flex;align-items:center;gap:6px;padding:5px clamp(16px,3vw,32px);
+  border-bottom:0.5px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-secondary);
+  color:var(--dsw-alias-label-tertiary);flex:0 0 auto}
+.dshgn_findInput{flex:1;min-width:0;box-sizing:border-box;padding:3px 8px;border:0.5px solid var(--dsw-alias-border-l1);
+  border-radius:6px;outline:none;background:var(--dsw-alias-bg-primary);font:inherit;font-size:12px;
+  color:var(--dsw-alias-label-primary)}
+.dshgn_findInput:focus{border-color:var(--dsw-alias-brand-primary)}
 .dshgn_empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:8px;padding:32px;text-align:center;color:var(--dsw-alias-label-tertiary)}
 .dshgn_emptyTitle{font-size:13px;color:var(--dsw-alias-label-secondary)}
@@ -13710,6 +13759,9 @@ ${insert}
         onRename: renameNote,
         onCopyReference: copyReference,
         onCopyText: copyText,
+        // 就地查找「到头了 / 没有这个词」要说一声：静默不动的话，
+        // 用户会以为是自己敲错了词，接着反复按回车。
+        showToast,
         onOpenWikiLink: openWikiLink,
         onSyncOne: syncCurrent,
         onRestored: async () => {
@@ -17178,7 +17230,7 @@ ${t4("tree.menuDelete")}\uFF1A\u53F3\u952E`
   );
 }
 function NotePane(props) {
-  const { t: t4, status, current, draft, setDraft, dirty, busy, onSave, onRename, onDelete, onCopyReference, onCopyText, onOpenWikiLink: onOpenWikiLink2, onSyncOne, onRestored, onError, onToggleTodo, onClose, onAttach } = props;
+  const { t: t4, status, current, draft, setDraft, dirty, busy, onSave, onRename, onDelete, onCopyReference, onCopyText, onOpenWikiLink: onOpenWikiLink2, onSyncOne, onRestored, onError, onToggleTodo, onClose, onAttach, showToast } = props;
   const anchorRequest = props.anchor;
   const onAnchorDone = props.onAnchorDone;
   const resolveNote = props.resolveNote;
@@ -17215,6 +17267,11 @@ function NotePane(props) {
   const editorRef = A2(null);
   const [linkPick, setLinkPick] = h2(null);
   const linkHits = linkPick === null ? [] : wikilinkMatches(noteNames, linkPick.query);
+  const [findOpen, setFindOpen] = h2(false);
+  const [findText, setFindText] = h2("");
+  const findInputRef = A2(null);
+  const findOpenRef = A2(false);
+  findOpenRef.current = findOpen;
   const canAttach = typeof onAttach === "function";
   const closeZoom = q2(() => setZoom(null), []);
   const placeCaret = q2((start, end) => {
@@ -17243,6 +17300,25 @@ function NotePane(props) {
       return null;
     });
   }, [placeCaret, setDraft]);
+  const runFind = q2((forward) => {
+    const text = findText.trim();
+    if (text === "") return;
+    const hit = findInBody(scrollRef.current, text, forward);
+    if (hit === null) {
+      const any = findInBodyMatch(scrollRef.current, text, true) !== null || findInBodyMatch(scrollRef.current, text, false) !== null;
+      showToast(any ? t4("note.findEnd") : t4("note.findMiss").replace("{text}", text));
+    }
+  }, [findText, showToast, t4]);
+  y2(() => {
+    if (!findOpen) return void 0;
+    const focus = () => {
+      const live = findInputRef.current;
+      if (live !== null && live !== void 0) live.focus();
+    };
+    focus();
+    if (typeof window.requestAnimationFrame === "function") window.requestAnimationFrame(focus);
+    return void 0;
+  }, [findOpen]);
   y2(() => {
     const onKey = (event) => {
       if (event.key !== "Escape" || zoomRef.current === null) return;
@@ -17252,6 +17328,14 @@ function NotePane(props) {
     return attachOnPanelWindows("keydown", onKey);
   }, []);
   const currentPathOf = current === null || current === void 0 ? "" : String(current.path || "");
+  const findPathRef = A2(currentPathOf);
+  y2(() => {
+    const prev = findPathRef.current;
+    findPathRef.current = currentPathOf;
+    if (prev === "" || prev === currentPathOf) return;
+    setFindOpen(false);
+    setFindText("");
+  }, [currentPathOf]);
   const [activeHeading, setActiveHeading] = h2(-1);
   const restoringRef = A2(false);
   const scrollTopRef = A2(0);
@@ -17627,6 +17711,19 @@ function NotePane(props) {
           { type: "button", className: "dshgn_iconBtn", title: t4("action.edit"), onClick: () => setEditing(true) },
           h4(Icon, { name: "edit", size: 15 })
         ),
+        // 就地查找：读长笔记时想找一句话，翻回搜索框再搜一遍太重。
+        // 再点一次收起（与历史那个按钮同一个手势），省得找不到关的地方。
+        h4(
+          "button",
+          {
+            type: "button",
+            className: "dshgn_iconBtn",
+            title: t4("note.find"),
+            "data-on": findOpen ? "true" : "false",
+            onClick: () => setFindOpen((prev) => !prev)
+          },
+          h4(Icon, { name: "search", size: 15 })
+        ),
         // 改名走宿主的对话框：它会把全库双链一起改掉，自己改文件就会留死链。
         hasRenameNote() ? h4(
           "button",
@@ -17722,6 +17819,64 @@ function NotePane(props) {
         )
       )
     ),
+    // 就地查找的输入条：只在阅读态、且用户点开了才出现。
+    // 回车找下一处、Shift+回车找上一处、Esc 收起——与浏览器/宿主的查找框
+    // 同一套手感，用户不用再学一遍。
+    !editing && findOpen ? h4(
+      "div",
+      { className: "dshgn_findBar" },
+      h4(Icon, { name: "search", size: 13 }),
+      h4("input", {
+        ref: findInputRef,
+        type: "text",
+        className: "dshgn_findInput",
+        value: findText,
+        placeholder: t4("note.findPlaceholder"),
+        spellCheck: false,
+        onChange: (event) => setFindText(event.target.value),
+        onKeyDown: (event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            event.stopPropagation();
+            setFindOpen(false);
+            return;
+          }
+          if (event.key !== "Enter") return;
+          event.preventDefault();
+          runFind(!event.shiftKey);
+        }
+      }),
+      h4(
+        "button",
+        {
+          type: "button",
+          className: "dshgn_iconBtn",
+          title: t4("note.findPrev"),
+          onClick: () => runFind(false)
+        },
+        h4("span", { style: { display: "inline-flex", transform: "rotate(180deg)" } }, h4(Icon, { name: "chevron", size: 13 }))
+      ),
+      h4(
+        "button",
+        {
+          type: "button",
+          className: "dshgn_iconBtn",
+          title: t4("note.findNext"),
+          onClick: () => runFind(true)
+        },
+        h4(Icon, { name: "chevron", size: 13 })
+      ),
+      h4(
+        "button",
+        {
+          type: "button",
+          className: "dshgn_iconBtn",
+          title: t4("action.close"),
+          onClick: () => setFindOpen(false)
+        },
+        h4(Icon, { name: "close", size: 13 })
+      )
+    ) : null,
     editing ? h4(
       b,
       null,

@@ -662,6 +662,12 @@ async function saveFile(url, filename) {
         'note.outline': '本文大纲',
         'note.openImage': '在 Obsidian 里打开这张图',
         'note.zoomImage': '点开看大图',
+        'note.find': '在这篇里找',
+        'note.findPlaceholder': '找什么…',
+        'note.findNext': '找下一处',
+        'note.findPrev': '找上一处',
+        'note.findMiss': '这篇里没有「{text}」',
+        'note.findEnd': '已经到头了',
         'note.attach': '插入附件',
         'attach.added': '附件已插入',
         'attach.failed': '有几个附件没传上去',
@@ -1084,6 +1090,12 @@ async function saveFile(url, filename) {
         'note.outline': 'Outline',
         'note.openImage': 'Open this image in Obsidian',
         'note.zoomImage': 'Click to enlarge',
+        'note.find': 'Find in this note',
+        'note.findPlaceholder': 'Find…',
+        'note.findNext': 'Find next',
+        'note.findPrev': 'Find previous',
+        'note.findMiss': 'No "{text}" in this note',
+        'note.findEnd': 'No more matches',
         'note.attach': 'Attach a file',
         'attach.added': 'Attachment inserted',
         'attach.failed': 'Some files could not be uploaded',
@@ -1505,6 +1517,12 @@ async function saveFile(url, filename) {
         'note.outline': 'Overzicht',
         'note.openImage': 'Open deze afbeelding in Obsidian',
         'note.zoomImage': 'Klik om te vergroten',
+        'note.find': 'Zoek in deze notitie',
+        'note.findPlaceholder': 'Zoeken…',
+        'note.findNext': 'Volgende',
+        'note.findPrev': 'Vorige',
+        'note.findMiss': 'Geen "{text}" in deze notitie',
+        'note.findEnd': 'Geen verdere treffers',
         'note.attach': 'Bestand toevoegen',
         'attach.added': 'Bijlage ingevoegd',
         'attach.failed': 'Sommige bestanden zijn niet geüpload',
@@ -2925,6 +2943,53 @@ async function saveFile(url, filename) {
         if (String(node.textContent || '').replace(/\s+/g, ' ').includes(needle)) return scrollHostTo(host, node)
       }
       return false
+    }
+
+    /**
+     * 在正文里找某个词的下一处（或上一处），返回该滚到哪个块。
+     *
+     * 读长笔记时想找一句话，翻回搜索框再搜一遍太重（还得先离开这篇、输词、点命中行）；
+     * 宿主的阅读视图里 `Ctrl+F` 是就地查找，面板原来只能靠眼睛扫。这里只做「跳到
+     * 下一处」这一件事：从当前滚动位置往下找第一个包含这个词的块，找到就滚过去、
+     * 找不到就说「到头了」——不弹浮层、不标高亮，那套要管的东西多得多，而用户真正
+     * 缺的是「别让我自己翻」。
+     *
+     * 往上游走的是滚动容器自己的位置，不是某个块的引用：用户可能已经手动滚到别处，
+     * 记着「上次找到的块」反而会从过时的地方接着找。
+     */
+    function findInBodyMatch(box, text, forward = true) {
+      const needle = lineNeedle(text)
+      if (needle === '') return null
+      const host = scrollHostOf(box)
+      if (!host) return null
+      const blocks = host.querySelectorAll('p, li, h1, h2, h3, h4, h5, h6, blockquote, pre, td, th')
+      const matches = []
+      for (let i = 0; i < blocks.length; i += 1) {
+        const node = blocks[i]
+        // 与 scrollToText 同一套「只认最小块」：列表项里还有段落时，滚到段落更准
+        if (node.querySelector('p, li, blockquote, pre')) continue
+        if (String(node.textContent || '').replace(/\s+/g, ' ').includes(needle)) matches.push(node)
+      }
+      if (matches.length === 0) return null
+      // 以容器顶部为界算「这个块在视野的哪儿」。
+      // 往前找只认「明确在容器顶下方」的那些：scrollHostTo 会把目标停在离顶部
+      // 8px 处，容差要比这个大，否则刚跳到的这一块又被算成「还没到」，连按两次
+      // 回车会停在原地。往回找只认「明确在容器顶上方」的，同样留出这段距离，
+      // 否则刚跳到的这一块会被当成「上一处」，Shift+回车看起来像没反应。
+      const top = host.getBoundingClientRect().top
+      const offsetOf = (node) => node.getBoundingClientRect().top - top
+      return forward
+        ? matches.find((node) => offsetOf(node) > 12) || null
+        : [...matches].reverse().find((node) => offsetOf(node) < -12) || null
+    }
+
+    /** 与 findInBodyMatch 同一套判定，只是真的滚过去。 */
+    function findInBody(box, text, forward = true) {
+      const target = findInBodyMatch(box, text, forward)
+      if (!target) return null
+      const host = scrollHostOf(box)
+      if (!host) return null
+      return scrollHostTo(host, target) ? target : null
     }
 
     /** 图像扩展名判定：只认浏览器能直接显示的格式。 */
@@ -4450,6 +4515,13 @@ async function saveFile(url, filename) {
 .dshgn_linkPickItem:hover{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-primary)}
 .dshgn_linkPickItem[data-on='true']{border-color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-label-primary)}
 .dshgn_linkPickName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_findBar{display:flex;align-items:center;gap:6px;padding:5px clamp(16px,3vw,32px);
+  border-bottom:0.5px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-secondary);
+  color:var(--dsw-alias-label-tertiary);flex:0 0 auto}
+.dshgn_findInput{flex:1;min-width:0;box-sizing:border-box;padding:3px 8px;border:0.5px solid var(--dsw-alias-border-l1);
+  border-radius:6px;outline:none;background:var(--dsw-alias-bg-primary);font:inherit;font-size:12px;
+  color:var(--dsw-alias-label-primary)}
+.dshgn_findInput:focus{border-color:var(--dsw-alias-brand-primary)}
 .dshgn_empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:8px;padding:32px;text-align:center;color:var(--dsw-alias-label-tertiary)}
 .dshgn_emptyTitle{font-size:13px;color:var(--dsw-alias-label-secondary)}
@@ -7038,6 +7110,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             onRename: renameNote,
             onCopyReference: copyReference,
             onCopyText: copyText,
+            // 就地查找「到头了 / 没有这个词」要说一声：静默不动的话，
+            // 用户会以为是自己敲错了词，接着反复按回车。
+            showToast,
             onOpenWikiLink: openWikiLink,
             onSyncOne: syncCurrent,
             onRestored: async () => {
@@ -11132,7 +11207,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
     // ── 阅读 / 编辑 ───────────────────────────────────────────────────────────
 
     function NotePane(props) {
-      const { t, status, current, draft, setDraft, dirty, busy, onSave, onRename, onDelete, onCopyReference, onCopyText, onOpenWikiLink, onSyncOne, onRestored, onError, onToggleTodo, onClose, onAttach } = props
+      const { t, status, current, draft, setDraft, dirty, busy, onSave, onRename, onDelete, onCopyReference, onCopyText, onOpenWikiLink, onSyncOne, onRestored, onError, onToggleTodo, onClose, onAttach, showToast } = props
       const anchorRequest = props.anchor
       const onAnchorDone = props.onAnchorDone
       // 嵌入 ![[另一篇笔记]] 时用它把名字解析成路径（与点双链共用一套口径）
@@ -11190,6 +11265,16 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 以前在面板里写双链得凭记忆把路径一字不差打对，打错一个斜杠就变成断链。
       const [linkPick, setLinkPick] = React.useState(null)
       const linkHits = linkPick === null ? [] : wikilinkMatches(noteNames, linkPick.query)
+      // 就地查找：读长笔记时想找一句话，翻回搜索框再搜一遍太重（得先离开这篇、
+      // 输词、点命中行）。宿主阅读视图里 Ctrl+F 是就地查找，这里至少给一个
+      // 「跳到下一处」——不弹浮层、不标高亮，只把视野挪过去。
+      const [findOpen, setFindOpen] = React.useState(false)
+      const [findText, setFindText] = React.useState('')
+      const findInputRef = React.useRef(null)
+      // 与 zoomRef 同一个理由：Esc 的监听挂在挂载时就挂，靠 ref 读当前值，
+      // 免得「刚打开就按 Esc」落进重挂的空档里。
+      const findOpenRef = React.useRef(false)
+      findOpenRef.current = findOpen
 
       const canAttach = typeof onAttach === 'function'
       const closeZoom = React.useCallback(() => setZoom(null), [])
@@ -11227,6 +11312,32 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         })
       }, [placeCaret, setDraft])
 
+      // 在正文里找下一处 / 上一处。找不到时把话说明白：静默不动的话，
+      // 用户会以为是自己敲错了词，接着反复按回车。
+      const runFind = React.useCallback((forward) => {
+        const text = findText.trim()
+        if (text === '') return
+        const hit = findInBody(scrollRef.current, text, forward)
+        if (hit === null) {
+          // 一处都没有 vs 到头了，是两件事：前者要用户改词，后者只是到头。
+          const any = findInBodyMatch(scrollRef.current, text, true) !== null ||
+            findInBodyMatch(scrollRef.current, text, false) !== null
+          showToast(any ? t('note.findEnd') : t('note.findMiss').replace('{text}', text))
+        }
+      }, [findText, showToast, t])
+
+      // 打开查找条就把光标放进去：用户按了按钮就是想立刻输字，
+      // 还要再点一下输入框是多余的一步。
+      React.useEffect(() => {
+        if (!findOpen) return undefined
+        const focus = () => {
+          const live = findInputRef.current
+          if (live !== null && live !== undefined) live.focus()
+        }
+        focus()
+        if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(focus)
+        return undefined
+      }, [findOpen])
       // 放大态按 Esc 关掉。挂到面板窗口上而不是根节点上：焦点可能还在别处，
       // 用户在遮罩上按 Esc 时事件未必从根节点冒上来。
       React.useEffect(() => {
@@ -11241,6 +11352,20 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 不用 effect 去清——那个 effect 每次挂载都会跑，点开图之后紧接着的一次
       // 重渲染会把它立刻关掉（面板会随页签/窗口重挂载，路径一变就误判成换笔记）。
       const currentPathOf = current === null || current === undefined ? '' : String(current.path || '')
+      // 换笔记时查找条收起：这个词是「在这篇里找」，换一篇还留着会让人以为
+      // 已经搜过了。用路径当依赖，同一篇重渲染不受影响。
+      //
+      // 只在「从这一篇换到另一篇」时清：面板会随页签/窗口重挂载，挂载时这个
+      // effect 照样跑一遍；而「从空态打开一篇」也走同一条路，一清就把用户刚点开
+      // 的查找条又关上——表现就是「点一下按钮没反应」。所以空态那一步不算换篇。
+      const findPathRef = React.useRef(currentPathOf)
+      React.useEffect(() => {
+        const prev = findPathRef.current
+        findPathRef.current = currentPathOf
+        if (prev === '' || prev === currentPathOf) return
+        setFindOpen(false)
+        setFindText('')
+      }, [currentPathOf])
       // 大纲里「现在读到哪一节」：点大纲跳过去算，自己往下翻也算。
       // 存的是标题序号（见 jumpToHeading 的注释：序号比行号稳），换一篇就归零。
       const [activeHeading, setActiveHeading] = React.useState(-1)
@@ -11726,6 +11851,19 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                   { type: 'button', className: 'dshgn_iconBtn', title: t('action.edit'), onClick: () => setEditing(true) },
                   h(Icon, { name: 'edit', size: 15 }),
                 ),
+                // 就地查找：读长笔记时想找一句话，翻回搜索框再搜一遍太重。
+                // 再点一次收起（与历史那个按钮同一个手势），省得找不到关的地方。
+                h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'dshgn_iconBtn',
+                    title: t('note.find'),
+                    'data-on': findOpen ? 'true' : 'false',
+                    onClick: () => setFindOpen((prev) => !prev),
+                  },
+                  h(Icon, { name: 'search', size: 15 }),
+                ),
                 // 改名走宿主的对话框：它会把全库双链一起改掉，自己改文件就会留死链。
                 hasRenameNote()
                   ? h(
@@ -11831,6 +11969,66 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                 ),
               ),
         ),
+        // 就地查找的输入条：只在阅读态、且用户点开了才出现。
+        // 回车找下一处、Shift+回车找上一处、Esc 收起——与浏览器/宿主的查找框
+        // 同一套手感，用户不用再学一遍。
+        !editing && findOpen
+          ? h(
+              'div',
+              { className: 'dshgn_findBar' },
+              h(Icon, { name: 'search', size: 13 }),
+              h('input', {
+                ref: findInputRef,
+                type: 'text',
+                className: 'dshgn_findInput',
+                value: findText,
+                placeholder: t('note.findPlaceholder'),
+                spellCheck: false,
+                onChange: (event) => setFindText(event.target.value),
+                onKeyDown: (event) => {
+                  if (event.key === 'Escape') {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    setFindOpen(false)
+                    return
+                  }
+                  if (event.key !== 'Enter') return
+                  event.preventDefault()
+                  runFind(!event.shiftKey)
+                },
+              }),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dshgn_iconBtn',
+                  title: t('note.findPrev'),
+                  onClick: () => runFind(false),
+                },
+                h('span', { style: { display: 'inline-flex', transform: 'rotate(180deg)' } }, h(Icon, { name: 'chevron', size: 13 })),
+              ),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dshgn_iconBtn',
+                  title: t('note.findNext'),
+                  onClick: () => runFind(true),
+                },
+                h(Icon, { name: 'chevron', size: 13 }),
+              ),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dshgn_iconBtn',
+                  title: t('action.close'),
+                  onClick: () => setFindOpen(false),
+                },
+                h(Icon, { name: 'close', size: 13 }),
+              ),
+            )
+          : null,
         editing
           ? h(
             React.Fragment,
@@ -13043,7 +13241,7 @@ export const __internals = {
   TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale,
   reportSync, dailyTemplateOf, frontmatterText, isTagKey, FollowCard, parseTable, countWords,
   isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote, parseImageSize, renderParagraph, blockTextOf, markdownLinkTarget,
-  tagBodyOf, ZoomOverlay, continueListLine, indentLines, wrapInline, wikilinkQueryAt, wikilinkMatches,
+  tagBodyOf, ZoomOverlay, continueListLine, indentLines, wrapInline, wikilinkQueryAt, wikilinkMatches, findInBody, findInBodyMatch,
       readScrollMarks, writeScrollMark, scrollMarkOf, SCROLL_KEY,
   splitByTerms, highlightTerms, searchTermsOf,
 }
