@@ -8372,6 +8372,8 @@ var LEX = {
     "note.outline": "\u672C\u6587\u5927\u7EB2",
     "note.openImage": "\u5728 Obsidian \u91CC\u6253\u5F00\u8FD9\u5F20\u56FE",
     "note.zoomImage": "\u70B9\u5F00\u770B\u5927\u56FE",
+    "note.navBack": "\u56DE\u4E0A\u4E00\u7BC7",
+    "note.navForward": "\u53BB\u4E0B\u4E00\u7BC7",
     "note.find": "\u5728\u8FD9\u7BC7\u91CC\u627E",
     "note.findPlaceholder": "\u627E\u4EC0\u4E48\u2026",
     "note.findInEditor": "\u5728\u6B63\u6587\u91CC\u627E\u4EC0\u4E48\u2026",
@@ -8800,6 +8802,8 @@ var LEX = {
     "note.outline": "Outline",
     "note.openImage": "Open this image in Obsidian",
     "note.zoomImage": "Click to enlarge",
+    "note.navBack": "Previous note",
+    "note.navForward": "Next note",
     "note.find": "Find in this note",
     "note.findPlaceholder": "Find\u2026",
     "note.findInEditor": "Find in the text\u2026",
@@ -9228,6 +9232,8 @@ var LEX = {
     "note.outline": "Overzicht",
     "note.openImage": "Open deze afbeelding in Obsidian",
     "note.zoomImage": "Klik om te vergroten",
+    "note.navBack": "Vorige notitie",
+    "note.navForward": "Volgende notitie",
     "note.find": "Zoek in deze notitie",
     "note.findPlaceholder": "Zoeken\u2026",
     "note.findInEditor": "Zoeken in de tekst\u2026",
@@ -12381,6 +12387,33 @@ function GetnotePage() {
     },
     [shown.length]
   );
+  const navRef = A2({ stack: [], index: -1 });
+  const navJumpRef = A2(false);
+  const [navState, setNavState] = h2({ canBack: false, canForward: false });
+  const syncNav = q2(() => {
+    const nav = navRef.current;
+    setNavState({
+      canBack: nav.index > 0,
+      canForward: nav.index >= 0 && nav.index < nav.stack.length - 1
+    });
+  }, []);
+  const pushNav = q2(
+    (path) => {
+      const target = String(path || "");
+      if (target === "") return;
+      const nav = navRef.current;
+      if (nav.index >= 0 && nav.stack[nav.index] === target) {
+        syncNav();
+        return;
+      }
+      const stack = nav.stack.slice(0, nav.index + 1);
+      stack.push(target);
+      const kept = stack.length > NAV_LIMIT ? stack.slice(stack.length - NAV_LIMIT) : stack;
+      navRef.current = { stack: kept, index: kept.length - 1 };
+      syncNav();
+    },
+    [syncNav]
+  );
   const openNote = q2(
     async (path, toggle = false, reload = false) => {
       const seq = openSeq.current + 1;
@@ -12397,6 +12430,8 @@ function GetnotePage() {
         if (openSeq.current !== seq) return;
         setCurrent(note);
         setDraft(note.content);
+        if (navJumpRef.current) navJumpRef.current = false;
+        else pushNav(note.path);
       } catch (err) {
         if (openSeq.current !== seq) return;
         setCurrent(null);
@@ -12404,7 +12439,7 @@ function GetnotePage() {
         setError(err && err.message ? err.message : String(err));
       }
     },
-    [current]
+    [current, pushNav]
   );
   const liveRef = A2({ current: null, draft: null });
   liveRef.current = { current, draft };
@@ -12550,6 +12585,30 @@ function GetnotePage() {
     [current, entries, status]
   );
   const dirty = current !== null && draft !== null && draft !== current.content;
+  const navTo = q2(
+    (delta) => {
+      const nav = navRef.current;
+      const next = nav.index + delta;
+      if (next < 0 || next >= nav.stack.length) return;
+      const path = nav.stack[next];
+      const go = () => {
+        navRef.current = { stack: nav.stack, index: next };
+        syncNav();
+        navJumpRef.current = true;
+        void openNote(path);
+      };
+      if (!dirty) {
+        go();
+        return;
+      }
+      void confirmDialog(t4("note.unsaved")).then((ok) => {
+        if (ok) go();
+      });
+    },
+    [dirty, openNote, syncNav, t4]
+  );
+  const navBack = q2(() => navTo(-1), [navTo]);
+  const navForward = q2(() => navTo(1), [navTo]);
   const jumpToMatch = q2(
     (path, match) => {
       const target = String(path || "");
@@ -13054,6 +13113,12 @@ ${insert}
       const target = event.target;
       const tag = target && target.tagName ? String(target.tagName).toLowerCase() : "";
       const typing = tag === "input" || tag === "textarea" || tag === "select" || target && target.isContentEditable === true;
+      if (event.altKey && !event.ctrlKey && !event.metaKey && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+        event.preventDefault();
+        if (event.key === "ArrowLeft") navBack();
+        else navForward();
+        return;
+      }
       if (event.key === "Escape") {
         setTemplatesOpen(false);
         return;
@@ -13087,7 +13152,7 @@ ${insert}
       }
     };
     return attachOnPanelWindows("keydown", onKey);
-  }, [current, newNote, openNote, shown, tab, vaultReady]);
+  }, [current, navBack, navForward, newNote, openNote, shown, tab, vaultReady]);
   y2(() => {
     const onDragOver = (event) => {
       if (!inPanel(event)) return;
@@ -13827,6 +13892,11 @@ ${insert}
         anchor: pendingAnchor,
         onAnchorDone: () => setPendingAnchor(null),
         resolveNote: resolveNotePath,
+        // 笔记头的前进/后退。两个布尔决定按钮灰不灰，回调只管挪。
+        canBack: navState.canBack,
+        canForward: navState.canForward,
+        onNavBack: navBack,
+        onNavForward: navForward,
         // 双链补全要「库里有哪些笔记」：名字打一半时从这上面挑
         noteNames: entries.map((entry) => entry.path),
         onAttach: attachFiles,
@@ -16717,6 +16787,7 @@ function HeatmapStrip(props) {
   );
 }
 var LIST_PAGE_SIZE = 60;
+var NAV_LIMIT = 40;
 var TREE_MIN_W = 150;
 var TREE_MAX_W = 360;
 var LIST_MIN_W = 200;
@@ -17288,6 +17359,10 @@ ${t4("tree.menuDelete")}\uFF1A\u53F3\u952E`
 }
 function NotePane(props) {
   const { t: t4, status, current, draft, setDraft, dirty, busy, onSave, onRename, onDelete, onCopyReference, onCopyText, onOpenWikiLink: onOpenWikiLink2, onSyncOne, onRestored, onError, onToggleTodo, onClose, onAttach, showToast } = props;
+  const canBack = props.canBack === true;
+  const canForward = props.canForward === true;
+  const onNavBack = typeof props.onNavBack === "function" ? props.onNavBack : null;
+  const onNavForward = typeof props.onNavForward === "function" ? props.onNavForward : null;
   const anchorRequest = props.anchor;
   const onAnchorDone = props.onAnchorDone;
   const resolveNote = props.resolveNote;
@@ -17775,6 +17850,37 @@ function NotePane(props) {
         },
         // chevron 是朝右的，翻过来当「返回」用，省一个图标
         h4("span", { style: { display: "inline-flex", transform: "rotate(180deg)" } }, h4(Icon, { name: "chevron", size: 15 }))
+      ),
+      // 前进/后退：刚才是从哪篇点过来的，往回走一步不用再去列表里找。
+      // 放在路径左边（和返回按钮挨着），三个键一组，读起来是「回列表 /
+      // 回上一篇 / 去下一篇」。
+      h4(
+        "button",
+        {
+          type: "button",
+          className: "dshgn_iconBtn dshgn_navBtn",
+          title: t4("note.navBack"),
+          "aria-keyshortcuts": "Alt+ArrowLeft",
+          disabled: !canBack || onNavBack === null,
+          onClick: () => {
+            if (onNavBack !== null) onNavBack();
+          }
+        },
+        h4("span", { style: { display: "inline-flex", transform: "rotate(180deg)" } }, h4(Icon, { name: "chevron", size: 15 }))
+      ),
+      h4(
+        "button",
+        {
+          type: "button",
+          className: "dshgn_iconBtn dshgn_navBtn",
+          title: t4("note.navForward"),
+          "aria-keyshortcuts": "Alt+ArrowRight",
+          disabled: !canForward || onNavForward === null,
+          onClick: () => {
+            if (onNavForward !== null) onNavForward();
+          }
+        },
+        h4(Icon, { name: "chevron", size: 15 })
       ),
       h4("div", { className: "dshgn_notePath", title: absolute }, current.path),
       // 字号三档。放在笔记头而不是设置页：用户是在「读这篇字太小」的那一刻

@@ -666,6 +666,8 @@ async function saveFile(url, filename) {
         'note.outline': '本文大纲',
         'note.openImage': '在 Obsidian 里打开这张图',
         'note.zoomImage': '点开看大图',
+        'note.navBack': '回上一篇',
+        'note.navForward': '去下一篇',
         'note.find': '在这篇里找',
         'note.findPlaceholder': '找什么…',
         'note.findInEditor': '在正文里找什么…',
@@ -1098,6 +1100,8 @@ async function saveFile(url, filename) {
         'note.outline': 'Outline',
         'note.openImage': 'Open this image in Obsidian',
         'note.zoomImage': 'Click to enlarge',
+        'note.navBack': 'Previous note',
+        'note.navForward': 'Next note',
         'note.find': 'Find in this note',
         'note.findPlaceholder': 'Find…',
         'note.findInEditor': 'Find in the text…',
@@ -1529,6 +1533,8 @@ async function saveFile(url, filename) {
         'note.outline': 'Overzicht',
         'note.openImage': 'Open deze afbeelding in Obsidian',
         'note.zoomImage': 'Klik om te vergroten',
+        'note.navBack': 'Vorige notitie',
+        'note.navForward': 'Volgende notitie',
         'note.find': 'Zoek in deze notitie',
         'note.findPlaceholder': 'Zoeken…',
         'note.findInEditor': 'Zoeken in de tekst…',
@@ -5487,6 +5493,43 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         [shown.length],
       )
 
+      // 笔记之间的前进/后退。读的时候从 A 跳到 B 再跳到 C，想回 A 得回列表里
+      // 重新找一遍——宿主里 Alt+← 就回去了，这里也一样。
+      //
+      // 栈放在 ref 里：它只在「打开成功」那一下变，放进 state 会让 openNote 的
+      // 依赖多一层、还容易在一次点击里触发两次重渲染；渲染需要的只有「能不能
+      // 后退/前进」两个布尔，单独存一份 state 就够了。
+      const navRef = React.useRef({ stack: [], index: -1 })
+      const navJumpRef = React.useRef(false)
+      const [navState, setNavState] = React.useState({ canBack: false, canForward: false })
+      const syncNav = React.useCallback(() => {
+        const nav = navRef.current
+        setNavState({
+          canBack: nav.index > 0,
+          canForward: nav.index >= 0 && nav.index < nav.stack.length - 1,
+        })
+      }, [])
+      const pushNav = React.useCallback(
+        (path) => {
+          const target = String(path || '')
+          if (target === '') return
+          const nav = navRef.current
+          // 重读同一篇（别处改了、保存后重载）不该在栈里多出一条
+          if (nav.index >= 0 && nav.stack[nav.index] === target) {
+            syncNav()
+            return
+          }
+          // 从中间往回走之后再打开新的一篇：前面那截「前进」就没有了，
+          // 和浏览器一样，否则前进会跳到一条已经不在路径上的分支。
+          const stack = nav.stack.slice(0, nav.index + 1)
+          stack.push(target)
+          const kept = stack.length > NAV_LIMIT ? stack.slice(stack.length - NAV_LIMIT) : stack
+          navRef.current = { stack: kept, index: kept.length - 1 }
+          syncNav()
+        },
+        [syncNav],
+      )
+
       /**
        * 打开笔记。
        *
@@ -5517,6 +5560,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             if (openSeq.current !== seq) return
             setCurrent(note)
             setDraft(note.content)
+            // 后退/前进自己触发的那次打开不要再入栈，否则一点「后退」就把
+            // 刚退回去的那篇又记到栈顶，前进永远回不去。
+            if (navJumpRef.current) navJumpRef.current = false
+            else pushNav(note.path)
           } catch (err) {
             if (openSeq.current !== seq) return
             setCurrent(null)
@@ -5524,7 +5571,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             setError(err && err.message ? err.message : String(err))
           }
         },
-        [current],
+        [current, pushNav],
       )
 
       // 宿主的 vault 事件：用户在 Obsidian 编辑器里改了这篇（或删了、改名了），
@@ -5728,6 +5775,38 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       )
 
       const dirty = current !== null && draft !== null && draft !== current.content
+
+      /**
+       * 在笔记栈里往回/往前挪一格。
+       *
+       * 有没保存的草稿时先问一句——和点别的卡片、点返回列表同一个口径：直接
+       * 换正文会把刚写的半句冲掉，而用户往往只是想回去看一眼刚才那段。
+       */
+      const navTo = React.useCallback(
+        (delta) => {
+          const nav = navRef.current
+          const next = nav.index + delta
+          if (next < 0 || next >= nav.stack.length) return
+          const path = nav.stack[next]
+          const go = () => {
+            navRef.current = { stack: nav.stack, index: next }
+            syncNav()
+            navJumpRef.current = true
+            void openNote(path)
+          }
+          if (!dirty) {
+            go()
+            return
+          }
+          void confirmDialog(t('note.unsaved')).then((ok) => {
+            if (ok) go()
+          })
+        },
+        [dirty, openNote, syncNav, t],
+      )
+
+      const navBack = React.useCallback(() => navTo(-1), [navTo])
+      const navForward = React.useCallback(() => navTo(1), [navTo])
 
       /**
        * 从搜索结果点一行，跳到正文里那一行。
@@ -6352,6 +6431,14 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           const target = event.target
           const tag = target && target.tagName ? String(target.tagName).toLowerCase() : ''
           const typing = tag === 'input' || tag === 'textarea' || tag === 'select' || (target && target.isContentEditable === true)
+          // Alt+← / Alt+→ 在笔记之间来回：宿主里就是这两个键，在输入框里也照样
+          // 该生效（用户常常刚在编辑区里改完字就想回上一篇看一眼）。
+          if (event.altKey && !event.ctrlKey && !event.metaKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+            event.preventDefault()
+            if (event.key === 'ArrowLeft') navBack()
+            else navForward()
+            return
+          }
           if (event.key === 'Escape') {
             setTemplatesOpen(false)
             return
@@ -6388,7 +6475,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         }
         // 每个面板窗口各挂一份：popout 里按 Ctrl+K 也得能聚焦搜索框。
         return attachOnPanelWindows('keydown', onKey)
-      }, [current, newNote, openNote, shown, tab, vaultReady])
+      }, [current, navBack, navForward, newNote, openNote, shown, tab, vaultReady])
 
       // 把宿主的文件拖进面板时，别让浏览器把它当成「打开这个文件」。
       //
@@ -7196,6 +7283,11 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             anchor: pendingAnchor,
             onAnchorDone: () => setPendingAnchor(null),
             resolveNote: resolveNotePath,
+            // 笔记头的前进/后退。两个布尔决定按钮灰不灰，回调只管挪。
+            canBack: navState.canBack,
+            canForward: navState.canForward,
+            onNavBack: navBack,
+            onNavForward: navForward,
             // 双链补全要「库里有哪些笔记」：名字打一半时从这上面挑
             noteNames: entries.map((entry) => entry.path),
             onAttach: attachFiles,
@@ -10592,6 +10684,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
     // 列表一次渲染多少条。一屏大约 8~10 张卡片，60 条足够滚两三屏，
     // 又不至于把几千个 DOM 节点一次性建出来。
     const LIST_PAGE_SIZE = 60
+
+    // 前进/后退最多记多少篇。和「读到哪儿」那份一样给个上限：翻一下午不该
+    // 在内存里攒出几百条路径，用户真正要回去的往往就是刚才那几篇。
+    const NAV_LIMIT = 40
     const TREE_MIN_W = 150
     const TREE_MAX_W = 360
     const LIST_MIN_W = 200
@@ -11281,6 +11377,12 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
 
     function NotePane(props) {
       const { t, status, current, draft, setDraft, dirty, busy, onSave, onRename, onDelete, onCopyReference, onCopyText, onOpenWikiLink, onSyncOne, onRestored, onError, onToggleTodo, onClose, onAttach, showToast } = props
+      // 前进/后退：宿主里 Alt+← 就回上一篇，笔记头上也给两个按钮（窄窗口里
+      // 键盘更顺手，但鼠标用户不该被落下）。
+      const canBack = props.canBack === true
+      const canForward = props.canForward === true
+      const onNavBack = typeof props.onNavBack === 'function' ? props.onNavBack : null
+      const onNavForward = typeof props.onNavForward === 'function' ? props.onNavForward : null
       const anchorRequest = props.anchor
       const onAnchorDone = props.onAnchorDone
       // 嵌入 ![[另一篇笔记]] 时用它把名字解析成路径（与点双链共用一套口径）
@@ -11955,6 +12057,37 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             },
             // chevron 是朝右的，翻过来当「返回」用，省一个图标
             h('span', { style: { display: 'inline-flex', transform: 'rotate(180deg)' } }, h(Icon, { name: 'chevron', size: 15 })),
+          ),
+          // 前进/后退：刚才是从哪篇点过来的，往回走一步不用再去列表里找。
+          // 放在路径左边（和返回按钮挨着），三个键一组，读起来是「回列表 /
+          // 回上一篇 / 去下一篇」。
+          h(
+            'button',
+            {
+              type: 'button',
+              className: 'dshgn_iconBtn dshgn_navBtn',
+              title: t('note.navBack'),
+              'aria-keyshortcuts': 'Alt+ArrowLeft',
+              disabled: !canBack || onNavBack === null,
+              onClick: () => {
+                if (onNavBack !== null) onNavBack()
+              },
+            },
+            h('span', { style: { display: 'inline-flex', transform: 'rotate(180deg)' } }, h(Icon, { name: 'chevron', size: 15 })),
+          ),
+          h(
+            'button',
+            {
+              type: 'button',
+              className: 'dshgn_iconBtn dshgn_navBtn',
+              title: t('note.navForward'),
+              'aria-keyshortcuts': 'Alt+ArrowRight',
+              disabled: !canForward || onNavForward === null,
+              onClick: () => {
+                if (onNavForward !== null) onNavForward()
+              },
+            },
+            h(Icon, { name: 'chevron', size: 15 }),
           ),
           h('div', { className: 'dshgn_notePath', title: absolute }, current.path),
           // 字号三档。放在笔记头而不是设置页：用户是在「读这篇字太小」的那一刻

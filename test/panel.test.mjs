@@ -5365,3 +5365,152 @@ test('阅读态按 Ctrl+F 直接把查找条叫出来，编辑态按下去找的
 })
 
 
+
+test('在笔记之间前进后退：Alt+← 回上一篇、Alt+→ 再走回去，按钮跟着亮灭', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+
+  // 前一个用例可能把某篇开着、搜索框里还留着词，先退回干净的空态
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    const backBtn = window.document.querySelector('.dshgn_noteBack')
+    if (backBtn) {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    }
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox) {
+    searchBox.value = ''
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(260)
+  }
+
+  // 两篇分两次建：先建的那篇在列表里更靠后，点开顺序才和「最近改的」不一样，
+  // 于是栈里的先后就是点击的先后，不会被列表顺序带跑。
+  const seedOne = async (title, requestId) => {
+    const res = await realFetch(server.origin + '/getnote/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({
+        dir: '随手记',
+        title,
+        content: '# ' + title + '\n\n这是 ' + title + ' 的正文。\n',
+        withDatePrefix: false,
+        requestId,
+      }),
+    })
+    return (await res.json()).path
+  }
+  const pathA = await seedOne('导航验收A', 'seed-nav-a')
+  const pathB = await seedOne('导航验收B', 'seed-nav-b')
+  assert.equal(pathA, '随手记/导航验收A.md')
+  assert.equal(pathB, '随手记/导航验收B.md')
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  const notePath = () => {
+    const el = window.document.querySelector('.dshgn_notePath')
+    return el ? el.textContent : null
+  }
+  const navBtn = (title) => Array.from(window.document.querySelectorAll('.dshgn_navBtn')).find((el) => el.title === title)
+  const openCard = async (path) => {
+    const card = await waitFor(
+      () => Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === path) || null,
+      8000,
+      '列表里应该有 ' + path,
+    )
+    card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => notePath() === path, 5000, '打开 ' + path)
+  }
+  const backToList = async () => {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    try {
+      window.document.querySelector('.dshgn_noteBack').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回列表')
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+  }
+  const altKey = (key) => window.dispatchEvent(new window.KeyboardEvent('keydown', { key, altKey: true, bubbles: true }))
+
+  // 刚点开一篇时「去下一篇」一定是灰的：从列表点开就是新的一步，
+  // 前面那截「前进」当场作废（和浏览器一样，否则前进会跳到一条已经
+  // 不在路径上的分支）。整个测试文件共用同一个面板实例，所以「能不能
+  // 回上一篇」要看前面用例攒下的历史，这里不断言它。
+  await openCard(pathA)
+  assert.equal(navBtn('去下一篇').disabled, true, '刚打开一篇时没有下一篇')
+
+  // 从列表点开第二篇：栈顶就是 B，它前面是 A
+  await backToList()
+  await openCard(pathB)
+  assert.equal(navBtn('回上一篇').disabled, false, '开过两篇了，应该能回上一篇')
+  assert.equal(navBtn('去下一篇').disabled, true, '还没退回去过，没有下一篇')
+
+  // Alt+← 回上一篇：Alt 不按住时不该被当成导航
+  window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }))
+  await sleep(200)
+  assert.equal(notePath(), pathB, '不按 Alt 的左键不该换篇')
+  altKey('ArrowLeft')
+  await waitFor(() => notePath() === pathA, 5000, 'Alt+← 应该回到上一篇')
+  assert.equal(navBtn('去下一篇').disabled, false, '退回来之后就能再往前走')
+
+  // Alt+→ 走回去
+  altKey('ArrowRight')
+  await waitFor(() => notePath() === pathB, 5000, 'Alt+→ 应该回到下一篇')
+  assert.equal(navBtn('去下一篇').disabled, true, '走到最新的一篇了')
+
+  // 鼠标也能用：点那颗「回上一篇」
+  navBtn('回上一篇').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => notePath() === pathA, 5000, '点按钮也该回上一篇')
+
+  // 有没保存的草稿时先问一句：答「不」就留在原地，答「好」才走
+  const editBtn = () => Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '编辑')
+  editBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const editor = await waitFor(() => window.document.querySelector('.dshgn_editor'), 5000, '进编辑态')
+  editor.value = editor.value + '改了一句。'
+  editor.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(120)
+
+  let asked = 0
+  panel.setConfirmDialog(() => {
+    asked += 1
+    return Promise.resolve(false)
+  })
+  try {
+    altKey('ArrowRight')
+    await sleep(400)
+    assert.equal(asked, 1, '有草稿时要先问一句')
+    assert.equal(notePath(), pathA, '答「不」就留在这一篇')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    altKey('ArrowRight')
+    await waitFor(() => notePath() === pathB, 5000, '答「好」就换篇')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  // 后退/前进自己触发的那次打开不再入栈，否则「前进」永远回不去
+  assert.equal(navBtn('回上一篇').disabled, false)
+  assert.equal(navBtn('去下一篇').disabled, true, '走回最新那篇后不该还有「下一篇」')
+
+  // 在编辑区里按 Alt+← 也照样该生效（用户常常刚改完字就想回上一篇看一眼）。
+  // 换篇会把编辑态收起，所以这里重新点一次「编辑」。
+  editBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const editorAgain = await waitFor(() => window.document.querySelector('.dshgn_editor'), 5000, '再进一次编辑态')
+  editorAgain.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowLeft', altKey: true, bubbles: true }))
+  await waitFor(() => notePath() === pathA, 5000, '编辑区里 Alt+← 也要回上一篇')
+
+  window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_editor') === null, 5000, 'Esc 退出编辑态')
+})
+
