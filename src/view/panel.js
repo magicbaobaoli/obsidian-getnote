@@ -756,6 +756,8 @@ async function saveFile(url, filename) {
         'sync.pushedOne': '已推到云端',
         'sync.pulledOne': '已从云端更新',
         'new.template': '新建什么',
+        'new.pickDir': '建到哪个目录',
+        'new.dirPick': '建到这个目录',
         'new.daily': '日记',
         'new.dailyHint': '今天发生了什么',
         'new.book': '读书笔记',
@@ -1235,6 +1237,8 @@ async function saveFile(url, filename) {
         'sync.pushedOne': 'Pushed to cloud',
         'sync.pulledOne': 'Updated from cloud',
         'new.template': 'Start a new',
+        'new.pickDir': 'Create in',
+        'new.dirPick': 'Create in this folder',
         'new.daily': 'Daily note',
         'new.dailyHint': 'What happened today',
         'new.book': 'Book notes',
@@ -1713,6 +1717,8 @@ async function saveFile(url, filename) {
         'sync.pushedOne': 'Naar de cloud gepusht',
         'sync.pulledOne': 'Bijgewerkt vanuit de cloud',
         'new.template': 'Begin met een',
+        'new.pickDir': 'Aanmaken in',
+        'new.dirPick': 'In deze map aanmaken',
         'new.daily': 'Dagnotitie',
         'new.dailyHint': 'Wat er vandaag gebeurde',
         'new.book': 'Boeknotities',
@@ -4769,6 +4775,11 @@ async function saveFile(url, filename) {
 .dshgn_menuItem:hover{background:var(--dsw-alias-interactive-bg-hover-accent);
   color:var(--dsw-alias-brand-primary)}
 .dshgn_menuHint{margin-left:auto;font-size:10px;color:var(--dsw-alias-label-dimmed)}
+/* 菜单里的输入行与候选条：菜单自带 5px 内边距，这里不再各加一圈，只把
+   左右对齐到标题文字的 8px 起。 */
+.dshgn_menuRow{display:flex;padding:0 3px 5px}
+.dshgn_menu .dshgn_suggest{padding:0 3px 5px}
+.dshgn_menu .dshgn_input{height:26px;font-size:12px}
 /* 骨架屏：用一条脉动的浅色块占位。动画只改 opacity，不改尺寸——
    改尺寸会触发重排，三栏骨架一起抖看着像卡住。 */
 .dshgn_skTree,.dshgn_skList,.dshgn_skNote{padding:14px 12px;gap:9px}
@@ -5922,6 +5933,12 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 新建模板菜单的开关。点「+」不再直接建空笔记，而是先让用户选一类——
       // 日记/读书/会议/随手记的日期与结构都是固定的，每次手写是重复劳动。
       const [templatesOpen, setTemplatesOpen] = React.useState(false)
+      // 新建时落在哪个目录。空串表示「跟着走」——面板里选了目录就以它为准，
+      // 没选才问宿主；填了字就以填的为准，这样在「全部笔记」里也能指定
+      // 这一篇要建到哪儿，不必建完再挪一次。
+      const [newDir, setNewDir] = React.useState('')
+      const [newDirAt, setNewDirAt] = React.useState(null)
+      const [newDirIndex, setNewDirIndex] = React.useState(null)
 
       // 快捷键速查表。面板里能按的键散在编辑区提示行和按钮 title 里，
       // 谁也不会一个个去发现：这张表把散落的键位收在一处，按 ? 或点顶栏那个问号就能翻。
@@ -6568,6 +6585,17 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         return builtin.concat(mine)
       }, [customTemplates])
 
+      const newDirHits = React.useMemo(
+        () => (newDirAt === null ? [] : searchSuggestions(dirs, [], 'dir', newDirAt)),
+        [dirs, newDirAt],
+      )
+      const applyNewDir = React.useCallback((item) => {
+        if (item === null || item === undefined) return
+        setNewDir(String(item.value || ''))
+        setNewDirAt(null)
+        setNewDirIndex(null)
+      }, [])
+
       const newNote = React.useCallback(
         async (templateId) => {
           const spec = typeof templateId === 'string' ? templateContent(templateId) : { title: t('action.new'), content: '' }
@@ -6575,7 +6603,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           setBusy(true)
           // 在面板里选了目录就以它为准（那是用户刚刚明说的）；没选才跟着宿主
           // 的「新建笔记默认位置」走，免得在同一个库里有两套「新建落在哪」。
-          const dir = activeDir !== '' ? activeDir : newNotePlacementOf()
+          // 菜单里填了目录就以填的为准：那是最新、最明确的一句话。
+          const typed = newDir.trim().replace(/^\/+|\/+$/g, '')
+          const dir = typed !== '' ? typed : activeDir !== '' ? activeDir : newNotePlacementOf()
           try {
             const created = await api('/create', {
               method: 'POST',
@@ -6596,7 +6626,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             setBusy(false)
           }
         },
-        [activeDir, openNote, refresh, showToast, t, templateContent],
+        [activeDir, newDir, openNote, refresh, showToast, t, templateContent],
       )
 
       /**
@@ -7465,6 +7495,81 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                         h(
                           'div',
                           { className: 'dshgn_menu', role: 'menu' },
+                          // 建到哪个目录：菜单里选好再挑模板，建完就是最终位置。
+                          // 留空表示照旧（面板里选中的目录，或宿主的默认位置）。
+                          h('div', { className: 'dshgn_menuTitle' }, t('new.pickDir')),
+                          h(
+                            'div',
+                            { className: 'dshgn_menuRow' },
+                            h('input', {
+                              type: 'text',
+                              className: 'dshgn_input dshgn_batchInput',
+                              placeholder: activeDir !== '' ? activeDir : t('new.pickDir'),
+                              value: newDir,
+                              onChange: (event) => {
+                                const value = event.target.value
+                                setNewDir(value)
+                                setNewDirAt(value.trim() === '' ? null : value)
+                                setNewDirIndex(null)
+                              },
+                              onKeyDown: (event) => {
+                                if (newDirHits.length === 0) return
+                                if (event.key === 'Escape') {
+                                  // 只收候选，别把整张菜单关掉——用户按 Esc
+                                  // 是想回到「不改目录了」，不是放弃新建。
+                                  event.preventDefault()
+                                  event.stopPropagation()
+                                  setNewDirAt(null)
+                                  setNewDirIndex(null)
+                                  return
+                                }
+                                if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                                  event.preventDefault()
+                                  const down = event.key === 'ArrowDown'
+                                  setNewDirIndex((prev) =>
+                                    prev === null
+                                      ? down
+                                        ? 0
+                                        : newDirHits.length - 1
+                                      : (prev + (down ? 1 : newDirHits.length - 1)) % newDirHits.length,
+                                  )
+                                  return
+                                }
+                                if (event.key === 'Enter' && newDirIndex !== null) {
+                                  event.preventDefault()
+                                  event.stopPropagation()
+                                  applyNewDir(newDirHits[newDirIndex])
+                                }
+                              },
+                            }),
+                          ),
+                          newDirHits.length === 0
+                            ? null
+                            : h(
+                                'div',
+                                { className: 'dshgn_suggest', role: 'listbox' },
+                                newDirHits.map((item, index) =>
+                                  h(
+                                    'button',
+                                    {
+                                      key: item.value,
+                                      type: 'button',
+                                      className: 'dshgn_suggestItem',
+                                      'data-kind': 'dir',
+                                      'data-on': newDirIndex === index ? 'true' : 'false',
+                                      role: 'option',
+                                      'aria-selected': newDirIndex === index ? 'true' : 'false',
+                                      title: t('new.dirPick'),
+                                      onMouseDown: (event) => {
+                                        event.preventDefault()
+                                        applyNewDir(item)
+                                      },
+                                    },
+                                    h(Icon, { name: 'folder', size: 11 }),
+                                    h('span', { className: 'dshgn_suggestName' }, item.value),
+                                  ),
+                                ),
+                              ),
                           h('div', { className: 'dshgn_menuTitle' }, t('new.template')),
                           newTemplates.map((item) =>
                             h(

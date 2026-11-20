@@ -9575,3 +9575,141 @@ test('批量加标签时标签框也摆出库里已有的标签，敲到一半�
   }
   assert.ok(text.includes('批量标签二'), '头部应该有这个标签，实际 ' + text.split('\n').slice(0, 4).join(' / '))
 })
+test('新建笔记时能指定建到哪个目录，不用建完再挪一次', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const post = async (path, payload) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(payload),
+    })
+    return res.json()
+  }
+  const wd = '新建挑目录'
+
+  // 退回空态、清搜索、退回全量：否则目标目录可能根本不在左栏
+  panel.setConfirmDialog(() => true)
+  for (let i = 0; i < 4; i += 1) {
+    const back = window.document.querySelector('.dshgn_noteBack')
+    if (back === null) break
+    back.click()
+    await sleep(150)
+  }
+  clickTab('笔记')
+  await waitFor(() => {
+    const root = rootNode()
+    return root !== null && root.querySelector('.dshgn_search') !== null
+  }, 4000, '搜索框')
+  const search = rootNode().querySelector('.dshgn_search')
+  Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(search, '')
+  search.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(400)
+  const allRow = Array.from(rootNode().querySelectorAll('.dshgn_treeRow')).find(
+    (el) => el.textContent.indexOf('全部笔记') !== -1,
+  )
+  if (allRow) allRow.click()
+  await sleep(200)
+
+  // 目标目录先有内容：空目录不列在左栏，候选也就摆不出来
+  await post('/getnote/create', {
+    dir: `${wd}/挑目录甲`,
+    title: '占位',
+    content: ['# 占位', '', '正文。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-newdir-a',
+  })
+  await post('/getnote/create', {
+    dir: `${wd}/挑目录乙`,
+    title: '占位',
+    content: ['# 占位', '', '正文。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-newdir-b',
+  })
+  const refreshBtn = Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find(
+    (el) => el.getAttribute('title') === '刷新',
+  )
+  refreshBtn.click()
+  await waitFor(
+    () => Array.from(rootNode().querySelectorAll('.dshgn_treeName')).some((el) => el.textContent === '挑目录乙'),
+    8000,
+    '左栏出现目标目录',
+  )
+
+  const plusBtn = Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find(
+    (el) => el.getAttribute('title') === '新建',
+  )
+  assert.ok(plusBtn, '顶栏该有那颗新建的 +')
+  plusBtn.click()
+  await waitFor(() => window.document.querySelector('.dshgn_menu') !== null, 4000, '模板菜单')
+
+  const dirInput = () => window.document.querySelector('.dshgn_menu .dshgn_batchInput')
+  const chips = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_menu .dshgn_suggestItem')).filter(
+      (el) => el.getAttribute('data-kind') === 'dir',
+    )
+  const type = async (text) => {
+    const input = dirInput()
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(input, text)
+    input.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(150)
+  }
+
+  assert.ok(dirInput(), '菜单里该有一行填目录的输入框')
+  assert.equal(chips().length, 0, '没敲字时不该摆候选')
+
+  await type(wd)
+  assert.ok(chips().length >= 2, `敲字后该摆出库里已有的目录，实际 ${chips().length} 条`)
+  assert.ok(chips().some((el) => el.textContent.indexOf('挑目录甲') !== -1), '候选里该有挑目录甲')
+  assert.ok(chips().some((el) => el.textContent.indexOf('挑目录乙') !== -1), '候选里该有挑目录乙')
+  assert.ok(
+    chips()[0].getAttribute('title').indexOf('建到这个目录') !== -1,
+    '候选的悬停说明该说清点一下会怎样',
+  )
+
+  // 只敲到「挑」为止：再往前敲一个字，父目录本身也会是候选，
+  // 挑中它等于没换，验不出「回车把候选填了进去」。
+  await type(`${wd}/挑`)
+  assert.ok(chips().length >= 2, `敲到子目录该有候选，实际 ${chips().length} 条`)
+  dirInput().dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
+  await sleep(150)
+  const lit = chips().filter((el) => el.getAttribute('data-on') === 'true')
+  assert.equal(lit.length, 1, '按上下键该有一项亮着')
+  const wanted = lit[0].textContent
+  dirInput().dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  await sleep(200)
+  assert.equal(dirInput().value, wanted, '回车该把亮着的那条候选填进输入框')
+  assert.equal(chips().length, 0, '填好之后候选该收掉')
+  assert.ok(window.document.querySelector('.dshgn_menu') !== null, '挑候选不该把菜单关掉')
+
+  await type(`${wd}/挑目录乙`)
+  assert.ok(chips().length >= 1, '再敲一次该重新摆出候选')
+  chips()[0].dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true, cancelable: true }))
+  await sleep(200)
+  assert.equal(dirInput().value, `${wd}/挑目录乙`, '点候选该把它填进去')
+  assert.equal(chips().length, 0, '点完候选该收掉')
+
+  // 挑一条只填名字：这会儿库里还不该多出任何一篇
+  const treeBefore = await (await realFetch(`${server.origin}/getnote/tree`, {
+    headers: { 'x-getnote-token': server.token },
+  })).json()
+  const beforeCount = (treeBefore.entries || []).length
+
+  const item = Array.from(window.document.querySelectorAll('.dshgn_menuItem')).find(
+    (el) => el.textContent.indexOf('随手记') !== -1,
+  )
+  assert.ok(item, '模板菜单里该有随手记那一项')
+  item.click()
+  await waitFor(() => window.document.querySelector('.dshgn_notePath') !== null, 8000, '新建完打开那一篇')
+  const path = window.document.querySelector('.dshgn_notePath').textContent
+  assert.ok(path.startsWith(`${wd}/挑目录乙/`), `新建的这一篇该落在挑目录乙里，实际 ${path}`)
+
+  const treeAfter = await (await realFetch(`${server.origin}/getnote/tree`, {
+    headers: { 'x-getnote-token': server.token },
+  })).json()
+  assert.equal((treeAfter.entries || []).length, beforeCount + 1, '只该多出这一篇')
+
+  panel.setConfirmDialog(() => true)
+  const back = window.document.querySelector('.dshgn_noteBack')
+  if (back) back.click()
+  await sleep(150)
+})

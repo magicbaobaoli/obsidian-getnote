@@ -8578,6 +8578,8 @@ var LEX = {
     "sync.pushedOne": "\u5DF2\u63A8\u5230\u4E91\u7AEF",
     "sync.pulledOne": "\u5DF2\u4ECE\u4E91\u7AEF\u66F4\u65B0",
     "new.template": "\u65B0\u5EFA\u4EC0\u4E48",
+    "new.pickDir": "\u5EFA\u5230\u54EA\u4E2A\u76EE\u5F55",
+    "new.dirPick": "\u5EFA\u5230\u8FD9\u4E2A\u76EE\u5F55",
     "new.daily": "\u65E5\u8BB0",
     "new.dailyHint": "\u4ECA\u5929\u53D1\u751F\u4E86\u4EC0\u4E48",
     "new.book": "\u8BFB\u4E66\u7B14\u8BB0",
@@ -9053,6 +9055,8 @@ var LEX = {
     "sync.pushedOne": "Pushed to cloud",
     "sync.pulledOne": "Updated from cloud",
     "new.template": "Start a new",
+    "new.pickDir": "Create in",
+    "new.dirPick": "Create in this folder",
     "new.daily": "Daily note",
     "new.dailyHint": "What happened today",
     "new.book": "Book notes",
@@ -9528,6 +9532,8 @@ var LEX = {
     "sync.pushedOne": "Naar de cloud gepusht",
     "sync.pulledOne": "Bijgewerkt vanuit de cloud",
     "new.template": "Begin met een",
+    "new.pickDir": "Aanmaken in",
+    "new.dirPick": "In deze map aanmaken",
     "new.daily": "Dagnotitie",
     "new.dailyHint": "Wat er vandaag gebeurde",
     "new.book": "Boeknotities",
@@ -11825,6 +11831,11 @@ var CSS = `
 .dshgn_menuItem:hover{background:var(--dsw-alias-interactive-bg-hover-accent);
   color:var(--dsw-alias-brand-primary)}
 .dshgn_menuHint{margin-left:auto;font-size:10px;color:var(--dsw-alias-label-dimmed)}
+/* \u83DC\u5355\u91CC\u7684\u8F93\u5165\u884C\u4E0E\u5019\u9009\u6761\uFF1A\u83DC\u5355\u81EA\u5E26 5px \u5185\u8FB9\u8DDD\uFF0C\u8FD9\u91CC\u4E0D\u518D\u5404\u52A0\u4E00\u5708\uFF0C\u53EA\u628A
+   \u5DE6\u53F3\u5BF9\u9F50\u5230\u6807\u9898\u6587\u5B57\u7684 8px \u8D77\u3002 */
+.dshgn_menuRow{display:flex;padding:0 3px 5px}
+.dshgn_menu .dshgn_suggest{padding:0 3px 5px}
+.dshgn_menu .dshgn_input{height:26px;font-size:12px}
 /* \u9AA8\u67B6\u5C4F\uFF1A\u7528\u4E00\u6761\u8109\u52A8\u7684\u6D45\u8272\u5757\u5360\u4F4D\u3002\u52A8\u753B\u53EA\u6539 opacity\uFF0C\u4E0D\u6539\u5C3A\u5BF8\u2014\u2014
    \u6539\u5C3A\u5BF8\u4F1A\u89E6\u53D1\u91CD\u6392\uFF0C\u4E09\u680F\u9AA8\u67B6\u4E00\u8D77\u6296\u770B\u7740\u50CF\u5361\u4F4F\u3002 */
 .dshgn_skTree,.dshgn_skList,.dshgn_skNote{padding:14px 12px;gap:9px}
@@ -12901,6 +12912,9 @@ function GetnotePage() {
     });
   }, [entries, current]);
   const [templatesOpen, setTemplatesOpen] = h2(false);
+  const [newDir, setNewDir] = h2("");
+  const [newDirAt, setNewDirAt] = h2(null);
+  const [newDirIndex, setNewDirIndex] = h2(null);
   const [helpOpen, setHelpOpen] = h2(false);
   const helpOpenRef = A2(false);
   helpOpenRef.current = helpOpen;
@@ -13397,12 +13411,23 @@ function GetnotePage() {
     const mine = customTemplates.map((item) => ({ id: `custom:${item.name}`, icon: "edit", custom: true }));
     return builtin.concat(mine);
   }, [customTemplates]);
+  const newDirHits = T2(
+    () => newDirAt === null ? [] : searchSuggestions(dirs, [], "dir", newDirAt),
+    [dirs, newDirAt]
+  );
+  const applyNewDir = q2((item) => {
+    if (item === null || item === void 0) return;
+    setNewDir(String(item.value || ""));
+    setNewDirAt(null);
+    setNewDirIndex(null);
+  }, []);
   const newNote = q2(
     async (templateId) => {
       const spec = typeof templateId === "string" ? templateContent(templateId) : { title: t4("action.new"), content: "" };
       setTemplatesOpen(false);
       setBusy(true);
-      const dir = activeDir !== "" ? activeDir : newNotePlacementOf();
+      const typed = newDir.trim().replace(/^\/+|\/+$/g, "");
+      const dir = typed !== "" ? typed : activeDir !== "" ? activeDir : newNotePlacementOf();
       try {
         const created = await api("/create", {
           method: "POST",
@@ -13423,7 +13448,7 @@ function GetnotePage() {
         setBusy(false);
       }
     },
-    [activeDir, openNote, refresh, showToast, t4, templateContent]
+    [activeDir, newDir, openNote, refresh, showToast, t4, templateContent]
   );
   const waitForSync = q2(async () => {
     const deadline = Date.now() + 5 * 60 * 1e3;
@@ -14090,6 +14115,73 @@ ${insert}
             h4(
               "div",
               { className: "dshgn_menu", role: "menu" },
+              // 建到哪个目录：菜单里选好再挑模板，建完就是最终位置。
+              // 留空表示照旧（面板里选中的目录，或宿主的默认位置）。
+              h4("div", { className: "dshgn_menuTitle" }, t4("new.pickDir")),
+              h4(
+                "div",
+                { className: "dshgn_menuRow" },
+                h4("input", {
+                  type: "text",
+                  className: "dshgn_input dshgn_batchInput",
+                  placeholder: activeDir !== "" ? activeDir : t4("new.pickDir"),
+                  value: newDir,
+                  onChange: (event) => {
+                    const value = event.target.value;
+                    setNewDir(value);
+                    setNewDirAt(value.trim() === "" ? null : value);
+                    setNewDirIndex(null);
+                  },
+                  onKeyDown: (event) => {
+                    if (newDirHits.length === 0) return;
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setNewDirAt(null);
+                      setNewDirIndex(null);
+                      return;
+                    }
+                    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                      event.preventDefault();
+                      const down = event.key === "ArrowDown";
+                      setNewDirIndex(
+                        (prev) => prev === null ? down ? 0 : newDirHits.length - 1 : (prev + (down ? 1 : newDirHits.length - 1)) % newDirHits.length
+                      );
+                      return;
+                    }
+                    if (event.key === "Enter" && newDirIndex !== null) {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      applyNewDir(newDirHits[newDirIndex]);
+                    }
+                  }
+                })
+              ),
+              newDirHits.length === 0 ? null : h4(
+                "div",
+                { className: "dshgn_suggest", role: "listbox" },
+                newDirHits.map(
+                  (item, index) => h4(
+                    "button",
+                    {
+                      key: item.value,
+                      type: "button",
+                      className: "dshgn_suggestItem",
+                      "data-kind": "dir",
+                      "data-on": newDirIndex === index ? "true" : "false",
+                      role: "option",
+                      "aria-selected": newDirIndex === index ? "true" : "false",
+                      title: t4("new.dirPick"),
+                      onMouseDown: (event) => {
+                        event.preventDefault();
+                        applyNewDir(item);
+                      }
+                    },
+                    h4(Icon, { name: "folder", size: 11 }),
+                    h4("span", { className: "dshgn_suggestName" }, item.value)
+                  )
+                )
+              ),
               h4("div", { className: "dshgn_menuTitle" }, t4("new.template")),
               newTemplates.map(
                 (item) => h4(
