@@ -10467,6 +10467,49 @@ function countWords(text) {
   const latin = source.match(/[A-Za-z0-9_'-]+/g);
   return (cjk === null ? 0 : cjk.length) + (latin === null ? 0 : latin.length);
 }
+function continueListLine(text, caret) {
+  const source = String(text === null || text === void 0 ? "" : text);
+  const at = Number.isInteger(caret) ? caret : source.length;
+  if (at < 0 || at > source.length) return null;
+  const lineStart = source.lastIndexOf("\n", at - 1) + 1;
+  const lineEndRaw = source.indexOf("\n", at);
+  const lineEnd = lineEndRaw === -1 ? source.length : lineEndRaw;
+  if (at !== lineEnd) return null;
+  const line = source.slice(lineStart, lineEnd);
+  const lead = /^\s*/.exec(line)[0];
+  let body = line.slice(lead.length);
+  let quotePrefix = "";
+  for (; ; ) {
+    const quoted = /^>\s?/.exec(body);
+    if (quoted === null) break;
+    quotePrefix += quoted[0];
+    body = body.slice(quoted[0].length);
+  }
+  const task = /^([-*+])(\s+)\[( |x|X)\](\s+)(.*)$/.exec(body);
+  const bullet = task === null ? /^([-*+])(\s+)(.*)$/.exec(body) : null;
+  const ordered = task === null && bullet === null ? /^(\d+)([.)])(\s+)(.*)$/.exec(body) : null;
+  const drop = () => {
+    const nextLine = lead + quotePrefix;
+    return {
+      text: source.slice(0, lineStart) + nextLine + source.slice(lineEnd),
+      caret: lineStart + nextLine.length
+    };
+  };
+  const next = (marker) => {
+    const nextLine = lead + quotePrefix + marker;
+    return {
+      text: source.slice(0, lineEnd) + "\n" + nextLine + source.slice(lineEnd),
+      caret: lineEnd + 1 + nextLine.length
+    };
+  };
+  if (task !== null) return task[5] === "" ? drop() : next(`${task[1]} [ ] `);
+  if (bullet !== null) return bullet[3] === "" ? drop() : next(`${bullet[1]} `);
+  if (ordered !== null) {
+    return ordered[4] === "" ? drop() : next(`${String(Number(ordered[1]) + 1)}${ordered[2]} `);
+  }
+  if (quotePrefix !== "") return body === "" ? drop() : next("");
+  return null;
+}
 function renderParagraph(text, keyPrefix, options) {
   const lines = String(text === void 0 || text === null ? "" : text).split("\n");
   const nodes = [];
@@ -16979,6 +17022,7 @@ function NotePane(props) {
   const [zoom, setZoom] = h2(null);
   const zoomRef = A2(null);
   zoomRef.current = zoom;
+  const editorRef = A2(null);
   const canAttach = typeof onAttach === "function";
   const closeZoom = q2(() => setZoom(null), []);
   y2(() => {
@@ -17388,10 +17432,34 @@ function NotePane(props) {
       b,
       null,
       h4("textarea", {
+        ref: editorRef,
         className: "dshgn_editor",
         value: draft === null ? "" : draft,
         spellCheck: false,
         onChange: (event) => setDraft(event.target.value),
+        // 在清单行末尾按回车，接着写下一行（有序列表自动加一）。
+        // 只认行尾，行中间的回车仍然是「把这行拆成两条」，交给浏览器自己处理。
+        onKeyDown: (event) => {
+          if (event.key !== "Enter" || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
+          if (event.isComposing || event.keyCode === 229) return;
+          const node = editorRef.current;
+          if (node === null || node === void 0) return;
+          const caret = typeof node.selectionStart === "number" ? node.selectionStart : null;
+          const next = continueListLine(node.value, caret);
+          if (next === null) return;
+          event.preventDefault();
+          setDraft(next.text);
+          const place = () => {
+            const live = editorRef.current;
+            if (live === null || live === void 0) return;
+            try {
+              live.setSelectionRange(next.caret, next.caret);
+            } catch {
+            }
+          };
+          place();
+          if (typeof window.requestAnimationFrame === "function") window.requestAnimationFrame(place);
+        },
         // 截图之后 Ctrl+V 是最顺手的插图方式。宿主接住了，面板以前什么都不做，
         // 剪贴板里的图就悄悄没了。
         onPaste: canAttach ? (event) => {

@@ -3241,6 +3241,71 @@ async function saveFile(url, filename) {
     }
 
     /**
+     * 在列表里按回车，接着写下一行。
+     *
+     * 记笔记最常做的一件事是往清单里再添一条，而 textarea 只会老老实实插一个换行：
+     * 想写第二条得自己再敲一遍「- 」，有序列表还得自己数到几。这里把这一下接住：
+     * 光标停在列表行末尾按回车，下一行自动带着同样的缩进和记号（有序列表自动加一），
+     * 空条目按回车则是「这一条不写了」，把那行记号收掉、退回上一层。
+     *
+     * 只认行尾：光标停在行中间时回车应当是「把这行拆成两条」，那是另一件事，
+     * 交给浏览器原样处理——替用户补一个记号，反而会把他写了一半的句子劈开。
+     *
+     * 返回 { text, caret } 表示这一下接管了，返回 null 表示按普通回车处理。
+     */
+    function continueListLine(text, caret) {
+      const source = String(text === null || text === undefined ? '' : text)
+      const at = Number.isInteger(caret) ? caret : source.length
+      if (at < 0 || at > source.length) return null
+      const lineStart = source.lastIndexOf('\n', at - 1) + 1
+      const lineEndRaw = source.indexOf('\n', at)
+      const lineEnd = lineEndRaw === -1 ? source.length : lineEndRaw
+      // 只有光标就在这一行末尾时才接管
+      if (at !== lineEnd) return null
+      const line = source.slice(lineStart, lineEnd)
+
+      const lead = /^\s*/.exec(line)[0]
+      // 引用块里也能写列表（"> - 一条"），先把那层 > 剥下来，最后原样贴回去
+      let body = line.slice(lead.length)
+      let quotePrefix = ''
+      for (;;) {
+        const quoted = /^>\s?/.exec(body)
+        if (quoted === null) break
+        quotePrefix += quoted[0]
+        body = body.slice(quoted[0].length)
+      }
+
+      const task = /^([-*+])(\s+)\[( |x|X)\](\s+)(.*)$/.exec(body)
+      const bullet = task === null ? /^([-*+])(\s+)(.*)$/.exec(body) : null
+      const ordered = task === null && bullet === null ? /^(\d+)([.)])(\s+)(.*)$/.exec(body) : null
+
+      // 空条目：这一条不写了，把记号收掉，光标留在原地（引用层还留着）
+      const drop = () => {
+        const nextLine = lead + quotePrefix
+        return {
+          text: source.slice(0, lineStart) + nextLine + source.slice(lineEnd),
+          caret: lineStart + nextLine.length,
+        }
+      }
+      // 接着写：同样的缩进、同样的记号，光标落到新行末尾
+      const next = (marker) => {
+        const nextLine = lead + quotePrefix + marker
+        return {
+          text: source.slice(0, lineEnd) + '\n' + nextLine + source.slice(lineEnd),
+          caret: lineEnd + 1 + nextLine.length,
+        }
+      }
+
+      if (task !== null) return task[5] === '' ? drop() : next(`${task[1]} [ ] `)
+      if (bullet !== null) return bullet[3] === '' ? drop() : next(`${bullet[1]} `)
+      if (ordered !== null) {
+        return ordered[4] === '' ? drop() : next(`${String(Number(ordered[1]) + 1)}${ordered[2]} `)
+      }
+      if (quotePrefix !== '') return body === '' ? drop() : next('')
+      return null
+    }
+
+    /**
      * 段落里的换行按宿主的口径处理：单独一个换行是「软换行」，接成一句话；
      * 行尾两个空格或者一个反斜杠才是「硬换行」，真的断行。
      *
@@ -10835,6 +10900,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 才跑的，遮罩已经出现在屏幕上了，监听却还没挂）。
       const zoomRef = React.useRef(null)
       zoomRef.current = zoom
+      // 编辑区本身：列表续行之后要把光标放回新行末尾，得拿到这个节点
+      const editorRef = React.useRef(null)
 
       const canAttach = typeof onAttach === 'function'
       const closeZoom = React.useCallback(() => setZoom(null), [])
@@ -11349,10 +11416,37 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             React.Fragment,
             null,
             h('textarea', {
+              ref: editorRef,
               className: 'dshgn_editor',
               value: draft === null ? '' : draft,
               spellCheck: false,
               onChange: (event) => setDraft(event.target.value),
+              // 在清单行末尾按回车，接着写下一行（有序列表自动加一）。
+              // 只认行尾，行中间的回车仍然是「把这行拆成两条」，交给浏览器自己处理。
+              onKeyDown: (event) => {
+                if (event.key !== 'Enter' || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return
+                // 输入法正在拼字时的回车是「选字」，不是换行
+                if (event.isComposing || event.keyCode === 229) return
+                const node = editorRef.current
+                if (node === null || node === undefined) return
+                const caret = typeof node.selectionStart === 'number' ? node.selectionStart : null
+                const next = continueListLine(node.value, caret)
+                if (next === null) return
+                event.preventDefault()
+                setDraft(next.text)
+                // 重渲染之后光标会被甩到末尾，先放一次、下一帧再放一次兜住
+                const place = () => {
+                  const live = editorRef.current
+                  if (live === null || live === undefined) return
+                  try {
+                    live.setSelectionRange(next.caret, next.caret)
+                  } catch {
+                    // 某些环境（无焦点/已卸载）不允许设置选区，忽略即可
+                  }
+                }
+                place()
+                if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(place)
+              },
               // 截图之后 Ctrl+V 是最顺手的插图方式。宿主接住了，面板以前什么都不做，
               // 剪贴板里的图就悄悄没了。
               onPaste: canAttach
@@ -12442,5 +12536,5 @@ export const __internals = {
   TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale,
   reportSync, dailyTemplateOf, frontmatterText, isTagKey, FollowCard, parseTable, countWords,
   isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote, parseImageSize, renderParagraph, blockTextOf, markdownLinkTarget,
-  tagBodyOf, ZoomOverlay,
+  tagBodyOf, ZoomOverlay, continueListLine,
 }

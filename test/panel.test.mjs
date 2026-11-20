@@ -4322,3 +4322,99 @@ test('点开正文里的图就当场放大，按 Esc 收起来', async () => {
   // 收起来之后笔记还在读着，不该顺手把笔记也关掉
   assert.equal(rootNode().getAttribute('data-has-note'), 'true', 'Esc 只关遮罩，不该退出笔记')
 })
+
+test('清单里按回车接着写下一行，有序列表自动加一，空条目按回车就收掉', async () => {
+  const { continueListLine } = panel.__internals
+
+  // 先验这一下接管的范围：只认行尾，行中间的回车仍然是「把这行拆成两条」
+  assert.equal(continueListLine('- 第一条', 5).text, '- 第一条\n- ')
+  assert.equal(continueListLine('- 第一条', 3), null, '光标在行中间时不该接管')
+  assert.equal(continueListLine('一段普通的话', 6), null, '不是列表就不接管')
+  assert.equal(continueListLine('  * 缩进的一条', 9).text, '  * 缩进的一条\n  * ', '缩进要跟着带下来')
+  assert.equal(continueListLine('3. 第三步', 6).text, '3. 第三步\n4. ', '有序列表得自动加一')
+  assert.equal(continueListLine('1) 括号的写法', 8).text, '1) 括号的写法\n2) ')
+  assert.equal(continueListLine('- [ ] 没做的一条', 11).text, '- [ ] 没做的一条\n- [ ] ')
+  assert.equal(continueListLine('- [x] 做过的', 9).text, '- [x] 做过的\n- [ ] ', '新的一条总是没勾的')
+  assert.equal(continueListLine('- ', 2).text, '', '空条目按回车把这行记号收掉')
+  assert.equal(continueListLine('> - 引用里的一条', 10).text, '> - 引用里的一条\n> - ', '引用层要原样贴回去')
+  // 多行时只动光标所在那一行
+  const multi = continueListLine('- 甲\n- 乙', 7)
+  assert.equal(multi.text, '- 甲\n- 乙\n- ')
+  assert.equal(multi.caret, multi.text.length)
+
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const backBtn = window.document.querySelector('.dshgn_noteBack')
+  if (backBtn) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    try {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+  }
+
+  const res = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '列表续行验收',
+      content: ['# 列表续行验收', '', '- 第一条', ''].join('\n'),
+      withDatePrefix: false,
+      requestId: 'seed-list-continue',
+    }),
+  })
+  const seeded = await res.json()
+  assert.equal(seeded.path, '随手记/列表续行验收.md')
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  const card = await waitFor(
+    () => Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === seeded.path) || null,
+    8000,
+    '列表里应该有这一篇',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 5000, '打开这一篇')
+
+  const editBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '编辑')
+  editBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const editor = await waitFor(() => window.document.querySelector('.dshgn_editor'), 5000, '进编辑态')
+
+  // Preact 的 onChange 落在 input 事件上，jsdom 里要自己派发；
+  // 回车这一下也要自己派发——textarea 不会替我们把按键变成一次真实输入。
+  const typeInto = async (value, caret) => {
+    editor.value = value
+    editor.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(40)
+    editor.setSelectionRange(caret === undefined ? value.length : caret, caret === undefined ? value.length : caret)
+    editor.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    await sleep(80)
+  }
+
+  await typeInto('- 第一条')
+  assert.equal(editor.value, '- 第一条\n- ', '回车之后下一行该带着记号')
+  assert.equal(editor.selectionStart, editor.value.length, '光标要落在新行末尾，接着就能写')
+
+  await typeInto('- 第一条\n- 第二条')
+  await typeInto('3. 第三步')
+  assert.equal(editor.value, '3. 第三步\n4. ', '有序列表得接着数下去')
+
+  await typeInto('- ')
+  assert.equal(editor.value, '', '空条目按回车把这行记号收掉')
+
+  // 行中间的回车不接管：这一下要让浏览器自己插换行，别补记号把句子劈开
+  await typeInto('- 半句话', 2)
+  assert.equal(editor.value, '- 半句话', '行中间的回车不该被接管')
+
+  window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_editor') === null, 5000, 'Esc 退出编辑态')
+})
