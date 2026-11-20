@@ -11122,7 +11122,13 @@ function renderBlocks(markdown, options) {
         blocks.push(
           h4(
             "div",
-            { key: `b${key++}`, className: "dshgn_tableWrap" },
+            {
+              key: `b${key++}`,
+              // 长表格（比如一张对照表、一份词表）在正文里会拖出好几屏，读到下面
+              // 早就忘了哪一列是什么；超过这个行数就单独给一块可滚区域并钉住表头。
+              // 短表格不钉：它本来一屏就看得完，多一层滚动反而更别扭。
+              className: table.rows.length >= 8 ? "dshgn_tableWrap dshgn_tableTall" : "dshgn_tableWrap"
+            },
             h4(
               "table",
               { className: "dshgn_table" },
@@ -11946,6 +11952,9 @@ var CSS = `
 .dshgn_checkHit.dshgn_checkOn:hover{background:var(--dsw-alias-button-primary-hover)}
 .dshgn_checkHit::after{content:'';position:absolute;inset:-7px}
 .dshgn_tableWrap{overflow-x:auto;margin:10px 0}
+/* \u957F\u8868\u683C\u5355\u72EC\u6EDA\uFF0C\u8868\u5934\u9489\u5728\u9876\u4E0A\uFF1A\u8BFB\u5230\u7B2C 30 \u884C\u8FD8\u77E5\u9053\u8FD9\u4E00\u5217\u662F\u4EC0\u4E48\u3002 */
+.dshgn_tableTall{max-height:min(70vh,520px);overflow-y:auto}
+.dshgn_tableTall .dshgn_table th{position:sticky;top:0;z-index:1}
 .dshgn_table{border-collapse:collapse;font-size:12px;min-width:100%}
 .dshgn_table th,.dshgn_table td{padding:6px 10px;text-align:left;
   border-bottom:0.5px solid var(--dsw-alias-border-l2);vertical-align:top}

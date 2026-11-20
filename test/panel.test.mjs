@@ -8193,3 +8193,97 @@ test('断链那一行点「去这一句」就落到正文里写错的那一行�
     panel.setConfirmDialog(null)
   }
 })
+
+test('长表格自己滚、表头钉在顶上；短表格不钉，免得一屏能看完的表多一层滚动', async () => {
+  const { renderBlocks } = panel.__internals
+  const walk = (nodes, out) => {
+    for (const node of Array.isArray(nodes) ? nodes : [nodes]) {
+      if (node === null || node === undefined || typeof node === 'string') continue
+      out.push(node)
+      const kids = node.props && node.props.children
+      if (Array.isArray(kids)) walk(kids, out)
+      else if (kids !== null && kids !== undefined && typeof kids === 'object') walk([kids], out)
+    }
+    return out
+  }
+  const wrapOf = (markdown) => {
+    const nodes = renderBlocks(markdown, {})
+    const flat = walk(nodes, [])
+    return flat.find((node) => String(node.props && node.props.className || '').includes('dshgn_tableWrap'))
+  }
+  const table = (rows) => {
+    const lines = ['| 列一 | 列二 |', '| --- | --- |']
+    for (let i = 0; i < rows; i += 1) lines.push('| 第 ' + (i + 1) + ' 行 | 值 ' + (i + 1) + ' |')
+    return lines.join('\n')
+  }
+
+  const tall = wrapOf(table(12))
+  assert.ok(tall, '长表格该渲染成一块表格容器')
+  assert.ok(String(tall.props.className).includes('dshgn_tableTall'), '长表格要能自己滚，实际 ' + tall.props.className)
+
+  const short = wrapOf(table(3))
+  assert.ok(short, '短表格该渲染成一块表格容器')
+  assert.equal(String(short.props.className).includes('dshgn_tableTall'), false, '短表格不钉表头')
+
+  // 真渲染：长表格确实多挂了一层可滚容器，短表格没有
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const back = window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    if (back) back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox) {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setter.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(400)
+  }
+
+  const content = ['# 长表格验收', '', table(12), '', '中间一句。', '', table(2), ''].join('\n')
+  const createRes = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '长表格验收',
+      content,
+      withDatePrefix: false,
+      requestId: 'seed-tall-table',
+    }),
+  })
+  assert.equal(createRes.ok, true, '造笔记失败：' + createRes.status)
+  const targetPath = '随手记/长表格验收.md'
+
+  await clickTab('笔记')
+  const refresh = Array.from(window.document.querySelectorAll('button')).find((el) => (el.getAttribute('title') || '') === '刷新')
+  assert.ok(refresh, '找不到刷新按钮')
+  refresh.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+  const card = await waitFor(
+    () => Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === targetPath),
+    5000,
+    '列表里出现这一篇',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 5000, '打开这一篇')
+  await waitFor(() => window.document.querySelector('.dshgn_tableTall') !== null, 5000, '长表格那块可滚区域')
+
+  const wraps = Array.from(window.document.querySelectorAll('.dshgn_md .dshgn_tableWrap'))
+  assert.equal(wraps.length, 2, '这篇里有两张表，实际 ' + wraps.length)
+  assert.ok(wraps[0].classList.contains('dshgn_tableTall'), '第一张（12 行）要钉表头')
+  assert.equal(wraps[1].classList.contains('dshgn_tableTall'), false, '第二张（2 行）不钉')
+
+  // 收尾退回空态
+  const back2 = window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    if (back2) back2.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '收尾退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+})
