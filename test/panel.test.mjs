@@ -3665,6 +3665,102 @@ test('脚注正文里只留一个上标，注解收在篇尾', async () => {
   assert.equal(scrollToFootnote(scroller, ''), false)
 })
 
+test('待办页签把全库没做的方框收成一张单子，勾一下当场划掉', async () => {
+  // 待办写在正文里，一篇一篇翻才知道还剩什么。这一页打开就是「还剩哪些」，
+  // 勾一下当场从单子上消失（不整页重查），点文字打开那一篇。
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const backBtn = window.document.querySelector('.dshgn_noteBack')
+  if (backBtn) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    try {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+  }
+
+  const res = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '待办验收',
+      content: '# 待办验收\n\n- [ ] 买桂圆回去煮汤\n- [x] 已经做过的\n',
+      withDatePrefix: false,
+      requestId: 'seed-todos-pane',
+    }),
+  })
+  assert.equal((await res.json()).path, '随手记/待办验收.md')
+
+  await clickTab('待办')
+  const row = await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_todoRow')).find((el) =>
+        (el.textContent || '').includes('买桂圆回去煮汤'),
+      ) || null,
+    8000,
+    '待办页签里应该有我们这一条',
+  )
+  assert.ok(!(row.textContent || '').includes('已经做过的'), '勾掉的不该出现在单子上')
+  assert.ok((row.textContent || '').includes('待办验收'), '要标出这条待办在哪一篇：' + row.textContent)
+
+  // 点方框：这一行当场消失（不整页重查），并且真的写进了笔记
+  const box = row.querySelector('.dshgn_check')
+  assert.ok(box !== null, '每条前面得有个能点的方框')
+  assert.equal(box.title, '点一下勾掉')
+  box.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(
+    () =>
+      !Array.from(window.document.querySelectorAll('.dshgn_todoRow')).some((el) =>
+        (el.textContent || '').includes('买桂圆回去煮汤'),
+      ),
+    8000,
+    '勾掉之后这一行该从单子上消失',
+  )
+  const readBack = await realFetch(
+    server.origin + '/getnote/read?path=' + encodeURIComponent('随手记/待办验收.md'),
+    { headers: { 'x-getnote-token': server.token } },
+  )
+  const note = await readBack.json()
+  assert.ok(note.content.includes('- [x] 买桂圆回去煮汤'), '笔记里那一行要真的被勾上：' + note.content)
+
+  // 点文字：打开那一篇（另建一条没勾的，免得刚勾掉的这条已经不在单子上）
+  await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '待办跳转验收',
+      content: '# 待办跳转验收\n\n- [ ] 点我去那一篇\n',
+      withDatePrefix: false,
+      requestId: 'seed-todos-jump',
+    }),
+  })
+  await clickTab('笔记')
+  await clickTab('待办')
+  const jumpRow = await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_todoRow')).find((el) =>
+        (el.textContent || '').includes('点我去那一篇'),
+      ) || null,
+    8000,
+    '重新进待办页签要能看见新写的那一条',
+  )
+  jumpRow.querySelector('.dshgn_todoText').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  // 不能只等 data-has-note 变 true——上一个用例可能已经打开着别的笔记，
+  // 要等到正文里真的出现这一条才说明跳到的是我们这一篇。
+  const shown = await waitFor(
+    () => {
+      const el = window.document.querySelector('.dshgn_note')
+      return el !== null && (el.textContent || '').includes('点我去那一篇') ? el : null
+    },
+    8000,
+    '点文字应该打开那一篇',
+  )
+  assert.ok((shown.textContent || '').includes('待办跳转验收'))
+})
+
 test('嵌入图片后面写的尺寸真的按那个大小显示', async () => {
   // 宿主写法 `![[图.png|300]]`、`![[图.png|300x200]]`。不认的话用户写多少都
   // 被当成显示文字，图还是原样大小（还会被缩略图那条 max-height 压到 200）。

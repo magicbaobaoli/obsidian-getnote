@@ -240,6 +240,7 @@ __export(vault_exports, {
   listAssets: () => listAssets,
   listConflicts: () => listConflicts,
   listDirs: () => listDirs,
+  listOpenTodos: () => listOpenTodos,
   listTrash: () => listTrash,
   mergeTags: () => mergeTags,
   normalizeAliases: () => normalizeAliases,
@@ -1627,6 +1628,52 @@ async function toggleTodo(root, rel, index, options = {}) {
   }
   await writeNote(root, rel, updated, { backup: snapshot === null });
   return { ok: true, path: note.path, index: position, done: !wasDone };
+}
+async function listOpenTodos(root, entries) {
+  const list = Array.isArray(entries) ? entries : (await scanVault(root)).entries;
+  const items = [];
+  const MAX_ITEMS = 500;
+  for (const entry of list) {
+    let text;
+    try {
+      text = await readFile2(resolveInside(root, entry.path).abs, "utf8");
+    } catch {
+      continue;
+    }
+    const lines = maskComments(text).split(/\r?\n/);
+    let inFence = false;
+    let index = -1;
+    for (let i3 = 0; i3 < lines.length; i3 += 1) {
+      const line = lines[i3];
+      if (/^\s*(```|~~~)/.test(line)) {
+        inFence = !inFence;
+        continue;
+      }
+      if (inFence) continue;
+      const m3 = /^(\s*)([-*+]) \[( |x|X)\]\s+(.*)$/.exec(line);
+      if (m3 === null) continue;
+      index += 1;
+      if (m3[3].toLowerCase() === "x") continue;
+      const content = m3[4].trim();
+      items.push({
+        path: entry.path,
+        title: entry.title,
+        line: i3 + 1,
+        index,
+        text: content,
+        // 行尾的标签单独挑出来当胶囊：待办列表里最常问的是「这是哪一类的」
+        tags: extractInlineTags(content)
+      });
+      if (items.length >= MAX_ITEMS) break;
+    }
+    if (items.length >= MAX_ITEMS) break;
+  }
+  items.sort((a3, b3) => {
+    const byPath = String(a3.path).localeCompare(String(b3.path), "zh");
+    if (byPath !== 0) return byPath;
+    return a3.line - b3.line;
+  });
+  return { items, scanned: list.length, truncated: items.length >= MAX_ITEMS };
 }
 function isTagBody(value) {
   const body = String(value || "");
@@ -5332,6 +5379,11 @@ function createHandler(config) {
     const result = await findBrokenLinks(root);
     send(res, 200, result);
   }
+  async function handleOpenTodos(res) {
+    const { root, missing } = await currentRoot();
+    if (missing) return send(res, 200, { items: [], scanned: 0, truncated: false });
+    send(res, 200, await listOpenTodos(root));
+  }
   async function handleConflictList(res) {
     const { root, missing } = await currentRoot();
     if (missing) return send(res, 200, { items: [], count: 0, pending: 0, resolved: 0 });
@@ -6483,6 +6535,7 @@ function createHandler(config) {
         if (action === "search") return await handleSearch(res, url);
         if (action === "backlinks") return await handleBacklinks(res, url);
         if (action === "broken") return await handleBrokenLinks(res);
+        if (action === "todos") return await handleOpenTodos(res);
         if (action === "settings") return await handleGetSettings(res);
         if (action === "probe") return await handleProbe(req, res);
         if (action === "import" && parts[2] === "status") return handleImportStatus(res);
@@ -8392,6 +8445,12 @@ var LEX = {
     "broken.found": "\u626B\u4E86 {scanned} \u7BC7\uFF0C\u6709 {n} \u5904\u6307\u4E0D\u5230\u3002",
     "broken.truncated": "\u592A\u591A\u4E86\uFF0C\u53EA\u5217\u524D 500 \u5904\u3002\u5148\u4FEE\u6389\u4E00\u4E9B\u518D\u5237\u65B0\u3002",
     "broken.line": "\u7B2C",
+    "tab.todos": "\u5F85\u529E",
+    "todos.desc": "\u5168\u5E93\u8FD8\u6CA1\u52FE\u6389\u7684\u65B9\u6846\u90FD\u5728\u8FD9\u91CC\u3002\u70B9\u65B9\u6846\u5F53\u573A\u52FE\u6389\uFF0C\u70B9\u6587\u5B57\u6253\u5F00\u90A3\u4E00\u7BC7\u3002",
+    "todos.empty": "\u6CA1\u6709\u5F85\u529E",
+    "todos.emptyHint": "\u5E93\u91CC\u6BCF\u4E00\u6761\u5F85\u529E\u90FD\u505A\u5B8C\u4E86\u3002\u65B0\u7684\u5F85\u529E\u5199\u8FDB\u7B14\u8BB0\u91CC\uFF0C\u56DE\u6765\u770B\u4E00\u773C\u5C31\u884C\u3002",
+    "todos.found": "\u626B\u4E86 {scanned} \u7BC7\uFF0C\u8FD8\u5269 {n} \u6761\u6CA1\u505A\u3002",
+    "todos.truncated": "\u592A\u591A\u4E86\uFF0C\u53EA\u5217\u524D 500 \u6761\u3002\u5148\u52FE\u6389\u4E00\u4E9B\u518D\u5237\u65B0\u3002",
     "trash.desc": "\u5220\u6389\u7684\u7B14\u8BB0\u5148\u653E\u8FD9\u91CC\uFF0C\u968F\u65F6\u53EF\u4EE5\u6062\u590D\u3002\u6062\u590D\u53EA\u662F\u628A\u6587\u4EF6\u642C\u56DE\u5E93\u91CC\uFF0C\u4E0D\u78B0\u5185\u5BB9\u3002",
     "trash.empty": "\u56DE\u6536\u7AD9\u662F\u7A7A\u7684",
     "trash.emptyHint": "\u5728\u7B14\u8BB0\u5217\u8868\u91CC\u70B9\u5220\u9664\uFF0C\u6587\u4EF6\u4F1A\u5148\u5230\u8FD9\u91CC\u3002\u6E05\u7A7A\u624D\u4F1A\u771F\u7684\u5220\u3002",
@@ -8800,6 +8859,12 @@ var LEX = {
     "broken.found": "Scanned {scanned} notes, {n} links go nowhere.",
     "broken.truncated": "That is a lot \u2014 only the first 500 are listed. Fix some and refresh.",
     "broken.line": "line",
+    "tab.todos": "To-dos",
+    "todos.desc": "Every unticked box in the vault. Click a box to tick it off, click the text to open the note.",
+    "todos.empty": "Nothing to do",
+    "todos.emptyHint": "Every to-do in the vault is done. Write new ones into notes and check back.",
+    "todos.found": "Scanned {scanned} notes, {n} still open.",
+    "todos.truncated": "That is a lot \u2014 only the first 500 are listed. Tick some off and refresh.",
     "trash.desc": "Deleted notes wait here and can be restored. Restoring just moves the file back.",
     "trash.empty": "Trash is empty",
     "trash.emptyHint": "Deleting a note moves it here first. Only purging really deletes it.",
@@ -9208,6 +9273,12 @@ var LEX = {
     "broken.found": "{scanned} notities gescand, {n} links wijzen nergens heen.",
     "broken.truncated": "Dat zijn er veel \u2014 alleen de eerste 500 staan er. Herstel er een paar en vernieuw.",
     "broken.line": "regel",
+    "tab.todos": "Taken",
+    "todos.desc": "Elk niet-aangevinkt vakje in de map. Klik op een vakje om af te vinken, klik op de tekst om de notitie te openen.",
+    "todos.empty": "Niets te doen",
+    "todos.emptyHint": "Elke taak in de map is af. Schrijf nieuwe in notities en kom later terug.",
+    "todos.found": "{scanned} notities gescand, {n} nog open.",
+    "todos.truncated": "Dat zijn er veel \u2014 alleen de eerste 500 staan er. Vink er een paar af en vernieuw.",
     "trash.desc": "Verwijderde notities wachten hier en kunnen worden hersteld. Herstellen zet het bestand gewoon terug.",
     "trash.empty": "De prullenbak is leeg",
     "trash.emptyHint": "Een notitie verwijderen verplaatst hem eerst hierheen. Pas leegmaken verwijdert echt.",
@@ -10725,6 +10796,18 @@ var CSS = `
 .dshgn_brokenWhere{font-size:10.5px;color:var(--dsw-alias-label-dimmed);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_brokenSnip{font-size:11px;line-height:1.5;color:var(--dsw-alias-label-secondary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* \u5F85\u529E\u6E05\u5355\uFF1A\u4E00\u884C\u4E00\u6761\u3002\u65B9\u6846\u590D\u7528\u9605\u8BFB\u533A\u90A3\u4E2A\uFF08\u540C\u6837\u5927\u5C0F\u3001\u540C\u6837\u80FD\u70B9\uFF09\uFF0C\u53F3\u8FB9\u662F\u6B63\u6587\u4E0E\u51FA\u5904\u3002
+   \u65B9\u6846\u5916\u9762\u5957\u4E00\u5C42\u900F\u660E\u6309\u94AE\uFF0C\u662F\u4E3A\u4E86\u8BA9\u6574\u5757\u65B9\u6846\u8FDE\u5468\u8FB9\u7684\u70B9\u51FB\u70ED\u533A\u4E00\u8D77\u53EF\u70B9\u2014\u201412px \u7684\u65B9\u6846
+   \u76F4\u63A5\u70B9\u5F88\u96BE\u70B9\u4E2D\uFF0C\u624B\u673A\u4E0A\u5C24\u5176\u3002 */
+.dshgn_todoRow{display:flex;align-items:flex-start;gap:8px;padding:7px 10px;
+  border:0.5px solid var(--dsw-alias-border-l1);border-radius:8px;background:transparent}
+.dshgn_todoRow:hover{background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-border-l2)}
+.dshgn_todoRow .dshgn_check{margin-top:3px}
+.dshgn_todoBusy{opacity:.45}
+.dshgn_todoText{appearance:none;display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;
+  text-align:left;padding:0;border:0;background:transparent;font:inherit;cursor:pointer;color:inherit}
+.dshgn_todoTitle{font-size:12.5px;line-height:1.5;color:var(--dsw-alias-label-primary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_backlinks{margin-top:18px;padding-top:12px;border-top:0.5px solid var(--dsw-alias-border-l1)}
 .dshgn_backlinksHead{display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:11px;
@@ -12716,6 +12799,7 @@ ${insert}
       ),
       tabButton("card", t4("tab.card")),
       tabButton("broken", t4("tab.broken")),
+      tabButton("todos", t4("tab.todos")),
       tabButton("settings", t4("tab.settings")),
       tabButton("trash", t4("tab.trash"))
     )
@@ -12778,6 +12862,21 @@ ${insert}
       onOpen: (path) => {
         setTab("notes");
         void openNote(path);
+      }
+    });
+  } else if (tab === "todos") {
+    body = h4(TodoPane, {
+      t: t4,
+      status,
+      onError: (message) => setError(message),
+      showToast,
+      onOpen: (path) => {
+        setTab("notes");
+        void openNote(path);
+      },
+      // 勾完之后状态里那个「还有几条」的角标要跟着变，所以顺手刷新一下
+      onChanged: async () => {
+        await refresh();
       }
     });
   } else if (tab === "trash") {
@@ -15565,6 +15664,121 @@ function BrokenPane(props) {
     )
   );
 }
+function TodoPane(props) {
+  const { t: t4, status, onError, onOpen, onChanged, showToast } = props;
+  const [items, setItems] = h2(null);
+  const [scanned, setScanned] = h2(0);
+  const [truncated, setTruncated] = h2(false);
+  const [loading, setLoading] = h2(false);
+  const [busy, setBusy] = h2("");
+  const load = q2(async () => {
+    setLoading(true);
+    try {
+      const result = await api("/todos");
+      setItems(Array.isArray(result.items) ? result.items : []);
+      setScanned(Number(result.scanned) || 0);
+      setTruncated(result.truncated === true);
+    } catch (err) {
+      onError(err && err.message ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [onError]);
+  y2(() => {
+    void load();
+  }, [load]);
+  const tick = q2(
+    async (item) => {
+      const key = `${item.path}#${item.index}`;
+      setBusy(key);
+      try {
+        await api("/todo/toggle", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ path: item.path, index: item.index })
+        });
+        setItems((prev) => prev === null ? prev : prev.filter((one) => `${one.path}#${one.index}` !== key));
+        if (typeof showToast === "function") showToast(t4("todo.done"));
+        if (typeof onChanged === "function") await onChanged();
+      } catch (err) {
+        onError(err && err.message ? err.message : String(err));
+      } finally {
+        setBusy("");
+      }
+    },
+    [onChanged, onError, showToast, t4]
+  );
+  const list = items === null ? [] : items;
+  const summary = t4("todos.found").replace("{n}", String(list.length)).replace("{scanned}", String(scanned));
+  return h4(
+    "div",
+    { className: "dshgn_pane" },
+    h4(
+      "div",
+      { className: "dshgn_section" },
+      h4(
+        "div",
+        { className: "dshgn_sectionHead" },
+        h4("div", { className: "dshgn_sectionTitle" }, t4("tab.todos")),
+        h4(
+          "button",
+          { type: "button", className: "dshgn_btn", onClick: () => void load(), disabled: loading },
+          loading ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "refresh", size: 12 }),
+          t4("action.refresh")
+        )
+      ),
+      h4("div", { className: "dshgn_sectionDesc" }, t4("todos.desc")),
+      items !== null && list.length > 0 ? h4("div", { className: "dshgn_sectionDesc" }, summary) : null,
+      truncated ? h4("div", { className: "dshgn_sectionDesc" }, t4("todos.truncated")) : null
+    ),
+    loading && list.length === 0 ? h4("div", { className: "dshgn_emptyState" }, h4("span", { className: "dshgn_spin" })) : list.length === 0 ? h4(
+      "div",
+      { className: "dshgn_empty" },
+      h4(Icon, { name: "check", size: 24 }),
+      h4("div", { className: "dshgn_emptyTitle" }, t4("todos.empty")),
+      h4("div", { className: "dshgn_emptyDesc" }, t4("todos.emptyHint"))
+    ) : h4(
+      "div",
+      { className: "dshgn_cardBox" },
+      list.map((item) => {
+        const key = `${item.path}#${item.index}`;
+        return h4(
+          "div",
+          { key, className: "dshgn_todoRow" },
+          h4(
+            "button",
+            {
+              type: "button",
+              className: "dshgn_check dshgn_checkHit" + (busy === key ? " dshgn_todoBusy" : ""),
+              "aria-label": t4("todo.toggle"),
+              title: t4("todo.toggle"),
+              disabled: busy === key,
+              onClick: () => void tick(item)
+            },
+            null
+          ),
+          h4(
+            "button",
+            {
+              type: "button",
+              className: "dshgn_todoText",
+              title: item.path,
+              onClick: () => {
+                if (typeof onOpen === "function") onOpen(item.path);
+              }
+            },
+            h4("span", { className: "dshgn_todoTitle" }, item.text),
+            h4(
+              "span",
+              { className: "dshgn_brokenWhere" },
+              `${item.title || item.path} \xB7 ${t4("broken.line")} ${item.line}`
+            )
+          )
+        );
+      })
+    )
+  );
+}
 function TrashPane(props) {
   const { t: t4, status, onChanged, onError, showToast } = props;
   const [items, setItems] = h2(null);
@@ -16087,7 +16301,7 @@ function writeColWidths(widths) {
   }
 }
 var SESSION_KEY = "dshgn.session";
-var SESSION_TABS = ["notes", "cloud", "settings", "card", "conflict", "broken", "trash"];
+var SESSION_TABS = ["notes", "cloud", "settings", "card", "conflict", "broken", "todos", "trash"];
 function readSession() {
   const empty = { tab: "", dir: "", tag: "", path: "" };
   try {

@@ -761,6 +761,12 @@ async function saveFile(url, filename) {
         'broken.found': '扫了 {scanned} 篇，有 {n} 处指不到。',
         'broken.truncated': '太多了，只列前 500 处。先修掉一些再刷新。',
         'broken.line': '第',
+        'tab.todos': '待办',
+        'todos.desc': '全库还没勾掉的方框都在这里。点方框当场勾掉，点文字打开那一篇。',
+        'todos.empty': '没有待办',
+        'todos.emptyHint': '库里每一条待办都做完了。新的待办写进笔记里，回来看一眼就行。',
+        'todos.found': '扫了 {scanned} 篇，还剩 {n} 条没做。',
+        'todos.truncated': '太多了，只列前 500 条。先勾掉一些再刷新。',
         'trash.desc': '删掉的笔记先放这里，随时可以恢复。恢复只是把文件搬回库里，不碰内容。',
         'trash.empty': '回收站是空的',
         'trash.emptyHint': '在笔记列表里点删除，文件会先到这里。清空才会真的删。',
@@ -1173,6 +1179,12 @@ async function saveFile(url, filename) {
         'broken.found': 'Scanned {scanned} notes, {n} links go nowhere.',
         'broken.truncated': 'That is a lot — only the first 500 are listed. Fix some and refresh.',
         'broken.line': 'line',
+        'tab.todos': 'To-dos',
+        'todos.desc': 'Every unticked box in the vault. Click a box to tick it off, click the text to open the note.',
+        'todos.empty': 'Nothing to do',
+        'todos.emptyHint': 'Every to-do in the vault is done. Write new ones into notes and check back.',
+        'todos.found': 'Scanned {scanned} notes, {n} still open.',
+        'todos.truncated': 'That is a lot — only the first 500 are listed. Tick some off and refresh.',
         'trash.desc': 'Deleted notes wait here and can be restored. Restoring just moves the file back.',
         'trash.empty': 'Trash is empty',
         'trash.emptyHint': 'Deleting a note moves it here first. Only purging really deletes it.',
@@ -1584,6 +1596,12 @@ async function saveFile(url, filename) {
         'broken.found': '{scanned} notities gescand, {n} links wijzen nergens heen.',
         'broken.truncated': 'Dat zijn er veel — alleen de eerste 500 staan er. Herstel er een paar en vernieuw.',
         'broken.line': 'regel',
+        'tab.todos': 'Taken',
+        'todos.desc': 'Elk niet-aangevinkt vakje in de map. Klik op een vakje om af te vinken, klik op de tekst om de notitie te openen.',
+        'todos.empty': 'Niets te doen',
+        'todos.emptyHint': 'Elke taak in de map is af. Schrijf nieuwe in notities en kom later terug.',
+        'todos.found': '{scanned} notities gescand, {n} nog open.',
+        'todos.truncated': 'Dat zijn er veel — alleen de eerste 500 staan er. Vink er een paar af en vernieuw.',
         'trash.desc': 'Verwijderde notities wachten hier en kunnen worden hersteld. Herstellen zet het bestand gewoon terug.',
         'trash.empty': 'De prullenbak is leeg',
         'trash.emptyHint': 'Een notitie verwijderen verplaatst hem eerst hierheen. Pas leegmaken verwijdert echt.',
@@ -3626,6 +3644,18 @@ async function saveFile(url, filename) {
 .dshgn_brokenWhere{font-size:10.5px;color:var(--dsw-alias-label-dimmed);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_brokenSnip{font-size:11px;line-height:1.5;color:var(--dsw-alias-label-secondary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 待办清单：一行一条。方框复用阅读区那个（同样大小、同样能点），右边是正文与出处。
+   方框外面套一层透明按钮，是为了让整块方框连周边的点击热区一起可点——12px 的方框
+   直接点很难点中，手机上尤其。 */
+.dshgn_todoRow{display:flex;align-items:flex-start;gap:8px;padding:7px 10px;
+  border:0.5px solid var(--dsw-alias-border-l1);border-radius:8px;background:transparent}
+.dshgn_todoRow:hover{background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-border-l2)}
+.dshgn_todoRow .dshgn_check{margin-top:3px}
+.dshgn_todoBusy{opacity:.45}
+.dshgn_todoText{appearance:none;display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;
+  text-align:left;padding:0;border:0;background:transparent;font:inherit;cursor:pointer;color:inherit}
+.dshgn_todoTitle{font-size:12.5px;line-height:1.5;color:var(--dsw-alias-label-primary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_backlinks{margin-top:18px;padding-top:12px;border-top:0.5px solid var(--dsw-alias-border-l1)}
 .dshgn_backlinksHead{display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:11px;
@@ -5946,6 +5976,7 @@ async function saveFile(url, filename) {
           ),
           tabButton('card', t('tab.card')),
           tabButton('broken', t('tab.broken')),
+          tabButton('todos', t('tab.todos')),
           tabButton('settings', t('tab.settings')),
           tabButton('trash', t('tab.trash')),
         ),
@@ -6009,6 +6040,21 @@ async function saveFile(url, filename) {
           onOpen: (path) => {
             setTab('notes')
             void openNote(path)
+          },
+        })
+      } else if (tab === 'todos') {
+        body = h(TodoPane, {
+          t,
+          status,
+          onError: (message) => setError(message),
+          showToast,
+          onOpen: (path) => {
+            setTab('notes')
+            void openNote(path)
+          },
+          // 勾完之后状态里那个「还有几条」的角标要跟着变，所以顺手刷新一下
+          onChanged: async () => {
+            await refresh()
           },
         })
       } else if (tab === 'trash') {
@@ -9271,6 +9317,139 @@ async function saveFile(url, filename) {
       )
     }
 
+    /**
+     * 待办页签：全库还没勾掉的方框。
+     *
+     * 与断链页签同一套结构（单开端点、点开才查、刷新按钮），但每一行前面多一个
+     * 能点的方框——这一页的用处就是「打开就能勾」，勾完立刻从单子上消失。
+     * 勾选用的是 /todo/toggle 的序号，与阅读区那个方框完全同一个口径。
+     */
+    function TodoPane(props) {
+      const { t, status, onError, onOpen, onChanged, showToast } = props
+      const [items, setItems] = React.useState(null)
+      const [scanned, setScanned] = React.useState(0)
+      const [truncated, setTruncated] = React.useState(false)
+      const [loading, setLoading] = React.useState(false)
+      const [busy, setBusy] = React.useState('')
+
+      const load = React.useCallback(async () => {
+        setLoading(true)
+        try {
+          const result = await api('/todos')
+          setItems(Array.isArray(result.items) ? result.items : [])
+          setScanned(Number(result.scanned) || 0)
+          setTruncated(result.truncated === true)
+        } catch (err) {
+          onError(err && err.message ? err.message : String(err))
+        } finally {
+          setLoading(false)
+        }
+      }, [onError])
+
+      React.useEffect(() => {
+        void load()
+      }, [load])
+
+      // 勾掉之后不整页重查：那一行直接从列表里拿掉就够了。重查要读全库正文，
+      // 一次勾选等两秒，用户会以为没点上，又点一次。
+      const tick = React.useCallback(
+        async (item) => {
+          const key = `${item.path}#${item.index}`
+          setBusy(key)
+          try {
+            await api('/todo/toggle', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ path: item.path, index: item.index }),
+            })
+            setItems((prev) => (prev === null ? prev : prev.filter((one) => `${one.path}#${one.index}` !== key)))
+            if (typeof showToast === 'function') showToast(t('todo.done'))
+            if (typeof onChanged === 'function') await onChanged()
+          } catch (err) {
+            onError(err && err.message ? err.message : String(err))
+          } finally {
+            setBusy('')
+          }
+        },
+        [onChanged, onError, showToast, t],
+      )
+
+      const list = items === null ? [] : items
+      const summary = t('todos.found').replace('{n}', String(list.length)).replace('{scanned}', String(scanned))
+
+      return h(
+        'div',
+        { className: 'dshgn_pane' },
+        h(
+          'div',
+          { className: 'dshgn_section' },
+          h(
+            'div',
+            { className: 'dshgn_sectionHead' },
+            h('div', { className: 'dshgn_sectionTitle' }, t('tab.todos')),
+            h(
+              'button',
+              { type: 'button', className: 'dshgn_btn', onClick: () => void load(), disabled: loading },
+              loading ? h('span', { className: 'dshgn_spin' }) : h(Icon, { name: 'refresh', size: 12 }),
+              t('action.refresh'),
+            ),
+          ),
+          h('div', { className: 'dshgn_sectionDesc' }, t('todos.desc')),
+          items !== null && list.length > 0 ? h('div', { className: 'dshgn_sectionDesc' }, summary) : null,
+          truncated ? h('div', { className: 'dshgn_sectionDesc' }, t('todos.truncated')) : null,
+        ),
+        loading && list.length === 0
+          ? h('div', { className: 'dshgn_emptyState' }, h('span', { className: 'dshgn_spin' }))
+          : list.length === 0
+            ? h(
+                'div',
+                { className: 'dshgn_empty' },
+                h(Icon, { name: 'check', size: 24 }),
+                h('div', { className: 'dshgn_emptyTitle' }, t('todos.empty')),
+                h('div', { className: 'dshgn_emptyDesc' }, t('todos.emptyHint')),
+              )
+            : h(
+                'div',
+                { className: 'dshgn_cardBox' },
+                list.map((item) => {
+                  const key = `${item.path}#${item.index}`
+                  return h(
+                    'div',
+                    { key, className: 'dshgn_todoRow' },
+                    h(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'dshgn_check dshgn_checkHit' + (busy === key ? ' dshgn_todoBusy' : ''),
+                        'aria-label': t('todo.toggle'),
+                        title: t('todo.toggle'),
+                        disabled: busy === key,
+                        onClick: () => void tick(item),
+                      },
+                      null,
+                    ),
+                    h(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'dshgn_todoText',
+                        title: item.path,
+                        onClick: () => {
+                          if (typeof onOpen === 'function') onOpen(item.path)
+                        },
+                      },
+                      h('span', { className: 'dshgn_todoTitle' }, item.text),
+                      h(
+                        'span',
+                        { className: 'dshgn_brokenWhere' },
+                        `${item.title || item.path} · ${t('broken.line')} ${item.line}`,
+                      ),
+                    ),
+                  )
+                }),
+              ),
+      )
+    }
     function TrashPane(props) {
       const { t, status, onChanged, onError, showToast } = props
       const [items, setItems] = React.useState(null)
@@ -9870,7 +10049,7 @@ async function saveFile(url, filename) {
     // 只存路径不存正文：正文可能已经被别处改过（同步、宿主编辑器、另一个
     // 窗口），恢复时重新走一遍 /read 才是当下真实的内容。
     const SESSION_KEY = 'dshgn.session'
-    const SESSION_TABS = ['notes', 'cloud', 'settings', 'card', 'conflict', 'broken', 'trash']
+    const SESSION_TABS = ['notes', 'cloud', 'settings', 'card', 'conflict', 'broken', 'todos', 'trash']
 
     function readSession() {
       const empty = { tab: '', dir: '', tag: '', path: '' }
@@ -12027,7 +12206,7 @@ export const __internals = {
   lineNeedle, scrollToText, LEX, ICONS, AudioPlayer, CloudPane,
   SyncPane, CloudCredCard, SettingsPane, GetnotePage, NotePane, TranscriptBlock,
   looksLikeTranscript, formatMoment, parseTranscript, stampToSeconds, activeTranscriptIndex,
-  TrashPane, renderEmbed, assetLabel, ThemeCard, readSession, writeSession, SESSION_KEY,
+  TrashPane, TodoPane, renderEmbed, assetLabel, ThemeCard, readSession, writeSession, SESSION_KEY,
   themeVars, parseHex, rgbToHsl, hslToHex, ConflictPane, ArchiveCard, CardPane,
   TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale,
   reportSync, dailyTemplateOf, frontmatterText, isTagKey, FollowCard, parseTable, countWords,

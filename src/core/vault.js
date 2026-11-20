@@ -1972,6 +1972,65 @@ export async function toggleTodo(root, rel, index, options = {}) {
 }
 
 /**
+ * 全库待办：把每一篇里还没勾掉的方框收成一张单子。
+ *
+ * 为什么值得单独做一遍：待办写在正文里，一篇一篇翻才能知道「还有哪些没做完」。
+ * 宿主自己有「搜索 - [ ]」，但那要用户先知道这条语法；面板的待办页签是
+ * 「打开就能看见还剩什么」，勾一下当场就翻。
+ *
+ * 跳过围栏里的方框（那是示例代码）、跳过注释里的（宿主里根本不显示）。
+ * 已勾掉的不列——这一页的用处是「还剩什么」，做完的东西留在笔记里就好。
+ */
+export async function listOpenTodos(root, entries) {
+  const list = Array.isArray(entries) ? entries : (await scanVault(root)).entries
+  const items = []
+  const MAX_ITEMS = 500
+  for (const entry of list) {
+    let text
+    try {
+      text = await readFile(resolveInside(root, entry.path).abs, 'utf8')
+    } catch {
+      continue
+    }
+    const lines = maskComments(text).split(/\r?\n/)
+    let inFence = false
+    let index = -1
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i]
+      if (/^\s*(```|~~~)/.test(line)) {
+        inFence = !inFence
+        continue
+      }
+      if (inFence) continue
+      const m = /^(\s*)([-*+]) \[( |x|X)\]\s+(.*)$/.exec(line)
+      if (m === null) continue
+      // 序号必须与 toggleTodo 完全一致：它逐行数方框（已勾的也算），这里
+      // 也不能把已勾的跳过——跳过了序号就会错位，点一下勾错的是别人那一行。
+      index += 1
+      if (m[3].toLowerCase() === 'x') continue
+      const content = m[4].trim()
+      items.push({
+        path: entry.path,
+        title: entry.title,
+        line: i + 1,
+        index,
+        text: content,
+        // 行尾的标签单独挑出来当胶囊：待办列表里最常问的是「这是哪一类的」
+        tags: extractInlineTags(content),
+      })
+      if (items.length >= MAX_ITEMS) break
+    }
+    if (items.length >= MAX_ITEMS) break
+  }
+  items.sort((a, b) => {
+    const byPath = String(a.path).localeCompare(String(b.path), 'zh')
+    if (byPath !== 0) return byPath
+    return a.line - b.line
+  })
+  return { items, scanned: list.length, truncated: items.length >= MAX_ITEMS }
+}
+
+/**
  * 正文里写的 `#标签` 也是标签。
  *
  * Obsidian 里标签有两个地方能写：frontmatter 的 `tags:`，以及正文里随手一个

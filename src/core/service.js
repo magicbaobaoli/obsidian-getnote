@@ -83,6 +83,7 @@ import {
   searchNotes,
   trashNote,
   toggleTodo,
+  listOpenTodos,
   vaultStats,
   writeNote,
 } from './vault.js'
@@ -755,6 +756,16 @@ export function createHandler(config) {
     send(res, 200, result)
   }
 
+  /**
+   * 待办清单：全库还没勾掉的方框。
+   *
+   * 与断链体检同一类——要读全库正文，所以单开端点、点开才查，不塞进 /status。
+   */
+  async function handleOpenTodos(res) {
+    const { root, missing } = await currentRoot()
+    if (missing) return send(res, 200, { items: [], scanned: 0, truncated: false })
+    send(res, 200, await listOpenTodos(root))
+  }
   // ── 冲突（B2）─────────────────────────────────────────────────────────────
 
   async function handleConflictList(res) {
@@ -2333,6 +2344,7 @@ export function createHandler(config) {
         if (action === 'search') return await handleSearch(res, url)
         if (action === 'backlinks') return await handleBacklinks(res, url)
         if (action === 'broken') return await handleBrokenLinks(res)
+        if (action === 'todos') return await handleOpenTodos(res)
         if (action === 'settings') return await handleGetSettings(res)
         if (action === 'probe') return await handleProbe(req, res)
         if (action === 'import' && parts[2] === 'status') return handleImportStatus(res)

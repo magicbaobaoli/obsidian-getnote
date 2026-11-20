@@ -35,6 +35,7 @@ import {
   renameTag,
   heatmapOf,
   toggleTodo,
+  listOpenTodos,
   conflictArchiveName,
   listConflicts,
   readConflict,
@@ -696,6 +697,92 @@ note_url: https://www.biji.com/note/1200000000000000001
       errNone = error
     }
     check('待办: 笔记里没有待办时报 404 而不是假装成功', errNone !== null && errNone.status === 404)
+  }
+
+  // ── 待办清单：全库还没勾掉的方框 ──────────────────────────────────────────
+  {
+    const dir = '待办清单测试'
+    await mkdir(join(root, dir), { recursive: true })
+    await writeFile(
+      join(root, dir, '甲.md'),
+      [
+        '# 甲',
+        '',
+        '- [ ] 没做的一',
+        '- [x] 做过的',
+        '- [ ] 没做的二 #生活',
+        '',
+        '```',
+        '- [ ] 围栏里的示例',
+        '```',
+        '',
+        '%%',
+        '- [ ] 注释里的',
+        '%%',
+        '',
+      ].join('\n'),
+      'utf8',
+    )
+    await writeFile(join(root, dir, '乙.md'), '# 乙\n\n- [ ] 乙的一条\n', 'utf8')
+
+    const all = await listOpenTodos(root)
+    const mine = all.items.filter((item) => item.path.startsWith(`${dir}/`))
+    check(
+      '待办清单: 只收没勾掉的',
+      mine.length === 3,
+      JSON.stringify(mine.map((item) => item.text)),
+    )
+    check(
+      '待办清单: 收的是没勾那几条',
+      mine.map((item) => item.text).join('|') === '没做的一|没做的二 #生活|乙的一条',
+      JSON.stringify(mine.map((item) => item.text)),
+    )
+    const second = mine.find((item) => item.text.startsWith('没做的二'))
+    check(
+      '待办清单: 序号与勾选那边同口径（中间夹了已勾的那条）',
+      second !== undefined && second.index === 2,
+      String(second && second.index),
+    )
+    check(
+      '待办清单: 带出所在行号',
+      second !== undefined && second.line === 5,
+      String(second && second.line),
+    )
+    check(
+      '待办清单: 围栏里的不算',
+      !mine.some((item) => item.text === '围栏里的示例'),
+      JSON.stringify(mine.map((item) => item.text)),
+    )
+    check(
+      '待办清单: 注释里的不算',
+      !mine.some((item) => item.text === '注释里的'),
+      JSON.stringify(mine.map((item) => item.text)),
+    )
+    check(
+      '待办清单: 行尾的标签认得出',
+      second !== undefined && second.tags.includes('生活'),
+      JSON.stringify(second && second.tags),
+    )
+    check(
+      '待办清单: 带出篇数与是否被截断',
+      all.scanned >= 2 && all.truncated === false,
+      `${all.scanned}/${all.truncated}`,
+    )
+    // 序号必须真能勾对：拿清单里给的 index 去勾，翻的得是那一条。
+    const before = await readFile(join(root, dir, '甲.md'), 'utf8')
+    await toggleTodo(root, second.path, second.index)
+    const after = await readFile(join(root, dir, '甲.md'), 'utf8')
+    check(
+      '待办清单: 拿清单里的序号去勾，翻的是那一条',
+      before.includes('- [ ] 没做的二 #生活') && after.includes('- [x] 没做的二 #生活') && after.includes('- [ ] 没做的一'),
+      after,
+    )
+    const again = await listOpenTodos(root)
+    check(
+      '待办清单: 勾掉之后就不在单子上了',
+      !again.items.some((item) => item.path === second.path && item.index === second.index),
+      JSON.stringify(again.items.filter((item) => item.path === second.path).map((item) => item.text)),
+    )
   }
 
   // 断链体检：写了双链但库里没有这一篇的地方

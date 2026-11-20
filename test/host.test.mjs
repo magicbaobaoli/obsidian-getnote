@@ -702,6 +702,22 @@ try {
   check('A2+ /broken 不把指得到的报成断链', !mineBroken.some((h) => h.target === '大纲测试'))
   check('A2+ /broken 交回扫描篇数', Number(brokenJson.scanned) > 0, String(brokenJson.scanned))
 
+
+  // A2+ 待办清单：全库还没勾掉的方框，勾一下就从单子上消失
+  await jpost('/save', { path: '随手记/待办清单.md', content: '# 待办清单\n\n- [ ] 清单里的一条\n- [x] 已经做过的\n' })
+  const todosJson = await jget('/todos')
+  const mineTodos = Array.isArray(todosJson.items) ? todosJson.items.filter((i) => i.path === '随手记/待办清单.md') : []
+  check('A2+ /todos 列出没勾掉的待办', mineTodos.length === 1 && mineTodos[0].text === '清单里的一条', JSON.stringify(mineTodos))
+  check('A2+ /todos 带出行号与序号', mineTodos[0].line === 3 && mineTodos[0].index === 0, JSON.stringify(mineTodos[0]))
+  check('A2+ /todos 交回扫描篇数', Number(todosJson.scanned) > 0 && todosJson.truncated === false, String(todosJson.scanned))
+  await jpost('/todo/toggle', { path: '随手记/待办清单.md', index: mineTodos[0].index })
+  const todosAfter = await jget('/todos')
+  check(
+    'A2+ 勾掉之后 /todos 里就没有这一条了',
+    !(Array.isArray(todosAfter.items) ? todosAfter.items : []).some((i) => i.path === '随手记/待办清单.md'),
+    JSON.stringify((todosAfter.items || []).filter((i) => i.path === '随手记/待办清单.md')),
+  )
+
   // A3 搜索增强：多词取交集
   await jpost('/save', { path: '随手记/交集A.md', content: '会议 和 录音 都提到了\n' })
   await jpost('/save', { path: '随手记/交集B.md', content: '只提到 会议\n' })
