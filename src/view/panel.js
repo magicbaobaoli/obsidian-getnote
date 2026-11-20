@@ -571,6 +571,8 @@ async function saveFile(url, filename) {
         'list.sort': '排序',
         'list.sortTime': '最近改的在前',
         'list.sortName': '按名称',
+        // 筛选条：左栏点了目录或标签之后，中栏得说清「现在筛的是什么」
+        'filter.clear': '去掉这个筛选',
         // 三栏拖拽手柄的无障碍名字（视觉上是一条发丝线，读屏要能说出它是什么）
         'col.treeWidth': '调整左栏宽度',
         'col.listWidth': '调整中栏宽度',
@@ -1008,6 +1010,7 @@ async function saveFile(url, filename) {
         'list.sort': 'Sort',
         'list.sortTime': 'Recently edited first',
         'list.sortName': 'By name',
+        'filter.clear': 'Remove this filter',
         'col.treeWidth': 'Resize left column',
         'col.listWidth': 'Resize middle column',
         'tree.newDir': 'New folder',
@@ -1443,6 +1446,7 @@ async function saveFile(url, filename) {
         'list.sort': 'Sorteren',
         'list.sortTime': 'Recentst gewijzigd eerst',
         'list.sortName': 'Op naam',
+        'filter.clear': 'Deze filter weghalen',
         'col.treeWidth': 'Linkerkolom breder of smaller maken',
         'col.listWidth': 'Middenkolom breder of smaller maken',
         'tree.newDir': 'Nieuwe map',
@@ -4317,6 +4321,22 @@ async function saveFile(url, filename) {
 .dshgn_searchHint{padding:0 10px 7px;font-size:10px;line-height:1.5;
   color:var(--dsw-alias-label-dimmed)}
 .dshgn_searching{flex:none;font-size:10px;color:var(--dsw-alias-label-tertiary)}
+/* 筛选条：左栏点了目录/标签之后，中栏得说清「现在筛的是什么、怎么退出去」。
+   以前只是卡片悄悄少了，换过目录再回来的人会以为笔记丢了。 */
+.dshgn_filterBar{flex:none;display:flex;align-items:center;flex-wrap:wrap;gap:4px;
+  padding:0 10px 7px}
+.dshgn_filterChip{appearance:none;display:inline-flex;align-items:center;gap:3px;
+  max-width:100%;padding:1px 4px 1px 6px;border:0.5px solid var(--dsw-alias-border-l2);
+  border-radius:999px;background:rgba(var(--dshgn-tintRgb),.08);
+  color:var(--dsw-alias-label-secondary);font:inherit;font-size:10px;line-height:1.6;
+  cursor:pointer}
+.dshgn_filterChip:hover{background:var(--dsw-alias-interactive-bg-hover);
+  color:var(--dsw-alias-label-primary)}
+.dshgn_filterChip:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_filterChip[data-kind="tag"]{color:var(--dsw-alias-brand-primary)}
+.dshgn_filterChipName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_filterChipX{flex:none;display:inline-flex;align-items:center}
+
 /* 字号三档：只改 .dshgn_md 的字号与行距，标题和代码块用 em 相对放大，
    整篇比例保持一致——如果标题写死 px，放大正文字号后标题会显得比正文还小。 */
 .dshgn_scaleGroup{display:inline-flex;align-items:center;gap:1px;margin-left:auto;
@@ -6982,6 +7002,45 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             // 只在输入框有内容时出现，平时不占位置。
             query.trim() !== ''
               ? h('div', { className: 'dshgn_searchHint' }, t('search.hint'))
+              : null,
+            // 筛选条：左栏点了目录或标签之后，中栏只剩一部分卡片，但界面上一直
+            // 没有任何「现在筛的是什么」的痕迹——换个目录再回来，人只会以为
+            // 笔记丢了。这里把当前的筛选摆成两颗能点掉的胶囊，全清掉就整条消失。
+            activeDir !== '' || activeTag !== ''
+              ? h(
+                  'div',
+                  { className: 'dshgn_filterBar' },
+                  activeDir !== ''
+                    ? h(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'dshgn_filterChip',
+                          'data-kind': 'dir',
+                          title: `${t('filter.clear')}：${activeDir}`,
+                          onClick: () => setActiveDir(''),
+                        },
+                        h(Icon, { name: 'folder', size: 10 }),
+                        h('span', { className: 'dshgn_filterChipName' }, activeDir),
+                        h('span', { className: 'dshgn_filterChipX' }, h(Icon, { name: 'close', size: 9 })),
+                      )
+                    : null,
+                  activeTag !== ''
+                    ? h(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'dshgn_filterChip',
+                          'data-kind': 'tag',
+                          title: `${t('filter.clear')}：#${activeTag}`,
+                          onClick: () => setActiveTag(''),
+                        },
+                        h(Icon, { name: 'hash', size: 10 }),
+                        h('span', { className: 'dshgn_filterChipName' }, activeTag),
+                        h('span', { className: 'dshgn_filterChipX' }, h(Icon, { name: 'close', size: 9 })),
+                      )
+                    : null,
+                )
               : null,
             // D2 批量工具栏：只在有选中时出现，不占常态空间。
             pickedCount > 0

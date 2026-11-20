@@ -5957,3 +5957,106 @@ test('嵌套标签按斜杠摊成层级，点父标签也把子标签的笔记�
   }
 })
 
+test('中栏顶上会摆出「现在筛的是什么」，点一下就退出去', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const seed = async (title, requestId) => {
+    const content = ['# ' + title, '', '正文', ''].join('\n')
+    const res = await realFetch(server.origin + '/getnote/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({ dir: '筛选条验收', title, content, withDatePrefix: false, requestId }),
+    })
+    const json = await res.json()
+    return json.path
+  }
+
+  // 上一个用例可能把某篇开着：先退回空态，左栏才在
+  const back = window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    if (back) back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox) {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setter.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(400)
+  }
+
+  const pathA = await seed('筛选条甲', 'seed-filter-chip-a')
+  const pathB = await seed('筛选条乙', 'seed-filter-chip-b')
+  // 再放一篇打了标签的：标签那颗胶囊要单独验
+  const tagRes = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '筛选条验收',
+      title: '筛选条丙',
+      content: ['---', 'tags: [筛选条标签]', '---', '', '# 筛选条丙', '', '正文', ''].join('\n'),
+      withDatePrefix: false,
+      requestId: 'seed-filter-chip-c',
+    }),
+  })
+  await tagRes.json()
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+
+  const chips = () => Array.from(window.document.querySelectorAll('.dshgn_filterChip'))
+  const chipOf = (kind) => chips().find((el) => el.getAttribute('data-kind') === kind) || null
+  const cardTitles = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_card')).map((el) => el.getAttribute('title'))
+  const rowOf = (name) =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+      const label = el.querySelector('.dshgn_treeName')
+      return label !== null && (label.textContent || '').trim() === name
+    })
+
+  // 刚进来没筛任何东西：整条不该出现，不占位置
+  assert.equal(chips().length, 0, '没有筛选时不该摆筛选条')
+
+  // 点左栏目录：中栏顶上摆出那颗胶囊，写着目录名
+  const dirRow = await waitFor(() => rowOf('筛选条验收'), 8000, '左栏出现新目录')
+  dirRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const dirChip = await waitFor(() => chipOf('dir'), 5000, '点了目录就摆出目录那颗胶囊')
+  assert.ok((dirChip.textContent || '').includes('筛选条验收'), '胶囊上要写着筛的是哪个目录')
+  assert.ok(dirChip.title.includes('去掉这个筛选'), '悬停要说清点一下会怎样')
+  await waitFor(
+    () => cardTitles().includes(pathA) && cardTitles().includes(pathB),
+    5000,
+    '这个目录里两篇都在',
+  )
+
+  // 点胶囊：筛选退掉，胶囊消失，卡片回到全部
+  dirChip.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => chipOf('dir') === null, 5000, '点掉之后目录那颗胶囊要消失')
+  assert.equal(
+    window.document.querySelector('.dshgn_filterBar'),
+    null,
+    '一颗都不剩的时候整条筛选条也该收起来',
+  )
+
+  // 点左栏标签：换成标签那颗胶囊（带井号，颜色也跟着变）
+  const tagRow2 = await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_tagRow')).find((el) => el.title === '筛选条标签') ||
+      null,
+    8000,
+    '标签云里有这个标签',
+  )
+  tagRow2.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const tagChip = await waitFor(() => chipOf('tag'), 5000, '点了标签就摆出标签那颗胶囊')
+  assert.ok((tagChip.textContent || '').includes('筛选条标签'), '胶囊上要写着筛的是哪个标签')
+
+  // 收尾：点掉，别把筛选状态留给后面的用例
+  tagChip.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_filterBar') === null, 5000, '收尾清掉筛选')
+})
+
