@@ -3819,3 +3819,48 @@ test('写成 [文字](笔记.md) 的链接也往库里跳，不当外链开浏�
   assert.ok(anchor !== undefined, '外链还是外链')
   assert.equal(anchor.props.href, 'https://example.com')
 })
+
+test('提示框里的待办不算序号，勾一下不会勾到正文里那条', async () => {
+  // 宿主侧 toggleTodo 逐行扫、跳过围栏，提示框里的行开头是 `>`，匹配不上 `^(\s*)([-*+])\s+\[`，
+  // 所以那一条在宿主里压根不算第几个。面板要是把序号也算进去，两边就错位了：
+  // 用户勾的是提示框里的，落到盘上的却是正文里那一条。
+  const { renderBlocks } = panel.__internals
+  const clicked = []
+  const markdown = [
+    '> [!note] 注意事项',
+    '> - [ ] 提示框里的待办',
+    '',
+    '- [ ] 正文第一条',
+    '- [ ] 正文第二条',
+  ].join('\n')
+  const nodes = renderBlocks(markdown, {
+    onToggleTodo: (index, done) => clicked.push([index, done]),
+    onOpenWikiLink: () => {},
+  })
+
+  const boxes = []
+  const walk = (list) => {
+    list.forEach((node) => {
+      if (node === null || typeof node !== 'object') return
+      if (node.props && typeof node.props.className === 'string' && node.props.className.includes('dshgn_check')) {
+        boxes.push(node)
+      }
+      const kids = node.props && node.props.children
+      if (Array.isArray(kids)) walk(kids)
+      else if (kids) walk([kids])
+    })
+  }
+  walk(nodes)
+  // 提示框是组件，元素上看到的是它的 props（真正的 DOM 要等 React 展开），
+  // 所以这里断言它拿到的 opts 里没有 onToggleTodo——传下去了就会吃序号。
+  const callout = nodes.find((node) => node && node.type === panel.__internals.CalloutBlock)
+  assert.ok(callout !== undefined, '应该有一个提示框')
+  assert.equal(callout.props.opts.onToggleTodo, undefined, '提示框里的待办不该吃序号')
+  assert.equal(typeof callout.props.opts.onOpenWikiLink, 'function', '别的选项还得留着')
+
+  assert.equal(boxes.length, 2, '正文里两条待办各一个方框')
+  boxes[0].props.onClick({ preventDefault() {}, stopPropagation() {} })
+  assert.deepEqual(clicked, [[0, true]], '正文第一条才是第 0 个')
+  boxes[1].props.onClick({ preventDefault() {}, stopPropagation() {} })
+  assert.deepEqual(clicked, [[0, true], [1, true]], '正文第二条是第 1 个')
+})

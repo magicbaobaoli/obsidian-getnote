@@ -3344,7 +3344,11 @@ async function saveFile(url, filename) {
                 fold: callout[2],
                 title: callout[3],
                 lines: body.slice(1),
-                opts,
+                // 提示框里的待办**不能**吃待办序号：宿主那边 toggleTodo 逐行扫，
+                // 提示框里那几行开头是 `>`，匹配不上 `^(\s*)([-*+])\s+\[`，所以
+                // 在宿主里它们压根不算第几个。原样传下去的话，用户勾的是提示框里
+                // 那一条，落到盘上改的却是正文里另一条。
+                opts: Object.assign({}, opts, { onToggleTodo: undefined }),
               }),
             )
             continue
