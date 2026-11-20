@@ -840,6 +840,7 @@ async function saveFile(url, filename) {
         'broken.truncated': '太多了，只列前 500 处。先修掉一些再刷新。',
         'broken.line': '第',
         'broken.jump': '去这一句',
+        'todo.jump': '去这一条',
         'tab.todos': '待办',
         'todos.desc': '全库还没勾掉的方框都在这里。点方框当场勾掉，点文字打开那一篇。',
         'todos.empty': '没有待办',
@@ -1305,6 +1306,7 @@ async function saveFile(url, filename) {
         'broken.truncated': 'That is a lot — only the first 500 are listed. Fix some and refresh.',
         'broken.line': 'line',
         'broken.jump': 'Jump to this line',
+        'todo.jump': 'Jump to this item',
         'tab.todos': 'To-dos',
         'todos.desc': 'Every unticked box in the vault. Click a box to tick it off, click the text to open the note.',
         'todos.empty': 'Nothing to do',
@@ -1769,6 +1771,7 @@ async function saveFile(url, filename) {
         'broken.truncated': 'Dat zijn er veel — alleen de eerste 500 staan er. Herstel er een paar en vernieuw.',
         'broken.line': 'regel',
         'broken.jump': 'Naar deze regel',
+        'todo.jump': 'Naar dit punt',
         'tab.todos': 'Taken',
         'todos.desc': 'Elk niet-aangevinkt vakje in de map. Klik op een vakje om af te vinken, klik op de tekst om de notitie te openen.',
         'todos.empty': 'Niets te doen',
@@ -4567,6 +4570,8 @@ async function saveFile(url, filename) {
   border:0.5px solid var(--dsw-alias-border-l1);border-radius:8px;background:transparent}
 .dshgn_todoRow:hover{background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-border-l2)}
 .dshgn_todoRow .dshgn_check{margin-top:3px}
+/* 待办那行里的文字与「去这一条」并排：文字自己是个按钮，不能把按钮套进按钮。 */
+.dshgn_todoLine{display:flex;align-items:center;gap:6px;flex:1;min-width:0}
 .dshgn_todoBusy{opacity:.45}
 .dshgn_todoText{appearance:none;display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;
   text-align:left;padding:0;border:0;background:transparent;font:inherit;cursor:pointer;color:inherit}
@@ -7511,6 +7516,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           onOpen: (path) => {
             setTab('notes')
             void openNote(path)
+          },
+          onOpenLine: (path, text) => {
+            setTab('notes')
+            jumpToMatch(path, { text: String(text || '').replace(/…$/, '') })
           },
           // 勾完之后状态里那个「还有几条」的角标要跟着变，所以顺手刷新一下
           onChanged: async () => {
@@ -11134,7 +11143,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
      * 勾选用的是 /todo/toggle 的序号，与阅读区那个方框完全同一个口径。
      */
     function TodoPane(props) {
-      const { t, status, onError, onOpen, onChanged, showToast } = props
+      const { t, status, onError, onOpen, onOpenLine, onChanged, showToast } = props
       const [items, setItems] = React.useState(null)
       const [scanned, setScanned] = React.useState(0)
       const [truncated, setTruncated] = React.useState(false)
@@ -11237,22 +11246,41 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                       },
                       null,
                     ),
+                    // 一条待办摊开来看是「哪一篇的第几行」，可这句话在原文里可能
+                    // 埋在几十行之后。跟断链那边一样分两个可点区域：点文字去那一篇，
+                    // 点「去这一条」直接落到写着这条待办的那一行。
                     h(
-                      'button',
-                      {
-                        type: 'button',
-                        className: 'dshgn_todoText',
-                        title: item.path,
-                        onClick: () => {
-                          if (typeof onOpen === 'function') onOpen(item.path)
-                        },
-                      },
-                      h('span', { className: 'dshgn_todoTitle' }, item.text),
+                      'div',
+                      { className: 'dshgn_todoLine' },
                       h(
-                        'span',
-                        { className: 'dshgn_brokenWhere' },
-                        `${item.title || item.path} · ${t('broken.line')} ${item.line}`,
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'dshgn_todoText',
+                          title: item.path,
+                          onClick: () => {
+                            if (typeof onOpen === 'function') onOpen(item.path)
+                          },
+                        },
+                        h('span', { className: 'dshgn_todoTitle' }, item.text),
+                        h(
+                          'span',
+                          { className: 'dshgn_brokenWhere' },
+                          `${item.title || item.path} · ${t('broken.line')} ${item.line}`,
+                        ),
                       ),
+                      typeof onOpenLine === 'function' && String(item.text || '') !== ''
+                        ? h(
+                            'button',
+                            {
+                              type: 'button',
+                              className: 'dshgn_brokenJump',
+                              title: t('todo.jump'),
+                              onClick: () => onOpenLine(item.path, item.text),
+                            },
+                            t('todo.jump'),
+                          )
+                        : null,
                     ),
                   )
                 }),

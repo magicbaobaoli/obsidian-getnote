@@ -8555,6 +8555,7 @@ var LEX = {
     "broken.truncated": "\u592A\u591A\u4E86\uFF0C\u53EA\u5217\u524D 500 \u5904\u3002\u5148\u4FEE\u6389\u4E00\u4E9B\u518D\u5237\u65B0\u3002",
     "broken.line": "\u7B2C",
     "broken.jump": "\u53BB\u8FD9\u4E00\u53E5",
+    "todo.jump": "\u53BB\u8FD9\u4E00\u6761",
     "tab.todos": "\u5F85\u529E",
     "todos.desc": "\u5168\u5E93\u8FD8\u6CA1\u52FE\u6389\u7684\u65B9\u6846\u90FD\u5728\u8FD9\u91CC\u3002\u70B9\u65B9\u6846\u5F53\u573A\u52FE\u6389\uFF0C\u70B9\u6587\u5B57\u6253\u5F00\u90A3\u4E00\u7BC7\u3002",
     "todos.empty": "\u6CA1\u6709\u5F85\u529E",
@@ -9016,6 +9017,7 @@ var LEX = {
     "broken.truncated": "That is a lot \u2014 only the first 500 are listed. Fix some and refresh.",
     "broken.line": "line",
     "broken.jump": "Jump to this line",
+    "todo.jump": "Jump to this item",
     "tab.todos": "To-dos",
     "todos.desc": "Every unticked box in the vault. Click a box to tick it off, click the text to open the note.",
     "todos.empty": "Nothing to do",
@@ -9477,6 +9479,7 @@ var LEX = {
     "broken.truncated": "Dat zijn er veel \u2014 alleen de eerste 500 staan er. Herstel er een paar en vernieuw.",
     "broken.line": "regel",
     "broken.jump": "Naar deze regel",
+    "todo.jump": "Naar dit punt",
     "tab.todos": "Taken",
     "todos.desc": "Elk niet-aangevinkt vakje in de map. Klik op een vakje om af te vinken, klik op de tekst om de notitie te openen.",
     "todos.empty": "Niets te doen",
@@ -11523,6 +11526,8 @@ var CSS = `
   border:0.5px solid var(--dsw-alias-border-l1);border-radius:8px;background:transparent}
 .dshgn_todoRow:hover{background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-border-l2)}
 .dshgn_todoRow .dshgn_check{margin-top:3px}
+/* \u5F85\u529E\u90A3\u884C\u91CC\u7684\u6587\u5B57\u4E0E\u300C\u53BB\u8FD9\u4E00\u6761\u300D\u5E76\u6392\uFF1A\u6587\u5B57\u81EA\u5DF1\u662F\u4E2A\u6309\u94AE\uFF0C\u4E0D\u80FD\u628A\u6309\u94AE\u5957\u8FDB\u6309\u94AE\u3002 */
+.dshgn_todoLine{display:flex;align-items:center;gap:6px;flex:1;min-width:0}
 .dshgn_todoBusy{opacity:.45}
 .dshgn_todoText{appearance:none;display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;
   text-align:left;padding:0;border:0;background:transparent;font:inherit;cursor:pointer;color:inherit}
@@ -14037,6 +14042,10 @@ ${insert}
       onOpen: (path) => {
         setTab("notes");
         void openNote(path);
+      },
+      onOpenLine: (path, text) => {
+        setTab("notes");
+        jumpToMatch(path, { text: String(text || "").replace(/…$/, "") });
       },
       // 勾完之后状态里那个「还有几条」的角标要跟着变，所以顺手刷新一下
       onChanged: async () => {
@@ -17140,7 +17149,7 @@ function BrokenPane(props) {
   );
 }
 function TodoPane(props) {
-  const { t: t4, status, onError, onOpen, onChanged, showToast } = props;
+  const { t: t4, status, onError, onOpen, onOpenLine, onChanged, showToast } = props;
   const [items, setItems] = h2(null);
   const [scanned, setScanned] = h2(0);
   const [truncated, setTruncated] = h2(false);
@@ -17232,22 +17241,39 @@ function TodoPane(props) {
             },
             null
           ),
+          // 一条待办摊开来看是「哪一篇的第几行」，可这句话在原文里可能
+          // 埋在几十行之后。跟断链那边一样分两个可点区域：点文字去那一篇，
+          // 点「去这一条」直接落到写着这条待办的那一行。
           h4(
-            "button",
-            {
-              type: "button",
-              className: "dshgn_todoText",
-              title: item.path,
-              onClick: () => {
-                if (typeof onOpen === "function") onOpen(item.path);
-              }
-            },
-            h4("span", { className: "dshgn_todoTitle" }, item.text),
+            "div",
+            { className: "dshgn_todoLine" },
             h4(
-              "span",
-              { className: "dshgn_brokenWhere" },
-              `${item.title || item.path} \xB7 ${t4("broken.line")} ${item.line}`
-            )
+              "button",
+              {
+                type: "button",
+                className: "dshgn_todoText",
+                title: item.path,
+                onClick: () => {
+                  if (typeof onOpen === "function") onOpen(item.path);
+                }
+              },
+              h4("span", { className: "dshgn_todoTitle" }, item.text),
+              h4(
+                "span",
+                { className: "dshgn_brokenWhere" },
+                `${item.title || item.path} \xB7 ${t4("broken.line")} ${item.line}`
+              )
+            ),
+            typeof onOpenLine === "function" && String(item.text || "") !== "" ? h4(
+              "button",
+              {
+                type: "button",
+                className: "dshgn_brokenJump",
+                title: t4("todo.jump"),
+                onClick: () => onOpenLine(item.path, item.text)
+              },
+              t4("todo.jump")
+            ) : null
           )
         );
       })
