@@ -6510,3 +6510,137 @@ test('正文里划选一段，就地能复制或者直接存成新笔记', async
   await sleep(200)
 })
 
+test('篇尾那条脚注点一下就回到正文里引用它的那一句，别让人自己往上翻', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const liveScroller = () => window.document.querySelector('.dshgn_note .dshgn_scroll')
+  const footRow = () => window.document.querySelector('.dshgn_footnote')
+  const footRef = () => window.document.querySelector('.dshgn_footRef')
+
+  // 退回空态，并把搜索框清干净
+  const back = window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    if (back) back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox) {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setter.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(400)
+  }
+
+  const filler = []
+  for (let i = 0; i < 8; i += 1) filler.push('第 ' + (i + 1) + ' 段废话，跟这次跳转无关。')
+  const lines = ['# 脚注回跳验收', '', '这一句里带着一个脚注[^1]，后面还有半句。', '']
+  for (const line of filler) lines.push(line, '')
+  lines.push('[^1]: 这是篇尾那条注解。', '')
+  const createRes = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '脚注回跳验收',
+      content: lines.join('\n'),
+      withDatePrefix: false,
+      requestId: 'seed-footnote-back',
+    }),
+  })
+  assert.equal(createRes.ok, true, '造笔记失败：' + createRes.status)
+  const targetPath = '随手记/脚注回跳验收.md'
+
+  await clickTab('笔记')
+  const refresh = Array.from(window.document.querySelectorAll('button')).find((el) => (el.getAttribute('title') || '') === '刷新')
+  assert.ok(refresh, '找不到刷新按钮')
+  refresh.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+  const card = await waitFor(
+    () => Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === targetPath),
+    5000,
+    '列表里出现这一篇',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 5000, '打开这一篇')
+  await waitFor(footRef, 5000, '正文里那个上标')
+
+  // jsdom 没有排版：按块序造一份假的纵向坐标，滚动容器自己从 0 起
+  const realRect = window.HTMLElement.prototype.getBoundingClientRect
+  const realScrollTo = window.HTMLElement.prototype.scrollTo
+  const BLOCKS = 'p, li, h1, h2, h3, h4, h5, h6, blockquote, pre, td, th, .dshgn_footnotes'
+  // 上标是段落里的行内节点，不在块列表里：往上找到它所在的那个块，
+  // 否则「跳回引用处」会被算到篇尾去，测出来的位置是假的。
+  const blockTopOf = (node) => {
+    const note = node.closest('.dshgn_note .dshgn_scroll')
+    if (!note) return 0
+    const all = Array.from(note.querySelectorAll(BLOCKS))
+    let hit = node
+    while (hit && all.indexOf(hit) === -1) hit = hit.parentElement
+    const index = hit ? all.indexOf(hit) : -1
+    return (index < 0 ? all.length : index) * 100
+  }
+  let fakeTop = -1
+  window.HTMLElement.prototype.getBoundingClientRect = function () {
+    if (this.classList && this.classList.contains('dshgn_scroll')) {
+      return { top: 0, left: 0, width: 600, height: 400, bottom: 400, right: 600, x: 0, y: 0 }
+    }
+    const host = this.closest ? this.closest('.dshgn_scroll') : null
+    if (!host) return realRect.call(this)
+    const top = blockTopOf(this) - (host.scrollTop || 0)
+    return { top, left: 0, width: 600, height: 20, bottom: top + 20, right: 600, x: 0, y: top }
+  }
+  window.HTMLElement.prototype.scrollTo = function (options) {
+    const top = options && typeof options.top === 'number' ? options.top : 0
+    this.scrollTop = top
+    fakeTop = top
+  }
+  try {
+    const scroller = await waitFor(liveScroller, 5000, '正文滚动容器')
+    assert.equal(scroller.scrollTop, 0, '刚打开时在篇首')
+
+    // 先点正文里的上标：滚到篇尾那条注解
+    footRef().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => scroller.scrollTop > 0, 3000, '点脚注上标之后滚到篇尾')
+    assert.ok(fakeTop > 0, '滚的是正文滚动容器，不是窗口')
+
+    // 再点篇尾那一行：回到正文里引用它的那一句
+    const row = await waitFor(footRow, 3000, '篇尾那条脚注')
+    assert.equal(row.getAttribute('title'), '回到引用它的地方')
+    scroller.scrollTop = 9999
+    row.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => scroller.scrollTop < 900, 3000, '点注解回到引用它的那一句')
+    assert.ok(fakeTop < 900, '回跳也只动滚动容器')
+
+    // 按回车也一样（键盘用户不该只能靠鼠标）
+    scroller.scrollTop = 9999
+    row.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    await waitFor(() => scroller.scrollTop < 900, 3000, '回车也能回跳')
+
+    // 注解正文里自己能点的东西（比如双链）不该被这一行截走
+    scroller.scrollTop = 9999
+    const textSpan = row.querySelector('.dshgn_footnoteText')
+    textSpan.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => scroller.scrollTop < 900, 3000, '点在注解文字上也回跳')
+  } finally {
+    window.HTMLElement.prototype.getBoundingClientRect = realRect
+    window.HTMLElement.prototype.scrollTo = realScrollTo
+  }
+
+  // 纯函数：找不到就老实说找不到，不假装跳了
+  const box = window.document.querySelector('.dshgn_md')
+  assert.equal(panel.__internals.scrollToFootnoteRef(box, '没有这条'), false)
+  assert.equal(panel.__internals.scrollToFootnoteRef(box, ''), false)
+
+  // 收尾退回空态
+  const back2 = window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    if (back2) back2.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '收尾退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+})
+

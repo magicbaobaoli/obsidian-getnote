@@ -749,6 +749,7 @@ async function saveFile(url, filename) {
         'note.blockRef': '本页某一段',
         'note.pickTag': '筛这个标签',
     'note.footnote': '跳到这条脚注',
+    'note.footnoteBack': '回到引用它的地方',
         'note.openEmbed': '打开这一篇',
         'note.embedBroken': '这一篇没读出来',
         'callout.expand': '展开',
@@ -1205,6 +1206,7 @@ async function saveFile(url, filename) {
         'note.blockRef': 'A paragraph on this page',
         'note.pickTag': 'Filter by this tag',
     'note.footnote': 'Jump to this footnote',
+    'note.footnoteBack': 'Back to where it is cited',
         'note.openEmbed': 'Open this note',
         'note.embedBroken': 'Could not read this note',
         'callout.expand': 'Expand',
@@ -1660,6 +1662,7 @@ async function saveFile(url, filename) {
         'note.blockRef': 'Een alinea op deze pagina',
         'note.pickTag': 'Filter op deze tag',
     'note.footnote': 'Naar deze voetnoot',
+    'note.footnoteBack': 'Terug naar de verwijzing',
         'note.openEmbed': 'Open deze notitie',
         'note.embedBroken': 'Deze notitie kon niet gelezen worden',
         'callout.expand': 'Uitvouwen',
@@ -2914,6 +2917,28 @@ async function saveFile(url, filename) {
     }
 
     /**
+     * 从篇尾那条脚注跳回正文里引用它的那个上标。
+     *
+     * 读的时候是「先看到 [^1]，想知道说的是什么」；但看完注解往往还想回到原来
+     * 那一句接着读，这时往回找就是纯体力活了——正文可能有好几屏长。
+     * 找不到就返回 false：脚注写了一半（有定义没人引用）也是常见的手滑。
+     */
+    function scrollToFootnoteRef(box, id) {
+      const want = String(id || '').trim()
+      if (want === '') return false
+      const host = scrollHostOf(box)
+      if (!host) return false
+      let hit = null
+      try {
+        hit = host.querySelector('[data-footnote-ref="' + want + '"]')
+      } catch (error) {
+        hit = null
+      }
+      if (!hit) return false
+      return scrollHostTo(host, hit)
+    }
+
+    /**
      * 找正文的滚动容器（那一层 `.dshgn_scroll`，不是窗口）。
      *
      * 传进来的可能是正文里的某一块（嵌入框、段落），也可能本身就是那个滚动容器
@@ -4141,7 +4166,30 @@ async function saveFile(url, filename) {
             footnotes.map((foot) =>
               h(
                 'div',
-                { key: foot.id, className: 'dshgn_footnote', 'data-footnote-id': foot.id },
+                {
+                  key: foot.id,
+                  className: 'dshgn_footnote',
+                  'data-footnote-id': foot.id,
+                  role: 'button',
+                  tabIndex: 0,
+                  title: getT()('note.footnoteBack'),
+                  // 点回正文里那个上标。脚注正文里自己也有能点的东西（双链、链接），
+                  // 那些点了要按它们自己的意思走，别被这一行截走。
+                  onClick: (event) => {
+                    const inner = event && event.target && typeof event.target.closest === 'function'
+                      ? event.target.closest('button, a')
+                      : null
+                    if (inner !== null) return
+                    const box = event && event.currentTarget ? event.currentTarget.closest('.dshgn_md') : null
+                    if (box) scrollToFootnoteRef(box, foot.id)
+                  },
+                  onKeyDown: (event) => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return
+                    event.preventDefault()
+                    const box = event.currentTarget ? event.currentTarget.closest('.dshgn_md') : null
+                    if (box) scrollToFootnoteRef(box, foot.id)
+                  },
+                },
                 h('span', { className: 'dshgn_footnoteNo' }, foot.id),
                 h('span', { className: 'dshgn_footnoteText' }, renderInline(foot.text, `fn-${foot.id}`, opts)),
               ),
@@ -4679,7 +4727,9 @@ async function saveFile(url, filename) {
 .dshgn_footRef{font-size:9px;line-height:1;vertical-align:super;color:var(--dsw-alias-brand-primary);cursor:pointer;padding:0 1px}
 .dshgn_footRef:hover{text-decoration:underline}
 .dshgn_footnotes{margin:14px 0 0;padding-top:8px;border-top:0.5px solid var(--dsw-alias-border-l1);display:flex;flex-direction:column;gap:4px}
-.dshgn_footnote{display:flex;gap:6px;font-size:11px;line-height:1.6;color:var(--dsw-alias-label-secondary)}
+.dshgn_footnote{display:flex;gap:6px;font-size:11px;line-height:1.6;color:var(--dsw-alias-label-secondary);cursor:pointer;border-radius:4px;margin:0 -3px;padding:1px 3px}
+.dshgn_footnote:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.dshgn_footnote:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dshgn_footnoteNo{flex:0 0 auto;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}
 .dshgn_footnoteText{flex:1 1 auto;min-width:0;word-break:break-word}
 /* callout：跟宿主一样「左竖线 + 淡底 + 一行标题」。类型只影响竖线与标题的颜色，
@@ -14364,7 +14414,7 @@ export const __internals = {
   themeVars, parseHex, rgbToHsl, hslToHex, ConflictPane, ArchiveCard, CardPane,
   TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale,
   reportSync, dailyTemplateOf, frontmatterText, isTagKey, FollowCard, parseTable, countWords,
-  isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote, parseImageSize, renderParagraph, blockTextOf, markdownLinkTarget,
+  isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote, scrollToFootnoteRef, parseImageSize, renderParagraph, blockTextOf, markdownLinkTarget,
   tagBodyOf, ZoomOverlay, continueListLine, indentLines, wrapInline, wikilinkQueryAt, wikilinkMatches, tagQueryAt, tagMatches, findInBody, findInBodyMatch, findInText, textHasParts,
       readScrollMarks, writeScrollMark, scrollMarkOf, SCROLL_KEY,
   readDrafts, draftOf, writeDraft, dropDraft, DRAFT_KEY, DRAFT_KEEP, DRAFT_MAX,

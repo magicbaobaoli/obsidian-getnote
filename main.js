@@ -8455,6 +8455,7 @@ var LEX = {
     "note.blockRef": "\u672C\u9875\u67D0\u4E00\u6BB5",
     "note.pickTag": "\u7B5B\u8FD9\u4E2A\u6807\u7B7E",
     "note.footnote": "\u8DF3\u5230\u8FD9\u6761\u811A\u6CE8",
+    "note.footnoteBack": "\u56DE\u5230\u5F15\u7528\u5B83\u7684\u5730\u65B9",
     "note.openEmbed": "\u6253\u5F00\u8FD9\u4E00\u7BC7",
     "note.embedBroken": "\u8FD9\u4E00\u7BC7\u6CA1\u8BFB\u51FA\u6765",
     "callout.expand": "\u5C55\u5F00",
@@ -8907,6 +8908,7 @@ var LEX = {
     "note.blockRef": "A paragraph on this page",
     "note.pickTag": "Filter by this tag",
     "note.footnote": "Jump to this footnote",
+    "note.footnoteBack": "Back to where it is cited",
     "note.openEmbed": "Open this note",
     "note.embedBroken": "Could not read this note",
     "callout.expand": "Expand",
@@ -9359,6 +9361,7 @@ var LEX = {
     "note.blockRef": "Een alinea op deze pagina",
     "note.pickTag": "Filter op deze tag",
     "note.footnote": "Naar deze voetnoot",
+    "note.footnoteBack": "Terug naar de verwijzing",
     "note.openEmbed": "Open deze notitie",
     "note.embedBroken": "Deze notitie kon niet gelezen worden",
     "callout.expand": "Uitvouwen",
@@ -10283,6 +10286,20 @@ function scrollToFootnote(box, id) {
   if (!hit) return false;
   return scrollHostTo(host, hit);
 }
+function scrollToFootnoteRef(box, id) {
+  const want = String(id || "").trim();
+  if (want === "") return false;
+  const host = scrollHostOf(box);
+  if (!host) return false;
+  let hit = null;
+  try {
+    hit = host.querySelector('[data-footnote-ref="' + want + '"]');
+  } catch (error2) {
+    hit = null;
+  }
+  if (!hit) return false;
+  return scrollHostTo(host, hit);
+}
 function scrollHostOf(box) {
   if (!box) return null;
   if (box.classList && box.classList.contains("dshgn_scroll")) return box;
@@ -11137,7 +11154,28 @@ function renderBlocks(markdown, options) {
         footnotes.map(
           (foot) => h4(
             "div",
-            { key: foot.id, className: "dshgn_footnote", "data-footnote-id": foot.id },
+            {
+              key: foot.id,
+              className: "dshgn_footnote",
+              "data-footnote-id": foot.id,
+              role: "button",
+              tabIndex: 0,
+              title: getT()("note.footnoteBack"),
+              // 点回正文里那个上标。脚注正文里自己也有能点的东西（双链、链接），
+              // 那些点了要按它们自己的意思走，别被这一行截走。
+              onClick: (event) => {
+                const inner = event && event.target && typeof event.target.closest === "function" ? event.target.closest("button, a") : null;
+                if (inner !== null) return;
+                const box = event && event.currentTarget ? event.currentTarget.closest(".dshgn_md") : null;
+                if (box) scrollToFootnoteRef(box, foot.id);
+              },
+              onKeyDown: (event) => {
+                if (event.key !== "Enter" && event.key !== " ") return;
+                event.preventDefault();
+                const box = event.currentTarget ? event.currentTarget.closest(".dshgn_md") : null;
+                if (box) scrollToFootnoteRef(box, foot.id);
+              }
+            },
             h4("span", { className: "dshgn_footnoteNo" }, foot.id),
             h4("span", { className: "dshgn_footnoteText" }, renderInline(foot.text, `fn-${foot.id}`, opts))
           )
@@ -11671,7 +11709,9 @@ var CSS = `
 .dshgn_footRef{font-size:9px;line-height:1;vertical-align:super;color:var(--dsw-alias-brand-primary);cursor:pointer;padding:0 1px}
 .dshgn_footRef:hover{text-decoration:underline}
 .dshgn_footnotes{margin:14px 0 0;padding-top:8px;border-top:0.5px solid var(--dsw-alias-border-l1);display:flex;flex-direction:column;gap:4px}
-.dshgn_footnote{display:flex;gap:6px;font-size:11px;line-height:1.6;color:var(--dsw-alias-label-secondary)}
+.dshgn_footnote{display:flex;gap:6px;font-size:11px;line-height:1.6;color:var(--dsw-alias-label-secondary);cursor:pointer;border-radius:4px;margin:0 -3px;padding:1px 3px}
+.dshgn_footnote:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.dshgn_footnote:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dshgn_footnoteNo{flex:0 0 auto;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}
 .dshgn_footnoteText{flex:1 1 auto;min-width:0;word-break:break-word}
 /* callout\uFF1A\u8DDF\u5BBF\u4E3B\u4E00\u6837\u300C\u5DE6\u7AD6\u7EBF + \u6DE1\u5E95 + \u4E00\u884C\u6807\u9898\u300D\u3002\u7C7B\u578B\u53EA\u5F71\u54CD\u7AD6\u7EBF\u4E0E\u6807\u9898\u7684\u989C\u8272\uFF0C
