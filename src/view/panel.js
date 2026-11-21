@@ -639,6 +639,8 @@ async function saveFile(url, filename) {
         'tree.dirNotEmpty': '这个目录里还有笔记，先把它们移走',
         'tree.fold': '收起子目录',
         'tree.unfold': '展开子目录',
+        'tree.foldTag': '收起子标签',
+        'tree.unfoldTag': '展开子标签',
         'tree.dirCreated': '目录已创建',
         'tree.movedTo': '已挪到 {dir}',
         'tree.tagCreated': '标签已添加到当前笔记',
@@ -1124,6 +1126,8 @@ async function saveFile(url, filename) {
         'tree.dirNotEmpty': 'This folder still has notes — move them out first',
         'tree.fold': 'Collapse subfolders',
         'tree.unfold': 'Expand subfolders',
+        'tree.foldTag': 'Collapse subtags',
+        'tree.unfoldTag': 'Expand subtags',
         'tree.dirCreated': 'Folder created',
         'tree.movedTo': 'Moved to {dir}',
         'tree.tagCreated': 'Tag added to the open note',
@@ -1608,6 +1612,8 @@ async function saveFile(url, filename) {
         'tree.dirNotEmpty': 'Er staan nog notities in deze map — verplaats ze eerst',
         'tree.fold': 'Submappen inklappen',
         'tree.unfold': 'Submappen uitklappen',
+        'tree.foldTag': 'Subtags inklappen',
+        'tree.unfoldTag': 'Subtags uitklappen',
         'tree.dirCreated': 'Map aangemaakt',
         'tree.movedTo': 'Verplaatst naar {dir}',
         'tree.tagCreated': 'Tag toegevoegd aan de geopende notitie',
@@ -5619,6 +5625,11 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
 .dshgn_rowBtnDanger:hover{background:rgba(255,255,255,.18);color:var(--dsw-alias-state-error-primary)}
 /* 标签项外层：给行内菜单留位置，同时避免 button 套 button */
 .dshgn_tagWrap{display:inline-flex;align-items:center;gap:2px;max-width:100%;min-width:0}
+.dshgn_tagFold{appearance:none;flex:none;display:inline-flex;align-items:center;justify-content:center;width:12px;height:16px;padding:0;border:0;border-radius:3px;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer}
+.dshgn_tagFold:hover{color:var(--dsw-alias-label-primary);background:rgba(255,255,255,.14)}
+.dshgn_tagFold:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_tagFold svg{transform:rotate(90deg);transition:transform .12s ease}
+.dshgn_tagFold[data-folded="true"] svg{transform:rotate(0deg)}
 /* 标签区是 flex-wrap 容器，改名输入行必须自己占满一整行，
    否则它会挤在上一个标签右边，输入框被压成几十像素宽。 */
 .dshgn_treeTags .dshgn_treeNew{width:100%;margin:0 0 4px;box-sizing:border-box}
@@ -12590,6 +12601,18 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           return next
         })
       }
+      // 标签同样能收起来：「读书/摘抄」「读书/待读」「读书/读完」攒到七八条时，
+      // 标签云会把整个左栏顶下去。和目录分开记（同一个名字既是目录又是标签前缀
+      // 的时候，收一个不该顺手把另一个也收了），同样不落盘。
+      const [foldedTags, setFoldedTags] = React.useState(() => new Set())
+      const toggleTagFold = (path) => {
+        setFoldedTags((prev) => {
+          const next = new Set(prev)
+          if (next.has(path)) next.delete(path)
+          else next.add(path)
+          return next
+        })
+      }
 
       // 点空白处关菜单：右键菜单不会自己消失是最烦人的一类小毛病
       React.useEffect(() => {
@@ -12733,13 +12756,17 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
               }
             }
             total(item)
-            rows.push({ path, label: item.name, depth, count: sum })
+            // 收起来的标签不再往下走，子标签跟着一起藏起来；
+            // hasKids 决定这一行左边摆不摆那颗小箭头。
+            const hasKids = item.children.size > 0
+            rows.push({ path, label: item.name, depth, count: sum, hasKids })
+            if (hasKids && foldedTags.has(path)) continue
             walk(item, path, depth + 1)
           }
         }
         walk(root, '', 0)
         return rows
-      }, [tagCounts, entries, tagSort])
+      }, [tagCounts, entries, tagSort, foldedTags])
 
       const runCreate = async () => {
         const name = draft.trim()
@@ -13109,7 +13136,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
               { className: 'dshgn_treeTags' },
               // 标签项外面包一层 span：行内菜单里也是按钮，button 不能套 button
               // （HTML 非法，React 会警告，点击也会被外层吞掉）。
-              tagTree.map(({ path: tag, label, depth, count }) =>
+              tagTree.map(({ path: tag, label, depth, count, hasKids }) =>
                 renaming !== null && renaming.from === tag
                   ? h(
                       'span',
@@ -13140,6 +13167,27 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                   : h(
                       'span',
                       { key: tag, className: 'dshgn_tagWrap' },
+                      // 箭头放在胶囊外面：胶囊自己就是一颗按钮，按钮里不能再套按钮。
+                      // 点箭头只折叠这一支，不等于按标签筛选。
+                      hasKids
+                        ? h(
+                            'button',
+                            {
+                              type: 'button',
+                              className: 'dshgn_tagFold',
+                              title: foldedTags.has(tag) ? t('tree.unfoldTag') : t('tree.foldTag'),
+                              'aria-label': foldedTags.has(tag) ? t('tree.unfoldTag') : t('tree.foldTag'),
+                              'aria-expanded': foldedTags.has(tag) ? 'false' : 'true',
+                              'data-folded': foldedTags.has(tag) ? 'true' : 'false',
+                              onClick: (event) => {
+                                event.stopPropagation()
+                                toggleTagFold(tag)
+                              },
+                              onContextMenu: (event) => openMenu(event, 'tag', tag),
+                            },
+                            h(Icon, { name: 'chevron', size: 11 }),
+                          )
+                        : null,
                       h(
                         'button',
                         {

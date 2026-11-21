@@ -9944,3 +9944,96 @@ test('刚建好还空着的目录也摆在左栏里、计数 0，点它能筛出
   okBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
   await waitFor(() => rowOf('还空着的那一支') === undefined, 8000, '删掉之后这一行该消失')
 })
+
+test('左栏标签也能收起来：点箭头把这一支折下去，再点展开，没有子标签的行不摆箭头', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const seed = async (title, tags, requestId) => {
+    const content = ['---', 'tags: [' + tags.join(', ') + ']', '---', '', '# ' + title, '', '正文', ''].join('\n')
+    const res = await realFetch(server.origin + '/getnote/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({ dir: '随手记', title, content, withDatePrefix: false, requestId }),
+    })
+    const json = await res.json()
+    return json.path
+  }
+
+  // 上一个用例可能把某篇开着：先退回空态，标签云才在左栏里
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = window.document.querySelector('.dshgn_noteBack')
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(120)
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  await clickTab('笔记')
+  await waitFor(() => rootNode().querySelector('.dshgn_search') !== null, 4000, '搜索框')
+  const searchBox = rootNode().querySelector('.dshgn_search')
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  setter.call(searchBox, '')
+  searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(400)
+
+  await seed('标签折叠甲', ['折叠标签/子一'], 'seed-tag-fold-a')
+  await seed('标签折叠乙', ['折叠标签/子二'], 'seed-tag-fold-b')
+  await seed('标签折叠丙', ['折叠标签另一个'], 'seed-tag-fold-c')
+
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+
+  const tagRows = () => Array.from(window.document.querySelectorAll('.dshgn_tagRow'))
+  const rowOf = (title) => tagRows().find((el) => el.title === title) || null
+  const wrapOf = (title) => {
+    const row = rowOf(title)
+    return row === null ? null : row.closest('.dshgn_tagWrap')
+  }
+  const caretOf = (title) => {
+    const wrap = wrapOf(title)
+    return wrap === null ? null : wrap.querySelector('.dshgn_tagFold')
+  }
+
+  await waitFor(() => rowOf('折叠标签') !== null, 8000, '父标签要有一行')
+  assert.ok(rowOf('折叠标签/子一') !== null, '子标签一开始是展开的')
+  assert.ok(rowOf('折叠标签/子二') !== null, '第二条子标签也在')
+  assert.ok(rowOf('折叠标签另一个') !== null, '另一支标签也在')
+
+  // 叶子标签不摆箭头：一颗按了永远停在原地的按钮比没有更糟
+  assert.equal(caretOf('折叠标签/子一'), null, '没有子标签的那一行不摆箭头')
+  assert.equal(caretOf('折叠标签另一个'), null, '另一支叶子也不摆箭头')
+  const caret = caretOf('折叠标签')
+  assert.ok(caret !== null, '有子标签的那一行要摆箭头')
+  assert.equal(caret.getAttribute('data-folded'), 'false', '一开始是展开的')
+  assert.equal(caret.title, '收起子标签', '悬停说清点它会怎样')
+  assert.equal(caret.getAttribute('aria-expanded'), 'true', '无障碍属性跟着走')
+
+  // 收起来：这一行还在，子标签全藏起来，别的支不受影响
+  caret.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rowOf('折叠标签/子一') === null, 5000, '子标签该被收起来')
+  assert.ok(rowOf('折叠标签') !== null, '父标签自己还在')
+  assert.equal(rowOf('折叠标签/子二'), null, '同一条分支上的另一颗子标签也藏起来')
+  assert.ok(rowOf('折叠标签另一个') !== null, '别的支不该跟着收')
+  assert.equal(caretOf('折叠标签').getAttribute('data-folded'), 'true', '箭头记着已经收起来了')
+  assert.equal(caretOf('折叠标签').title, '展开子标签', '收起之后悬停该说点它展开')
+  assert.equal(caretOf('折叠标签').getAttribute('aria-expanded'), 'false', '无障碍属性跟着走')
+  assert.equal(rowOf('折叠标签').getAttribute('data-on'), 'false', '点箭头不等于按这个标签筛选')
+
+  // 再点一下展开，子标签回来
+  caretOf('折叠标签').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rowOf('折叠标签/子一') !== null, 5000, '再点该展开')
+  assert.ok(rowOf('折叠标签/子二') !== null, '两条子标签都回来')
+  assert.equal(caretOf('折叠标签').getAttribute('data-folded'), 'false', '箭头回到展开状态')
+
+  // 只折这一支：另一支不受影响，父标签自己也不受影响
+  caretOf('折叠标签').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rowOf('折叠标签/子一') === null, 5000, '再收一次')
+  assert.ok(rowOf('折叠标签另一个') !== null, '另一支照旧展开')
+  caretOf('折叠标签').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rowOf('折叠标签/子一') !== null, 5000, '收尾前展开回来')
+})

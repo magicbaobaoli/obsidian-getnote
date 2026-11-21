@@ -8492,6 +8492,8 @@ var LEX = {
     "tree.dirNotEmpty": "\u8FD9\u4E2A\u76EE\u5F55\u91CC\u8FD8\u6709\u7B14\u8BB0\uFF0C\u5148\u628A\u5B83\u4EEC\u79FB\u8D70",
     "tree.fold": "\u6536\u8D77\u5B50\u76EE\u5F55",
     "tree.unfold": "\u5C55\u5F00\u5B50\u76EE\u5F55",
+    "tree.foldTag": "\u6536\u8D77\u5B50\u6807\u7B7E",
+    "tree.unfoldTag": "\u5C55\u5F00\u5B50\u6807\u7B7E",
     "tree.dirCreated": "\u76EE\u5F55\u5DF2\u521B\u5EFA",
     "tree.movedTo": "\u5DF2\u632A\u5230 {dir}",
     "tree.tagCreated": "\u6807\u7B7E\u5DF2\u6DFB\u52A0\u5230\u5F53\u524D\u7B14\u8BB0",
@@ -8973,6 +8975,8 @@ var LEX = {
     "tree.dirNotEmpty": "This folder still has notes \u2014 move them out first",
     "tree.fold": "Collapse subfolders",
     "tree.unfold": "Expand subfolders",
+    "tree.foldTag": "Collapse subtags",
+    "tree.unfoldTag": "Expand subtags",
     "tree.dirCreated": "Folder created",
     "tree.movedTo": "Moved to {dir}",
     "tree.tagCreated": "Tag added to the open note",
@@ -9453,6 +9457,8 @@ var LEX = {
     "tree.dirNotEmpty": "Er staan nog notities in deze map \u2014 verplaats ze eerst",
     "tree.fold": "Submappen inklappen",
     "tree.unfold": "Submappen uitklappen",
+    "tree.foldTag": "Subtags inklappen",
+    "tree.unfoldTag": "Subtags uitklappen",
     "tree.dirCreated": "Map aangemaakt",
     "tree.movedTo": "Verplaatst naar {dir}",
     "tree.tagCreated": "Tag toegevoegd aan de geopende notitie",
@@ -12705,6 +12711,11 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
 .dshgn_rowBtnDanger:hover{background:rgba(255,255,255,.18);color:var(--dsw-alias-state-error-primary)}
 /* \u6807\u7B7E\u9879\u5916\u5C42\uFF1A\u7ED9\u884C\u5185\u83DC\u5355\u7559\u4F4D\u7F6E\uFF0C\u540C\u65F6\u907F\u514D button \u5957 button */
 .dshgn_tagWrap{display:inline-flex;align-items:center;gap:2px;max-width:100%;min-width:0}
+.dshgn_tagFold{appearance:none;flex:none;display:inline-flex;align-items:center;justify-content:center;width:12px;height:16px;padding:0;border:0;border-radius:3px;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer}
+.dshgn_tagFold:hover{color:var(--dsw-alias-label-primary);background:rgba(255,255,255,.14)}
+.dshgn_tagFold:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_tagFold svg{transform:rotate(90deg);transition:transform .12s ease}
+.dshgn_tagFold[data-folded="true"] svg{transform:rotate(0deg)}
 /* \u6807\u7B7E\u533A\u662F flex-wrap \u5BB9\u5668\uFF0C\u6539\u540D\u8F93\u5165\u884C\u5FC5\u987B\u81EA\u5DF1\u5360\u6EE1\u4E00\u6574\u884C\uFF0C
    \u5426\u5219\u5B83\u4F1A\u6324\u5728\u4E0A\u4E00\u4E2A\u6807\u7B7E\u53F3\u8FB9\uFF0C\u8F93\u5165\u6846\u88AB\u538B\u6210\u51E0\u5341\u50CF\u7D20\u5BBD\u3002 */
 .dshgn_treeTags .dshgn_treeNew{width:100%;margin:0 0 4px;box-sizing:border-box}
@@ -18522,6 +18533,15 @@ function TreePane(props) {
       return next;
     });
   };
+  const [foldedTags, setFoldedTags] = h2(() => /* @__PURE__ */ new Set());
+  const toggleTagFold = (path) => {
+    setFoldedTags((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  };
   y2(() => {
     if (menu === null) return void 0;
     const close = () => setMenu(null);
@@ -18634,13 +18654,15 @@ function TreePane(props) {
           }
         };
         total2(item);
-        rows.push({ path, label: item.name, depth, count: sum });
+        const hasKids = item.children.size > 0;
+        rows.push({ path, label: item.name, depth, count: sum, hasKids });
+        if (hasKids && foldedTags.has(path)) continue;
         walk(item, path, depth + 1);
       }
     };
     walk(root, "", 0);
     return rows;
-  }, [tagCounts, entries, tagSort]);
+  }, [tagCounts, entries, tagSort, foldedTags]);
   const runCreate = async () => {
     const name = draft.trim();
     if (name === "") {
@@ -18976,7 +18998,7 @@ ${t4("tree.menuDelete")}\uFF1A\u53F3\u952E`
       // 标签项外面包一层 span：行内菜单里也是按钮，button 不能套 button
       // （HTML 非法，React 会警告，点击也会被外层吞掉）。
       tagTree.map(
-        ({ path: tag, label, depth, count }) => renaming !== null && renaming.from === tag ? h4(
+        ({ path: tag, label, depth, count, hasKids }) => renaming !== null && renaming.from === tag ? h4(
           "span",
           { key: tag, className: "dshgn_treeNew" },
           h4("input", {
@@ -19004,6 +19026,25 @@ ${t4("tree.menuDelete")}\uFF1A\u53F3\u952E`
         ) : h4(
           "span",
           { key: tag, className: "dshgn_tagWrap" },
+          // 箭头放在胶囊外面：胶囊自己就是一颗按钮，按钮里不能再套按钮。
+          // 点箭头只折叠这一支，不等于按标签筛选。
+          hasKids ? h4(
+            "button",
+            {
+              type: "button",
+              className: "dshgn_tagFold",
+              title: foldedTags.has(tag) ? t4("tree.unfoldTag") : t4("tree.foldTag"),
+              "aria-label": foldedTags.has(tag) ? t4("tree.unfoldTag") : t4("tree.foldTag"),
+              "aria-expanded": foldedTags.has(tag) ? "false" : "true",
+              "data-folded": foldedTags.has(tag) ? "true" : "false",
+              onClick: (event) => {
+                event.stopPropagation();
+                toggleTagFold(tag);
+              },
+              onContextMenu: (event) => openMenu(event, "tag", tag)
+            },
+            h4(Icon, { name: "chevron", size: 11 })
+          ) : null,
           h4(
             "button",
             {
