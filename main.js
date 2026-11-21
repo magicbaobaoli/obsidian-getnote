@@ -8440,6 +8440,8 @@ var LEX = {
     "drop.pickDirFirst": "\u5148\u5728\u5DE6\u8FB9\u9009\u4E00\u4E2A\u76EE\u5F55\uFF0C\u518D\u5F80\u91CC\u62D6",
     "drop.moved": "\u5DF2\u7ECF\u632A\u8FDB\u8FD9\u4E2A\u76EE\u5F55",
     "batch.done": "\u5DF2\u5904\u7406",
+    "batch.copyRefs": "\u590D\u5236\u5F15\u7528",
+    "batch.copiedRefs": "\u5DF2\u590D\u5236 {n} \u6761\u5F15\u7528",
     "search.searching": "\u641C\u7D22\u4E2D\u2026",
     "search.clear": "\u6E05\u7A7A",
     "search.copy": "\u590D\u5236\u8FD9\u6B21\u641C\u5230\u7684 {n} \u7BC7\uFF08\u540D\u5B57\u548C\u4F4D\u7F6E\uFF09",
@@ -8973,6 +8975,8 @@ var LEX = {
     "drop.pickDirFirst": "Pick a folder on the left first, then drop",
     "drop.moved": "Moved into this folder",
     "batch.done": "Processed",
+    "batch.copyRefs": "Copy references",
+    "batch.copiedRefs": "Copied {n} references",
     "search.searching": "Searching\u2026",
     "search.clear": "Clear",
     "search.copy": "Copy the {n} notes found (names and places)",
@@ -9493,6 +9497,8 @@ var LEX = {
     "drop.pickDirFirst": "Kies eerst links een map en sleep dan hierheen",
     "drop.moved": "Naar deze map verplaatst",
     "batch.done": "Verwerkt",
+    "batch.copyRefs": "Referenties kopi\xEBren",
+    "batch.copiedRefs": "{n} referenties gekopieerd",
     "search.searching": "Zoeken\u2026",
     "search.clear": "Wissen",
     "search.copy": "Kopieer de {n} gevonden notities (namen en plaatsen)",
@@ -14266,6 +14272,20 @@ ${insert}
       showToast(text);
     }
   }, [shown, showToast, t4]);
+  const copyPickedRefs = q2(async () => {
+    if (picked.size === 0) return;
+    const rows = Array.from(picked);
+    const text = rows.map((path) => {
+      const hosted = markdownLinkOf(path);
+      return hosted !== "" ? hosted : "[[" + path + "]]";
+    }).join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast(t4("batch.copiedRefs").replace("{n}", String(rows.length)));
+    } catch {
+      showToast(text);
+    }
+  }, [picked, showToast, t4]);
   const previewCard = q2((event, path) => {
     const target = event.currentTarget;
     if (!target) return;
@@ -15282,6 +15302,16 @@ ${insert}
             "button",
             { type: "button", className: "dshgn_batchBtn", onClick: () => setBatchOpen(!batchOpen) },
             t4("batch.actions")
+          ),
+          h4(
+            "button",
+            {
+              type: "button",
+              className: "dshgn_batchBtn",
+              title: t4("batch.copyRefs"),
+              onClick: () => void copyPickedRefs()
+            },
+            t4("batch.copyRefs")
           ),
           h4("button", { type: "button", className: "dshgn_batchBtn", onClick: clearPicked }, t4("batch.clear")),
           batchOpen ? h4(

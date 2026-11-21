@@ -587,6 +587,8 @@ async function saveFile(url, filename) {
         'drop.pickDirFirst': '先在左边选一个目录，再往里拖',
         'drop.moved': '已经挪进这个目录',
         'batch.done': '已处理',
+        'batch.copyRefs': '复制引用',
+        'batch.copiedRefs': '已复制 {n} 条引用',
         'search.searching': '搜索中…',
         'search.clear': '清空',
         'search.copy': '复制这次搜到的 {n} 篇（名字和位置）',
@@ -1125,6 +1127,8 @@ async function saveFile(url, filename) {
         'drop.pickDirFirst': 'Pick a folder on the left first, then drop',
         'drop.moved': 'Moved into this folder',
         'batch.done': 'Processed',
+        'batch.copyRefs': 'Copy references',
+        'batch.copiedRefs': 'Copied {n} references',
         'search.searching': 'Searching…',
         'search.clear': 'Clear',
         'search.copy': 'Copy the {n} notes found (names and places)',
@@ -1650,6 +1654,8 @@ async function saveFile(url, filename) {
         'drop.pickDirFirst': 'Kies eerst links een map en sleep dan hierheen',
         'drop.moved': 'Naar deze map verplaatst',
         'batch.done': 'Verwerkt',
+        'batch.copyRefs': 'Referenties kopiëren',
+        'batch.copiedRefs': '{n} referenties gekopieerd',
         'search.searching': 'Zoeken…',
         'search.clear': 'Wissen',
         'search.copy': 'Kopieer de {n} gevonden notities (namen en plaatsen)',
@@ -7620,6 +7626,28 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         }
       }, [shown, showToast, t])
 
+      // 勾了几篇想把它们的引用一次抄走：以前只能一篇篇右键「复制引用」，
+      // 或者打开每一篇去右栏点那颗按钮。勾选本来就是「这几篇是一伙的」，
+      // 抄成一段清单正好用得上。链接怎么拼仍然先问宿主（Wiki 还是 Markdown、
+      // 路径写全还是写短），问不到就退回 `[[路径]]`——那是 Obsidian 里最通用的写法。
+      const copyPickedRefs = React.useCallback(async () => {
+        if (picked.size === 0) return
+        const rows = Array.from(picked)
+        const text = rows
+          .map((path) => {
+            const hosted = markdownLinkOf(path)
+            return hosted !== '' ? hosted : '[[' + path + ']]'
+          })
+          .join('\n')
+        try {
+          await navigator.clipboard.writeText(text)
+          showToast(t('batch.copiedRefs').replace('{n}', String(rows.length)))
+        } catch {
+          // 抄不出去（没剪贴板权限）时把清单摊进提示条：抄不走至少看得见。
+          showToast(text)
+        }
+      }, [picked, showToast, t])
+
       // 鼠标停在列表卡片上，请宿主弹这一篇的页面预览。
       //
       // 宿主自己的文件列表就是这个手感：扫一眼标题、停一下，预览卡片出来，
@@ -8770,6 +8798,16 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                     'button',
                     { type: 'button', className: 'dshgn_batchBtn', onClick: () => setBatchOpen(!batchOpen) },
                     t('batch.actions'),
+                  ),
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'dshgn_batchBtn',
+                      title: t('batch.copyRefs'),
+                      onClick: () => void copyPickedRefs(),
+                    },
+                    t('batch.copyRefs'),
                   ),
                   h('button', { type: 'button', className: 'dshgn_batchBtn', onClick: clearPicked }, t('batch.clear')),
                   batchOpen

@@ -11918,3 +11918,114 @@ test('搜索框空着的时候摆着最近搜过的词，点一下就填回去�
   await waitFor(() => window.document.querySelector('.dshgn_recent') === null, 4000, '清掉之后整条收起来')
   assert.equal(window.localStorage.getItem('dshgn.recentSearches'), null, '清掉也要把落盘的那份删干净')
 })
+
+test('勾上几篇之后能把它们的引用一次抄走，一行一条，链接怎么拼先问宿主', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const backBtn = () => window.document.querySelector('.dshgn_noteBack')
+
+  panel.setConfirmDialog(async () => true)
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = backBtn()
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(220)
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox !== null) {
+    setValue.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(260)
+  }
+
+  const pathA = '批量引用验收/批量引用-甲.md'
+  const pathB = '批量引用验收/批量引用-乙.md'
+  for (const [title, requestId] of [
+    ['批量引用-甲', 'seed-batch-ref-a'],
+    ['批量引用-乙', 'seed-batch-ref-b'],
+  ]) {
+    const res = await realFetch(server.origin + '/getnote/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({ dir: '批量引用验收', title, content: '正文', withDatePrefix: false, requestId }),
+    })
+    assert.equal(res.status, 200, '建笔记要成功')
+  }
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+
+  const rowOf = (name) =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+      const label = el.querySelector('.dshgn_treeName')
+      return label !== null && (label.textContent || '').trim() === name
+    })
+  const dirRow = await waitFor(() => rowOf('批量引用验收'), 8000, '左栏里出现这个目录')
+  dirRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+
+  const cardOf = (path) =>
+    Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === path) || null
+  const cardA = await waitFor(() => cardOf(pathA), 8000, '第一篇')
+  cardA.querySelector('.dshgn_pickBox').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(200)
+  const cardB = await waitFor(() => cardOf(pathB), 8000, '第二篇')
+  cardB.querySelector('.dshgn_pickBox').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_batchBar') !== null, 3000, '批量栏出现')
+
+  // 宿主那边给的是它自己的链接写法（这里用 Wiki 形式），面板要原样用它。
+  const written = []
+  clipboard.writeText = async (text) => { written.push(String(text)) }
+  try {
+    const copyBtn = Array.from(window.document.querySelectorAll('.dshgn_batchBtn')).find(
+      (el) => (el.textContent || '').trim() === '复制引用',
+    )
+    assert.ok(copyBtn, '批量条上应该有「复制引用」')
+    assert.equal(copyBtn.disabled, false, '勾着两篇时该能按')
+    copyBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => written.length > 0, 3000, '真的写了剪贴板')
+  } finally {
+    clipboard.writeText = async () => undefined
+  }
+
+  const lines = written[0].split('\n').filter((line) => line.trim() !== '')
+  assert.equal(lines.length, 2, '勾了两篇就该抄两条，实际 ' + JSON.stringify(lines))
+  const joined = lines.join(' | ')
+  assert.ok(joined.includes('批量引用-甲'), '第一条要写得出名字，实际 ' + joined)
+  assert.ok(joined.includes('批量引用-乙'), '第二条要写得出名字，实际 ' + joined)
+  for (const line of lines) {
+    assert.ok(line.startsWith('[['), '每条都该是宿主给的链接写法，实际 ' + line)
+  }
+  const toastText = await waitFor(
+    () => {
+      const node = window.document.querySelector('.dshgn_toast')
+      const text = node === null ? '' : node.textContent || ''
+      return text.includes('2') ? text : null
+    },
+    3000,
+    '提示条报出抄了几条',
+  )
+  assert.ok(String(toastText).includes('2'), '提示条要报出抄了几条，实际 ' + toastText)
+
+  // 抄走不等于把选中清掉：还想接着贴标签、移目录。
+  const countText = () => (window.document.querySelector('.dshgn_batchCount') || { textContent: '' }).textContent
+  assert.ok(String(countText()).includes('2'), '抄完不该把选中清掉，实际 ' + countText())
+
+  const clearBtn = Array.from(window.document.querySelectorAll('.dshgn_batchBtn')).find(
+    (el) => (el.textContent || '').trim() === '取消选择',
+  )
+  clearBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(200)
+  const allRow = rowOf('全部笔记')
+  if (allRow !== undefined) allRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+})
