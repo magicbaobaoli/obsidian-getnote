@@ -22293,6 +22293,7 @@ var GetnoteView = class extends import_obsidian.ItemView {
     this.root = null;
     this.containerEl = null;
     this.heartbeat = null;
+    this.opened = false;
     try {
       if (plugin && typeof plugin.probe === "function") plugin.probe("\u89C6\u56FE\u6784\u9020\u51FD\u6570\u5DF2\u8DD1");
     } catch {
@@ -22423,6 +22424,8 @@ var GetnoteView = class extends import_obsidian.ItemView {
   }
   async onOpen() {
     this.note("\u89C6\u56FE onOpen \u88AB\u8C03\u7528");
+    if (this.opened) return;
+    this.opened = true;
     const container = this.contentEl;
     try {
       await this.openPanel(container);
@@ -22472,6 +22475,7 @@ var GetnoteView = class extends import_obsidian.ItemView {
     }, 2e3);
   }
   async onClose() {
+    this.opened = false;
     clearMarkdownHost();
     try {
       const boot = this.containerEl ? this.containerEl.querySelector(".dshgn_boot") : null;
@@ -23247,13 +23251,28 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     }
     const leaf = newWindow ? this.app.workspace.openPopoutLeaf({ size: { width: 1100, height: 780 } }) : this.app.workspace.getLeaf(true);
     this.probe("\u51C6\u5907\u6302\u4E0A\u89C6\u56FE\uFF1A" + (leaf === null || leaf === void 0 ? "\u53F6\u5B50\u662F\u7A7A\u7684" : "\u6709\u53F6\u5B50"));
+    const mark = Array.isArray(this.probeLines) ? this.probeLines.length : 0;
     await leaf.setViewState({ type: VIEW_TYPE_GETNOTE, active: true });
     this.probe("setViewState \u5DF2\u8FD4\u56DE");
     this.app.workspace.revealLeaf(leaf);
     if (typeof window !== "undefined" && window && typeof window.setTimeout === "function") {
       window.setTimeout(() => {
-        const seen = Array.isArray(this.probeLines) && this.probeLines.some((line) => line.includes("\u89C6\u56FE onOpen \u88AB\u8C03\u7528"));
-        if (!seen) this.probe("\u7B49\u4E86\u4E00\u4F1A\u513F\uFF0C\u89C6\u56FE onOpen \u4ECD\u7136\u6CA1\u6709\u88AB\u8C03\u7528");
+        const seen = Array.isArray(this.probeLines) && this.probeLines.slice(mark).some((line) => line.includes("\u89C6\u56FE onOpen \u88AB\u8C03\u7528"));
+        if (seen) return;
+        this.probe("\u7B49\u4E86\u4E00\u4F1A\u513F\uFF0C\u89C6\u56FE onOpen \u4ECD\u7136\u6CA1\u6709\u88AB\u8C03\u7528");
+        try {
+          const view = leaf && leaf.view;
+          const host = view && (view.containerEl || view.contentEl);
+          const drawn = host && typeof host.querySelector === "function" ? host.querySelector(".dshgn_mount") : null;
+          if (view && typeof view.onOpen === "function" && drawn === null) {
+            this.probe("\u81EA\u5DF1\u8865\u4E00\u6B21 onOpen");
+            Promise.resolve(view.onOpen()).catch((error2) => {
+              this.probe("\u8865\u8C03 onOpen \u5931\u8D25\uFF1A" + (error2 && error2.message ? error2.message : String(error2)));
+            });
+          }
+        } catch (error2) {
+          this.probe("\u8865\u8C03 onOpen \u5931\u8D25\uFF1A" + (error2 && error2.message ? error2.message : String(error2)));
+        }
       }, 1500);
     }
   }

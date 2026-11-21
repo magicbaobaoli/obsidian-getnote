@@ -1047,6 +1047,9 @@ export default class GetnoteObsidianPlugin extends Plugin {
       ? this.app.workspace.openPopoutLeaf({ size: { width: 1100, height: 780 } })
       : this.app.workspace.getLeaf(true)
     this.probe('准备挂上视图：' + (leaf === null || leaf === undefined ? '叶子是空的' : '有叶子'))
+    // 记下这一轮之前的轨迹条数：probeLines 是跨多次打开累积的，只按「里面有没有
+    // 那句话」判断会让第二次打开永远以为 onOpen 跑过了。
+    const mark = Array.isArray(this.probeLines) ? this.probeLines.length : 0
     await leaf.setViewState({ type: VIEW_TYPE_GETNOTE, active: true })
     this.probe('setViewState 已返回')
     this.app.workspace.revealLeaf(leaf)
@@ -1057,8 +1060,27 @@ export default class GetnoteObsidianPlugin extends Plugin {
     // 测试结束之后才响的定时器，node --test 会把它当成「测试后还有异步活动」报错。
     if (typeof window !== 'undefined' && window && typeof window.setTimeout === 'function') {
       window.setTimeout(() => {
-        const seen = Array.isArray(this.probeLines) && this.probeLines.some((line) => line.includes('视图 onOpen 被调用'))
-        if (!seen) this.probe('等了一会儿，视图 onOpen 仍然没有被调用')
+        const seen =
+          Array.isArray(this.probeLines) &&
+          this.probeLines.slice(mark).some((line) => line.includes('视图 onOpen 被调用'))
+        if (seen) return
+        this.probe('等了一会儿，视图 onOpen 仍然没有被调用')
+        // 宿主把视图挂上了却不调 onOpen：构造函数跑了、容器也在，就是没人去画，
+        // 屏幕上是一片黑。用户库里真的这么卡住过一次。这里自己补一次 onOpen——
+        // 视图那边有 opened 标记，宿主晚一步再调也不会画两遍。
+        try {
+          const view = leaf && leaf.view
+          const host = view && (view.containerEl || view.contentEl)
+          const drawn = host && typeof host.querySelector === 'function' ? host.querySelector('.dshgn_mount') : null
+          if (view && typeof view.onOpen === 'function' && drawn === null) {
+            this.probe('自己补一次 onOpen')
+            Promise.resolve(view.onOpen()).catch((error) => {
+              this.probe('补调 onOpen 失败：' + (error && error.message ? error.message : String(error)))
+            })
+          }
+        } catch (error) {
+          this.probe('补调 onOpen 失败：' + (error && error.message ? error.message : String(error)))
+        }
       }, 1500)
     }
   }

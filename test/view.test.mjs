@@ -365,6 +365,43 @@ test('启动轨迹落在 boot.txt 里：插件加载、服务就绪、视图挂�
 
   await view.onClose()
 })
+test('宿主把视图挂上却不调 onOpen 时，插件自己补一次，面板照样画出来', async () => {
+  // 用户库里真的卡成这样过：setViewState 回来了、视图构造函数也跑了，boot.txt 里
+  // 就是没有「视图 onOpen 被调用」——宿主把视图挂上就再也不管了，屏幕上一片黑。
+  const { factory } = calls.views[0]
+  const view = factory({})
+  let opened = 0
+  const realOnOpen = view.onOpen.bind(view)
+  view.onOpen = async () => { opened += 1; return realOnOpen() }
+
+  const realGetLeaf = app.workspace.getLeaf
+  const leaf = { view, setViewState: async () => undefined, detach() {} }
+  app.workspace.getLeaf = () => leaf
+  // 服务得在，否则 activateView 会先去弹「本地服务还没就绪」然后回头
+  const realServer = plugin.server
+  if (!plugin.server) plugin.server = { origin: 'http://127.0.0.1:1' }
+  try {
+    await plugin.activateView()
+    assert.equal(opened, 0, '这一轮宿主自己没调 onOpen')
+
+    await new Promise((resolve) => window.setTimeout(resolve, 1900))
+    assert.equal(opened, 1, '等了一会儿没人调，插件该自己补一次 onOpen')
+    assert.ok(view.contentEl.querySelector('.dshgn_mount') !== null, '补调之后面板要真的挂上，而不是只有一行轨迹')
+
+    // 宿主晚一步又想调一次：同一棵树不该被画两遍
+    await view.onOpen()
+    assert.equal(
+      view.contentEl.querySelectorAll('.dshgn_mount').length,
+      1,
+      '补调过之后再被调一次，不该再铺一层挂载点',
+    )
+  } finally {
+    app.workspace.getLeaf = realGetLeaf
+    plugin.server = realServer
+    await view.onClose()
+  }
+})
+
 test('收尾：卸载插件，别把临时目录和监听留着', async () => {
   plugin.onunload()
   await rm(BASE, { recursive: true, force: true })

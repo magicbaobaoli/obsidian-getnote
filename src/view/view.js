@@ -20,6 +20,9 @@ export class GetnoteView extends ItemView {
     this.root = null
     this.containerEl = null
     this.heartbeat = null
+    // onOpen 只会生效一次：宿主偶尔会把视图挂上却不调 onOpen，插件这边会自己补一次，
+    // 之后宿主再调一次时这个标记把第二次挡掉，免得同一棵树被画两遍。
+    this.opened = false
     // 构造函数跑没跑，是「视图工厂根本没被调」和「onOpen 里炸了」之间唯一的分界。
     // 两件事在屏幕上都是空白，但修法完全不同，所以这里也留一行。
     try {
@@ -173,6 +176,11 @@ export class GetnoteView extends ItemView {
 
   async onOpen() {
     this.note('视图 onOpen 被调用')
+    // 宿主偶尔把视图挂上就不再管了：构造函数跑了、onOpen 一次都没调，屏幕上是一片黑
+    // （用户库里真的出现过，boot.txt 里只有「视图构造函数已跑」没有「onOpen」）。
+    // 那种情况下插件会自己补调一次 onOpen，这里靠标记保证只画一次。
+    if (this.opened) return
+    this.opened = true
     const container = this.contentEl
     try {
       await this.openPanel(container)
@@ -251,6 +259,8 @@ export class GetnoteView extends ItemView {
   }
 
   async onClose() {
+    // 叶子被复用时（Obsidian 会重开同一个视图对象）得允许再画一次。
+    this.opened = false
     clearMarkdownHost()
     // 占位那行字是 onOpen 自己摆的，不属于 React 树：视图关掉时它得跟着走，
     // 否则叶子被复用时上一次的「正在打开…」会留在新面板底下。
