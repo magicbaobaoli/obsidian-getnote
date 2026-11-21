@@ -10976,3 +10976,99 @@ test('回收站里恢复一篇时能先指定放回哪个目录，敲一半有�
   )
   await clickTab('笔记')
 })
+test('卡片上收起来的「+N」点一下就地摊开全部标签，再点收回去，摊开不等于按它筛', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+  await clickTab('笔记')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+  const manyTags = ['摊开标签/一', '摊开标签/二', '摊开标签/三', '摊开标签/四', '摊开标签/五', '摊开标签/六']
+  const title = '标签摊开-标签很多的这一篇'
+  await post('/getnote/create', {
+    dir: '标签摊开验收',
+    title,
+    content: ['---', 'tags: [' + manyTags.join(', ') + ']', '---', '', '# ' + title, '', '这一篇标签多，卡片上摆不下。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-tag-open-a',
+  })
+
+  const backBtn = () => window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(async () => true)
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = backBtn()
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(220)
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  const search = () => window.document.querySelector('.dshgn_search')
+  await waitFor(() => search() !== null, 5000, '搜索框')
+  const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  setValue.call(search(), '')
+  search().dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(200)
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(700)
+
+  const cardOf = () => {
+    const cards = Array.from(window.document.querySelectorAll('.dshgn_card'))
+    return cards.find((el) => {
+      const node = el.querySelector('.dshgn_cardTitle')
+      return node !== null && (node.textContent || '').trim() === title
+    })
+  }
+  await waitFor(() => cardOf() !== undefined, 8000, '列表里出现这一篇')
+  const chipsOf = () => Array.from(cardOf().querySelectorAll('.dshgn_cardTag'))
+  const moreOf = () => cardOf().querySelector('.dshgn_cardTagMore')
+  assert.equal(chipsOf().length, 3, '卡片上默认只摆三颗标签，多的收起来')
+  assert.ok(moreOf() !== null, '三颗之外要有「+N」')
+  assert.equal((moreOf().textContent || '').trim(), '+3', '六个标签收起来三颗，剩下写 +3')
+  assert.equal(moreOf().getAttribute('data-open'), 'false', '一开始是收着的')
+  assert.equal(moreOf().getAttribute('aria-expanded'), 'false', '收着时 aria-expanded 要是 false')
+
+  moreOf().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(250)
+  assert.equal(chipsOf().length, 6, '点开之后六颗全摊出来')
+  assert.equal(moreOf().getAttribute('data-open'), 'true', '摊开之后状态记在 data-open 上')
+  assert.equal(moreOf().getAttribute('aria-expanded'), 'true', '摊开时 aria-expanded 要是 true')
+  assert.equal((moreOf().textContent || '').trim(), '收起', '摊开之后那颗按钮改成「收起」')
+  assert.equal(
+    window.document.querySelectorAll('.dshgn_filterChip').length,
+    0,
+    '摊开标签不该顺手按它筛——它只是一扇窗',
+  )
+  assert.equal(
+    rootNode().getAttribute('data-has-note'),
+    'false',
+    '摊开标签也不该把这一篇打开',
+  )
+
+  moreOf().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(250)
+  assert.equal(chipsOf().length, 3, '再点一下收回去，还是三颗')
+  assert.equal(moreOf().getAttribute('data-open'), 'false', '收起之后状态也回到 false')
+
+  // 收尾：退回「全部笔记」，别把筛选留给下一条用例
+  const allBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find(
+      (el) => (el.textContent || '').trim() === '全部笔记',
+    )
+  if (allBtn() !== undefined) {
+    allBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+})

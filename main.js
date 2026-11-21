@@ -8665,6 +8665,8 @@ var LEX = {
     "note.anchorMissing": "\u8FD9\u4E00\u7BC7\u91CC\u6CA1\u6709\u300C{name}\u300D\u8FD9\u4E00\u8282",
     "note.blockRef": "\u672C\u9875\u67D0\u4E00\u6BB5",
     "note.pickTag": "\u7B5B\u8FD9\u4E2A\u6807\u7B7E",
+    "note.moreTags": "\u8FD8\u6709 {n} \u4E2A\u6807\u7B7E\uFF0C\u70B9\u5F00\u770B\u5168\u90E8",
+    "note.lessTags": "\u6536\u8D77",
     "note.footnote": "\u8DF3\u5230\u8FD9\u6761\u811A\u6CE8",
     "note.footnoteBack": "\u56DE\u5230\u5F15\u7528\u5B83\u7684\u5730\u65B9",
     "note.openEmbed": "\u6253\u5F00\u8FD9\u4E00\u7BC7",
@@ -9167,6 +9169,8 @@ var LEX = {
     "note.anchorMissing": 'No section called "{name}" in this note',
     "note.blockRef": "A paragraph on this page",
     "note.pickTag": "Filter by this tag",
+    "note.moreTags": "{n} more tags, click to see them all",
+    "note.lessTags": "Less",
     "note.footnote": "Jump to this footnote",
     "note.footnoteBack": "Back to where it is cited",
     "note.openEmbed": "Open this note",
@@ -9669,6 +9673,8 @@ var LEX = {
     "note.anchorMissing": "Geen kop met de naam \u2018{name}\u2019 in deze notitie",
     "note.blockRef": "Een alinea op deze pagina",
     "note.pickTag": "Filter op deze tag",
+    "note.moreTags": "Nog {n} tags, klik om ze allemaal te zien",
+    "note.lessTags": "Minder",
     "note.footnote": "Naar deze voetnoot",
     "note.footnoteBack": "Terug naar de verwijzing",
     "note.openEmbed": "Open deze notitie",
@@ -12203,7 +12209,14 @@ var CSS = `
   line-height:1.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
 .dshgn_cardTag:hover{color:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary)}
 .dshgn_cardTag:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
-.dshgn_cardTagMore{flex:none;color:var(--dsw-alias-label-tertiary)}
+/* \u644A\u5F00\u4E4B\u540E\u8981\u80FD\u6362\u884C\uFF1A\u4E00\u884C\u585E\u4E0D\u4E0B\u5341\u51E0\u9897\u6807\u7B7E\uFF0C\u786C\u6324\u4F1A\u628A\u76EE\u5F55\u6324\u6CA1\u3002 */
+.dshgn_cardTags[data-open="true"]{flex-wrap:wrap;overflow:visible}
+.dshgn_cardTagMore{appearance:none;flex:none;padding:0 4px;border:0.5px dashed var(--dsw-alias-border-l2);
+  border-radius:999px;background:transparent;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:9px;
+  line-height:1.6;cursor:pointer;white-space:nowrap}
+.dshgn_cardTagMore:hover{color:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary)}
+.dshgn_cardTagMore:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_cardTagMore[data-open="true"]{border-style:solid;color:var(--dsw-alias-label-secondary)}
 .dshgn_cardExcerpt{font-size:11px;line-height:15px;color:var(--dsw-alias-label-tertiary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_note{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
@@ -14043,6 +14056,7 @@ ${insert}
     [current, openNote, refresh, setBusy, showToast, t4]
   );
   const [picked, setPicked] = h2(() => /* @__PURE__ */ new Set());
+  const [openTags, setOpenTags] = h2(() => /* @__PURE__ */ new Set());
   const [batchTag, setBatchTag] = h2("");
   const [batchDir, setBatchDir] = h2("");
   const [batchDirAt, setBatchDirAt] = h2(null);
@@ -15439,8 +15453,11 @@ ${insert}
                   // 最多三颗，多出来的收成「+N」，否则标签多的一行会把目录挤没。
                   Array.isArray(entry.tags) && entry.tags.length > 0 ? h4(
                     "span",
-                    { className: "dshgn_cardTags" },
-                    entry.tags.slice(0, 3).map(
+                    {
+                      className: "dshgn_cardTags",
+                      "data-open": openTags.has(entry.path) ? "true" : "false"
+                    },
+                    (openTags.has(entry.path) ? entry.tags : entry.tags.slice(0, 3)).map(
                       (tag) => h4(
                         "button",
                         {
@@ -15457,7 +15474,28 @@ ${insert}
                         tag
                       )
                     ),
-                    entry.tags.length > 3 ? h4("span", { className: "dshgn_cardTagMore" }, `+${entry.tags.length - 3}`) : null
+                    // 「+N」不只是个数字：点一下就地摊开全部标签，再点收回去。
+                    // 摊开之后不按标签筛、也不打开这一篇——它只是一扇窗。
+                    entry.tags.length > 3 ? h4(
+                      "button",
+                      {
+                        type: "button",
+                        className: "dshgn_cardTagMore",
+                        title: openTags.has(entry.path) ? t4("note.lessTags") : t4("note.moreTags").replace("{n}", String(entry.tags.length - 3)),
+                        "aria-expanded": openTags.has(entry.path) ? "true" : "false",
+                        "data-open": openTags.has(entry.path) ? "true" : "false",
+                        onClick: (event) => {
+                          event.stopPropagation();
+                          setOpenTags((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(entry.path)) next.delete(entry.path);
+                            else next.add(entry.path);
+                            return next;
+                          });
+                        }
+                      },
+                      openTags.has(entry.path) ? t4("note.lessTags") : `+${entry.tags.length - 3}`
+                    ) : null
                   ) : null
                 ),
                 // 搜索态优先显示正文命中行（带行号），比摘要更能说明为什么它被搜出来

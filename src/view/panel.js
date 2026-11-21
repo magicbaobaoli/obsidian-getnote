@@ -814,6 +814,8 @@ async function saveFile(url, filename) {
         'note.anchorMissing': '这一篇里没有「{name}」这一节',
         'note.blockRef': '本页某一段',
         'note.pickTag': '筛这个标签',
+        'note.moreTags': '还有 {n} 个标签，点开看全部',
+        'note.lessTags': '收起',
     'note.footnote': '跳到这条脚注',
     'note.footnoteBack': '回到引用它的地方',
         'note.openEmbed': '打开这一篇',
@@ -1321,6 +1323,8 @@ async function saveFile(url, filename) {
         'note.anchorMissing': 'No section called "{name}" in this note',
         'note.blockRef': 'A paragraph on this page',
         'note.pickTag': 'Filter by this tag',
+        'note.moreTags': '{n} more tags, click to see them all',
+        'note.lessTags': 'Less',
     'note.footnote': 'Jump to this footnote',
     'note.footnoteBack': 'Back to where it is cited',
         'note.openEmbed': 'Open this note',
@@ -1827,6 +1831,8 @@ async function saveFile(url, filename) {
         'note.anchorMissing': 'Geen kop met de naam ‘{name}’ in deze notitie',
         'note.blockRef': 'Een alinea op deze pagina',
         'note.pickTag': 'Filter op deze tag',
+        'note.moreTags': 'Nog {n} tags, klik om ze allemaal te zien',
+        'note.lessTags': 'Minder',
     'note.footnote': 'Naar deze voetnoot',
     'note.footnoteBack': 'Terug naar de verwijzing',
         'note.openEmbed': 'Open deze notitie',
@@ -5120,7 +5126,14 @@ async function saveFile(url, filename) {
   line-height:1.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
 .dshgn_cardTag:hover{color:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary)}
 .dshgn_cardTag:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
-.dshgn_cardTagMore{flex:none;color:var(--dsw-alias-label-tertiary)}
+/* 摊开之后要能换行：一行塞不下十几颗标签，硬挤会把目录挤没。 */
+.dshgn_cardTags[data-open="true"]{flex-wrap:wrap;overflow:visible}
+.dshgn_cardTagMore{appearance:none;flex:none;padding:0 4px;border:0.5px dashed var(--dsw-alias-border-l2);
+  border-radius:999px;background:transparent;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:9px;
+  line-height:1.6;cursor:pointer;white-space:nowrap}
+.dshgn_cardTagMore:hover{color:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary)}
+.dshgn_cardTagMore:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_cardTagMore[data-open="true"]{border-style:solid;color:var(--dsw-alias-label-secondary)}
 .dshgn_cardExcerpt{font-size:11px;line-height:15px;color:var(--dsw-alias-label-tertiary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_note{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
@@ -7330,6 +7343,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // D2 批量操作：多选后批量加标签 / 移目录 / 删。选中的是 path 集合，
       // 不是索引——列表会随搜索和排序变，用索引会选错人。
       const [picked, setPicked] = React.useState(() => new Set())
+      // 卡片上的标签最多摆三颗，多的收成「+N」。以前那颗 +N 只是个数字：想看看
+      // 这篇到底还有哪些标签，只能打开它去右栏翻属性区。现在点它就地摊开。
+      // 按 path 记而不是按索引：列表会随搜索和排序变，索引会摊错卡片。
+      const [openTags, setOpenTags] = React.useState(() => new Set())
       const [batchTag, setBatchTag] = React.useState('')
       const [batchDir, setBatchDir] = React.useState('')
       // 移目录的目标原来是个空输入框，全靠记忆手打：打错一个字不是「没找到」，
@@ -8911,8 +8928,11 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                         Array.isArray(entry.tags) && entry.tags.length > 0
                           ? h(
                               'span',
-                              { className: 'dshgn_cardTags' },
-                              entry.tags.slice(0, 3).map((tag) =>
+                              {
+                                className: 'dshgn_cardTags',
+                                'data-open': openTags.has(entry.path) ? 'true' : 'false',
+                              },
+                              (openTags.has(entry.path) ? entry.tags : entry.tags.slice(0, 3)).map((tag) =>
                                 h(
                                   'button',
                                   {
@@ -8930,8 +8950,29 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                                   tag,
                                 ),
                               ),
+                              // 「+N」不只是个数字：点一下就地摊开全部标签，再点收回去。
+                              // 摊开之后不按标签筛、也不打开这一篇——它只是一扇窗。
                               entry.tags.length > 3
-                                ? h('span', { className: 'dshgn_cardTagMore' }, `+${entry.tags.length - 3}`)
+                                ? h(
+                                    'button',
+                                    {
+                                      type: 'button',
+                                      className: 'dshgn_cardTagMore',
+                                      title: openTags.has(entry.path) ? t('note.lessTags') : t('note.moreTags').replace('{n}', String(entry.tags.length - 3)),
+                                      'aria-expanded': openTags.has(entry.path) ? 'true' : 'false',
+                                      'data-open': openTags.has(entry.path) ? 'true' : 'false',
+                                      onClick: (event) => {
+                                        event.stopPropagation()
+                                        setOpenTags((prev) => {
+                                          const next = new Set(prev)
+                                          if (next.has(entry.path)) next.delete(entry.path)
+                                          else next.add(entry.path)
+                                          return next
+                                        })
+                                      },
+                                    },
+                                    openTags.has(entry.path) ? t('note.lessTags') : `+${entry.tags.length - 3}`,
+                                  )
                                 : null,
                             )
                           : null,
