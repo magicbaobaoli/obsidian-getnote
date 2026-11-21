@@ -8710,6 +8710,9 @@ var LEX = {
     "broken.truncated": "\u592A\u591A\u4E86\uFF0C\u53EA\u5217\u524D 500 \u5904\u3002\u5148\u4FEE\u6389\u4E00\u4E9B\u518D\u5237\u65B0\u3002",
     "broken.line": "\u7B2C",
     "broken.jump": "\u53BB\u8FD9\u4E00\u53E5",
+    "broken.times": "{n} \u5904",
+    "broken.writeOne": "\u5199\u4E00\u7BC7",
+    "broken.writeOneHint": "\u5728\u5E93\u6839\u5EFA\u4E00\u7BC7\u540C\u540D\u7684\u7A7A\u7B14\u8BB0\uFF0C\u5EFA\u5B8C\u5F53\u573A\u6253\u5F00",
     "todo.jump": "\u53BB\u8FD9\u4E00\u6761",
     "todo.copyAll": "\u590D\u5236\u8FD9\u4EFD\u6E05\u5355",
     "todo.copied": "\u5DF2\u590D\u5236 {n} \u6761\u5F85\u529E",
@@ -9195,6 +9198,9 @@ var LEX = {
     "broken.truncated": "That is a lot \u2014 only the first 500 are listed. Fix some and refresh.",
     "broken.line": "line",
     "broken.jump": "Jump to this line",
+    "broken.times": "{n} places",
+    "broken.writeOne": "Create it",
+    "broken.writeOneHint": "Creates an empty note with this name at the vault root and opens it",
     "todo.jump": "Jump to this item",
     "todo.copyAll": "Copy this list",
     "todo.copied": "Copied {n} to-dos",
@@ -9680,6 +9686,9 @@ var LEX = {
     "broken.truncated": "Dat zijn er veel \u2014 alleen de eerste 500 staan er. Herstel er een paar en vernieuw.",
     "broken.line": "regel",
     "broken.jump": "Naar deze regel",
+    "broken.times": "{n} plekken",
+    "broken.writeOne": "Aanmaken",
+    "broken.writeOneHint": "Maakt een lege notitie met deze naam in de hoofdmap en opent die",
     "todo.jump": "Naar dit punt",
     "todo.copyAll": "Deze lijst kopi\xEBren",
     "todo.copied": "{n} taken gekopieerd",
@@ -11733,6 +11742,13 @@ var CSS = `
   white-space:nowrap;cursor:pointer}
 .dshgn_brokenJump:hover{color:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary)}
 .dshgn_brokenJump:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+/* \u65AD\u94FE\u6309\u300C\u6307\u4E0D\u5230\u7684\u90A3\u4E2A\u540D\u5B57\u300D\u5206\u7EC4\uFF1A\u540C\u4E00\u4E2A\u540D\u5B57\u5728\u4E03\u516B\u7BC7\u91CC\u5404\u5199\u4E00\u6B21\uFF0C\u5C31\u662F\u4E03\u516B\u6761\u4E00\u6A21\u4E00\u6837\u7684
+   \u7EA2\u5B57\uFF1B\u5206\u7EC4\u4E4B\u540E\u4E00\u5904\u540D\u5B57\u4E00\u884C\u5934\uFF0C\u5199\u7740\u5B83\u88AB\u5199\u9519\u4E86\u51E0\u5904\uFF0C\u53F3\u8FB9\u4E00\u9897\u300C\u5199\u4E00\u7BC7\u300D\u5F53\u573A\u628A\u90A3\u4E00\u7BC7\u8865\u51FA\u6765\u3002 */
+.dshgn_brokenGroup{display:flex;align-items:center;gap:6px;padding:2px 2px 0;min-width:0}
+.dshgn_brokenGroupName{flex:0 1 auto;min-width:0;font-size:11px;font-weight:600;
+  color:var(--dsw-alias-state-error-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_brokenGroupCount{flex:none;font-size:10px;color:var(--dsw-alias-label-dimmed)}
+.dshgn_brokenGroupAll{flex:none;margin-left:auto;height:22px;padding:0 8px;font-size:11px}
 /* \u5F85\u529E\u6E05\u5355\uFF1A\u4E00\u884C\u4E00\u6761\u3002\u65B9\u6846\u590D\u7528\u9605\u8BFB\u533A\u90A3\u4E2A\uFF08\u540C\u6837\u5927\u5C0F\u3001\u540C\u6837\u80FD\u70B9\uFF09\uFF0C\u53F3\u8FB9\u662F\u6B63\u6587\u4E0E\u51FA\u5904\u3002
    \u65B9\u6846\u5916\u9762\u5957\u4E00\u5C42\u900F\u660E\u6309\u94AE\uFF0C\u662F\u4E3A\u4E86\u8BA9\u6574\u5757\u65B9\u6846\u8FDE\u5468\u8FB9\u7684\u70B9\u51FB\u70ED\u533A\u4E00\u8D77\u53EF\u70B9\u2014\u201412px \u7684\u65B9\u6846
    \u76F4\u63A5\u70B9\u5F88\u96BE\u70B9\u4E2D\uFF0C\u624B\u673A\u4E0A\u5C24\u5176\u3002 */
@@ -14431,6 +14447,28 @@ ${insert}
       onOpenLine: (path, text) => {
         setTab("notes");
         jumpToMatch(path, { text: String(text || "").replace(/…$/, "") });
+      },
+      // 断链清单里最省事的一条路：这个名字本来就该有一篇，只是还没写。
+      // 建在库根（不猜目录——断链里没有「它本该在哪」的信息），建完当场打开，
+      // 用户接着写正文就好；写完之后这一组自然就不在清单里了。
+      onCreate: async (name) => {
+        const title = String(name || "").trim().replace(/^\/+|\/+$/g, "");
+        if (title === "") return;
+        try {
+          const created = await api("/create", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ dir: "", title, content: `# ${title}
+
+`, withDatePrefix: false, requestId: requestId() })
+          });
+          showToast(t4("note.createMissingDone").replace("{name}", title));
+          await refresh();
+          setTab("notes");
+          await openNote(created.path);
+        } catch (err) {
+          setError(err && err.message ? err.message : String(err));
+        }
       }
     });
   } else if (tab === "todos") {
@@ -17589,11 +17627,12 @@ function ConflictPane(props) {
   );
 }
 function BrokenPane(props) {
-  const { t: t4, status, onError, onOpen, onOpenLine } = props;
+  const { t: t4, status, onError, onOpen, onOpenLine, onCreate } = props;
   const [hits, setHits] = h2(null);
   const [scanned, setScanned] = h2(0);
   const [truncated, setTruncated] = h2(false);
   const [loading, setLoading] = h2(false);
+  const [creating, setCreating] = h2("");
   const load = q2(async () => {
     setLoading(true);
     try {
@@ -17612,6 +17651,19 @@ function BrokenPane(props) {
   }, [load]);
   const list = hits === null ? [] : hits;
   const summary = t4("broken.found").replace("{n}", String(list.length)).replace("{scanned}", String(scanned));
+  const groups = T2(() => {
+    const order = [];
+    const byName = /* @__PURE__ */ new Map();
+    for (const hit of list) {
+      const name = String(hit.target || "");
+      if (!byName.has(name)) {
+        byName.set(name, { target: name, items: [] });
+        order.push(name);
+      }
+      byName.get(name).items.push(hit);
+    }
+    return order.map((name) => byName.get(name));
+  }, [list]);
   return h4(
     "div",
     { className: "dshgn_pane" },
@@ -17642,36 +17694,67 @@ function BrokenPane(props) {
     ) : h4(
       "div",
       { className: "dshgn_cardBox" },
-      list.map(
-        (hit) => h4(
-          "div",
-          { key: `${hit.path}#${hit.line}#${hit.target}`, className: "dshgn_brokenLine" },
+      groups.map((group) => {
+        const busyOne = creating === group.target;
+        return h4(
+          b,
+          { key: `group:${group.target}` },
           h4(
-            "button",
-            {
-              type: "button",
-              className: "dshgn_brokenRow",
-              title: hit.path,
-              onClick: () => {
-                if (typeof onOpen === "function") onOpen(hit.path);
-              }
-            },
-            h4("span", { className: "dshgn_brokenTarget" }, hit.target),
-            h4("span", { className: "dshgn_brokenWhere" }, `${hit.title || hit.path} \xB7 ${t4("broken.line")} ${hit.line}`),
-            hit.text === "" ? null : h4("span", { className: "dshgn_brokenSnip" }, hit.text)
+            "div",
+            { className: "dshgn_brokenGroup", title: group.target },
+            h4("span", { className: "dshgn_brokenGroupName" }, group.target),
+            h4("span", { className: "dshgn_brokenGroupCount" }, t4("broken.times").replace("{n}", String(group.items.length))),
+            typeof onCreate === "function" ? h4(
+              "button",
+              {
+                type: "button",
+                className: "dshgn_btn dshgn_brokenGroupAll",
+                title: t4("broken.writeOneHint"),
+                disabled: busyOne,
+                onClick: () => {
+                  setCreating(group.target);
+                  Promise.resolve(onCreate(group.target)).then(
+                    () => setCreating(""),
+                    () => setCreating("")
+                  );
+                }
+              },
+              busyOne ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "plus", size: 12 }),
+              t4("broken.writeOne")
+            ) : null
           ),
-          typeof onOpenLine === "function" && hit.text !== "" ? h4(
-            "button",
-            {
-              type: "button",
-              className: "dshgn_brokenJump",
-              title: t4("broken.jump"),
-              onClick: () => onOpenLine(hit.path, hit.text)
-            },
-            t4("broken.jump")
-          ) : null
-        )
-      )
+          group.items.map(
+            (hit) => h4(
+              "div",
+              { key: `${hit.path}#${hit.line}#${hit.target}`, className: "dshgn_brokenLine" },
+              h4(
+                "button",
+                {
+                  type: "button",
+                  className: "dshgn_brokenRow",
+                  title: hit.path,
+                  onClick: () => {
+                    if (typeof onOpen === "function") onOpen(hit.path);
+                  }
+                },
+                h4("span", { className: "dshgn_brokenTarget" }, hit.target),
+                h4("span", { className: "dshgn_brokenWhere" }, `${hit.title || hit.path} \xB7 ${t4("broken.line")} ${hit.line}`),
+                hit.text === "" ? null : h4("span", { className: "dshgn_brokenSnip" }, hit.text)
+              ),
+              typeof onOpenLine === "function" && hit.text !== "" ? h4(
+                "button",
+                {
+                  type: "button",
+                  className: "dshgn_brokenJump",
+                  title: t4("broken.jump"),
+                  onClick: () => onOpenLine(hit.path, hit.text)
+                },
+                t4("broken.jump")
+              ) : null
+            )
+          )
+        );
+      })
     )
   );
 }

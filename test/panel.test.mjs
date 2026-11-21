@@ -10117,3 +10117,66 @@ test('待办按篇分组：一篇一组写着还剩几条，一颗按钮把这�
   assert.ok(toastText.includes('2'), '勾完说一句勾了几条：' + toastText)
   await backToList()
 })
+
+test('断链页按「指不到的那个名字」分组，一处名字一行头，右边一颗「写一篇」当场把它补出来', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const backToList = async () => {
+    const back = rootNode().querySelector('.dshgn_noteBack')
+    if (back !== null) {
+      panel.setConfirmDialog(() => Promise.resolve(true))
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false')
+  }
+  await backToList()
+  const search = rootNode().querySelector('.dshgn_search')
+  if (search !== null) {
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(search, '')
+    search.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(400)
+  }
+
+  const target = '分组断链-还没写的那一篇'
+  const make = async (title, content, requestId) => {
+    const res = await realFetch(server.origin + '/getnote/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({ dir: '随手记', title, content, withDatePrefix: false, requestId }),
+    })
+    assert.equal(res.ok, true, '造笔记失败：' + res.status)
+  }
+  // 同一个名字在库里被两个地方各写了一次：清单上就是两条一模一样的红字。
+  await make('断链分组甲', ['# 断链分组甲', '', '坏的 [[' + target + ']]。', ''].join('\n'), 'seed-broken-group-a')
+  await make('断链分组乙', ['# 断链分组乙', '', '这边也写了 [[' + target + ']]。', ''].join('\n'), 'seed-broken-group-b')
+
+  await clickTab('断链')
+  const groupOf = () =>
+    Array.from(rootNode().querySelectorAll('.dshgn_brokenGroup')).find((el) => {
+      const name = el.querySelector('.dshgn_brokenGroupName')
+      return name !== null && String(name.textContent || '') === target
+    }) || null
+  const rowsOf = () =>
+    Array.from(rootNode().querySelectorAll('.dshgn_brokenLine')).filter((line) => {
+      const name = line.querySelector('.dshgn_brokenTarget')
+      return name !== null && String(name.textContent || '') === target
+    })
+  const head = await waitFor(groupOf, 8000, '断链页里该有这个名字的一组')
+  const count = head.querySelector('.dshgn_brokenGroupCount')
+  assert.ok(count !== null, '组头要报这个名字被写错了几处')
+  assert.ok(String(count.textContent || '').includes('2'), '组头该写着 2 处：' + count.textContent)
+  assert.equal(rowsOf().length, 2, '两处都还在这一组里')
+
+  const writeBtn = head.querySelector('.dshgn_brokenGroupAll')
+  assert.ok(writeBtn !== null, '组头右边该有一颗「写一篇」')
+  assert.equal(String(writeBtn.getAttribute('title') || '').includes('空笔记'), true, '悬停说清会建出什么')
+  writeBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 8000, '建完该当场打开那一篇')
+  const opened = rootNode().querySelector('.dshgn_notePath')
+  assert.ok(String(opened.textContent || '').includes(target), '打开的就是刚补出来的那一篇：' + opened.textContent)
+
+  // 那一篇存在之后，两处双链都指得到了，这一组该从清单上消失
+  const left = await realFetch(server.origin + '/getnote/broken', { headers: { 'x-getnote-token': server.token } })
+  const json = await left.json()
+  assert.equal(json.hits.filter((hit) => hit.target === target).length, 0, '补出来之后不该还挂着断链')
+  await backToList()
+})

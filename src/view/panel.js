@@ -858,6 +858,9 @@ async function saveFile(url, filename) {
         'broken.truncated': '太多了，只列前 500 处。先修掉一些再刷新。',
         'broken.line': '第',
         'broken.jump': '去这一句',
+        'broken.times': '{n} 处',
+        'broken.writeOne': '写一篇',
+        'broken.writeOneHint': '在库根建一篇同名的空笔记，建完当场打开',
         'todo.jump': '去这一条',
         'todo.copyAll': '复制这份清单',
         'todo.copied': '已复制 {n} 条待办',
@@ -1347,6 +1350,9 @@ async function saveFile(url, filename) {
         'broken.truncated': 'That is a lot — only the first 500 are listed. Fix some and refresh.',
         'broken.line': 'line',
         'broken.jump': 'Jump to this line',
+        'broken.times': '{n} places',
+        'broken.writeOne': 'Create it',
+        'broken.writeOneHint': 'Creates an empty note with this name at the vault root and opens it',
         'todo.jump': 'Jump to this item',
         'todo.copyAll': 'Copy this list',
         'todo.copied': 'Copied {n} to-dos',
@@ -1835,6 +1841,9 @@ async function saveFile(url, filename) {
         'broken.truncated': 'Dat zijn er veel — alleen de eerste 500 staan er. Herstel er een paar en vernieuw.',
         'broken.line': 'regel',
         'broken.jump': 'Naar deze regel',
+        'broken.times': '{n} plekken',
+        'broken.writeOne': 'Aanmaken',
+        'broken.writeOneHint': 'Maakt een lege notitie met deze naam in de hoofdmap en opent die',
         'todo.jump': 'Naar dit punt',
         'todo.copyAll': 'Deze lijst kopiëren',
         'todo.copied': '{n} taken gekopieerd',
@@ -4647,6 +4656,13 @@ async function saveFile(url, filename) {
   white-space:nowrap;cursor:pointer}
 .dshgn_brokenJump:hover{color:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary)}
 .dshgn_brokenJump:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+/* 断链按「指不到的那个名字」分组：同一个名字在七八篇里各写一次，就是七八条一模一样的
+   红字；分组之后一处名字一行头，写着它被写错了几处，右边一颗「写一篇」当场把那一篇补出来。 */
+.dshgn_brokenGroup{display:flex;align-items:center;gap:6px;padding:2px 2px 0;min-width:0}
+.dshgn_brokenGroupName{flex:0 1 auto;min-width:0;font-size:11px;font-weight:600;
+  color:var(--dsw-alias-state-error-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_brokenGroupCount{flex:none;font-size:10px;color:var(--dsw-alias-label-dimmed)}
+.dshgn_brokenGroupAll{flex:none;margin-left:auto;height:22px;padding:0 8px;font-size:11px}
 /* 待办清单：一行一条。方框复用阅读区那个（同样大小、同样能点），右边是正文与出处。
    方框外面套一层透明按钮，是为了让整块方框连周边的点击热区一起可点——12px 的方框
    直接点很难点中，手机上尤其。 */
@@ -7799,6 +7815,26 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           onOpenLine: (path, text) => {
             setTab('notes')
             jumpToMatch(path, { text: String(text || '').replace(/…$/, '') })
+          },
+          // 断链清单里最省事的一条路：这个名字本来就该有一篇，只是还没写。
+          // 建在库根（不猜目录——断链里没有「它本该在哪」的信息），建完当场打开，
+          // 用户接着写正文就好；写完之后这一组自然就不在清单里了。
+          onCreate: async (name) => {
+            const title = String(name || '').trim().replace(/^\/+|\/+$/g, '')
+            if (title === '') return
+            try {
+              const created = await api('/create', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ dir: '', title, content: `# ${title}\n\n`, withDatePrefix: false, requestId: requestId() }),
+              })
+              showToast(t('note.createMissingDone').replace('{name}', title))
+              await refresh()
+              setTab('notes')
+              await openNote(created.path)
+            } catch (err) {
+              setError(err && err.message ? err.message : String(err))
+            }
           },
         })
       } else if (tab === 'todos') {
@@ -11472,11 +11508,13 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
      * 所以把它当路标写在旁边）。
      */
     function BrokenPane(props) {
-      const { t, status, onError, onOpen, onOpenLine } = props
+      const { t, status, onError, onOpen, onOpenLine, onCreate } = props
       const [hits, setHits] = React.useState(null)
       const [scanned, setScanned] = React.useState(0)
       const [truncated, setTruncated] = React.useState(false)
       const [loading, setLoading] = React.useState(false)
+      // 正在替哪个名字建那一篇（建完/失败都清回空串）。
+      const [creating, setCreating] = React.useState('')
 
       const load = React.useCallback(async () => {
         setLoading(true)
@@ -11498,6 +11536,22 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
 
       const list = hits === null ? [] : hits
       const summary = t('broken.found').replace('{n}', String(list.length)).replace('{scanned}', String(scanned))
+      // 按「指不到的那个名字」分组：同一个名字在七八篇里各写一次，就是七八条一模一样的
+      // 红字，而真正要决定的事只有一件——这个名字到底要不要存在。顺序沿用后端的
+      // 路径 + 行号，组头里报「几处」。
+      const groups = React.useMemo(() => {
+        const order = []
+        const byName = new Map()
+        for (const hit of list) {
+          const name = String(hit.target || '')
+          if (!byName.has(name)) {
+            byName.set(name, { target: name, items: [] })
+            order.push(name)
+          }
+          byName.get(name).items.push(hit)
+        }
+        return order.map((name) => byName.get(name))
+      }, [list])
 
       return h(
         'div',
@@ -11533,38 +11587,71 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             : h(
                 'div',
                 { className: 'dshgn_cardBox' },
-                list.map((hit) =>
-                  h(
-                    'div',
-                    { key: `${hit.path}#${hit.line}#${hit.target}`, className: 'dshgn_brokenLine' },
+                groups.map((group) => {
+                  const busyOne = creating === group.target
+                  return h(
+                    React.Fragment,
+                    { key: `group:${group.target}` },
                     h(
-                      'button',
-                      {
-                        type: 'button',
-                        className: 'dshgn_brokenRow',
-                        title: hit.path,
-                        onClick: () => {
-                          if (typeof onOpen === 'function') onOpen(hit.path)
-                        },
-                      },
-                      h('span', { className: 'dshgn_brokenTarget' }, hit.target),
-                      h('span', { className: 'dshgn_brokenWhere' }, `${hit.title || hit.path} · ${t('broken.line')} ${hit.line}`),
-                      hit.text === '' ? null : h('span', { className: 'dshgn_brokenSnip' }, hit.text),
+                      'div',
+                      { className: 'dshgn_brokenGroup', title: group.target },
+                      h('span', { className: 'dshgn_brokenGroupName' }, group.target),
+                      h('span', { className: 'dshgn_brokenGroupCount' }, t('broken.times').replace('{n}', String(group.items.length))),
+                      typeof onCreate === 'function'
+                        ? h(
+                            'button',
+                            {
+                              type: 'button',
+                              className: 'dshgn_btn dshgn_brokenGroupAll',
+                              title: t('broken.writeOneHint'),
+                              disabled: busyOne,
+                              onClick: () => {
+                                setCreating(group.target)
+                                Promise.resolve(onCreate(group.target)).then(
+                                  () => setCreating(''),
+                                  () => setCreating(''),
+                                )
+                              },
+                            },
+                            busyOne ? h('span', { className: 'dshgn_spin' }) : h(Icon, { name: 'plus', size: 12 }),
+                            t('broken.writeOne'),
+                          )
+                        : null,
                     ),
-                    typeof onOpenLine === 'function' && hit.text !== ''
-                      ? h(
+                    group.items.map((hit) =>
+                      h(
+                        'div',
+                        { key: `${hit.path}#${hit.line}#${hit.target}`, className: 'dshgn_brokenLine' },
+                        h(
                           'button',
                           {
                             type: 'button',
-                            className: 'dshgn_brokenJump',
-                            title: t('broken.jump'),
-                            onClick: () => onOpenLine(hit.path, hit.text),
+                            className: 'dshgn_brokenRow',
+                            title: hit.path,
+                            onClick: () => {
+                              if (typeof onOpen === 'function') onOpen(hit.path)
+                            },
                           },
-                          t('broken.jump'),
-                        )
-                      : null,
-                  ),
-                ),
+                          h('span', { className: 'dshgn_brokenTarget' }, hit.target),
+                          h('span', { className: 'dshgn_brokenWhere' }, `${hit.title || hit.path} · ${t('broken.line')} ${hit.line}`),
+                          hit.text === '' ? null : h('span', { className: 'dshgn_brokenSnip' }, hit.text),
+                        ),
+                        typeof onOpenLine === 'function' && hit.text !== ''
+                          ? h(
+                              'button',
+                              {
+                                type: 'button',
+                                className: 'dshgn_brokenJump',
+                                title: t('broken.jump'),
+                                onClick: () => onOpenLine(hit.path, hit.text),
+                              },
+                              t('broken.jump'),
+                            )
+                          : null,
+                      ),
+                    ),
+                  )
+                }),
               ),
       )
     }
