@@ -867,6 +867,9 @@ async function saveFile(url, filename) {
         'todos.emptyHint': '库里每一条待办都做完了。新的待办写进笔记里，回来看一眼就行。',
         'todos.found': '扫了 {scanned} 篇，还剩 {n} 条没做。',
         'todos.truncated': '太多了，只列前 500 条。先勾掉一些再刷新。',
+        'todos.unticked': '勾掉这一篇的 {n} 条',
+        'todos.untickedDone': '这一篇的 {n} 条都勾掉了',
+        'todos.atLine': '第 {n} 行',
         'trash.desc': '删掉的笔记先放这里，随时可以恢复。恢复只是把文件搬回库里，不碰内容。',
         'trash.empty': '回收站是空的',
         'trash.emptyHint': '在笔记列表里点删除，文件会先到这里。清空才会真的删。',
@@ -1353,6 +1356,9 @@ async function saveFile(url, filename) {
         'todos.emptyHint': 'Every to-do in the vault is done. Write new ones into notes and check back.',
         'todos.found': 'Scanned {scanned} notes, {n} still open.',
         'todos.truncated': 'That is a lot — only the first 500 are listed. Tick some off and refresh.',
+      'todos.unticked': 'Tick all {n} in this note',
+      'todos.untickedDone': 'Ticked off {n} in this note',
+      'todos.atLine': 'line {n}',
         'trash.desc': 'Deleted notes wait here and can be restored. Restoring just moves the file back.',
         'trash.empty': 'Trash is empty',
         'trash.emptyHint': 'Deleting a note moves it here first. Only purging really deletes it.',
@@ -1838,6 +1844,9 @@ async function saveFile(url, filename) {
         'todos.emptyHint': 'Elke taak in de map is af. Schrijf nieuwe in notities en kom later terug.',
         'todos.found': '{scanned} notities gescand, {n} nog open.',
         'todos.truncated': 'Dat zijn er veel — alleen de eerste 500 staan er. Vink er een paar af en vernieuw.',
+      'todos.unticked': 'Alle {n} in deze notitie afvinken',
+      'todos.untickedDone': '{n} in deze notitie afgevinkt',
+      'todos.atLine': 'regel {n}',
         'trash.desc': 'Verwijderde notities wachten hier en kunnen worden hersteld. Herstellen zet het bestand gewoon terug.',
         'trash.empty': 'De prullenbak is leeg',
         'trash.emptyHint': 'Een notitie verwijderen verplaatst hem eerst hierheen. Pas leegmaken verwijdert echt.',
@@ -4652,6 +4661,15 @@ async function saveFile(url, filename) {
   text-align:left;padding:0;border:0;background:transparent;font:inherit;cursor:pointer;color:inherit}
 .dshgn_todoTitle{font-size:12.5px;line-height:1.5;color:var(--dsw-alias-label-primary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 待办按篇分组：组头是这一篇的名字（点一下打开它）、还剩几条、以及一颗把这一组
+   一起勾掉的按钮。组头本身不做成按钮——名字和按钮各自可点，按钮不能套按钮。 */
+.dshgn_todoGroup{display:flex;align-items:center;gap:6px;padding:2px 2px 0;min-width:0}
+.dshgn_todoGroupName{appearance:none;flex:0 1 auto;min-width:0;padding:0;border:0;background:transparent;
+  font:inherit;font-size:11px;font-weight:600;color:var(--dsw-alias-label-secondary);cursor:pointer;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
+.dshgn_todoGroupName:hover{color:var(--dsw-alias-label-primary);text-decoration:underline}
+.dshgn_todoGroupCount{flex:none;font-size:10px;color:var(--dsw-alias-label-dimmed)}
+.dshgn_todoGroupAll{flex:none;margin-left:auto;height:22px;padding:0 8px;font-size:11px}
 .dshgn_backlinks{margin-top:18px;padding-top:12px;border-top:0.5px solid var(--dsw-alias-border-l1)}
 .dshgn_backlinksHead{display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:11px;
   color:var(--dsw-alias-label-tertiary)}
@@ -11637,7 +11655,55 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         }
       }, [items, showToast, t])
 
+      // 一整篇的待办都做完了：一条条点方框等于点十几次，每点一次还各存一遍盘。
+      // 仍然一条一条走 /todo/toggle（那边按序号定位、只认一条），但这一篇的
+      // 那几条一起勾完再从单子上一起拿掉；中途失败就把已经勾上的重新查一遍——
+      // 它们确实已经写进笔记了，不能还挂在「没做」里。
+      const untickAll = React.useCallback(
+        async (group) => {
+          if (group === null || group === undefined || group.items.length === 0) return
+          const key = `all:${group.path}`
+          setBusy(key)
+          try {
+            for (const item of group.items) {
+              await api('/todo/toggle', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ path: item.path, index: item.index }),
+              })
+            }
+            const gone = new Set(group.items.map((item) => `${item.path}#${item.index}`))
+            setItems((prev) => (prev === null ? prev : prev.filter((one) => !gone.has(`${one.path}#${one.index}`))))
+            if (typeof showToast === 'function') showToast(t('todos.untickedDone').replace('{n}', String(group.items.length)))
+            if (typeof onChanged === 'function') await onChanged()
+          } catch (err) {
+            onError(err && err.message ? err.message : String(err))
+            await load()
+          } finally {
+            setBusy('')
+          }
+        },
+        [load, onChanged, onError, showToast, t],
+      )
+
       const list = items === null ? [] : items
+      // 按篇分组：几十条待办散在七八篇里时，光看每行「第几行」不知道还剩几篇没弄，
+      // 也不知道哪几篇其实已经清空了。顺序沿用后端给的（先按路径、再按行号）。
+      const groups = React.useMemo(() => {
+        const out = []
+        const at = new Map()
+        for (const item of list) {
+          const key = String(item.path || '')
+          let group = at.get(key)
+          if (group === undefined) {
+            group = { path: key, title: item.title || key, items: [] }
+            at.set(key, group)
+            out.push(group)
+          }
+          group.items.push(item)
+        }
+        return out
+      }, [list])
       const summary = t('todos.found').replace('{n}', String(list.length)).replace('{scanned}', String(scanned))
 
       return h(
@@ -11684,7 +11750,44 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             : h(
                 'div',
                 { className: 'dshgn_cardBox' },
-                list.map((item) => {
+                // 一篇一组：组头写着这是哪一篇、还剩几条，右边一颗把这组一起勾掉。
+                // 几十条待办散在七八篇里时，光看每行「第几行」既不知道还剩几篇，
+                // 也不知道哪几篇其实已经清空了。
+                groups.map((group) => {
+                  const groupBusy = busy === `all:${group.path}`
+                  return h(
+                    React.Fragment,
+                    { key: `group:${group.path}` },
+                    h(
+                      'div',
+                      { className: 'dshgn_todoGroup', title: group.path },
+                      h(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'dshgn_todoGroupName',
+                          title: group.path,
+                          onClick: () => {
+                            if (typeof onOpen === 'function') onOpen(group.path)
+                          },
+                        },
+                        group.title,
+                      ),
+                      h('span', { className: 'dshgn_todoGroupCount' }, String(group.items.length)),
+                      h(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'dshgn_btn dshgn_todoGroupAll',
+                          title: t('todos.unticked').replace('{n}', String(group.items.length)),
+                          disabled: groupBusy,
+                          onClick: () => void untickAll(group),
+                        },
+                        groupBusy ? h('span', { className: 'dshgn_spin' }) : h(Icon, { name: 'check', size: 12 }),
+                        t('todos.unticked').replace('{n}', String(group.items.length)),
+                      ),
+                    ),
+                    group.items.map((item) => {
                   const key = `${item.path}#${item.index}`
                   return h(
                     'div',
@@ -11718,10 +11821,12 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                           },
                         },
                         h('span', { className: 'dshgn_todoTitle' }, item.text),
+                        // 哪一篇已经写在上面那条组头里了，这里只报「第几行」，
+                        // 一行里塞两遍同一个篇名只是噪声。
                         h(
                           'span',
                           { className: 'dshgn_brokenWhere' },
-                          `${item.title || item.path} · ${t('broken.line')} ${item.line}`,
+                          t('todos.atLine').replace('{n}', String(item.line)),
                         ),
                       ),
                       typeof onOpenLine === 'function' && String(item.text || '') !== ''
@@ -11737,6 +11842,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                           )
                         : null,
                     ),
+                  )
+                    }),
                   )
                 }),
               ),

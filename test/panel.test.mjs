@@ -3820,7 +3820,17 @@ test('待办页签把全库没做的方框收成一张单子，勾一下当场�
     '待办页签里应该有我们这一条',
   )
   assert.ok(!(row.textContent || '').includes('已经做过的'), '勾掉的不该出现在单子上')
-  assert.ok((row.textContent || '').includes('待办验收'), '要标出这条待办在哪一篇：' + row.textContent)
+  assert.ok((row.textContent || '').includes('第 '), '这一行要标出是第几行：' + row.textContent)
+  // 组头和组里的行是兄弟节点（Fragment 里先组头、再逐行），所以不能从行往上找，
+  // 按组的 title（整条路径）去认那一组。
+  const groupHead = Array.from(window.document.querySelectorAll('.dshgn_todoGroup')).find(
+    (el) => (el.getAttribute('title') || '').endsWith('待办验收.md'),
+  )
+  assert.ok(groupHead !== undefined && groupHead !== null, '组头要标出这条待办在哪一篇')
+  assert.ok(
+    (groupHead.textContent || '').includes('待办验收'),
+    '组头要写着这一篇的篇名：' + (groupHead ? groupHead.textContent : ''),
+  )
 
   // 点方框：这一行当场消失（不整页重查），并且真的写进了笔记
   const box = row.querySelector('.dshgn_check')
@@ -10036,4 +10046,74 @@ test('左栏标签也能收起来：点箭头把这一支折下去，再点展�
   assert.ok(rowOf('折叠标签另一个') !== null, '另一支照旧展开')
   caretOf('折叠标签').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
   await waitFor(() => rowOf('折叠标签/子一') !== null, 5000, '收尾前展开回来')
+})
+test('待办按篇分组：一篇一组写着还剩几条，一颗按钮把这一篇的一起勾掉', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const backToList = async () => {
+    const back = rootNode().querySelector('.dshgn_noteBack')
+    if (back !== null) {
+      panel.setConfirmDialog(() => Promise.resolve(true))
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false')
+  }
+  await backToList()
+  const search = rootNode().querySelector('.dshgn_search')
+  if (search !== null) {
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(search, '')
+    search.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(400)
+  }
+
+  const make = async (title, content, requestId) => {
+    const res = await realFetch(`${server.origin}/getnote/create`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({ dir: '随手记', title, content, withDatePrefix: false, requestId }),
+    })
+    return (await res.json()).path
+  }
+  await make('分组验收甲', ['# 分组验收甲', '', '- [ ] 甲的第一条', '- [ ] 甲的第二条', ''].join('\n'), 'seed-todo-group-a')
+  await make('分组验收乙', ['# 分组验收乙', '', '- [ ] 乙的那一条', ''].join('\n'), 'seed-todo-group-b')
+
+  await clickTab('待办')
+  const groupOf = (name) => {
+    const heads = Array.from(rootNode().querySelectorAll('.dshgn_todoGroup'))
+    return heads.find((el) => String(el.textContent || '').includes(name)) || null
+  }
+  const rowOf = (text) => {
+    const rows = Array.from(rootNode().querySelectorAll('.dshgn_todoRow'))
+    return rows.find((el) => String(el.textContent || '').includes(text)) || null
+  }
+  const headA = await waitFor(() => groupOf('分组验收甲'), 8000, '甲那一组该有个组头')
+  assert.ok(groupOf('分组验收乙') !== null, '乙也该有自己的一组')
+  assert.ok(String(headA.textContent || '').includes('2'), '组头要报这一篇还剩几条：' + headA.textContent)
+  // 行里不再重复篇名，只报第几行
+  const rowA = rowOf('甲的第一条')
+  assert.ok(rowA !== null, '甲的第一条该在单子上')
+  assert.ok(!String(rowA.textContent || '').includes('分组验收甲'), '行里不重复篇名：' + rowA.textContent)
+  assert.ok(/第 \d+ 行/.test(String(rowA.textContent || '')), '行里报第几行：' + rowA.textContent)
+
+  const allBtn = headA.querySelector('.dshgn_todoGroupAll')
+  assert.ok(allBtn !== null, '组头右边该有一颗一起勾掉的按钮')
+  assert.ok(String(allBtn.getAttribute('title') || '').includes('2'), '按钮上说清要勾几条')
+  allBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => groupOf('分组验收甲') === null, 8000, '这一篇的待办都勾掉之后整组该消失')
+  assert.ok(rowOf('乙的那一条') !== null, '别的篇不受影响')
+
+  // 真的写进笔记了，不是只在界面上拿掉
+  const readBack = await realFetch(`${server.origin}/getnote/read?path=` + encodeURIComponent('随手记/分组验收甲.md'), {
+    headers: { 'x-getnote-token': server.token },
+  })
+  const note = await readBack.json()
+  assert.ok(note.content.includes('- [x] 甲的第一条'), '甲的第一条要真的被勾上：' + note.content)
+  assert.ok(note.content.includes('- [x] 甲的第二条'), '甲的第二条也要真的被勾上：' + note.content)
+  assert.ok(!note.content.includes('- [ ] 甲的第一条'), '不该还留着没勾的那份')
+
+  const toastText = await waitFor(() => {
+    const node = window.document.querySelector('.dshgn_toast')
+    return node === null ? null : String(node.textContent || '')
+  })
+  assert.ok(toastText.includes('2'), '勾完说一句勾了几条：' + toastText)
+  await backToList()
 })

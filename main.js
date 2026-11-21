@@ -8719,6 +8719,9 @@ var LEX = {
     "todos.emptyHint": "\u5E93\u91CC\u6BCF\u4E00\u6761\u5F85\u529E\u90FD\u505A\u5B8C\u4E86\u3002\u65B0\u7684\u5F85\u529E\u5199\u8FDB\u7B14\u8BB0\u91CC\uFF0C\u56DE\u6765\u770B\u4E00\u773C\u5C31\u884C\u3002",
     "todos.found": "\u626B\u4E86 {scanned} \u7BC7\uFF0C\u8FD8\u5269 {n} \u6761\u6CA1\u505A\u3002",
     "todos.truncated": "\u592A\u591A\u4E86\uFF0C\u53EA\u5217\u524D 500 \u6761\u3002\u5148\u52FE\u6389\u4E00\u4E9B\u518D\u5237\u65B0\u3002",
+    "todos.unticked": "\u52FE\u6389\u8FD9\u4E00\u7BC7\u7684 {n} \u6761",
+    "todos.untickedDone": "\u8FD9\u4E00\u7BC7\u7684 {n} \u6761\u90FD\u52FE\u6389\u4E86",
+    "todos.atLine": "\u7B2C {n} \u884C",
     "trash.desc": "\u5220\u6389\u7684\u7B14\u8BB0\u5148\u653E\u8FD9\u91CC\uFF0C\u968F\u65F6\u53EF\u4EE5\u6062\u590D\u3002\u6062\u590D\u53EA\u662F\u628A\u6587\u4EF6\u642C\u56DE\u5E93\u91CC\uFF0C\u4E0D\u78B0\u5185\u5BB9\u3002",
     "trash.empty": "\u56DE\u6536\u7AD9\u662F\u7A7A\u7684",
     "trash.emptyHint": "\u5728\u7B14\u8BB0\u5217\u8868\u91CC\u70B9\u5220\u9664\uFF0C\u6587\u4EF6\u4F1A\u5148\u5230\u8FD9\u91CC\u3002\u6E05\u7A7A\u624D\u4F1A\u771F\u7684\u5220\u3002",
@@ -9201,6 +9204,9 @@ var LEX = {
     "todos.emptyHint": "Every to-do in the vault is done. Write new ones into notes and check back.",
     "todos.found": "Scanned {scanned} notes, {n} still open.",
     "todos.truncated": "That is a lot \u2014 only the first 500 are listed. Tick some off and refresh.",
+    "todos.unticked": "Tick all {n} in this note",
+    "todos.untickedDone": "Ticked off {n} in this note",
+    "todos.atLine": "line {n}",
     "trash.desc": "Deleted notes wait here and can be restored. Restoring just moves the file back.",
     "trash.empty": "Trash is empty",
     "trash.emptyHint": "Deleting a note moves it here first. Only purging really deletes it.",
@@ -9683,6 +9689,9 @@ var LEX = {
     "todos.emptyHint": "Elke taak in de map is af. Schrijf nieuwe in notities en kom later terug.",
     "todos.found": "{scanned} notities gescand, {n} nog open.",
     "todos.truncated": "Dat zijn er veel \u2014 alleen de eerste 500 staan er. Vink er een paar af en vernieuw.",
+    "todos.unticked": "Alle {n} in deze notitie afvinken",
+    "todos.untickedDone": "{n} in deze notitie afgevinkt",
+    "todos.atLine": "regel {n}",
     "trash.desc": "Verwijderde notities wachten hier en kunnen worden hersteld. Herstellen zet het bestand gewoon terug.",
     "trash.empty": "De prullenbak is leeg",
     "trash.emptyHint": "Een notitie verwijderen verplaatst hem eerst hierheen. Pas leegmaken verwijdert echt.",
@@ -11738,6 +11747,15 @@ var CSS = `
   text-align:left;padding:0;border:0;background:transparent;font:inherit;cursor:pointer;color:inherit}
 .dshgn_todoTitle{font-size:12.5px;line-height:1.5;color:var(--dsw-alias-label-primary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* \u5F85\u529E\u6309\u7BC7\u5206\u7EC4\uFF1A\u7EC4\u5934\u662F\u8FD9\u4E00\u7BC7\u7684\u540D\u5B57\uFF08\u70B9\u4E00\u4E0B\u6253\u5F00\u5B83\uFF09\u3001\u8FD8\u5269\u51E0\u6761\u3001\u4EE5\u53CA\u4E00\u9897\u628A\u8FD9\u4E00\u7EC4
+   \u4E00\u8D77\u52FE\u6389\u7684\u6309\u94AE\u3002\u7EC4\u5934\u672C\u8EAB\u4E0D\u505A\u6210\u6309\u94AE\u2014\u2014\u540D\u5B57\u548C\u6309\u94AE\u5404\u81EA\u53EF\u70B9\uFF0C\u6309\u94AE\u4E0D\u80FD\u5957\u6309\u94AE\u3002 */
+.dshgn_todoGroup{display:flex;align-items:center;gap:6px;padding:2px 2px 0;min-width:0}
+.dshgn_todoGroupName{appearance:none;flex:0 1 auto;min-width:0;padding:0;border:0;background:transparent;
+  font:inherit;font-size:11px;font-weight:600;color:var(--dsw-alias-label-secondary);cursor:pointer;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
+.dshgn_todoGroupName:hover{color:var(--dsw-alias-label-primary);text-decoration:underline}
+.dshgn_todoGroupCount{flex:none;font-size:10px;color:var(--dsw-alias-label-dimmed)}
+.dshgn_todoGroupAll{flex:none;margin-left:auto;height:22px;padding:0 8px;font-size:11px}
 .dshgn_backlinks{margin-top:18px;padding-top:12px;border-top:0.5px solid var(--dsw-alias-border-l1)}
 .dshgn_backlinksHead{display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:11px;
   color:var(--dsw-alias-label-tertiary)}
@@ -17725,7 +17743,48 @@ function TodoPane(props) {
       if (typeof showToast === "function") showToast(text);
     }
   }, [items, showToast, t4]);
+  const untickAll = q2(
+    async (group) => {
+      if (group === null || group === void 0 || group.items.length === 0) return;
+      const key = `all:${group.path}`;
+      setBusy(key);
+      try {
+        for (const item of group.items) {
+          await api("/todo/toggle", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ path: item.path, index: item.index })
+          });
+        }
+        const gone = new Set(group.items.map((item) => `${item.path}#${item.index}`));
+        setItems((prev) => prev === null ? prev : prev.filter((one) => !gone.has(`${one.path}#${one.index}`)));
+        if (typeof showToast === "function") showToast(t4("todos.untickedDone").replace("{n}", String(group.items.length)));
+        if (typeof onChanged === "function") await onChanged();
+      } catch (err) {
+        onError(err && err.message ? err.message : String(err));
+        await load();
+      } finally {
+        setBusy("");
+      }
+    },
+    [load, onChanged, onError, showToast, t4]
+  );
   const list = items === null ? [] : items;
+  const groups = T2(() => {
+    const out = [];
+    const at = /* @__PURE__ */ new Map();
+    for (const item of list) {
+      const key = String(item.path || "");
+      let group = at.get(key);
+      if (group === void 0) {
+        group = { path: key, title: item.title || key, items: [] };
+        at.set(key, group);
+        out.push(group);
+      }
+      group.items.push(item);
+    }
+    return out;
+  }, [list]);
   const summary = t4("todos.found").replace("{n}", String(list.length)).replace("{scanned}", String(scanned));
   return h4(
     "div",
@@ -17765,57 +17824,98 @@ function TodoPane(props) {
     ) : h4(
       "div",
       { className: "dshgn_cardBox" },
-      list.map((item) => {
-        const key = `${item.path}#${item.index}`;
+      // 一篇一组：组头写着这是哪一篇、还剩几条，右边一颗把这组一起勾掉。
+      // 几十条待办散在七八篇里时，光看每行「第几行」既不知道还剩几篇，
+      // 也不知道哪几篇其实已经清空了。
+      groups.map((group) => {
+        const groupBusy = busy === `all:${group.path}`;
         return h4(
-          "div",
-          { key, className: "dshgn_todoRow" },
-          h4(
-            "button",
-            {
-              type: "button",
-              className: "dshgn_check dshgn_checkHit" + (busy === key ? " dshgn_todoBusy" : ""),
-              "aria-label": t4("todo.toggle"),
-              title: t4("todo.toggle"),
-              disabled: busy === key,
-              onClick: () => void tick(item)
-            },
-            null
-          ),
-          // 一条待办摊开来看是「哪一篇的第几行」，可这句话在原文里可能
-          // 埋在几十行之后。跟断链那边一样分两个可点区域：点文字去那一篇，
-          // 点「去这一条」直接落到写着这条待办的那一行。
+          b,
+          { key: `group:${group.path}` },
           h4(
             "div",
-            { className: "dshgn_todoLine" },
+            { className: "dshgn_todoGroup", title: group.path },
             h4(
               "button",
               {
                 type: "button",
-                className: "dshgn_todoText",
-                title: item.path,
+                className: "dshgn_todoGroupName",
+                title: group.path,
                 onClick: () => {
-                  if (typeof onOpen === "function") onOpen(item.path);
+                  if (typeof onOpen === "function") onOpen(group.path);
                 }
               },
-              h4("span", { className: "dshgn_todoTitle" }, item.text),
-              h4(
-                "span",
-                { className: "dshgn_brokenWhere" },
-                `${item.title || item.path} \xB7 ${t4("broken.line")} ${item.line}`
-              )
+              group.title
             ),
-            typeof onOpenLine === "function" && String(item.text || "") !== "" ? h4(
+            h4("span", { className: "dshgn_todoGroupCount" }, String(group.items.length)),
+            h4(
               "button",
               {
                 type: "button",
-                className: "dshgn_brokenJump",
-                title: t4("todo.jump"),
-                onClick: () => onOpenLine(item.path, item.text)
+                className: "dshgn_btn dshgn_todoGroupAll",
+                title: t4("todos.unticked").replace("{n}", String(group.items.length)),
+                disabled: groupBusy,
+                onClick: () => void untickAll(group)
               },
-              t4("todo.jump")
-            ) : null
-          )
+              groupBusy ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "check", size: 12 }),
+              t4("todos.unticked").replace("{n}", String(group.items.length))
+            )
+          ),
+          group.items.map((item) => {
+            const key = `${item.path}#${item.index}`;
+            return h4(
+              "div",
+              { key, className: "dshgn_todoRow" },
+              h4(
+                "button",
+                {
+                  type: "button",
+                  className: "dshgn_check dshgn_checkHit" + (busy === key ? " dshgn_todoBusy" : ""),
+                  "aria-label": t4("todo.toggle"),
+                  title: t4("todo.toggle"),
+                  disabled: busy === key,
+                  onClick: () => void tick(item)
+                },
+                null
+              ),
+              // 一条待办摊开来看是「哪一篇的第几行」，可这句话在原文里可能
+              // 埋在几十行之后。跟断链那边一样分两个可点区域：点文字去那一篇，
+              // 点「去这一条」直接落到写着这条待办的那一行。
+              h4(
+                "div",
+                { className: "dshgn_todoLine" },
+                h4(
+                  "button",
+                  {
+                    type: "button",
+                    className: "dshgn_todoText",
+                    title: item.path,
+                    onClick: () => {
+                      if (typeof onOpen === "function") onOpen(item.path);
+                    }
+                  },
+                  h4("span", { className: "dshgn_todoTitle" }, item.text),
+                  // 哪一篇已经写在上面那条组头里了，这里只报「第几行」，
+                  // 一行里塞两遍同一个篇名只是噪声。
+                  h4(
+                    "span",
+                    { className: "dshgn_brokenWhere" },
+                    t4("todos.atLine").replace("{n}", String(item.line))
+                  )
+                ),
+                typeof onOpenLine === "function" && String(item.text || "") !== "" ? h4(
+                  "button",
+                  {
+                    type: "button",
+                    className: "dshgn_brokenJump",
+                    title: t4("todo.jump"),
+                    onClick: () => onOpenLine(item.path, item.text)
+                  },
+                  t4("todo.jump")
+                ) : null
+              )
+            );
+          })
         );
       })
     )
