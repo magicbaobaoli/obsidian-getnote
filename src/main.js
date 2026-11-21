@@ -73,6 +73,28 @@ const DEFAULT_SUBFOLDER = '得到大脑'
 // 一模一样。这段时间内宁可不替宿主下结论，让面板走一次本地扫描。
 const FRESH_INDEX_MS = 30000
 
+// 一个面板叶子「有没有真的挂上视图」，看容器里有没有面板留下的节点。
+//
+// 只用 revealLeaf 打开已有的叶子是不够的：Obsidian 在工作区里恢复出来的叶子
+// 可能只记了 type，视图对象从没被实例化（或者实例化时 onOpen 抛了错、什么都没画）。
+// 那种叶子和正常的一模一样，re 上去就是一片空白，用户点一百次也不会有反应。
+// 这里认两个节点：占位那行字（首帧之前就在）和面板根节点（首帧之后）。
+function leafIsAlive(leaf) {
+  try {
+    const view = leaf && leaf.view
+    if (!view) return false
+    const el = view.containerEl || view.contentEl
+    if (!el || typeof el.querySelector !== 'function') return false
+    if (el.querySelector('.dshgn_root') !== null) return true
+    if (el.querySelector('.dshgn_boot') !== null) return true
+    if (el.querySelector('.dshgn_fatal') !== null) return true
+    if (el.querySelector('.dshgn_mount') !== null) return true
+    return false
+  } catch {
+    return false
+  }
+}
+
 export default class GetnoteObsidianPlugin extends Plugin {
   async onload() {
     // 库根的绝对路径：vfs.js 靠它把「绝对路径」翻译成 adapter 认的库内相对路径。
@@ -990,15 +1012,39 @@ export default class GetnoteObsidianPlugin extends Plugin {
       return
     }
     const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_GETNOTE)
+    this.probe('已有的面板叶子 ' + existing.length + ' 个')
     if (existing.length > 0 && !newWindow) {
-      this.app.workspace.revealLeaf(existing[0])
-      return
+      const leaf = existing[0]
+      this.app.workspace.revealLeaf(leaf)
+      // 光 reveal 是不够的：这个叶子可能是上一次留下的空壳——视图对象在、
+      // 但 onOpen 从没跑过（比如上次注册晚了一步、或者渲染进程里抛过异常）。
+      // 对着空壳 reveal 一百次也还是空壳，用户看到的就是「点了没反应、一片黑」。
+      // 认一下容器里有没有面板真正挂上时留下的那个节点，没有就换一个新的视图实例。
+      const alive = leafIsAlive(leaf)
+      this.probe('叶子里的视图' + (alive ? '是活的' : '是空壳，换一个新的'))
+      if (alive) return
+      try {
+        leaf.detach()
+      } catch {
+        // 拆不掉就算了，下面还会再建一个
+      }
     }
     const leaf = newWindow
       ? this.app.workspace.openPopoutLeaf({ size: { width: 1100, height: 780 } })
       : this.app.workspace.getLeaf(true)
     await leaf.setViewState({ type: VIEW_TYPE_GETNOTE, active: true })
     this.app.workspace.revealLeaf(leaf)
+    // setViewState 只是把视图摆上去，onOpen 是否真的跑了要另说。1.5 秒后回头
+    // 看一眼轨迹里有没有「视图 onOpen 被调用」——没有就说明这条路也不通，
+    // 至少 boot.txt 里能留下这一句，不用用户去猜。
+    // 只在真有 window 的环境里挂这个定时器：离线测试是纯 Node，挂上去会留下一个
+    // 测试结束之后才响的定时器，node --test 会把它当成「测试后还有异步活动」报错。
+    if (typeof window !== 'undefined' && window && typeof window.setTimeout === 'function') {
+      window.setTimeout(() => {
+        const seen = Array.isArray(this.probeLines) && this.probeLines.some((line) => line.includes('视图 onOpen 被调用'))
+        if (!seen) this.probe('等了一会儿，视图 onOpen 仍然没有被调用')
+      }, 1500)
+    }
   }
 
   /**

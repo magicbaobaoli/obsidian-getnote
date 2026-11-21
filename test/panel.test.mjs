@@ -10878,3 +10878,101 @@ test('空列表那一屏不留一句「没有」就走人：搜不到能一键�
     '有卡片了就不该还摆着空列表那一屏',
   )
 })
+test('回收站里恢复一篇时能先指定放回哪个目录，敲一半有候选，留空还是老样子放库根', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+  await clickTab('笔记')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+  const notePath = '回收站验收/回收站-要恢复的一篇.md'
+  await post('/getnote/create', {
+    dir: '回收站验收',
+    title: '回收站-要恢复的一篇',
+    content: ['# 回收站-要恢复的一篇', '', '删掉之后还得能放回指定的地方。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-trash-target-a',
+  })
+  const madeDir = await post('/getnote/dir/create', { dir: '回收站验收/恢复到这里' })
+  assert.equal(madeDir.ok, true, '造目标目录失败：' + JSON.stringify(madeDir))
+
+  // 退回空态，免得带着上一篇的阅读态进来
+  const backBtn = () => window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(async () => true)
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = backBtn()
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(220)
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  // 先把目录拉进状态里，候选才有得挑
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(600)
+
+  const deleted = await post('/getnote/delete', { path: notePath })
+  assert.equal(deleted.ok, true, '删进回收站失败：' + JSON.stringify(deleted))
+
+  await clickTab('回收站')
+  const targetInput = () => window.document.querySelector('.dshgn_trashTarget input.dshgn_input')
+  await waitFor(() => targetInput() !== null, 8000, '回收站里该摆出「恢复到哪个目录」那个框')
+  assert.equal(
+    targetInput().getAttribute('placeholder'),
+    '恢复到哪个目录（留空就放库根）',
+    '框上要写清楚留空是什么意思',
+  )
+
+  const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  const type = async (text) => {
+    const box = targetInput()
+    setValue.call(box, text)
+    box.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(400)
+  }
+  const suggestOf = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_trashTarget .dshgn_suggestItem'))
+  await type('恢复到这里')
+  await waitFor(() => suggestOf().length > 0, 5000, '敲一半要摆出目录候选')
+  const wanted = suggestOf().find((el) => (el.textContent || '').includes('回收站验收/恢复到这里'))
+  assert.ok(wanted !== undefined, '候选里要有那个目录：' + suggestOf().map((el) => el.textContent).join(' | '))
+  wanted.dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true, cancelable: true }))
+  await sleep(300)
+  assert.equal(
+    String(targetInput().value || ''),
+    '回收站验收/恢复到这里',
+    '挑了候选之后框里该填成那个目录',
+  )
+
+  const restoreBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_pane .dshgn_btn')).find(
+      (el) => (el.textContent || '').trim() === '恢复',
+    )
+  assert.ok(restoreBtn() !== undefined, '每一行该有「恢复」')
+  restoreBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => restoreBtn() === undefined, 8000, '恢复之后回收站里就不该还有这一行')
+
+  const readBack = await realFetch(
+    server.origin + '/getnote/read?path=' + encodeURIComponent('回收站验收/恢复到这里/回收站-要恢复的一篇.md'),
+    { headers: { 'x-getnote-token': server.token } },
+  )
+  assert.equal(readBack.status, 200, '文件该落在指定的那个目录里')
+  const backJson = await readBack.json()
+  assert.ok(
+    String(backJson.content || '').includes('删掉之后还得能放回指定的地方'),
+    '恢复回来的内容要和删之前一样',
+  )
+  await clickTab('笔记')
+})

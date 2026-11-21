@@ -20,6 +20,13 @@ export class GetnoteView extends ItemView {
     this.root = null
     this.containerEl = null
     this.heartbeat = null
+    // 构造函数跑没跑，是「视图工厂根本没被调」和「onOpen 里炸了」之间唯一的分界。
+    // 两件事在屏幕上都是空白，但修法完全不同，所以这里也留一行。
+    try {
+      if (plugin && typeof plugin.probe === 'function') plugin.probe('视图构造函数已跑')
+    } catch {
+      // 诊断失败不影响渲染
+    }
   }
 
   getViewType() {

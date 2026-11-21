@@ -902,6 +902,8 @@ async function saveFile(url, filename) {
         'trash.purgeOneConfirm': '永久删除这个文件，无法撤销。继续？',
         'trash.purged': '已清理',
         'trash.originalName': '原文件',
+        'trash.restoreTo': '恢复到哪个目录（留空就放库根）',
+        'trash.restoreToClear': '恢复到库根',
         'cloud.newNote': '新建云端笔记',
         'cloud.newNoteTitle': '标题',
         'cloud.newNoteBody': '正文',
@@ -1407,6 +1409,8 @@ async function saveFile(url, filename) {
         'trash.purgeOneConfirm': 'Delete this file forever. Continue?',
         'trash.purged': 'Purged',
         'trash.originalName': 'Original file',
+        'trash.restoreTo': 'Restore into which folder (empty = vault root)',
+        'trash.restoreToClear': 'Restore to vault root',
         'cloud.newNote': 'New cloud note',
         'cloud.newNoteTitle': 'Title',
         'cloud.newNoteBody': 'Body',
@@ -1911,6 +1915,8 @@ async function saveFile(url, filename) {
         'trash.purgeOneConfirm': 'Dit bestand voorgoed verwijderen. Doorgaan?',
         'trash.purged': 'Verwijderd',
         'trash.originalName': 'Oorspronkelijk bestand',
+        'trash.restoreTo': 'Naar welke map herstellen (leeg = hoofdmap)',
+        'trash.restoreToClear': 'Herstellen naar de hoofdmap',
         'cloud.newNote': 'Nieuwe cloudnotitie',
         'cloud.newNoteTitle': 'Titel',
         'cloud.newNoteBody': 'Tekst',
@@ -5298,6 +5304,8 @@ async function saveFile(url, filename) {
 .dshgn_emptyTitle{font-size:13px;color:var(--dsw-alias-label-secondary)}
 .dshgn_emptyDesc{font-size:12px;line-height:1.7;max-width:340px}
 .dshgn_emptyActions{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px;margin-top:4px}
+/* 回收站的「恢复到哪个目录」：一行输入 + 候选，和批量条那套同宽同高 */
+.dshgn_trashTarget{display:flex;flex-direction:column;gap:4px;margin:8px 0 2px;min-width:0}
 .dshgn_pane{flex:1;overflow-y:auto;padding:18px clamp(16px,3vw,28px) 40px}
 .dshgn_cardBox{max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
 .dshgn_section{display:flex;flex-direction:column;gap:8px;padding:14px 15px;border-radius:10px;
@@ -8018,6 +8026,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         body = h(TrashPane, {
           t,
           status,
+          dirs,
           onChanged: async () => {
             await refresh()
           },
@@ -12207,10 +12216,24 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       )
     }
     function TrashPane(props) {
-      const { t, status, onChanged, onError, showToast } = props
+      const { t, status, dirs, onChanged, onError, showToast } = props
       const [items, setItems] = React.useState(null)
       const [loading, setLoading] = React.useState(false)
       const [busy, setBusy] = React.useState(false)
+      // 恢复到哪个目录：留空就按老样子放库根。删掉的那一刻文件已经离开原目录，
+      // 文件名里只留了名字，所以「放回哪」只能由用户当场说一次。
+      const [target, setTarget] = React.useState('')
+      const [targetAt, setTargetAt] = React.useState(null)
+      const [targetIndex, setTargetIndex] = React.useState(0)
+      const targetHits = React.useMemo(
+        () => (targetAt === null ? [] : searchSuggestions(Array.isArray(dirs) ? dirs : [], [], 'dir', targetAt)),
+        [dirs, targetAt],
+      )
+      const applyTarget = React.useCallback((item) => {
+        setTarget(item.value)
+        setTargetAt(null)
+        setTargetIndex(0)
+      }, [])
 
       const load = React.useCallback(async () => {
         setLoading(true)
@@ -12232,10 +12255,14 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         async (item) => {
           setBusy(true)
           try {
+            const wanted = target.trim().replace(/^\/+|\/+$/g, '')
+            // 目标目录要和文件名拼成一条完整路径；拼不成（用户敲了个斜杠结尾）
+            // 就交给后端按库根处理，别自己瞎猜。
+            const to = wanted === '' ? '' : `${wanted}/${String(item.originalName || '')}`
             const result = await api('/trash/restore', {
               method: 'POST',
               headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ path: item.path }),
+              body: JSON.stringify({ path: item.path, target: to }),
             })
             showToast(`${t('trash.restored')}${result && result.path ? '：' + result.path : ''}`)
             await load()
@@ -12246,7 +12273,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             setBusy(false)
           }
         },
-        [load, onChanged, onError, showToast, t],
+        [load, onChanged, onError, showToast, t, target],
       )
 
       const purgeOne = React.useCallback(
@@ -12320,6 +12347,106 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             ),
           ),
           h('div', { className: 'dshgn_sectionDesc' }, t('trash.desc')),
+          // 恢复前先说清放回哪：文件被删的那一刻就已经离开原目录，文件名里
+          // 只留了名字。留空照老样子放库根，敲一个目录就放回去——先填好再按
+          // 下面每行的「恢复」，一行一行挑目录太慢。
+          list.length === 0
+            ? null
+            : h(
+                'div',
+                { className: 'dshgn_trashTarget' },
+                h(
+                  'div',
+                  { className: 'dshgn_rowLine', style: { gap: 6 } },
+                  h('input', {
+                    type: 'text',
+                    className: 'dshgn_input',
+                    style: { flex: '1 1 auto', minWidth: 0 },
+                    value: target,
+                    placeholder: t('trash.restoreTo'),
+                    'aria-label': t('trash.restoreTo'),
+                    onChange: (event) => {
+                      const value = event.target.value
+                      setTarget(value)
+                      setTargetAt(value.trim() === '' ? null : value)
+                      setTargetIndex(0)
+                    },
+                    onKeyDown: (event) => {
+                      if (targetHits.length === 0) return
+                      const down = event.key === 'ArrowDown'
+                      const up = event.key === 'ArrowUp'
+                      if (down || up) {
+                        event.preventDefault()
+                        setTargetIndex((prev) => {
+                          const next = down ? prev + 1 : prev - 1
+                          if (next < 0) return targetHits.length - 1
+                          if (next >= targetHits.length) return 0
+                          return next
+                        })
+                        return
+                      }
+                      if (event.key === 'Enter') {
+                        event.preventDefault()
+                        const pick = targetHits[targetIndex]
+                        if (pick !== undefined) applyTarget(pick)
+                        return
+                      }
+                      if (event.key === 'Escape') {
+                        // 只收候选，不要连页面上的选择一起清掉
+                        event.stopPropagation()
+                        setTargetAt(null)
+                      }
+                    },
+                  }),
+                  target.trim() === ''
+                    ? null
+                    : h(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'dshgn_iconBtn',
+                          title: t('trash.restoreToClear'),
+                          'aria-label': t('trash.restoreToClear'),
+                          onClick: () => {
+                            setTarget('')
+                            setTargetAt(null)
+                            setTargetIndex(0)
+                          },
+                        },
+                        h(Icon, { name: 'close', size: 12 }),
+                      ),
+                ),
+                // 目录候选：和批量条那套同一个纯函数，挑一条就填进输入框
+                targetHits.length === 0
+                  ? null
+                  : h(
+                      'div',
+                      { className: 'dshgn_suggest', role: 'listbox' },
+                      targetHits.map((item, index) =>
+                        h(
+                          'button',
+                          {
+                            key: item.value,
+                            type: 'button',
+                            className: 'dshgn_suggestItem',
+                            'data-kind': 'dir',
+                            'data-on': targetIndex === index ? 'true' : 'false',
+                            role: 'option',
+                            'aria-selected': targetIndex === index ? 'true' : 'false',
+                            title: t('batch.dirPick'),
+                            // onMouseDown 不用 onClick：click 要等松开，那时输入框
+                            // 已经失焦，光标和候选都对不上了。
+                            onMouseDown: (event) => {
+                              event.preventDefault()
+                              applyTarget(item)
+                            },
+                          },
+                          h(Icon, { name: 'folder', size: 11 }),
+                          h('span', { className: 'dshgn_suggestName' }, item.value),
+                        ),
+                      ),
+                    ),
+              ),
         ),
         loading && list.length === 0
           ? h('div', { className: 'dshgn_emptyState' }, h('span', { className: 'dshgn_spin' }))

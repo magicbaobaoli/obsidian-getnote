@@ -8753,6 +8753,8 @@ var LEX = {
     "trash.purgeOneConfirm": "\u6C38\u4E45\u5220\u9664\u8FD9\u4E2A\u6587\u4EF6\uFF0C\u65E0\u6CD5\u64A4\u9500\u3002\u7EE7\u7EED\uFF1F",
     "trash.purged": "\u5DF2\u6E05\u7406",
     "trash.originalName": "\u539F\u6587\u4EF6",
+    "trash.restoreTo": "\u6062\u590D\u5230\u54EA\u4E2A\u76EE\u5F55\uFF08\u7559\u7A7A\u5C31\u653E\u5E93\u6839\uFF09",
+    "trash.restoreToClear": "\u6062\u590D\u5230\u5E93\u6839",
     "cloud.newNote": "\u65B0\u5EFA\u4E91\u7AEF\u7B14\u8BB0",
     "cloud.newNoteTitle": "\u6807\u9898",
     "cloud.newNoteBody": "\u6B63\u6587",
@@ -9253,6 +9255,8 @@ var LEX = {
     "trash.purgeOneConfirm": "Delete this file forever. Continue?",
     "trash.purged": "Purged",
     "trash.originalName": "Original file",
+    "trash.restoreTo": "Restore into which folder (empty = vault root)",
+    "trash.restoreToClear": "Restore to vault root",
     "cloud.newNote": "New cloud note",
     "cloud.newNoteTitle": "Title",
     "cloud.newNoteBody": "Body",
@@ -9753,6 +9757,8 @@ var LEX = {
     "trash.purgeOneConfirm": "Dit bestand voorgoed verwijderen. Doorgaan?",
     "trash.purged": "Verwijderd",
     "trash.originalName": "Oorspronkelijk bestand",
+    "trash.restoreTo": "Naar welke map herstellen (leeg = hoofdmap)",
+    "trash.restoreToClear": "Herstellen naar de hoofdmap",
     "cloud.newNote": "Nieuwe cloudnotitie",
     "cloud.newNoteTitle": "Titel",
     "cloud.newNoteBody": "Tekst",
@@ -12381,6 +12387,8 @@ var CSS = `
 .dshgn_emptyTitle{font-size:13px;color:var(--dsw-alias-label-secondary)}
 .dshgn_emptyDesc{font-size:12px;line-height:1.7;max-width:340px}
 .dshgn_emptyActions{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px;margin-top:4px}
+/* \u56DE\u6536\u7AD9\u7684\u300C\u6062\u590D\u5230\u54EA\u4E2A\u76EE\u5F55\u300D\uFF1A\u4E00\u884C\u8F93\u5165 + \u5019\u9009\uFF0C\u548C\u6279\u91CF\u6761\u90A3\u5957\u540C\u5BBD\u540C\u9AD8 */
+.dshgn_trashTarget{display:flex;flex-direction:column;gap:4px;margin:8px 0 2px;min-width:0}
 .dshgn_pane{flex:1;overflow-y:auto;padding:18px clamp(16px,3vw,28px) 40px}
 .dshgn_cardBox{max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
 .dshgn_section{display:flex;flex-direction:column;gap:8px;padding:14px 15px;border-radius:10px;
@@ -14626,6 +14634,7 @@ ${insert}
     body = h4(TrashPane, {
       t: t4,
       status,
+      dirs,
       onChanged: async () => {
         await refresh();
       },
@@ -18238,10 +18247,22 @@ function TodoPane(props) {
   );
 }
 function TrashPane(props) {
-  const { t: t4, status, onChanged, onError, showToast } = props;
+  const { t: t4, status, dirs, onChanged, onError, showToast } = props;
   const [items, setItems] = h2(null);
   const [loading, setLoading] = h2(false);
   const [busy, setBusy] = h2(false);
+  const [target, setTarget] = h2("");
+  const [targetAt, setTargetAt] = h2(null);
+  const [targetIndex, setTargetIndex] = h2(0);
+  const targetHits = T2(
+    () => targetAt === null ? [] : searchSuggestions(Array.isArray(dirs) ? dirs : [], [], "dir", targetAt),
+    [dirs, targetAt]
+  );
+  const applyTarget = q2((item) => {
+    setTarget(item.value);
+    setTargetAt(null);
+    setTargetIndex(0);
+  }, []);
   const load = q2(async () => {
     setLoading(true);
     try {
@@ -18260,10 +18281,12 @@ function TrashPane(props) {
     async (item) => {
       setBusy(true);
       try {
+        const wanted = target.trim().replace(/^\/+|\/+$/g, "");
+        const to = wanted === "" ? "" : `${wanted}/${String(item.originalName || "")}`;
         const result = await api("/trash/restore", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ path: item.path })
+          body: JSON.stringify({ path: item.path, target: to })
         });
         showToast(`${t4("trash.restored")}${result && result.path ? "\uFF1A" + result.path : ""}`);
         await load();
@@ -18274,7 +18297,7 @@ function TrashPane(props) {
         setBusy(false);
       }
     },
-    [load, onChanged, onError, showToast, t4]
+    [load, onChanged, onError, showToast, t4, target]
   );
   const purgeOne = q2(
     async (item) => {
@@ -18343,7 +18366,100 @@ function TrashPane(props) {
           )
         )
       ),
-      h4("div", { className: "dshgn_sectionDesc" }, t4("trash.desc"))
+      h4("div", { className: "dshgn_sectionDesc" }, t4("trash.desc")),
+      // 恢复前先说清放回哪：文件被删的那一刻就已经离开原目录，文件名里
+      // 只留了名字。留空照老样子放库根，敲一个目录就放回去——先填好再按
+      // 下面每行的「恢复」，一行一行挑目录太慢。
+      list.length === 0 ? null : h4(
+        "div",
+        { className: "dshgn_trashTarget" },
+        h4(
+          "div",
+          { className: "dshgn_rowLine", style: { gap: 6 } },
+          h4("input", {
+            type: "text",
+            className: "dshgn_input",
+            style: { flex: "1 1 auto", minWidth: 0 },
+            value: target,
+            placeholder: t4("trash.restoreTo"),
+            "aria-label": t4("trash.restoreTo"),
+            onChange: (event) => {
+              const value = event.target.value;
+              setTarget(value);
+              setTargetAt(value.trim() === "" ? null : value);
+              setTargetIndex(0);
+            },
+            onKeyDown: (event) => {
+              if (targetHits.length === 0) return;
+              const down = event.key === "ArrowDown";
+              const up = event.key === "ArrowUp";
+              if (down || up) {
+                event.preventDefault();
+                setTargetIndex((prev) => {
+                  const next = down ? prev + 1 : prev - 1;
+                  if (next < 0) return targetHits.length - 1;
+                  if (next >= targetHits.length) return 0;
+                  return next;
+                });
+                return;
+              }
+              if (event.key === "Enter") {
+                event.preventDefault();
+                const pick = targetHits[targetIndex];
+                if (pick !== void 0) applyTarget(pick);
+                return;
+              }
+              if (event.key === "Escape") {
+                event.stopPropagation();
+                setTargetAt(null);
+              }
+            }
+          }),
+          target.trim() === "" ? null : h4(
+            "button",
+            {
+              type: "button",
+              className: "dshgn_iconBtn",
+              title: t4("trash.restoreToClear"),
+              "aria-label": t4("trash.restoreToClear"),
+              onClick: () => {
+                setTarget("");
+                setTargetAt(null);
+                setTargetIndex(0);
+              }
+            },
+            h4(Icon, { name: "close", size: 12 })
+          )
+        ),
+        // 目录候选：和批量条那套同一个纯函数，挑一条就填进输入框
+        targetHits.length === 0 ? null : h4(
+          "div",
+          { className: "dshgn_suggest", role: "listbox" },
+          targetHits.map(
+            (item, index) => h4(
+              "button",
+              {
+                key: item.value,
+                type: "button",
+                className: "dshgn_suggestItem",
+                "data-kind": "dir",
+                "data-on": targetIndex === index ? "true" : "false",
+                role: "option",
+                "aria-selected": targetIndex === index ? "true" : "false",
+                title: t4("batch.dirPick"),
+                // onMouseDown 不用 onClick：click 要等松开，那时输入框
+                // 已经失焦，光标和候选都对不上了。
+                onMouseDown: (event) => {
+                  event.preventDefault();
+                  applyTarget(item);
+                }
+              },
+              h4(Icon, { name: "folder", size: 11 }),
+              h4("span", { className: "dshgn_suggestName" }, item.value)
+            )
+          )
+        )
+      )
     ),
     loading && list.length === 0 ? h4("div", { className: "dshgn_emptyState" }, h4("span", { className: "dshgn_spin" })) : list.length === 0 ? h4(
       "div",
@@ -21848,6 +21964,10 @@ var GetnoteView = class extends import_obsidian.ItemView {
     this.root = null;
     this.containerEl = null;
     this.heartbeat = null;
+    try {
+      if (plugin && typeof plugin.probe === "function") plugin.probe("\u89C6\u56FE\u6784\u9020\u51FD\u6570\u5DF2\u8DD1");
+    } catch {
+    }
   }
   getViewType() {
     return VIEW_TYPE_GETNOTE;
@@ -22058,6 +22178,21 @@ var GetnoteView = class extends import_obsidian.ItemView {
 // src/main.js
 var DEFAULT_SUBFOLDER = "\u5F97\u5230\u5927\u8111";
 var FRESH_INDEX_MS = 3e4;
+function leafIsAlive(leaf) {
+  try {
+    const view = leaf && leaf.view;
+    if (!view) return false;
+    const el = view.containerEl || view.contentEl;
+    if (!el || typeof el.querySelector !== "function") return false;
+    if (el.querySelector(".dshgn_root") !== null) return true;
+    if (el.querySelector(".dshgn_boot") !== null) return true;
+    if (el.querySelector(".dshgn_fatal") !== null) return true;
+    if (el.querySelector(".dshgn_mount") !== null) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
 var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
   async onload() {
     const adapter2 = this.app.vault.adapter;
@@ -22759,13 +22894,27 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       return;
     }
     const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_GETNOTE);
+    this.probe("\u5DF2\u6709\u7684\u9762\u677F\u53F6\u5B50 " + existing.length + " \u4E2A");
     if (existing.length > 0 && !newWindow) {
-      this.app.workspace.revealLeaf(existing[0]);
-      return;
+      const leaf2 = existing[0];
+      this.app.workspace.revealLeaf(leaf2);
+      const alive = leafIsAlive(leaf2);
+      this.probe("\u53F6\u5B50\u91CC\u7684\u89C6\u56FE" + (alive ? "\u662F\u6D3B\u7684" : "\u662F\u7A7A\u58F3\uFF0C\u6362\u4E00\u4E2A\u65B0\u7684"));
+      if (alive) return;
+      try {
+        leaf2.detach();
+      } catch {
+      }
     }
     const leaf = newWindow ? this.app.workspace.openPopoutLeaf({ size: { width: 1100, height: 780 } }) : this.app.workspace.getLeaf(true);
     await leaf.setViewState({ type: VIEW_TYPE_GETNOTE, active: true });
     this.app.workspace.revealLeaf(leaf);
+    if (typeof window !== "undefined" && window && typeof window.setTimeout === "function") {
+      window.setTimeout(() => {
+        const seen = Array.isArray(this.probeLines) && this.probeLines.some((line) => line.includes("\u89C6\u56FE onOpen \u88AB\u8C03\u7528"));
+        if (!seen) this.probe("\u7B49\u4E86\u4E00\u4F1A\u513F\uFF0C\u89C6\u56FE onOpen \u4ECD\u7136\u6CA1\u6709\u88AB\u8C03\u7528");
+      }, 1500);
+    }
   }
   /**
    * 状态栏文案跟着面板里的实际情况走。
