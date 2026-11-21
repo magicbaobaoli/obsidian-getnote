@@ -8519,6 +8519,8 @@ var LEX = {
     "empty.noNotes": "\u8FD9\u4E2A\u76EE\u5F55\u8FD8\u6CA1\u6709\u7B14\u8BB0",
     "list.more": "\u663E\u793A\u66F4\u591A",
     "list.all": "\u5168\u90E8\u663E\u793A",
+    "list.pickAll": "\u5168\u90E8\u52FE\u4E0A",
+    "list.unpickAll": "\u53D6\u6D88\u52FE\u9009",
     "empty.select": "\u9009\u4E00\u7BC7\u7B14\u8BB0\u5F00\u59CB\u9605\u8BFB",
     "empty.selectDesc": "\u5DE6\u680F\u662F\u76EE\u5F55\uFF0C\u4E2D\u95F4\u662F\u7B14\u8BB0\u5217\u8868\u3002\u4E5F\u53EF\u4EE5\u70B9\u300C\u65B0\u5EFA\u300D\u5199\u4E00\u7BC7\u3002",
     "empty.search": "\u6CA1\u6709\u5339\u914D\u7684\u7B14\u8BB0",
@@ -9012,6 +9014,8 @@ var LEX = {
     "empty.noNotes": "No notes in this folder",
     "list.more": "Show more",
     "list.all": "Show all",
+    "list.pickAll": "Select all",
+    "list.unpickAll": "Clear selection",
     "empty.select": "Pick a note to read",
     "empty.selectDesc": "Folders on the left, notes in the middle. Or press New.",
     "empty.search": "No matching notes",
@@ -9504,6 +9508,8 @@ var LEX = {
     "empty.noNotes": "Geen notities in deze map",
     "list.more": "Meer tonen",
     "list.all": "Alles tonen",
+    "list.pickAll": "Alles selecteren",
+    "list.unpickAll": "Selectie wissen",
     "empty.select": "Kies een notitie om te lezen",
     "empty.selectDesc": "Mappen links, notities in het midden. Of druk op Nieuw.",
     "empty.search": "Geen passende notities",
@@ -12112,6 +12118,16 @@ var CSS = `
   letter-spacing:0;text-transform:none}
 .dshgn_listSort:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .dshgn_listSort:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+/* \u5168\u52FE/\u5168\u4E0D\u52FE\uFF1A\u4E0E\u6392\u5E8F\u5F00\u5173\u5E76\u6392\u7684\u540C\u6B3E\u5C0F\u65B9\u94AE\uFF0C\u4F46\u7C7B\u540D\u5206\u5F00\u2014\u2014
+   \u6392\u5E8F\u5F00\u5173\u5728\u641C\u7D22\u6001\u8981\u6536\u8D77\u6765\uFF0C\u8FD9\u9897\u6070\u6070\u5728\u641C\u7D22\u6001\u6700\u6709\u7528\uFF0C\u5171\u7528\u4E00\u4E2A\u7C7B\u4F1A\u4E92\u76F8\u7275\u8FDE\u3002 */
+.dshgn_pickAll{flex:none;display:inline-flex;align-items:center;justify-content:center;
+  height:20px;min-width:20px;padding:0 4px;border:0;border-radius:5px;background:transparent;
+  color:var(--dsw-alias-label-tertiary);font:inherit;font-size:9px;line-height:1;cursor:pointer;
+  letter-spacing:0;text-transform:none}
+.dshgn_pickAll:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dshgn_pickAll:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+/* \u52FE\u7740\u7684\u65F6\u5019\u5E95\u8272\u4EAE\u8D77\u6765\uFF0C\u5426\u5219\u770B\u4E0D\u51FA\u4E00\u6309\u4F1A\u53D1\u751F\u4EC0\u4E48\u3002\u914D\u8272\u6CBF\u7528\u5DE6\u680F\u90A3\u4E9B data-on \u7684\u5C0F\u65B9\u94AE\u3002 */
+.dshgn_pickAll[data-on="true"]{background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-brand-primary)}
 /* \u4FA7\u680F\u5165\u53E3\u56FE\u6807\uFF08ownerProps.size \u51B3\u5B9A\u5C3A\u5BF8\uFF0C\u8FD9\u91CC\u53EA\u4FDD\u8BC1\u5757\u7EA7\u5BF9\u9F50\uFF09 */
 .dshgn_sideIcon{display:block;flex:none}
 .dshgn_listBody{flex:1;overflow-y:auto;padding:6px}
@@ -13985,6 +14001,14 @@ ${insert}
     setPicked(/* @__PURE__ */ new Set());
     setBatchOpen(false);
   }, []);
+  const allShownPicked = shown.length > 0 && shown.every((entry) => picked.has(entry.path));
+  const pickAllShown = q2(() => {
+    setPicked((prev) => {
+      const all = shown.map((entry) => entry.path);
+      if (all.length > 0 && all.every((path) => prev.has(path))) return /* @__PURE__ */ new Set();
+      return new Set(all);
+    });
+  }, [shown]);
   const previewCard = q2((event, path) => {
     const target = event.currentTarget;
     if (!target) return;
@@ -14797,6 +14821,21 @@ ${insert}
               }
             },
             listSort === "name" ? "A\u2192Z" : "\u23F1"
+          ),
+          // 全勾 / 全不勾：作用于这次筛出来的那些卡片。搜索态也摆——
+          // 「搜出来这十几篇一起加个标签」正是最需要它的场合。
+          shown.length === 0 ? null : h4(
+            "button",
+            {
+              type: "button",
+              className: "dshgn_pickAll",
+              title: allShownPicked ? t4("list.unpickAll") : t4("list.pickAll"),
+              "aria-label": allShownPicked ? t4("list.unpickAll") : t4("list.pickAll"),
+              "aria-pressed": allShownPicked ? "true" : "false",
+              "data-on": allShownPicked ? "true" : "false",
+              onClick: pickAllShown
+            },
+            h4(Icon, { name: "check", size: 11 })
           )
         ),
         // 搜索框的补全候选：把库里已有的目录名与标签名摆出来。

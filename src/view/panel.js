@@ -666,6 +666,8 @@ async function saveFile(url, filename) {
         'empty.noNotes': '这个目录还没有笔记',
         'list.more': '显示更多',
         'list.all': '全部显示',
+        'list.pickAll': '全部勾上',
+        'list.unpickAll': '取消勾选',
         'empty.select': '选一篇笔记开始阅读',
         'empty.selectDesc': '左栏是目录，中间是笔记列表。也可以点「新建」写一篇。',
         'empty.search': '没有匹配的笔记',
@@ -1163,6 +1165,8 @@ async function saveFile(url, filename) {
         'empty.noNotes': 'No notes in this folder',
         'list.more': 'Show more',
         'list.all': 'Show all',
+        'list.pickAll': 'Select all',
+        'list.unpickAll': 'Clear selection',
         'empty.select': 'Pick a note to read',
         'empty.selectDesc': 'Folders on the left, notes in the middle. Or press New.',
         'empty.search': 'No matching notes',
@@ -1659,6 +1663,8 @@ async function saveFile(url, filename) {
         'empty.noNotes': 'Geen notities in deze map',
         'list.more': 'Meer tonen',
         'list.all': 'Alles tonen',
+        'list.pickAll': 'Alles selecteren',
+        'list.unpickAll': 'Selectie wissen',
         'empty.select': 'Kies een notitie om te lezen',
         'empty.selectDesc': 'Mappen links, notities in het midden. Of druk op Nieuw.',
         'empty.search': 'Geen passende notities',
@@ -5026,6 +5032,16 @@ async function saveFile(url, filename) {
   letter-spacing:0;text-transform:none}
 .dshgn_listSort:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .dshgn_listSort:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+/* 全勾/全不勾：与排序开关并排的同款小方钮，但类名分开——
+   排序开关在搜索态要收起来，这颗恰恰在搜索态最有用，共用一个类会互相牵连。 */
+.dshgn_pickAll{flex:none;display:inline-flex;align-items:center;justify-content:center;
+  height:20px;min-width:20px;padding:0 4px;border:0;border-radius:5px;background:transparent;
+  color:var(--dsw-alias-label-tertiary);font:inherit;font-size:9px;line-height:1;cursor:pointer;
+  letter-spacing:0;text-transform:none}
+.dshgn_pickAll:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dshgn_pickAll:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+/* 勾着的时候底色亮起来，否则看不出一按会发生什么。配色沿用左栏那些 data-on 的小方钮。 */
+.dshgn_pickAll[data-on="true"]{background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-brand-primary)}
 /* 侧栏入口图标（ownerProps.size 决定尺寸，这里只保证块级对齐） */
 .dshgn_sideIcon{display:block;flex:none}
 .dshgn_listBody{flex:1;overflow-y:auto;padding:6px}
@@ -7270,6 +7286,22 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         setBatchOpen(false)
       }, [])
 
+      // 这次筛出来的这些是不是已经全勾上了（决定那颗按钮叫「全部勾上」还是「取消勾选」）。
+      // 空列表不算全勾：一颗按了什么都选不中的按钮比没有更糟。
+      const allShownPicked = shown.length > 0 && shown.every((entry) => picked.has(entry.path))
+
+      // 「这一摊全部勾上」：想给几十篇统一换个目录、贴同一个标签时，
+      // 一张一张点勾选框是纯体力活。只勾当前这次筛选的结果（shown），不是整个库——
+      // 用户眼睛盯着的是屏幕上这一摊，顺手把库里另外两百篇也选进来是灾难。
+      // 已经全勾着的时候再按一下就是全不勾。
+      const pickAllShown = React.useCallback(() => {
+        setPicked((prev) => {
+          const all = shown.map((entry) => entry.path)
+          if (all.length > 0 && all.every((path) => prev.has(path))) return new Set()
+          return new Set(all)
+        })
+      }, [shown])
+
       // 鼠标停在列表卡片上，请宿主弹这一篇的页面预览。
       //
       // 宿主自己的文件列表就是这个手感：扫一眼标题、停一下，预览卡片出来，
@@ -8187,6 +8219,23 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                       },
                     },
                     listSort === 'name' ? 'A→Z' : '⏱',
+                  ),
+              // 全勾 / 全不勾：作用于这次筛出来的那些卡片。搜索态也摆——
+              // 「搜出来这十几篇一起加个标签」正是最需要它的场合。
+              shown.length === 0
+                ? null
+                : h(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'dshgn_pickAll',
+                      title: allShownPicked ? t('list.unpickAll') : t('list.pickAll'),
+                      'aria-label': allShownPicked ? t('list.unpickAll') : t('list.pickAll'),
+                      'aria-pressed': allShownPicked ? 'true' : 'false',
+                      'data-on': allShownPicked ? 'true' : 'false',
+                      onClick: pickAllShown,
+                    },
+                    h(Icon, { name: 'check', size: 11 }),
                   ),
             ),
             // 搜索框的补全候选：把库里已有的目录名与标签名摆出来。

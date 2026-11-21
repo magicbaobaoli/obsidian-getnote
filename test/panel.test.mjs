@@ -10391,3 +10391,88 @@ test('左栏目录和标签各自有一颗「全部收起」，一次收干净�
   await waitFor(() => tagRow('全收标签/子一') !== null, 5000, '标签区再点也全展开')
   assert.equal(foldAllOf(1).title, '全部收起', '标签区按钮也回到「全部收起」')
 })
+
+test('列表顶上那颗「全部勾上」一次把这次筛出来的都选上，再按一下全不勾', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const backBtn = () => window.document.querySelector('.dshgn_noteBack')
+  const post = async (path, payload) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(payload),
+    })
+    return res.json()
+  }
+
+  panel.setConfirmDialog(async () => true)
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = backBtn()
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(220)
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  const tabBtn = Array.from(window.document.querySelectorAll('.dshgn_tab')).find(
+    (el) => (el.textContent || '').trim() === '笔记',
+  )
+  assert.ok(tabBtn, '找不到「笔记」标签按钮')
+  tabBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_search') !== null, 4000, '搜索框')
+
+  const searchBox = window.document.querySelector('.dshgn_search')
+  const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  setValue.call(searchBox, '')
+  searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(300)
+
+  const rowOf = (name) =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+      const label = el.querySelector('.dshgn_treeName')
+      return label !== null && (label.textContent || '').trim() === name
+    })
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+
+  for (const suffix of ['甲', '乙', '丙']) {
+    const created = await post('/getnote/create', {
+      dir: '勾选验收',
+      title: '勾选验收-' + suffix,
+      content: '# 勾选验收-' + suffix + '\n\n正文。\n',
+      withDatePrefix: false,
+      requestId: 'seed-pick-all-' + suffix,
+    })
+    assert.equal(created.ok, true, '这一篇该建得出来')
+  }
+
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rowOf('勾选验收') !== undefined, 8000, '左栏出现目录')
+  rowOf('勾选验收').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => window.document.querySelectorAll('.dshgn_card').length === 3, 8000, '三张卡片')
+
+  const pickAllBtn = () => window.document.querySelector('.dshgn_pickAll')
+  assert.ok(pickAllBtn(), '列表顶上该有一颗「全部勾上」')
+  assert.equal(pickAllBtn().getAttribute('data-on'), 'false', '还没勾的时候不该亮着')
+  assert.equal(pickAllBtn().title, '全部勾上', '还没勾的时候该叫「全部勾上」')
+
+  const batchBar = () => window.document.querySelector('.dshgn_batchBar')
+  const countText = () => (window.document.querySelector('.dshgn_batchCount') || { textContent: '' }).textContent
+
+  pickAllBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => batchBar() !== null, 3000, '批量栏出现')
+  assert.ok(String(countText()).includes('3'), '一次该把三篇都勾上，实际 ' + countText())
+  assert.equal(pickAllBtn().getAttribute('data-on'), 'true', '全勾上之后按钮该亮着')
+  assert.equal(pickAllBtn().title, '取消勾选', '全勾上之后该叫「取消勾选」')
+
+  pickAllBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => batchBar() === null, 3000, '再按一下该全不勾')
+  assert.equal(pickAllBtn().getAttribute('data-on'), 'false', '全不勾之后按钮该灭掉')
+
+  // 收尾：退回列表，别把筛选留在下一条用例头上
+  rowOf('全部笔记').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(250)
+})
