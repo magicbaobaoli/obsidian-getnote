@@ -589,6 +589,8 @@ async function saveFile(url, filename) {
         'batch.done': '已处理',
         'search.searching': '搜索中…',
         'search.clear': '清空',
+        'search.copy': '复制这次搜到的 {n} 篇（名字和位置）',
+        'search.copied': '已复制 {n} 篇的清单',
         'tree.all': '全部笔记',
         'tree.dirs': '目录',
         'tree.tags': '标签',
@@ -1118,6 +1120,8 @@ async function saveFile(url, filename) {
         'batch.done': 'Processed',
         'search.searching': 'Searching…',
         'search.clear': 'Clear',
+        'search.copy': 'Copy the {n} notes found (names and places)',
+        'search.copied': 'Copied a list of {n} notes',
         'tree.all': 'All notes',
         'tree.dirs': 'Folders',
         'tree.tags': 'Tags',
@@ -1635,6 +1639,8 @@ async function saveFile(url, filename) {
         'batch.done': 'Verwerkt',
         'search.searching': 'Zoeken…',
         'search.clear': 'Wissen',
+        'search.copy': 'Kopieer de {n} gevonden notities (namen en plaatsen)',
+        'search.copied': 'Een lijst van {n} notities gekopieerd',
         'tree.all': 'Alle notities',
         'tree.dirs': 'Mappen',
         'tree.tags': 'Tags',
@@ -5134,6 +5140,13 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
   letter-spacing:0;text-transform:none}
 .dshgn_pickAll:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .dshgn_pickAll:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+/* 复制搜索结果：和上面那颗同款，同样单独一个类——它只在搜索态出现，
+   和「全勾」不是一件事，共用类会让按类名查的断言互相牵连。 */
+.dshgn_searchCopy{flex:none;display:inline-flex;align-items:center;justify-content:center;
+  height:20px;min-width:20px;padding:0 4px;border:0;border-radius:5px;background:transparent;
+  color:var(--dsw-alias-label-tertiary);font:inherit;font-size:9px;line-height:1;cursor:pointer}
+.dshgn_searchCopy:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dshgn_searchCopy:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 /* 勾着的时候底色亮起来，否则看不出一按会发生什么。配色沿用左栏那些 data-on 的小方钮。 */
 .dshgn_pickAll[data-on="true"]{background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-brand-primary)}
 /* 侧栏入口图标（ownerProps.size 决定尺寸，这里只保证块级对齐） */
@@ -7443,6 +7456,29 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         })
       }, [shown])
 
+      // 搜完把这次找到的几篇抄成一段清单。一篇篇右键「复制引用」太慢，
+      // 而「搜出来的这十几篇」本身就是一句话，抄出去正好用得上。
+      // 名字取标题、位置取完整路径：只抄名字的话，重名的那几篇分不出来。
+      const copySearchHits = React.useCallback(async () => {
+        const rows = shown.filter((entry) => entry !== null && entry !== undefined)
+        if (rows.length === 0) return
+        const text = rows
+          .map((entry) => {
+            const name = String(entry.title || entry.path || '').trim()
+            const where = String(entry.path || '').trim()
+            return where === '' || where === name ? '- ' + name : '- ' + name + '（' + where + '）'
+          })
+          .join('\n')
+        try {
+          await navigator.clipboard.writeText(text)
+          showToast(t('search.copied').replace('{n}', String(rows.length)))
+        } catch (err) {
+          // 复制不出去（没有剪贴板权限）时把清单摊进提示条：
+          // 抄不走至少看得见，用户还能自己选中。
+          showToast(text)
+        }
+      }, [shown, showToast, t])
+
       // 鼠标停在列表卡片上，请宿主弹这一篇的页面预览。
       //
       // 宿主自己的文件列表就是这个手感：扫一眼标题、停一下，预览卡片出来，
@@ -8420,6 +8456,25 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                     },
                     listSort === 'name' ? 'A→Z' : '⏱',
                   ),
+              // 搜完之后常常要把「这次找到的这几篇」抄给别人或者贴进别处。
+              // 一篇篇去右键「复制引用」太慢，这里一次抄成一段清单：
+              // 一行一篇，写名字和位置。只在搜索态摆，且一条都没搜到时收起来
+              // ——空清单没有可抄的，一颗按了没反应的按钮只会让人以为坏了。
+              searchMode && shown.length > 0
+                ? h(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'dshgn_searchCopy',
+                      title: t('search.copy').replace('{n}', String(shown.length)),
+                      'aria-label': t('search.copy').replace('{n}', String(shown.length)),
+                      onClick: () => {
+                        void copySearchHits()
+                      },
+                    },
+                    h(Icon, { name: 'copy', size: 11 }),
+                  )
+                : null,
               // 全勾 / 全不勾：作用于这次筛出来的那些卡片。搜索态也摆——
               // 「搜出来这十几篇一起加个标签」正是最需要它的场合。
               shown.length === 0

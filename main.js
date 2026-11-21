@@ -8442,6 +8442,8 @@ var LEX = {
     "batch.done": "\u5DF2\u5904\u7406",
     "search.searching": "\u641C\u7D22\u4E2D\u2026",
     "search.clear": "\u6E05\u7A7A",
+    "search.copy": "\u590D\u5236\u8FD9\u6B21\u641C\u5230\u7684 {n} \u7BC7\uFF08\u540D\u5B57\u548C\u4F4D\u7F6E\uFF09",
+    "search.copied": "\u5DF2\u590D\u5236 {n} \u7BC7\u7684\u6E05\u5355",
     "tree.all": "\u5168\u90E8\u7B14\u8BB0",
     "tree.dirs": "\u76EE\u5F55",
     "tree.tags": "\u6807\u7B7E",
@@ -8966,6 +8968,8 @@ var LEX = {
     "batch.done": "Processed",
     "search.searching": "Searching\u2026",
     "search.clear": "Clear",
+    "search.copy": "Copy the {n} notes found (names and places)",
+    "search.copied": "Copied a list of {n} notes",
     "tree.all": "All notes",
     "tree.dirs": "Folders",
     "tree.tags": "Tags",
@@ -9478,6 +9482,8 @@ var LEX = {
     "batch.done": "Verwerkt",
     "search.searching": "Zoeken\u2026",
     "search.clear": "Wissen",
+    "search.copy": "Kopieer de {n} gevonden notities (namen en plaatsen)",
+    "search.copied": "Een lijst van {n} notities gekopieerd",
     "tree.all": "Alle notities",
     "tree.dirs": "Mappen",
     "tree.tags": "Tags",
@@ -12217,6 +12223,13 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
   letter-spacing:0;text-transform:none}
 .dshgn_pickAll:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .dshgn_pickAll:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+/* \u590D\u5236\u641C\u7D22\u7ED3\u679C\uFF1A\u548C\u4E0A\u9762\u90A3\u9897\u540C\u6B3E\uFF0C\u540C\u6837\u5355\u72EC\u4E00\u4E2A\u7C7B\u2014\u2014\u5B83\u53EA\u5728\u641C\u7D22\u6001\u51FA\u73B0\uFF0C
+   \u548C\u300C\u5168\u52FE\u300D\u4E0D\u662F\u4E00\u4EF6\u4E8B\uFF0C\u5171\u7528\u7C7B\u4F1A\u8BA9\u6309\u7C7B\u540D\u67E5\u7684\u65AD\u8A00\u4E92\u76F8\u7275\u8FDE\u3002 */
+.dshgn_searchCopy{flex:none;display:inline-flex;align-items:center;justify-content:center;
+  height:20px;min-width:20px;padding:0 4px;border:0;border-radius:5px;background:transparent;
+  color:var(--dsw-alias-label-tertiary);font:inherit;font-size:9px;line-height:1;cursor:pointer}
+.dshgn_searchCopy:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dshgn_searchCopy:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 /* \u52FE\u7740\u7684\u65F6\u5019\u5E95\u8272\u4EAE\u8D77\u6765\uFF0C\u5426\u5219\u770B\u4E0D\u51FA\u4E00\u6309\u4F1A\u53D1\u751F\u4EC0\u4E48\u3002\u914D\u8272\u6CBF\u7528\u5DE6\u680F\u90A3\u4E9B data-on \u7684\u5C0F\u65B9\u94AE\u3002 */
 .dshgn_pickAll[data-on="true"]{background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-brand-primary)}
 /* \u4FA7\u680F\u5165\u53E3\u56FE\u6807\uFF08ownerProps.size \u51B3\u5B9A\u5C3A\u5BF8\uFF0C\u8FD9\u91CC\u53EA\u4FDD\u8BC1\u5757\u7EA7\u5BF9\u9F50\uFF09 */
@@ -14134,6 +14147,21 @@ ${insert}
       return new Set(all);
     });
   }, [shown]);
+  const copySearchHits = q2(async () => {
+    const rows = shown.filter((entry) => entry !== null && entry !== void 0);
+    if (rows.length === 0) return;
+    const text = rows.map((entry) => {
+      const name = String(entry.title || entry.path || "").trim();
+      const where = String(entry.path || "").trim();
+      return where === "" || where === name ? "- " + name : "- " + name + "\uFF08" + where + "\uFF09";
+    }).join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast(t4("search.copied").replace("{n}", String(rows.length)));
+    } catch (err) {
+      showToast(text);
+    }
+  }, [shown, showToast, t4]);
   const previewCard = q2((event, path) => {
     const target = event.currentTarget;
     if (!target) return;
@@ -14996,6 +15024,23 @@ ${insert}
             },
             listSort === "name" ? "A\u2192Z" : "\u23F1"
           ),
+          // 搜完之后常常要把「这次找到的这几篇」抄给别人或者贴进别处。
+          // 一篇篇去右键「复制引用」太慢，这里一次抄成一段清单：
+          // 一行一篇，写名字和位置。只在搜索态摆，且一条都没搜到时收起来
+          // ——空清单没有可抄的，一颗按了没反应的按钮只会让人以为坏了。
+          searchMode && shown.length > 0 ? h4(
+            "button",
+            {
+              type: "button",
+              className: "dshgn_searchCopy",
+              title: t4("search.copy").replace("{n}", String(shown.length)),
+              "aria-label": t4("search.copy").replace("{n}", String(shown.length)),
+              onClick: () => {
+                void copySearchHits();
+              }
+            },
+            h4(Icon, { name: "copy", size: 11 })
+          ) : null,
           // 全勾 / 全不勾：作用于这次筛出来的那些卡片。搜索态也摆——
           // 「搜出来这十几篇一起加个标签」正是最需要它的场合。
           shown.length === 0 ? null : h4(

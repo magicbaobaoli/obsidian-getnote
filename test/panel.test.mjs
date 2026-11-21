@@ -11609,3 +11609,96 @@ test('卡片上那个日期也点得动：点了就按那一天筛，左栏顶�
     await sleep(300)
   }
 })
+
+/**
+ * 搜完之后常常要把「这次找到的这几篇」抄给别人。一篇篇右键「复制引用」太慢，
+ * 现在搜索框那一行多一颗按钮，一次抄成一段清单：一行一篇，写名字和位置。
+ */
+test('搜完之后能把这次找到的几篇一次抄成一段清单，一行一篇写着名字和位置', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = window.document.querySelector('.dshgn_noteBack')
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(200)
+    }
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  const searchBox = window.document.querySelector('.dshgn_search')
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  setter.call(searchBox, '')
+  searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(400)
+
+  await post('/getnote/create', {
+    dir: '搜索抄写验收',
+    title: '搜索抄写-甲',
+    content: ['# 搜索抄写甲', '', '这里面有一个只在这次测试里出现的词：抄写验收词。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-search-copy-a',
+  })
+  await post('/getnote/create', {
+    dir: '搜索抄写验收',
+    title: '搜索抄写-乙',
+    content: ['# 搜索抄写乙', '', '另一篇也写着抄写验收词。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-search-copy-b',
+  })
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(700)
+
+  const copyBtn = () => window.document.querySelector('.dshgn_searchCopy')
+  assert.equal(copyBtn(), null, '还没搜的时候不摆这颗按钮')
+
+  setter.call(searchBox, '抄写验收词')
+  searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await waitFor(() => copyBtn() !== null, 8000, '搜到东西之后摆出复制按钮')
+  const title = String(copyBtn().title || '')
+  assert.ok(title.includes('2'), '悬停要说清这一次搜到几篇：' + title)
+  assert.ok(title.includes('复制'), '悬停要说清点它是干什么的：' + title)
+
+  const written = []
+  clipboard.writeText = async (text) => {
+    written.push(String(text))
+  }
+  copyBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => written.length > 0, 4000, '真的往剪贴板里写了一段')
+
+  const text = written[0]
+  const lines = text.split('\n')
+  assert.equal(lines.length, 2, '两篇就两行，不多不少：' + JSON.stringify(text))
+  assert.ok(lines[0].startsWith('- '), '一行一篇，写成清单：' + lines[0])
+  assert.ok(lines[1].startsWith('- '), '第二行也是：' + lines[1])
+  assert.ok(text.includes('搜索抄写甲'), '要写名字：' + text)
+  assert.ok(text.includes('搜索抄写乙'), '另一篇也在：' + text)
+  assert.ok(text.includes('搜索抄写验收/'), '还要写位置，光有名字分不出重名的那几篇：' + text)
+
+  await waitFor(() => {
+    const toast = window.document.querySelector('.dshgn_toast')
+    return toast !== null && (toast.textContent || '').includes('已复制')
+  }, 4000, '抄完要说一声')
+
+  setter.call(searchBox, '')
+  searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(400)
+  assert.equal(copyBtn(), null, '清空搜索之后这颗按钮跟着收起来')
+})
