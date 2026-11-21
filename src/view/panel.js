@@ -663,6 +663,7 @@ async function saveFile(url, filename) {
         'empty.noVaultDesc': '先在「设置」里指定一个目录，或者点「导入」把得到大脑的笔记抓下来。',
         'empty.noNotes': '这个目录还没有笔记',
         'list.more': '显示更多',
+        'list.all': '全部显示',
         'empty.select': '选一篇笔记开始阅读',
         'empty.selectDesc': '左栏是目录，中间是笔记列表。也可以点「新建」写一篇。',
         'empty.search': '没有匹配的笔记',
@@ -1157,6 +1158,7 @@ async function saveFile(url, filename) {
         'empty.noVaultDesc': 'Pick a folder in Settings, or press Import to pull your notes down.',
         'empty.noNotes': 'No notes in this folder',
         'list.more': 'Show more',
+        'list.all': 'Show all',
         'empty.select': 'Pick a note to read',
         'empty.selectDesc': 'Folders on the left, notes in the middle. Or press New.',
         'empty.search': 'No matching notes',
@@ -1650,6 +1652,7 @@ async function saveFile(url, filename) {
         'empty.noVaultDesc': 'Kies een map bij Instellingen, of druk op Importeren om je notities op te halen.',
         'empty.noNotes': 'Geen notities in deze map',
         'list.more': 'Meer tonen',
+        'list.all': 'Alles tonen',
         'empty.select': 'Kies een notitie om te lezen',
         'empty.selectDesc': 'Mappen links, notities in het midden. Of druk op Nieuw.',
         'empty.search': 'Geen passende notities',
@@ -5020,6 +5023,10 @@ async function saveFile(url, filename) {
 /* 侧栏入口图标（ownerProps.size 决定尺寸，这里只保证块级对齐） */
 .dshgn_sideIcon{display:block;flex:none}
 .dshgn_listBody{flex:1;overflow-y:auto;padding:6px}
+/* 「显示更多」与「全部显示」并排：库大起来之后一屏一屏点下去要点很多次，
+   而「全部」是那种偶尔才按一次、按了就要一次看完的按钮。 */
+.dshgn_moreRow{display:flex;gap:6px;margin:6px 0 2px}
+.dshgn_moreRow .dshgn_btn{flex:1 1 auto;justify-content:center;min-width:0}
 .dshgn_moreBtn{display:block;width:100%;margin:6px 0 2px;justify-content:center}
 .dshgn_card{display:flex;flex-direction:column;gap:2px;padding:7px 8px;border-radius:8px;cursor:pointer;
   border-left:2px solid transparent;user-select:none}
@@ -8761,14 +8768,30 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                     // 用户知道下面确实还有东西，而不是以为列表就到这儿了。
                     shown.length > shownSlice.length
                       ? h(
-                          'button',
-                          {
-                            key: '__more',
-                            type: 'button',
-                            className: 'dshgn_btn dshgn_moreBtn',
-                            onClick: () => setListLimit((prev) => prev + LIST_PAGE_SIZE),
-                          },
-                          `${t('list.more')}（${shown.length - shownSlice.length}）`,
+                          'div',
+                          { key: '__more', className: 'dshgn_moreRow' },
+                          h(
+                            'button',
+                            {
+                              type: 'button',
+                              className: 'dshgn_btn dshgn_moreBtn',
+                              onClick: () => setListLimit((prev) => prev + LIST_PAGE_SIZE),
+                            },
+                            `${t('list.more')}（${shown.length - shownSlice.length}）`,
+                          ),
+                          // 「全部显示」：几十次「显示更多」才能看完的库，一次点完。
+                          // 上限取 shown.length 而不是 Infinity——一个具体的数字更好
+                          // 理解，而且它跟着筛选结果走，筛一次就自动降下来。
+                          h(
+                            'button',
+                            {
+                              type: 'button',
+                              className: 'dshgn_btn dshgn_moreBtn',
+                              title: t('list.all'),
+                              onClick: () => setListLimit(Math.max(shown.length, LIST_PAGE_SIZE)),
+                            },
+                            t('list.all'),
+                          ),
                         )
                       : null,
                   ],

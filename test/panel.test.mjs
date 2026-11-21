@@ -10235,3 +10235,63 @@ test('目录行右键「在这里新建笔记」直接建在这个目录里并�
   assert.equal(written.status, 200, '刚建的那一篇该读得回来')
   await backToList()
 })
+
+test('列表底下的「全部显示」一次把剩下的都摊出来，不用一屏一屏点下去', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const backToList = async () => {
+    const back = rootNode().querySelector('.dshgn_noteBack')
+    if (back !== null) {
+      panel.setConfirmDialog(() => Promise.resolve(true))
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false')
+  }
+  await backToList()
+  await clickTab('笔记')
+  await waitFor(() => rootNode().querySelector('.dshgn_search') !== null, 4000, '搜索框')
+  const search = rootNode().querySelector('.dshgn_search')
+  Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(search, '')
+  search.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(400)
+
+  // 一屏只渲染 60 条：造 61 篇，正好剩一篇要「显示更多」才看得见。
+  const dirName = '显示全部验收'
+  const total = 61
+  for (let i = 1; i <= total; i += 1) {
+    const num = String(i).padStart(2, '0')
+    const res = await realFetch(server.origin + '/getnote/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({
+        dir: dirName,
+        title: '显示全部验收-' + num,
+        content: '# 显示全部验收-' + num + '\n\n第 ' + num + ' 篇。\n',
+        withDatePrefix: false,
+        requestId: 'seed-show-all-' + num,
+      }),
+    })
+    assert.equal(res.ok, true, '造第 ' + num + ' 篇失败：' + res.status)
+  }
+
+  const refreshBtn = () => Array.from(rootNode().querySelectorAll('.dshgn_iconBtn')).find((el) => el.getAttribute('title') === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const rowOf = () => Array.from(rootNode().querySelectorAll('.dshgn_treeRow')).find((el) => {
+    const name = el.querySelector('.dshgn_treeName')
+    return name !== null && String(name.textContent || '') === dirName
+  }) || null
+  const row = await waitFor(rowOf, 10000, '左栏该出现这个目录')
+  row.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+
+  const cards = () => Array.from(rootNode().querySelectorAll('.dshgn_card'))
+  await waitFor(() => cards().length === 60, 8000, '一屏该先渲染 60 张卡片')
+  const moreRow = await waitFor(() => rootNode().querySelector('.dshgn_moreRow'), 4000, '底下该有那颗「显示更多」')
+  const moreBtns = Array.from(moreRow.querySelectorAll('.dshgn_btn'))
+  assert.equal(moreBtns.length, 2, '「显示更多」旁边该还有一颗「全部显示」：' + moreBtns.map((el) => el.textContent).join(' / '))
+  assert.ok(String(moreBtns[0].textContent || '').includes('1'), '「显示更多」该报还剩 1 篇：' + moreBtns[0].textContent)
+  assert.equal(String(moreBtns[1].textContent || ''), '全部显示', '第二颗是「全部显示」')
+
+  moreBtns[1].dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => cards().length === total, 8000, '点了「全部显示」该把 61 张卡片一次摊出来')
+  assert.equal(rootNode().querySelector('.dshgn_moreRow'), null, '全摊开之后底下那颗就不该还在')
+  await backToList()
+})

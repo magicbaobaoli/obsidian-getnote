@@ -8516,6 +8516,7 @@ var LEX = {
     "empty.noVaultDesc": "\u5148\u5728\u300C\u8BBE\u7F6E\u300D\u91CC\u6307\u5B9A\u4E00\u4E2A\u76EE\u5F55\uFF0C\u6216\u8005\u70B9\u300C\u5BFC\u5165\u300D\u628A\u5F97\u5230\u5927\u8111\u7684\u7B14\u8BB0\u6293\u4E0B\u6765\u3002",
     "empty.noNotes": "\u8FD9\u4E2A\u76EE\u5F55\u8FD8\u6CA1\u6709\u7B14\u8BB0",
     "list.more": "\u663E\u793A\u66F4\u591A",
+    "list.all": "\u5168\u90E8\u663E\u793A",
     "empty.select": "\u9009\u4E00\u7BC7\u7B14\u8BB0\u5F00\u59CB\u9605\u8BFB",
     "empty.selectDesc": "\u5DE6\u680F\u662F\u76EE\u5F55\uFF0C\u4E2D\u95F4\u662F\u7B14\u8BB0\u5217\u8868\u3002\u4E5F\u53EF\u4EE5\u70B9\u300C\u65B0\u5EFA\u300D\u5199\u4E00\u7BC7\u3002",
     "empty.search": "\u6CA1\u6709\u5339\u914D\u7684\u7B14\u8BB0",
@@ -9006,6 +9007,7 @@ var LEX = {
     "empty.noVaultDesc": "Pick a folder in Settings, or press Import to pull your notes down.",
     "empty.noNotes": "No notes in this folder",
     "list.more": "Show more",
+    "list.all": "Show all",
     "empty.select": "Pick a note to read",
     "empty.selectDesc": "Folders on the left, notes in the middle. Or press New.",
     "empty.search": "No matching notes",
@@ -9495,6 +9497,7 @@ var LEX = {
     "empty.noVaultDesc": "Kies een map bij Instellingen, of druk op Importeren om je notities op te halen.",
     "empty.noNotes": "Geen notities in deze map",
     "list.more": "Meer tonen",
+    "list.all": "Alles tonen",
     "empty.select": "Kies een notitie om te lezen",
     "empty.selectDesc": "Mappen links, notities in het midden. Of druk op Nieuw.",
     "empty.search": "Geen passende notities",
@@ -12106,6 +12109,10 @@ var CSS = `
 /* \u4FA7\u680F\u5165\u53E3\u56FE\u6807\uFF08ownerProps.size \u51B3\u5B9A\u5C3A\u5BF8\uFF0C\u8FD9\u91CC\u53EA\u4FDD\u8BC1\u5757\u7EA7\u5BF9\u9F50\uFF09 */
 .dshgn_sideIcon{display:block;flex:none}
 .dshgn_listBody{flex:1;overflow-y:auto;padding:6px}
+/* \u300C\u663E\u793A\u66F4\u591A\u300D\u4E0E\u300C\u5168\u90E8\u663E\u793A\u300D\u5E76\u6392\uFF1A\u5E93\u5927\u8D77\u6765\u4E4B\u540E\u4E00\u5C4F\u4E00\u5C4F\u70B9\u4E0B\u53BB\u8981\u70B9\u5F88\u591A\u6B21\uFF0C
+   \u800C\u300C\u5168\u90E8\u300D\u662F\u90A3\u79CD\u5076\u5C14\u624D\u6309\u4E00\u6B21\u3001\u6309\u4E86\u5C31\u8981\u4E00\u6B21\u770B\u5B8C\u7684\u6309\u94AE\u3002 */
+.dshgn_moreRow{display:flex;gap:6px;margin:6px 0 2px}
+.dshgn_moreRow .dshgn_btn{flex:1 1 auto;justify-content:center;min-width:0}
 .dshgn_moreBtn{display:block;width:100%;margin:6px 0 2px;justify-content:center}
 .dshgn_card{display:flex;flex-direction:column;gap:2px;padding:7px 8px;border-radius:8px;cursor:pointer;
   border-left:2px solid transparent;user-select:none}
@@ -15310,14 +15317,30 @@ ${insert}
             // 还没渲染完就放一个按钮：滚动续载之外再给个明确出口，
             // 用户知道下面确实还有东西，而不是以为列表就到这儿了。
             shown.length > shownSlice.length ? h4(
-              "button",
-              {
-                key: "__more",
-                type: "button",
-                className: "dshgn_btn dshgn_moreBtn",
-                onClick: () => setListLimit((prev) => prev + LIST_PAGE_SIZE)
-              },
-              `${t4("list.more")}\uFF08${shown.length - shownSlice.length}\uFF09`
+              "div",
+              { key: "__more", className: "dshgn_moreRow" },
+              h4(
+                "button",
+                {
+                  type: "button",
+                  className: "dshgn_btn dshgn_moreBtn",
+                  onClick: () => setListLimit((prev) => prev + LIST_PAGE_SIZE)
+                },
+                `${t4("list.more")}\uFF08${shown.length - shownSlice.length}\uFF09`
+              ),
+              // 「全部显示」：几十次「显示更多」才能看完的库，一次点完。
+              // 上限取 shown.length 而不是 Infinity——一个具体的数字更好
+              // 理解，而且它跟着筛选结果走，筛一次就自动降下来。
+              h4(
+                "button",
+                {
+                  type: "button",
+                  className: "dshgn_btn dshgn_moreBtn",
+                  title: t4("list.all"),
+                  onClick: () => setListLimit(Math.max(shown.length, LIST_PAGE_SIZE))
+                },
+                t4("list.all")
+              )
             ) : null
           ]
         )
