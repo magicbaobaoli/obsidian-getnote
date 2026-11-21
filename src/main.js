@@ -514,6 +514,19 @@ export default class GetnoteObsidianPlugin extends Plugin {
             this.captureFromEditor(editor, view)
           })
         })
+        // 选中一段字再右键「用这几个字去搜」：用户常常是读到一句话、想找库里
+        // 还有哪篇提过它。没选中的时候不摆这一条——空搜索没有意义。
+        // 只投递关键词，搜索框和结果都归面板（它才拿得到状态）。
+        const needle = selection.trim()
+        if (needle !== '') {
+          menu.addItem((item) => {
+            item.setTitle('用选中的文字搜索得到大脑')
+            item.setIcon('search')
+            item.onClick(() => {
+              void this.activateView().then(() => requestIntent({ type: 'search', q: needle }))
+            })
+          })
+        }
       }),
     )
 

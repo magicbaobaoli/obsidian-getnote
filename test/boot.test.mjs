@@ -1233,12 +1233,16 @@ test('宿主右键菜单里挂着得到大脑的入口，路径口径与面板�
 
   const selected = new Menu()
   editorListeners[0](selected, makeEditor('选中的一段', '整行内容'), { file: { path: '别处的目录/甲.md' } })
-  assert.equal(selected.items.length, 1)
+  assert.equal(selected.items.length, 2, '选了字就有两条：存下来、拿去搜')
   assert.equal(selected.items[0].title, '把选中的文字存进得到大脑')
   assert.doesNotThrow(() => selected.items[0].handler(), '点下去不该抛')
+  assert.equal(selected.items[1].title, '用选中的文字搜索得到大脑')
+  assert.equal(selected.items[1].icon, 'search')
+  assert.doesNotThrow(() => selected.items[1].handler(), '拿去搜那条也不该抛')
 
   const bare = new Menu()
   editorListeners[0](bare, makeEditor('', '当前这一行'), { file: { path: '别处的目录/甲.md' } })
+  assert.equal(bare.items.length, 1, '没选字就只有「把这一行存进」一条，空搜索没意义')
   assert.equal(bare.items[0].title, '把这一行存进得到大脑')
 
   // 什么都没得存的时候：给一句提示，不炸
