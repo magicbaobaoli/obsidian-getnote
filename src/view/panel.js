@@ -645,6 +645,7 @@ async function saveFile(url, filename) {
         'tree.unfoldAll': '全部展开',
         'tree.dirCreated': '目录已创建',
         'tree.movedTo': '已挪到 {dir}',
+        'note.taggedWith': '已加上标签 #{tag}',
         'tree.tagCreated': '标签已添加到当前笔记',
         'tree.tagNeedNote': '先打开一篇笔记再建标签',
         'tree.menuDelete': '删除',
@@ -1149,6 +1150,7 @@ async function saveFile(url, filename) {
         'tree.unfoldAll': 'Expand all',
         'tree.dirCreated': 'Folder created',
         'tree.movedTo': 'Moved to {dir}',
+        'note.taggedWith': 'Tagged #{tag}',
         'tree.tagCreated': 'Tag added to the open note',
         'tree.tagNeedNote': 'Open a note first to add a tag',
         'tree.menuDelete': 'Delete',
@@ -1650,6 +1652,7 @@ async function saveFile(url, filename) {
         'tree.unfoldAll': 'Alles uitklappen',
         'tree.dirCreated': 'Map aangemaakt',
         'tree.movedTo': 'Verplaatst naar {dir}',
+        'note.taggedWith': 'Getagd met #{tag}',
         'tree.tagCreated': 'Tag toegevoegd aan de geopende notitie',
         'tree.tagNeedNote': 'Open eerst een notitie om een tag toe te voegen',
         'tree.menuDelete': 'Verwijderen',
@@ -4982,6 +4985,12 @@ async function saveFile(url, filename) {
 .dshgn_tagRow:hover{background:var(--dsw-alias-interactive-bg-hover)}
 .dshgn_tagRow[data-on="true"]{border-color:transparent;background:var(--dsw-alias-interactive-bg-hover-accent);
   color:var(--dsw-alias-brand-primary)}
+/* 卡片拖到胶囊上：只加一圈实线边框、不换底色。胶囊本身就是「选中」的
+   样子（data-on 换底色），用底色表示「要贴上去」会和「已经按这个筛着」
+   混成一种状态。 */
+.dshgn_tagRow[data-drop="true"]{border-color:var(--dsw-alias-brand-primary);
+  color:var(--dsw-alias-brand-primary);
+  box-shadow:0 0 0 1px var(--dsw-alias-brand-primary)}
 .dshgn_treeTags{display:flex;flex-wrap:wrap;padding:2px 4px}
 /* 嵌套标签摊平后，子标签的胶囊只写最后一段，靠缩进表示层级 */
 .dshgn_treeTags .dshgn_tagRow[data-nest="true"]{border-style:dashed}
@@ -7492,6 +7501,41 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         [current, refresh, setBusy, setError, showToast, t],
       )
 
+      // 把一篇笔记拖到左栏的标签胶囊上 = 给这一篇贴上那个标签。
+      //
+      // 走的是和批量加标签同一个 /batch 端点，只带这一条路径。加完不刷新
+      // 整个库没意义——标签计数会变，但笔记内容没动；真正要看的是这篇
+      // 头部的标签行，而它只在打开着的那篇里显示。所以：刷新左栏计数，
+      // 正开着这一篇时把它的正文重新读一遍（不重读会看到旧的头部）。
+      const addTagTo = React.useCallback(
+        async (path, tag) => {
+          const from = typeof path === 'string' ? path : ''
+          const name = typeof tag === 'string' ? tag.trim() : ''
+          if (from === '' || name === '') return
+          setBusy(true)
+          try {
+            const json = await api('/batch', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ action: 'tag', paths: [from], tag: name }),
+            })
+            const changed = Number(json.changed) || 0
+            showToast(changed > 0 ? t('note.taggedWith').replace('{tag}', name) : `${t('batch.done')} 0`)
+            await refresh()
+            // 正开着被贴标签的那一篇：重新读一遍，头部标签行才会当场长出来。
+            // 别处（列表卡片）只显示正文第一行，不受影响。
+            if (current !== null && current.path === from && typeof openNote === 'function') {
+              await openNote(from, false, true)
+            }
+          } catch (err) {
+            setError(err && err.message ? err.message : String(err))
+          } finally {
+            setBusy(false)
+          }
+        },
+        [current, openNote, refresh, setBusy, setError, showToast, t],
+      )
+
       // vaultMissing 正常时是 null（不是 false）：这里原本写 === false，
       // 于是「+」和刷新按钮永远处于 disabled 状态，用户点了以为没反应。
       // 只要 status 拿到了、且没报缺失，就算就绪。
@@ -8012,6 +8056,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             },
             onMoveNoteTo: (path, dir) => {
               void moveNoteTo(path, dir)
+            },
+            onAddTagTo: (path, tag) => {
+              void addTagTo(path, tag)
             },
             onCreateDir: async (name) => {
               try {
@@ -12965,6 +13012,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         currentNoteId,
         onNarrowPick,
         onMoveNoteTo,
+        onAddTagTo,
       } = props
       const total = Array.isArray(entries) ? entries.length : 0
       // 窄窗口里左栏是浮在列表上的抽屉，选完就该消失，不然它一直盖着结果。
@@ -12989,6 +13037,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 拖到别处（列表、正文、栏外）一律清掉——高亮是一种承诺，
       // 高亮着却没接住比不高亮更糟。
       const [dropOn, setDropOn] = React.useState('')
+      // 正有卡片被拖到哪个标签胶囊上面。和 dropOn 分开记：目录行和标签行
+      // 长得不一样、接住之后的动作也不一样（挪走 vs 贴标签），共用一个
+      // 字符串会在两区之间留下一条永远不会被清掉的高亮。
+      const [dropTag, setDropTag] = React.useState('')
       // 收起来的目录（记目录路径）。目录多的时候一屏放不下整个库的结构，
       // 平时不看的那几支收起来，剩下的才看得见；折叠状态只活在这次会话里——
       // 存下来反而会在下次打开时「我明明记得它是展开的」。
@@ -13655,8 +13707,38 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                           // 摊平之后只看得到最后一段，「读书/摘抄」显示成「摘抄」，
                           // 悬停要能看出它到底属于哪一条。
                           title: tag,
+                          'data-drop': dropTag === tag ? 'true' : 'false',
                           onClick: picked(() => onPickTag(activeTag === tag ? '' : tag)),
                           onContextMenu: (event) => openMenu(event, 'tag', tag),
+                          // 卡片拖到胶囊上 = 给那一篇贴上这个标签。和拖到目录行
+                          // 是同一个手势，但这里是「加一横」不是「搬走」——笔记
+                          // 留在原地，只是头部多一个标签。
+                          onDragOver: (event) => {
+                            if (typeof onAddTagTo !== 'function') return
+                            if (!dragCarriesNote(event.dataTransfer)) return
+                            event.preventDefault()
+                            event.stopPropagation()
+                            try {
+                              event.dataTransfer.dropEffect = 'link'
+                            } catch {}
+                            if (dropTag !== tag) setDropTag(tag)
+                          },
+                          onDragLeave: () => {
+                            if (dropTag === tag) setDropTag('')
+                          },
+                          onDrop: (event) => {
+                            setDropTag('')
+                            if (typeof onAddTagTo !== 'function') return
+                            if (!dragCarriesNote(event.dataTransfer)) return
+                            event.preventDefault()
+                            event.stopPropagation()
+                            let dragged = ''
+                            try {
+                              dragged = String(event.dataTransfer.getData(DRAG_MIME) || '')
+                            } catch {}
+                            if (dragged === '') return
+                            onAddTagTo(dragged, tag)
+                          },
                         },
                         `${label} ${count}`,
                       ),

@@ -8498,6 +8498,7 @@ var LEX = {
     "tree.unfoldAll": "\u5168\u90E8\u5C55\u5F00",
     "tree.dirCreated": "\u76EE\u5F55\u5DF2\u521B\u5EFA",
     "tree.movedTo": "\u5DF2\u632A\u5230 {dir}",
+    "note.taggedWith": "\u5DF2\u52A0\u4E0A\u6807\u7B7E #{tag}",
     "tree.tagCreated": "\u6807\u7B7E\u5DF2\u6DFB\u52A0\u5230\u5F53\u524D\u7B14\u8BB0",
     "tree.tagNeedNote": "\u5148\u6253\u5F00\u4E00\u7BC7\u7B14\u8BB0\u518D\u5EFA\u6807\u7B7E",
     "tree.menuDelete": "\u5220\u9664",
@@ -8997,6 +8998,7 @@ var LEX = {
     "tree.unfoldAll": "Expand all",
     "tree.dirCreated": "Folder created",
     "tree.movedTo": "Moved to {dir}",
+    "note.taggedWith": "Tagged #{tag}",
     "tree.tagCreated": "Tag added to the open note",
     "tree.tagNeedNote": "Open a note first to add a tag",
     "tree.menuDelete": "Delete",
@@ -9493,6 +9495,7 @@ var LEX = {
     "tree.unfoldAll": "Alles uitklappen",
     "tree.dirCreated": "Map aangemaakt",
     "tree.movedTo": "Verplaatst naar {dir}",
+    "note.taggedWith": "Getagd met #{tag}",
     "tree.tagCreated": "Tag toegevoegd aan de geopende notitie",
     "tree.tagNeedNote": "Open eerst een notitie om een tag toe te voegen",
     "tree.menuDelete": "Verwijderen",
@@ -12065,6 +12068,12 @@ var CSS = `
 .dshgn_tagRow:hover{background:var(--dsw-alias-interactive-bg-hover)}
 .dshgn_tagRow[data-on="true"]{border-color:transparent;background:var(--dsw-alias-interactive-bg-hover-accent);
   color:var(--dsw-alias-brand-primary)}
+/* \u5361\u7247\u62D6\u5230\u80F6\u56CA\u4E0A\uFF1A\u53EA\u52A0\u4E00\u5708\u5B9E\u7EBF\u8FB9\u6846\u3001\u4E0D\u6362\u5E95\u8272\u3002\u80F6\u56CA\u672C\u8EAB\u5C31\u662F\u300C\u9009\u4E2D\u300D\u7684
+   \u6837\u5B50\uFF08data-on \u6362\u5E95\u8272\uFF09\uFF0C\u7528\u5E95\u8272\u8868\u793A\u300C\u8981\u8D34\u4E0A\u53BB\u300D\u4F1A\u548C\u300C\u5DF2\u7ECF\u6309\u8FD9\u4E2A\u7B5B\u7740\u300D
+   \u6DF7\u6210\u4E00\u79CD\u72B6\u6001\u3002 */
+.dshgn_tagRow[data-drop="true"]{border-color:var(--dsw-alias-brand-primary);
+  color:var(--dsw-alias-brand-primary);
+  box-shadow:0 0 0 1px var(--dsw-alias-brand-primary)}
 .dshgn_treeTags{display:flex;flex-wrap:wrap;padding:2px 4px}
 /* \u5D4C\u5957\u6807\u7B7E\u644A\u5E73\u540E\uFF0C\u5B50\u6807\u7B7E\u7684\u80F6\u56CA\u53EA\u5199\u6700\u540E\u4E00\u6BB5\uFF0C\u9760\u7F29\u8FDB\u8868\u793A\u5C42\u7EA7 */
 .dshgn_treeTags .dshgn_tagRow[data-nest="true"]{border-style:dashed}
@@ -14161,6 +14170,32 @@ ${insert}
     },
     [current, refresh, setBusy, setError, showToast, t4]
   );
+  const addTagTo = q2(
+    async (path, tag) => {
+      const from = typeof path === "string" ? path : "";
+      const name = typeof tag === "string" ? tag.trim() : "";
+      if (from === "" || name === "") return;
+      setBusy(true);
+      try {
+        const json = await api("/batch", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "tag", paths: [from], tag: name })
+        });
+        const changed = Number(json.changed) || 0;
+        showToast(changed > 0 ? t4("note.taggedWith").replace("{tag}", name) : `${t4("batch.done")} 0`);
+        await refresh();
+        if (current !== null && current.path === from && typeof openNote === "function") {
+          await openNote(from, false, true);
+        }
+      } catch (err) {
+        setError(err && err.message ? err.message : String(err));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [current, openNote, refresh, setBusy, setError, showToast, t4]
+  );
   const vaultReady = status !== null && !status.vaultMissing;
   y2(() => {
     const onKey = (event) => {
@@ -14627,6 +14662,9 @@ ${insert}
         },
         onMoveNoteTo: (path, dir) => {
           void moveNoteTo(path, dir);
+        },
+        onAddTagTo: (path, tag) => {
+          void addTagTo(path, tag);
         },
         onCreateDir: async (name) => {
           try {
@@ -18869,7 +18907,8 @@ function TreePane(props) {
     heatmap,
     currentNoteId,
     onNarrowPick,
-    onMoveNoteTo
+    onMoveNoteTo,
+    onAddTagTo
   } = props;
   const total = Array.isArray(entries) ? entries.length : 0;
   const picked = (fn2) => (arg) => {
@@ -18883,6 +18922,7 @@ function TreePane(props) {
   const [busy, setBusy] = h2(false);
   const [renaming, setRenaming] = h2(null);
   const [dropOn, setDropOn] = h2("");
+  const [dropTag, setDropTag] = h2("");
   const [folded, setFolded] = h2(() => /* @__PURE__ */ new Set());
   const toggleFold = (path) => {
     setFolded((prev) => {
@@ -19459,8 +19499,40 @@ ${t4("tree.menuDelete")}\uFF1A\u53F3\u952E`
               // 摊平之后只看得到最后一段，「读书/摘抄」显示成「摘抄」，
               // 悬停要能看出它到底属于哪一条。
               title: tag,
+              "data-drop": dropTag === tag ? "true" : "false",
               onClick: picked(() => onPickTag(activeTag === tag ? "" : tag)),
-              onContextMenu: (event) => openMenu(event, "tag", tag)
+              onContextMenu: (event) => openMenu(event, "tag", tag),
+              // 卡片拖到胶囊上 = 给那一篇贴上这个标签。和拖到目录行
+              // 是同一个手势，但这里是「加一横」不是「搬走」——笔记
+              // 留在原地，只是头部多一个标签。
+              onDragOver: (event) => {
+                if (typeof onAddTagTo !== "function") return;
+                if (!dragCarriesNote(event.dataTransfer)) return;
+                event.preventDefault();
+                event.stopPropagation();
+                try {
+                  event.dataTransfer.dropEffect = "link";
+                } catch {
+                }
+                if (dropTag !== tag) setDropTag(tag);
+              },
+              onDragLeave: () => {
+                if (dropTag === tag) setDropTag("");
+              },
+              onDrop: (event) => {
+                setDropTag("");
+                if (typeof onAddTagTo !== "function") return;
+                if (!dragCarriesNote(event.dataTransfer)) return;
+                event.preventDefault();
+                event.stopPropagation();
+                let dragged = "";
+                try {
+                  dragged = String(event.dataTransfer.getData(DRAG_MIME) || "");
+                } catch {
+                }
+                if (dragged === "") return;
+                onAddTagTo(dragged, tag);
+              }
             },
             `${label} ${count}`
           ),
@@ -21761,6 +21833,8 @@ var GetnoteView = class extends import_obsidian.ItemView {
     } catch {
     }
     try {
+      const boot = container.querySelector(".dshgn_boot");
+      if (boot && boot.parentNode) boot.parentNode.removeChild(boot);
       const box = container.createDiv({ cls: "dshgn_fatal" });
       box.setAttribute(
         "style",
@@ -21801,6 +21875,53 @@ var GetnoteView = class extends import_obsidian.ItemView {
     } catch {
     }
   }
+  /**
+   * 在面板位置上先摆一行字，纯内联样式、零依赖。
+   *
+   * 这一行存在的唯一理由：面板没画出来时，用户看到的必须是「一句话」而不是「一片黑」。
+   * 一片黑没法区分「插件没加载」「视图没挂上」「首帧卡住」，而这三件事的修法完全不同。
+   */
+  placeholder(container) {
+    try {
+      const box = container.createDiv({ cls: "dshgn_boot" });
+      box.setAttribute(
+        "style",
+        [
+          "box-sizing:border-box",
+          "height:100%",
+          "padding:28px 32px",
+          "font:13px/1.7 system-ui,sans-serif",
+          "color:var(--text-normal,#ddd)",
+          "background:var(--background-primary,#1e1e1e)",
+          "overflow:auto"
+        ].join(";")
+      );
+      box.createDiv({ text: "\u5F97\u5230\u5927\u8111\u6B63\u5728\u6253\u5F00\u2026" });
+      const tip = box.createDiv({
+        text: "\u8FD9\u884C\u5B57\u4E24\u79D2\u5185\u4E0D\u6D88\u5931\uFF0C\u5C31\u8BF4\u660E\u9762\u677F\u5361\u5728\u542F\u52A8\u91CC\u4E86\u3002\u7A0D\u7B49\u4E4B\u540E\u8FD8\u662F\u4E00\u7247\u7A7A\u767D\u7684\u8BDD\uFF0C\u628A .obsidian/plugins/getnote-brain/boot.txt \u53D1\u7ED9\u5F00\u53D1\u8005\u3002"
+      });
+      tip.setAttribute("style", "margin-top:8px;font-size:12px;opacity:.72");
+      return box;
+    } catch {
+      return null;
+    }
+  }
+  /** 把渲染进程里的未捕获异常写进 boot.txt —— 那些错误不会走到我们的 try/catch 里。 */
+  watchWindowErrors(container) {
+    try {
+      const win = container.ownerDocument && container.ownerDocument.defaultView;
+      if (!win || typeof win.addEventListener !== "function") return;
+      this.errorHandler = (event) => {
+        const err = event && (event.error || event.reason);
+        const text = err && err.stack ? err.stack : String(event && event.message || err || "\u672A\u77E5\u9519\u8BEF");
+        this.note(`\u672A\u6355\u83B7\u5F02\u5E38\uFF1A${text.split("\n").slice(0, 3).join(" | ")}`);
+      };
+      win.addEventListener("error", this.errorHandler);
+      win.addEventListener("unhandledrejection", this.errorHandler);
+      this.errorWindow = win;
+    } catch {
+    }
+  }
   async onOpen() {
     this.note("\u89C6\u56FE onOpen \u88AB\u8C03\u7528");
     const container = this.contentEl;
@@ -21818,10 +21939,12 @@ var GetnoteView = class extends import_obsidian.ItemView {
     container.addClass("dshgn_view");
     this.containerEl = container;
     const mount = container.createDiv({ cls: "dshgn_mount" });
+    const placeholder = this.placeholder(container);
     this.note("\u5BB9\u5668\u5DF2\u5C31\u7EEA\uFF0C\u5F00\u59CB\u9996\u5E27\u6E32\u67D3");
     this.root = createRoot(mount);
     this.root.render(_(PanelRoot, { plugin: this.plugin }));
     this.note("\u9996\u5E27\u6E32\u67D3\u8C03\u7528\u5DF2\u8FD4\u56DE");
+    this.watchWindowErrors(container);
     const beat = () => {
       if (!this.containerEl || !this.containerEl.isShown()) return;
       this.plugin.markPanelVisible();
@@ -21838,6 +21961,8 @@ var GetnoteView = class extends import_obsidian.ItemView {
         this.renderFatal(container, new Error("\u9762\u677F\u6839\u8282\u70B9\u6CA1\u6709\u51FA\u73B0\uFF08\u9996\u5E27\u6CA1\u6709\u6E32\u67D3\u5B8C\u6210\uFF09"));
         return;
       }
+      const boot = container.querySelector(".dshgn_boot");
+      if (boot && boot.parentNode) boot.parentNode.removeChild(boot);
       if (root.clientHeight === 0) {
         const h5 = container.clientHeight;
         this.renderFatal(
@@ -21849,6 +21974,20 @@ var GetnoteView = class extends import_obsidian.ItemView {
   }
   async onClose() {
     clearMarkdownHost();
+    try {
+      const boot = this.containerEl ? this.containerEl.querySelector(".dshgn_boot") : null;
+      if (boot && boot.parentNode) boot.parentNode.removeChild(boot);
+    } catch {
+    }
+    try {
+      if (this.errorWindow && this.errorHandler) {
+        this.errorWindow.removeEventListener("error", this.errorHandler);
+        this.errorWindow.removeEventListener("unhandledrejection", this.errorHandler);
+      }
+    } catch {
+    }
+    this.errorWindow = null;
+    this.errorHandler = null;
     if (this.heartbeat !== null) {
       window.clearInterval(this.heartbeat);
       this.heartbeat = null;
@@ -21951,11 +22090,14 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     if (stored.subfolder && stored.subfolder !== DEFAULT_SUBFOLDER) {
       configure2({ subfolder: stored.subfolder });
     }
-    const vaultRoot = resolveVaultRoot().root;
+    const vaultRoot = (await resolveVaultRoot()).root;
+    this.probe(`\u5E93\u6839 ${basePath2 === "" ? "(\u7A7A)" : basePath2}\uFF0C\u7B14\u8BB0\u76EE\u5F55 ${vaultRoot}`);
     try {
       await mkdir2(vaultRoot, { recursive: true });
     } catch (error2) {
-      new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A\u7B14\u8BB0\u76EE\u5F55\u5EFA\u4E0D\u51FA\u6765 \u2014\u2014 ${error2 && error2.message ? error2.message : error2}`);
+      const message = error2 && error2.message ? error2.message : String(error2);
+      this.probe(`\u7B14\u8BB0\u76EE\u5F55\u5EFA\u4E0D\u51FA\u6765\uFF1A${message}`);
+      new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A\u7B14\u8BB0\u76EE\u5F55\u5EFA\u4E0D\u51FA\u6765 \u2014\u2014 ${message}`);
     }
     const preferredPort = Number(stored.localPort) > 0 ? Number(stored.localPort) : 0;
     try {

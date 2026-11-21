@@ -230,11 +230,20 @@ export default class GetnoteObsidianPlugin extends Plugin {
     // 笔记目录不存在时建出来。不建的话面板一进来就是「本地库目录不存在」，
     // 用户还得自己先去资源管理器建个文件夹——第一次用的体验会莫名其妙。
     // 用 vfs 而不是 node:fs，这样 Obsidian 的文件索引能立刻看到新目录。
-    const vaultRoot = settingsStore.resolveVaultRoot().root
+    // resolveVaultRoot 是 async 的：少一个 await，拿到的是 Promise，`.root` 于是是
+    // undefined，vfs 的 relOf 会把它当「越界的绝对路径」直接抛错 —— 报出来的那句
+    // 「笔记目录建不出来 —— path escapes vault root: undefined」看着像磁盘权限问题，
+    // 其实只是这里少了一个 await。
+    const vaultRoot = (await settingsStore.resolveVaultRoot()).root
+    // 这两行是排障用的：库根是空串（宿主没给 getBasePath）时，下面 mkdir 会拿到
+    // 一条绝对路径，adapter 只认库内相对路径，报出来的错和「磁盘没权限」长得一样。
+    this.probe(`库根 ${basePath === '' ? '(空)' : basePath}，笔记目录 ${vaultRoot}`)
     try {
       await vfsMkdir(vaultRoot, { recursive: true })
     } catch (error) {
-      new Notice(`得到大脑：笔记目录建不出来 —— ${error && error.message ? error.message : error}`)
+      const message = error && error.message ? error.message : String(error)
+      this.probe(`笔记目录建不出来：${message}`)
+      new Notice(`得到大脑：笔记目录建不出来 —— ${message}`)
     }
 
     // 端口优先固定，OAuth 的 redirect_uri 才能跨会话稳定；被占用时退回随机端口。

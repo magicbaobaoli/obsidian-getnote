@@ -10618,3 +10618,151 @@ test('骨架屏上永远压着一行看得见的字，等太久就直说没连�
     mount.remove()
   }
 })
+test('卡片拖到左栏的标签胶囊上就给这一篇贴上那个标签', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const backBtn = () => window.document.querySelector('.dshgn_noteBack')
+  const post = async (path, payload) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(payload),
+    })
+    return res.json()
+  }
+
+  panel.setConfirmDialog(async () => true)
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = backBtn()
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(220)
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  const tabBtn = Array.from(window.document.querySelectorAll('.dshgn_tab')).find(
+    (el) => (el.textContent || '').trim() === '笔记',
+  )
+  assert.ok(tabBtn, '找不到「笔记」标签按钮')
+  tabBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_search') !== null, 4000, '搜索框')
+
+  const searchBox = window.document.querySelector('.dshgn_search')
+  const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  setValue.call(searchBox, '')
+  searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(300)
+
+  // 一篇带着标签（左栏里才会有那颗胶囊），另一篇空着等被贴
+  // 标签不是 /create 的参数，得写进头部：左栏的标签云只认 frontmatter 里那一条。
+  await post('/getnote/create', {
+    dir: '随手记',
+    title: '拖动贴标签-已有',
+    content: ['---', 'tags: [拖动贴标签/甲]', '---', '', '# 拖动贴标签-已有', '', '正文。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-drag-tag-a',
+  })
+  const target = '拖动贴标签验收/拖动贴标签-要贴.md'
+  await post('/getnote/create', {
+    dir: '拖动贴标签验收',
+    title: '拖动贴标签-要贴',
+    content: '# 拖动贴标签-要贴\n\n正文。\n',
+    withDatePrefix: false,
+    requestId: 'seed-drag-tag-b',
+  })
+
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(500)
+
+  const allRow = Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+    const label = el.querySelector('.dshgn_treeName')
+    return label !== null && (label.textContent || '').trim() === '全部笔记'
+  })
+  if (allRow !== undefined) {
+    allRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+
+  const tagRow = (title) =>
+    Array.from(window.document.querySelectorAll('.dshgn_tagRow')).find((el) => el.title === title) || null
+  await waitFor(() => tagRow('拖动贴标签/甲') !== null, 8000, '左栏里出现那颗标签')
+
+  const card = await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_card')).find(
+        (el) => el.getAttribute('title') === target,
+      ) || null,
+    8000,
+    '列表里的那一篇',
+  )
+  assert.ok(card !== null, '这一篇得在列表里才拖得动')
+
+  const makeTransfer = (withPanelPath) => ({
+    types: withPanelPath ? ['text/plain', 'application/x-getnote-path'] : ['text/plain'],
+    dropEffect: '',
+    effectAllowed: '',
+    setData: () => {},
+    getData: (kind) => (withPanelPath && kind === 'application/x-getnote-path' ? target : ''),
+  })
+  const fire = (kind, transfer, el) => {
+    const event = new window.Event(kind, { bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'dataTransfer', { value: transfer, configurable: true })
+    el.dispatchEvent(event)
+    return event
+  }
+
+  // 别人的拖动（宿主文件树）只有 text/plain：胶囊不该亮、也不该接
+  const foreign = makeTransfer(false)
+  fire('dragover', foreign, tagRow('拖动贴标签/甲'))
+  await sleep(80)
+  assert.notEqual(tagRow('拖动贴标签/甲').getAttribute('data-drop'), 'true', '不该为别人的拖动亮起来')
+
+  const transfer = makeTransfer(true)
+  const over = fire('dragover', transfer, tagRow('拖动贴标签/甲'))
+  assert.equal(over.defaultPrevented, true, '面板自己的拖动要认下来')
+  await waitFor(
+    () => tagRow('拖动贴标签/甲').getAttribute('data-drop') === 'true',
+    5000,
+    '胶囊亮起来',
+  )
+
+  const dropped = fire('drop', transfer, tagRow('拖动贴标签/甲'))
+  assert.equal(dropped.defaultPrevented, true, '放下之后不该再交给浏览器')
+  await waitFor(
+    () => (window.document.querySelector('.dshgn_toast') || { textContent: '' }).textContent.includes('已加上标签 #拖动贴标签/甲'),
+    8000,
+    '说一声贴上了哪个标签',
+  )
+  await waitFor(
+    () => tagRow('拖动贴标签/甲').getAttribute('data-drop') === 'false',
+    5000,
+    '放下之后高亮要收掉',
+  )
+
+  // 标签真的写进头部了：读回来得有 frontmatter 里那一条
+  const res = await realFetch(server.origin + '/getnote/read?path=' + encodeURIComponent(target), {
+    headers: { 'x-getnote-token': server.token },
+  })
+  assert.equal(res.status, 200, '这一篇还读得到（贴标签不该动文件位置）')
+  const note = await res.json()
+  assert.ok((note.content || '').includes('拖动贴标签/甲'), '头部里要真有这个标签：' + String(note.content || '').slice(0, 200))
+  assert.ok(String(note.content || '').startsWith('---'), '标签写在 frontmatter 里')
+
+  // 收尾：退回列表，别把状态留给下一条用例
+  panel.setConfirmDialog(async () => true)
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = backBtn()
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(220)
+    }
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+})
