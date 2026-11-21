@@ -8462,6 +8462,10 @@ var LEX = {
     "action.retry": "\u91CD\u8BD5",
     "search.placeholder": "\u641C\u7D22\u6807\u9898\u3001\u6B63\u6587\u3001\u6807\u7B7E\u2026",
     "search.hint": "\u53EF\u4EE5\u52A0\u9650\u5B9A\uFF1Atag:\u5F55\u97F3\u5361 \xB7 dir:\u968F\u624B\u8BB0 \xB7 #\u79C1\u5BC6\u3002\u591A\u4E2A\u8BCD\u8981\u540C\u65F6\u547D\u4E2D\uFF1B\u5F15\u53F7\u5305\u4F4F\u7684\u4E00\u4E32\u8981\u8FDE\u7740\u51FA\u73B0\uFF0C\u524D\u9762\u52A0\u51CF\u53F7\u5C31\u662F\u4E0D\u8981\u5B83\u3002",
+    // 搜完报一句「扫了多少篇、对上多少篇」：只回来四十篇时，人分不清是库里
+    // 就这么多还是被条数上限截了，而这两种情况下一步该做的事正相反。
+    "search.scan": "\u626B\u4E86 {scanned} \u7BC7\uFF0C\u5BF9\u4E0A {n} \u7BC7",
+    "search.scanCut": "\uFF08\u5230\u6761\u6570\u4E0A\u9650\u5C31\u505C\u4E86\uFF0C\u540E\u9762\u8FD8\u6709\u6CA1\u626B\u5230\u7684\uFF09",
     "search.jumpToLine": "\u8DF3\u5230\u8FD9\u4E00\u884C",
     "batch.pick": "\u9009\u62E9\u8FD9\u7BC7",
     "batch.picked": "\u7BC7\u5DF2\u9009",
@@ -9028,6 +9032,8 @@ var LEX = {
     "action.copied": "Copied",
     "action.retry": "Retry",
     "search.placeholder": "Search title, body, tags\u2026",
+    "search.scan": "Searched {scanned} notes, {n} matched",
+    "search.scanCut": " (stopped at the result limit, some notes were not searched)",
     "search.hint": "Narrow it down: tag:voice \xB7 dir:notes \xB7 #private. All words must match; quote a phrase to keep it together, put - in front to exclude it.",
     "search.jumpToLine": "Jump to this line",
     "batch.pick": "Select this note",
@@ -9579,6 +9585,8 @@ var LEX = {
     "action.retry": "Opnieuw",
     "search.placeholder": "Zoek titel, tekst, tags\u2026",
     "search.hint": "Verfijn: tag:spraak \xB7 dir:notities \xB7 #priv\xE9. Alle woorden moeten voorkomen; zet een frase tussen quotes, en - ervoor om hem uit te sluiten.",
+    "search.scan": "{scanned} notities doorzocht, {n} gevonden",
+    "search.scanCut": " (gestopt bij de limiet, sommige notities zijn niet doorzocht)",
     "search.jumpToLine": "Naar deze regel",
     "batch.pick": "Deze notitie selecteren",
     "batch.picked": "geselecteerd",
@@ -12133,6 +12141,11 @@ var CSS = `
 .dshgn_cardLinkMore[data-open="true"]{border-style:solid;color:var(--dsw-alias-label-secondary)}
 .dshgn_searchHint{padding:0 10px 7px;font-size:10px;line-height:1.5;
   color:var(--dsw-alias-label-dimmed)}
+/* \u641C\u5B8C\u62A5\u4E00\u53E5\uFF1A\u626B\u4E86\u591A\u5C11\u7BC7\u3001\u5BF9\u4E0A\u591A\u5C11\u7BC7\u3001\u6709\u6CA1\u6709\u88AB\u4E0A\u9650\u622A\u6389\u3002
+   \u622A\u6389\u65F6\u6362\u6210\u8B66\u793A\u8272\uFF0C\u514D\u5F97\u4EBA\u4EE5\u4E3A\u300C\u5E93\u91CC\u5C31\u8FD9\u56DB\u5341\u7BC7\u300D\u3002 */
+.dshgn_searchScan{padding:0 10px 7px;font-size:10px;line-height:1.5;
+  color:var(--dsw-alias-label-tertiary)}
+.dshgn_searchScan[data-cut="true"]{color:var(--dsw-alias-label-secondary)}
 /* \u6700\u8FD1\u641C\u8FC7\u7684\u8BCD\uFF1A\u641C\u7D22\u6846\u7A7A\u7740\u65F6\u6446\u5728\u5B83\u4E0B\u9762\u4E00\u884C\u3002\u53EA\u6446\u8BCD\u4E0D\u6446\u7ED3\u679C\u2014\u2014\u7ED3\u679C\u4F1A\u8FC7\u671F\uFF0C
    \u91CD\u641C\u4E00\u904D\u62FF\u5230\u7684\u624D\u662F\u5F53\u4E0B\u7684\u5E93\u3002\u6574\u6761\u7528\u4E00\u6392\u5C0F\u80F6\u56CA\uFF0C\u548C\u8865\u5168\u5019\u9009\u540C\u4E00\u4E2A\u89C6\u89C9\u8BED\u8A00\u3002 */
 .dshgn_recent{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:4px;
@@ -13528,11 +13541,13 @@ function GetnotePage() {
   }, [entries, query, activeDir, activeTag, activeDay, listSort]);
   const [hits, setHits] = h2(null);
   const [searching, setSearching] = h2(false);
+  const [searchScan, setSearchScan] = h2(null);
   y2(() => {
     const raw = query.trim();
     if (raw === "") {
       setHits(null);
       setSearching(false);
+      setSearchScan(null);
       return void 0;
     }
     setSearching(true);
@@ -13540,12 +13555,19 @@ function GetnotePage() {
     const timer = window.setTimeout(() => {
       void api(`/search?q=${encodeURIComponent(raw)}&limit=40`).then((json) => {
         if (!alive) return;
-        setHits(Array.isArray(json.hits) ? json.hits : []);
+        const list = Array.isArray(json.hits) ? json.hits : [];
+        setHits(list);
+        setSearchScan({
+          scanned: Number(json.scanned) || 0,
+          truncated: Boolean(json.truncated),
+          shown: list.length
+        });
         setSearching(false);
       }).catch(() => {
         if (alive) {
           setHits(null);
           setSearching(false);
+          setSearchScan(null);
         }
       });
     }, 220);
@@ -15476,6 +15498,14 @@ ${insert}
         // 限定语法提示：`tag:` / `dir:` 是隐藏功能，不提示没人会知道。
         // 只在输入框有内容时出现，平时不占位置。
         query.trim() !== "" ? h4("div", { className: "dshgn_searchHint" }, t4("search.hint")) : null,
+        // 这次搜了多少篇、对上多少篇。只回来四十篇的时候，人分不清是库里
+        // 就这么多、还是被条数上限截了——这两种情况下一步该做的事正相反。
+        searchMode && searchScan !== null ? h4(
+          "div",
+          { className: "dshgn_searchScan", "data-cut": searchScan.truncated ? "true" : "false" },
+          t4("search.scan").replace("{scanned}", String(searchScan.scanned)).replace("{n}", String(searchScan.shown)),
+          searchScan.truncated ? t4("search.scanCut") : null
+        ) : null,
         // 筛选条：左栏点了目录或标签之后，中栏只剩一部分卡片，但界面上一直
         // 没有任何「现在筛的是什么」的痕迹——换个目录再回来，人只会以为
         // 笔记丢了。这里把当前的筛选摆成两颗能点掉的胶囊，全清掉就整条消失。

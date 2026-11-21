@@ -575,6 +575,10 @@ async function saveFile(url, filename) {
         'action.retry': '重试',
         'search.placeholder': '搜索标题、正文、标签…',
         'search.hint': '可以加限定：tag:录音卡 · dir:随手记 · #私密。多个词要同时命中；引号包住的一串要连着出现，前面加减号就是不要它。',
+  // 搜完报一句「扫了多少篇、对上多少篇」：只回来四十篇时，人分不清是库里
+  // 就这么多还是被条数上限截了，而这两种情况下一步该做的事正相反。
+  'search.scan': '扫了 {scanned} 篇，对上 {n} 篇',
+  'search.scanCut': '（到条数上限就停了，后面还有没扫到的）',
         'search.jumpToLine': '跳到这一行',
         'batch.pick': '选择这篇',
         'batch.picked': '篇已选',
@@ -1146,7 +1150,9 @@ async function saveFile(url, filename) {
         'action.copied': 'Copied',
         'action.retry': 'Retry',
         'search.placeholder': 'Search title, body, tags…',
-        'search.hint': 'Narrow it down: tag:voice · dir:notes · #private. All words must match; quote a phrase to keep it together, put - in front to exclude it.',
+        'search.scan': 'Searched {scanned} notes, {n} matched',
+  'search.scanCut': ' (stopped at the result limit, some notes were not searched)',
+  'search.hint': 'Narrow it down: tag:voice · dir:notes · #private. All words must match; quote a phrase to keep it together, put - in front to exclude it.',
         'search.jumpToLine': 'Jump to this line',
         'batch.pick': 'Select this note',
         'batch.picked': 'selected',
@@ -1702,6 +1708,8 @@ async function saveFile(url, filename) {
         'action.retry': 'Opnieuw',
         'search.placeholder': 'Zoek titel, tekst, tags…',
         'search.hint': 'Verfijn: tag:spraak · dir:notities · #privé. Alle woorden moeten voorkomen; zet een frase tussen quotes, en - ervoor om hem uit te sluiten.',
+        'search.scan': '{scanned} notities doorzocht, {n} gevonden',
+        'search.scanCut': ' (gestopt bij de limiet, sommige notities zijn niet doorzocht)',
         'search.jumpToLine': 'Naar deze regel',
         'batch.pick': 'Deze notitie selecteren',
         'batch.picked': 'geselecteerd',
@@ -5051,6 +5059,11 @@ async function saveFile(url, filename) {
 .dshgn_cardLinkMore[data-open="true"]{border-style:solid;color:var(--dsw-alias-label-secondary)}
 .dshgn_searchHint{padding:0 10px 7px;font-size:10px;line-height:1.5;
   color:var(--dsw-alias-label-dimmed)}
+/* 搜完报一句：扫了多少篇、对上多少篇、有没有被上限截掉。
+   截掉时换成警示色，免得人以为「库里就这四十篇」。 */
+.dshgn_searchScan{padding:0 10px 7px;font-size:10px;line-height:1.5;
+  color:var(--dsw-alias-label-tertiary)}
+.dshgn_searchScan[data-cut="true"]{color:var(--dsw-alias-label-secondary)}
 /* 最近搜过的词：搜索框空着时摆在它下面一行。只摆词不摆结果——结果会过期，
    重搜一遍拿到的才是当下的库。整条用一排小胶囊，和补全候选同一个视觉语言。 */
 .dshgn_recent{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:4px;
@@ -6589,11 +6602,16 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 更该排前面。
       const [hits, setHits] = React.useState(null)
       const [searching, setSearching] = React.useState(false)
+      // 这次搜索到底扫了多少篇、结果有没有被条数上限截掉。搜「录音」只回来
+      // 四十篇的时候，人分不清是库里就这么多，还是被截了——两种情况下一步
+      // 该做的事完全不同（放宽词 vs 收窄词）。
+      const [searchScan, setSearchScan] = React.useState(null)
       React.useEffect(() => {
         const raw = query.trim()
         if (raw === '') {
           setHits(null)
           setSearching(false)
+          setSearchScan(null)
           return undefined
         }
         setSearching(true)
@@ -6602,13 +6620,20 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           void api(`/search?q=${encodeURIComponent(raw)}&limit=40`)
             .then((json) => {
               if (!alive) return
-              setHits(Array.isArray(json.hits) ? json.hits : [])
+              const list = Array.isArray(json.hits) ? json.hits : []
+              setHits(list)
+              setSearchScan({
+                scanned: Number(json.scanned) || 0,
+                truncated: Boolean(json.truncated),
+                shown: list.length,
+              })
               setSearching(false)
             })
             .catch(() => {
               if (alive) {
                 setHits(null)
                 setSearching(false)
+                setSearchScan(null)
               }
             })
         }, 220)
@@ -8971,6 +8996,18 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             // 只在输入框有内容时出现，平时不占位置。
             query.trim() !== ''
               ? h('div', { className: 'dshgn_searchHint' }, t('search.hint'))
+              : null,
+            // 这次搜了多少篇、对上多少篇。只回来四十篇的时候，人分不清是库里
+            // 就这么多、还是被条数上限截了——这两种情况下一步该做的事正相反。
+            searchMode && searchScan !== null
+              ? h(
+                  'div',
+                  { className: 'dshgn_searchScan', 'data-cut': searchScan.truncated ? 'true' : 'false' },
+                  t('search.scan')
+                    .replace('{scanned}', String(searchScan.scanned))
+                    .replace('{n}', String(searchScan.shown)),
+                  searchScan.truncated ? t('search.scanCut') : null,
+                )
               : null,
             // 筛选条：左栏点了目录或标签之后，中栏只剩一部分卡片，但界面上一直
             // 没有任何「现在筛的是什么」的痕迹——换个目录再回来，人只会以为

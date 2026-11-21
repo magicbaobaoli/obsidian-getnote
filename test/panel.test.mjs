@@ -13033,3 +13033,96 @@ test('设置页里每个模板都能摊开看全文，只有标题的也说得�
   await post('/getnote/settings', { templates: [] })
   await clickTab('笔记')
 })
+
+test('搜完之后说一句扫了多少篇、对上多少篇，被条数上限截了也明说', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  const box = () => window.document.querySelector('.dshgn_search')
+  const typeIn = async (text) => {
+    setter.call(box(), text)
+    box().dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(400)
+  }
+
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = window.document.querySelector('.dshgn_noteBack')
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(200)
+    }
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  await typeIn('')
+
+  const word = '扫描行验收词'
+  await post('/getnote/create', {
+    dir: '扫描行验收',
+    title: '扫描行-甲',
+    content: ['# 扫描行甲', '', '这一篇里写着' + word + '。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-search-scan-a',
+  })
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(700)
+
+  // ① 没到上限时：报「扫了多少篇、对上多少篇」，并说明没被截
+  await typeIn(word)
+  const line = await waitFor(() => {
+    const el = window.document.querySelector('.dshgn_searchScan')
+    return el !== null && /扫了 \d+ 篇，对上 \d+ 篇/.test(el.textContent || '') ? el : null
+  }, 8000, '搜完之后报一句扫了多少篇')
+  assert.equal(line.getAttribute('data-cut'), 'false', '没到上限时不该报被截')
+  assert.ok(!(line.textContent || '').includes('条数上限'), '没被截时不说被截：' + line.textContent)
+  const cards = window.document.querySelectorAll('.dshgn_card').length
+  assert.ok(cards >= 1, '至少搜到刚种下的那一篇')
+  const matched = Number((line.textContent || '').match(/对上 (\d+) 篇/)[1])
+  assert.equal(matched, cards, '对上的篇数要和列表里的卡片数一致')
+  const scanned = Number((line.textContent || '').match(/扫了 (\d+) 篇/)[1])
+  assert.ok(scanned >= matched, '扫过的篇数不可能比对上的还少：' + line.textContent)
+
+  // ② 超过面板一次要的 40 条时：明说停在条数上限，别让人以为库里就这四十篇
+  const seedMany = []
+  for (let i = 0; i < 41; i += 1) {
+    seedMany.push(
+      post('/getnote/create', {
+        dir: '扫描行验收',
+        title: '扫描行-' + String(i + 10),
+        content: ['# 扫描行' + String(i + 10), '', '这一篇里也写着' + word + '。', ''].join('\n'),
+        withDatePrefix: false,
+        requestId: 'seed-search-scan-many-' + String(i),
+      }),
+    )
+  }
+  await Promise.all(seedMany)
+
+  await typeIn('')
+  await sleep(200)
+  await typeIn(word)
+  const cut = await waitFor(() => {
+    const el = window.document.querySelector('.dshgn_searchScan')
+    return el !== null && el.getAttribute('data-cut') === 'true' ? el : null
+  }, 10000, '超过上限时要明说被截了')
+  assert.ok((cut.textContent || '').includes('条数上限'), '被截时要写清停在条数上限：' + cut.textContent)
+
+  await typeIn('')
+  await clickTab('笔记')
+})
