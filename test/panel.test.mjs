@@ -12333,3 +12333,90 @@ test('待办页顶上那颗「全部收起」一次把所有篇都收起来，�
 
   await clickTab('笔记')
 })
+
+test('连笔记库都还没有的时候，空列表那一屏直说没有库，并给一条去设置的路', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 8000, '根节点渲染')
+
+  // 这一屏只有在「库还没指过」时才出现，而正常跑测试时库是好的。
+  // 所以只在 /status 上盖一层壳：其它请求照旧走真服务，免得影响别的断言。
+  const wrapped = async (input, init) => {
+    const url = typeof input === 'string' ? input : String(input && input.url)
+    const res = await realFetch(url, init)
+    // 库没了的时候宿主那边 /tree 也是一篇都不给，这里照做：
+    // 只盖 /status 的话列表里还摆着真库的那几百篇，空列表那一屏根本不会出现。
+    if (url.includes('/getnote/tree')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ root: '', tree: { name: '', path: '', kind: 'dir', children: [], count: 0 }, entries: [], dirs: [] }),
+      }
+    }
+    if (!url.includes('/getnote/status')) return res
+    const json = await res.json()
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ ...json, vaultMissing: '/tmp/不存在-的-笔记目录' }),
+    }
+  }
+  window.fetch = globalThis.fetch = wrapped
+  try {
+    const refreshBtn = () =>
+      Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) =>
+        (el.getAttribute('title') || '').includes('刷新'),
+      )
+    assert.ok(refreshBtn(), '应该有一个刷新按钮')
+    refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+
+    // 右栏「选一篇笔记开始阅读」也用 .dshgn_empty，所以要限定在中栏列表里找。
+    const emptyOf = () => window.document.querySelector('.dshgn_listBody .dshgn_empty')
+    await waitFor(() => emptyOf() !== null, 8000, '空列表那一屏')
+    const title = emptyOf().querySelector('.dshgn_emptyTitle')
+    assert.ok(title !== null, '空列表那一屏要有标题')
+    assert.ok(
+      (title.textContent || '').includes('还没有本地笔记库'),
+      '没有库时不能只说「这个目录还没有笔记」：' + (title ? title.textContent : ''),
+    )
+    assert.ok(
+      (emptyOf().textContent || '').includes('先在「设置」里指定一个目录'),
+      '要说清该去哪儿挑目录：' + emptyOf().textContent,
+    )
+
+    const actions = emptyOf().querySelector('.dshgn_emptyActions')
+    assert.ok(actions !== null, '这一屏要有一条出路')
+    const goSettings = Array.from(actions.querySelectorAll('button')).find((el) =>
+      (el.textContent || '').includes('去设置里挑个目录'),
+    )
+    assert.ok(goSettings !== null, '要有一颗「去设置里挑个目录」：' + actions.textContent)
+    // 没有库的时候，「新建」「清掉筛选」都是空转的：一篇都建不出来，也没什么可清的。
+    assert.equal(
+      Array.from(actions.querySelectorAll('button')).some((el) => (el.textContent || '').includes('清掉筛选')),
+      false,
+      '没有库时不该摆「清掉筛选」',
+    )
+
+    goSettings.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(
+      () =>
+        Array.from(window.document.querySelectorAll('.dshgn_sectionTitle')).some(
+          (el) => (el.textContent || '').trim() === '笔记目录',
+        ),
+      '设置页里那个目录输入框',
+    )
+  } finally {
+    // 把壳摘掉，再把状态拉回真的：后面还有别的用例要用这个面板。
+    window.fetch = globalThis.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : String(input && input.url)
+      fetchCalls.push(url)
+      return realFetch(url, init)
+    }
+    await clickTab('笔记')
+    const refreshBtn = () =>
+      Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) =>
+        (el.getAttribute('title') || '').includes('刷新'),
+      )
+    if (refreshBtn()) refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(600)
+  }
+})

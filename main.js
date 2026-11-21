@@ -8540,6 +8540,8 @@ var LEX = {
     "empty.filterDesc": "\u8FD9\u4E2A\u7B5B\u9009\u4E0B\u8FD8\u6CA1\u6709\u7B14\u8BB0\uFF0C\u6E05\u6389\u7B5B\u9009\u5C31\u80FD\u770B\u5230\u5168\u90E8\u3002",
     "empty.clearFilter": "\u6E05\u6389\u7B5B\u9009",
     "empty.searchDesc": "\u6362\u4E2A\u8BCD\u518D\u8BD5\uFF0C\u6216\u8005\u7528 tag: \u548C dir: \u628A\u8303\u56F4\u7F29\u5C0F\u4E00\u70B9\u3002",
+    // 连笔记库都还没有的时候，上面那三条出路一条都用不上：得先去设置里挑个目录。
+    "empty.openSettings": "\u53BB\u8BBE\u7F6E\u91CC\u6311\u4E2A\u76EE\u5F55",
     "meta.notes": "\u7BC7",
     "meta.dirs": "\u4E2A\u76EE\u5F55",
     "reader.missing": "\u6587\u4EF6\u4E0D\u5B58\u5728\u6216\u5DF2\u88AB\u79FB\u52A8",
@@ -9077,6 +9079,7 @@ var LEX = {
     "empty.filterDesc": "Nothing under this filter yet. Clear it to see everything.",
     "empty.clearFilter": "Clear the filter",
     "empty.searchDesc": "Try another word, or narrow it down with tag: and dir:.",
+    "empty.openSettings": "Pick a folder in Settings",
     "meta.notes": "notes",
     "meta.dirs": "folders",
     "reader.missing": "File is missing or was moved",
@@ -9610,6 +9613,7 @@ var LEX = {
     "empty.filterDesc": "Nog niets onder deze filter. Haal hem weg om alles te zien.",
     "empty.clearFilter": "Filter weghalen",
     "empty.searchDesc": "Probeer een ander woord, of beperk het met tag: en dir:.",
+    "empty.openSettings": "Kies een map bij Instellingen",
     "meta.notes": "notities",
     "meta.dirs": "mappen",
     "reader.missing": "Bestand ontbreekt of is verplaatst",
@@ -14474,6 +14478,7 @@ ${insert}
     [current, openNote, refresh, setBusy, setError, showToast, t4]
   );
   const vaultReady = status !== null && !status.vaultMissing;
+  const vaultMissing = status !== null && Boolean(status.vaultMissing);
   y2(() => {
     const onKey = (event) => {
       const target = event.target;
@@ -15574,11 +15579,20 @@ ${insert}
           shown.length === 0 ? h4(
             "div",
             { className: "dshgn_empty", style: { padding: "24px 12px" } },
-            h4("div", { className: "dshgn_emptyTitle" }, query.trim() !== "" ? t4("empty.search") : t4("empty.noNotes")),
-            query.trim() !== "" ? h4("div", { className: "dshgn_emptyDesc" }, t4("empty.searchDesc")) : activeDir !== "" || activeTag !== "" ? h4("div", { className: "dshgn_emptyDesc" }, t4("empty.filterDesc")) : null,
+            // 连笔记库都还没有时，说「这个目录还没有笔记」是错的：
+            // 用户看到的会是一句「没有」，而真正该做的是先去挑个目录。
+            h4("div", { className: "dshgn_emptyTitle" }, vaultMissing ? t4("empty.noVault") : query.trim() !== "" ? t4("empty.search") : t4("empty.noNotes")),
+            vaultMissing ? h4("div", { className: "dshgn_emptyDesc" }, t4("empty.noVaultDesc")) : query.trim() !== "" ? h4("div", { className: "dshgn_emptyDesc" }, t4("empty.searchDesc")) : activeDir !== "" || activeTag !== "" ? h4("div", { className: "dshgn_emptyDesc" }, t4("empty.filterDesc")) : null,
             h4(
               "div",
               { className: "dshgn_emptyActions" },
+              // 没有笔记库时只有这一条出路：设置页里那个目录输入框。
+              vaultMissing ? h4(
+                "button",
+                { type: "button", className: "dshgn_btn dshgn_btnPrimary", onClick: () => setTab("settings") },
+                h4(Icon, { name: "gear", size: 12 }),
+                t4("empty.openSettings")
+              ) : null,
               // 出路一：搜索词是空的绊脚石，就一键清掉（补全状态一起收）
               query.trim() !== "" ? h4(
                 "button",
@@ -15595,7 +15609,7 @@ ${insert}
                 t4("search.clear")
               ) : null,
               // 出路二：筛着目录或标签，就一键把筛选全撤掉
-              activeDir !== "" || activeTag !== "" || activeDay !== "" ? h4(
+              !vaultMissing && (activeDir !== "" || activeTag !== "" || activeDay !== "") ? h4(
                 "button",
                 {
                   type: "button",
@@ -15610,7 +15624,7 @@ ${insert}
                 t4("empty.clearFilter")
               ) : null,
               // 出路三：真的空目录，就当场写一篇
-              query.trim() === "" && vaultReady ? h4(
+              !vaultMissing && query.trim() === "" && vaultReady ? h4(
                 "button",
                 { type: "button", className: "dshgn_btn dshgn_btnPrimary", onClick: () => void newNote() },
                 h4(Icon, { name: "plus", size: 13 }),

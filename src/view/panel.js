@@ -687,6 +687,8 @@ async function saveFile(url, filename) {
         'empty.filterDesc': '这个筛选下还没有笔记，清掉筛选就能看到全部。',
         'empty.clearFilter': '清掉筛选',
         'empty.searchDesc': '换个词再试，或者用 tag: 和 dir: 把范围缩小一点。',
+        // 连笔记库都还没有的时候，上面那三条出路一条都用不上：得先去设置里挑个目录。
+        'empty.openSettings': '去设置里挑个目录',
         'meta.notes': '篇',
         'meta.dirs': '个目录',
         'reader.missing': '文件不存在或已被移动',
@@ -1229,6 +1231,7 @@ async function saveFile(url, filename) {
         'empty.filterDesc': 'Nothing under this filter yet. Clear it to see everything.',
         'empty.clearFilter': 'Clear the filter',
         'empty.searchDesc': 'Try another word, or narrow it down with tag: and dir:.',
+        'empty.openSettings': 'Pick a folder in Settings',
         'meta.notes': 'notes',
         'meta.dirs': 'folders',
         'reader.missing': 'File is missing or was moved',
@@ -1767,6 +1770,7 @@ async function saveFile(url, filename) {
         'empty.filterDesc': 'Nog niets onder deze filter. Haal hem weg om alles te zien.',
         'empty.clearFilter': 'Filter weghalen',
         'empty.searchDesc': 'Probeer een ander woord, of beperk het met tag: en dir:.',
+        'empty.openSettings': 'Kies een map bij Instellingen',
         'meta.notes': 'notities',
         'meta.dirs': 'mappen',
         'reader.missing': 'Bestand ontbreekt of is verplaatst',
@@ -7877,6 +7881,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 于是「+」和刷新按钮永远处于 disabled 状态，用户点了以为没反应。
       // 只要 status 拿到了、且没报缺失，就算就绪。
       const vaultReady = status !== null && !status.vaultMissing
+      // 笔记库还没指过（或者指的那个目录不在了）：列表必然一篇都没有，
+      // 这时候该说的是「先去挑个目录」，而不是「这个目录还没有笔记」。
+      // vaultMissing 是「缺的那个目录」的路径字符串（不是布尔），拿真值判断。
+      const vaultMissing = status !== null && Boolean(status.vaultMissing)
 
       // D1 键盘快捷键。只在「笔记」页签生效——云端/同步/设置页里按 J/K
       // 去切笔记会很意外。另外必须排除输入态：用户在搜索框里打字按 j，
@@ -9085,15 +9093,28 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                 ? h(
                     'div',
                     { className: 'dshgn_empty', style: { padding: '24px 12px' } },
-                    h('div', { className: 'dshgn_emptyTitle' }, query.trim() !== '' ? t('empty.search') : t('empty.noNotes')),
-                    query.trim() !== ''
-                      ? h('div', { className: 'dshgn_emptyDesc' }, t('empty.searchDesc'))
-                      : activeDir !== '' || activeTag !== ''
-                        ? h('div', { className: 'dshgn_emptyDesc' }, t('empty.filterDesc'))
-                        : null,
+                    // 连笔记库都还没有时，说「这个目录还没有笔记」是错的：
+                    // 用户看到的会是一句「没有」，而真正该做的是先去挑个目录。
+                    h('div', { className: 'dshgn_emptyTitle' }, vaultMissing ? t('empty.noVault') : query.trim() !== '' ? t('empty.search') : t('empty.noNotes')),
+                    vaultMissing
+                      ? h('div', { className: 'dshgn_emptyDesc' }, t('empty.noVaultDesc'))
+                      : query.trim() !== ''
+                        ? h('div', { className: 'dshgn_emptyDesc' }, t('empty.searchDesc'))
+                        : activeDir !== '' || activeTag !== ''
+                          ? h('div', { className: 'dshgn_emptyDesc' }, t('empty.filterDesc'))
+                          : null,
                     h(
                       'div',
                       { className: 'dshgn_emptyActions' },
+                      // 没有笔记库时只有这一条出路：设置页里那个目录输入框。
+                      vaultMissing
+                        ? h(
+                            'button',
+                            { type: 'button', className: 'dshgn_btn dshgn_btnPrimary', onClick: () => setTab('settings') },
+                            h(Icon, { name: 'gear', size: 12 }),
+                            t('empty.openSettings'),
+                          )
+                        : null,
                       // 出路一：搜索词是空的绊脚石，就一键清掉（补全状态一起收）
                       query.trim() !== ''
                         ? h(
@@ -9112,7 +9133,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                           )
                         : null,
                       // 出路二：筛着目录或标签，就一键把筛选全撤掉
-                      activeDir !== '' || activeTag !== '' || activeDay !== ''
+                      !vaultMissing && (activeDir !== '' || activeTag !== '' || activeDay !== '')
                         ? h(
                             'button',
                             {
@@ -9129,7 +9150,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                           )
                         : null,
                       // 出路三：真的空目录，就当场写一篇
-                      query.trim() === '' && vaultReady
+                      !vaultMissing && query.trim() === '' && vaultReady
                         ? h(
                             'button',
                             { type: 'button', className: 'dshgn_btn dshgn_btnPrimary', onClick: () => void newNote() },
