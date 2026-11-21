@@ -12669,3 +12669,104 @@ test('读到列表中间那一篇时，笔记头上能接着看上一篇/下一�
   }
   await clickTab('笔记')
 })
+
+test('卡片右键能把这一篇的正文整段抄走，带走的是正文不是链接、开头那段属性不跟过来', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+  await clickTab('笔记')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+  const title = '正文抄写-这一篇'
+  const notePath = '正文抄写验收/' + title + '.md'
+  await post('/getnote/create', {
+    dir: '正文抄写验收',
+    title,
+    content: [
+      '---',
+      'tags: [正文抄写/甲]',
+      '---',
+      '',
+      '# ' + title,
+      '',
+      '第一段正文，抄走的时候要跟着走。',
+      '',
+      '第二段正文，别丢了。',
+      '',
+    ].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-copy-body-a',
+  })
+
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox !== null) {
+    const setValue0 = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setValue0.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(300)
+  }
+  const refreshBtn = Array.from(window.document.querySelectorAll('button')).find(
+    (el) => (el.getAttribute('title') || '') === '刷新',
+  )
+  if (refreshBtn) refreshBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(900)
+
+  const dirRow = await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+        const label = el.querySelector('.dshgn_treeName')
+        return label !== null && (label.textContent || '').trim() === '正文抄写验收'
+      }),
+    8000,
+    '左栏里出现正文抄写验收这一支',
+  )
+  dirRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(500)
+
+  const card = await waitFor(
+    () => window.document.querySelector('.dshgn_card[title="' + notePath + '"]'),
+    8000,
+    '列表里出现这一篇的卡片',
+  )
+
+  const toastText = () => ((window.document.querySelector('.dshgn_toast') || {}).textContent || '')
+
+  // 剪贴板：收集写进去的那一段
+  const copied = []
+  const realWrite = window.navigator.clipboard.writeText
+  window.navigator.clipboard.writeText = async (text) => {
+    copied.push(String(text))
+  }
+
+  try {
+    let sawItem = null
+    panel.setNoteMenu((event, items) => {
+      sawItem = items.find((one) => one.id === 'copy-body') || null
+      if (sawItem !== null) sawItem.run()
+      return true
+    })
+    card.dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+    await waitFor(() => copied.length === 1, 6000, '右键里那颗「复制正文」把正文写进剪贴板')
+
+    assert.ok(sawItem, '右键菜单里该有「复制正文」')
+    assert.equal(sawItem.label, '复制正文', '菜单文案要对得上，实际 ' + sawItem.label)
+
+    const text = copied[0]
+    assert.ok(text.includes('第一段正文，抄走的时候要跟着走。'), '抄走的该是正文：' + text.slice(0, 80))
+    assert.ok(text.includes('第二段正文，别丢了。'), '整段都该在，不只第一段')
+    assert.ok(!text.trimStart().startsWith('---'), '开头那段属性不该跟过来')
+    assert.ok(!text.includes('tags:'), '属性里的 tags 也不该出现')
+
+    // 提示条要说清复制了多少个字，而不是一句干巴巴的「已复制」
+    await waitFor(() => /已复制正文/.test(toastText()), 5000, '提示条说清复制了多少个字')
+  } finally {
+    window.navigator.clipboard.writeText = realWrite
+    panel.setNoteMenu(null)
+  }
+})

@@ -8416,6 +8416,9 @@ var LEX = {
     "action.rename": "\u91CD\u547D\u540D",
     "action.renamed": "\u6539\u597D\u4E86",
     "note.duplicate": "\u590D\u5236\u8FD9\u4E00\u7BC7",
+    "note.copyBody": "\u590D\u5236\u6B63\u6587",
+    "note.copiedBody": "\u5DF2\u590D\u5236\u6B63\u6587\uFF08{n} \u4E2A\u5B57\uFF09",
+    "note.copyBodyEmpty": "\u8FD9\u4E00\u7BC7\u662F\u7A7A\u7684\uFF0C\u6CA1\u6709\u6B63\u6587\u53EF\u590D\u5236",
     "note.duplicated": "\u5DF2\u590D\u5236\u4E00\u4EFD",
     "note.renameUnsaved": "\u5148\u4FDD\u5B58\u518D\u6539\u540D\uFF0C\u522B\u628A\u521A\u5199\u7684\u4E22\u4E86",
     "action.copied": "\u5DF2\u590D\u5236",
@@ -8971,6 +8974,9 @@ var LEX = {
     "action.rename": "Rename",
     "action.renamed": "Renamed",
     "note.duplicate": "Duplicate this note",
+    "note.copyBody": "Copy the body text",
+    "note.copiedBody": "Body copied ({n} characters)",
+    "note.copyBodyEmpty": "This note is empty, nothing to copy",
     "note.duplicated": "Duplicated",
     "note.renameUnsaved": "Save first, then rename",
     "action.copied": "Copied",
@@ -9511,6 +9517,9 @@ var LEX = {
     "action.rename": "Naam wijzigen",
     "action.renamed": "Naam gewijzigd",
     "note.duplicate": "Deze notitie dupliceren",
+    "note.copyBody": "De tekst kopi\xEBren",
+    "note.copiedBody": "Tekst gekopieerd ({n} tekens)",
+    "note.copyBodyEmpty": "Deze notitie is leeg, niets om te kopi\xEBren",
     "note.duplicated": "Gedupliceerd",
     "note.renameUnsaved": "Sla eerst op en wijzig dan de naam",
     "action.copied": "Gekopieerd",
@@ -14181,6 +14190,25 @@ ${insert}
       showToast(text);
     }
   }, [current, status, showToast, t4]);
+  const copyBodyOf = q2(
+    async (path) => {
+      const target = typeof path === "string" ? path : "";
+      if (target === "") return;
+      try {
+        const note = await api(`/read?path=${encodeURIComponent(target)}`);
+        const body2 = String(note && note.body !== void 0 && note.body !== null ? note.body : "");
+        if (body2.trim() === "") {
+          showToast(t4("note.copyBodyEmpty"));
+          return;
+        }
+        await navigator.clipboard.writeText(body2);
+        showToast(t4("note.copiedBody").replace("{n}", String(countWords(body2))));
+      } catch (err) {
+        setError(err && err.message ? err.message : String(err));
+      }
+    },
+    [setError, showToast, t4]
+  );
   const copyHeadingLink = q2(
     async (heading) => {
       if (current === null) return;
@@ -15781,6 +15809,15 @@ ${insert}
                         label: t4("action.copyRef"),
                         run: () => {
                           void openNote(entry.path, true).then(() => copyReference());
+                        }
+                      },
+                      // 拿走的不是链接而是整篇正文：贴进聊天框、丢给翻译时
+                      // 用得上，和上面那条「复制引用」是同一个位置的两种拿法。
+                      {
+                        id: "copy-body",
+                        label: t4("note.copyBody"),
+                        run: () => {
+                          void copyBodyOf(entry.path);
                         }
                       },
                       // 复制这一篇：不动原文件，另建一篇「原标题 副本」。

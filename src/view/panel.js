@@ -563,6 +563,9 @@ async function saveFile(url, filename) {
         'action.rename': '重命名',
         'action.renamed': '改好了',
         'note.duplicate': '复制这一篇',
+        'note.copyBody': '复制正文',
+        'note.copiedBody': '已复制正文（{n} 个字）',
+        'note.copyBodyEmpty': '这一篇是空的，没有正文可复制',
         'note.duplicated': '已复制一份',
         'note.renameUnsaved': '先保存再改名，别把刚写的丢了',
         'action.copied': '已复制',
@@ -1123,6 +1126,9 @@ async function saveFile(url, filename) {
         'action.rename': 'Rename',
         'action.renamed': 'Renamed',
         'note.duplicate': 'Duplicate this note',
+        'note.copyBody': 'Copy the body text',
+        'note.copiedBody': 'Body copied ({n} characters)',
+        'note.copyBodyEmpty': 'This note is empty, nothing to copy',
         'note.duplicated': 'Duplicated',
         'note.renameUnsaved': 'Save first, then rename',
         'action.copied': 'Copied',
@@ -1668,6 +1674,9 @@ async function saveFile(url, filename) {
         'action.rename': 'Naam wijzigen',
         'action.renamed': 'Naam gewijzigd',
         'note.duplicate': 'Deze notitie dupliceren',
+        'note.copyBody': 'De tekst kopiëren',
+        'note.copiedBody': 'Tekst gekopieerd ({n} tekens)',
+        'note.copyBodyEmpty': 'Deze notitie is leeg, niets om te kopiëren',
         'note.duplicated': 'Gedupliceerd',
         'note.renameUnsaved': 'Sla eerst op en wijzig dan de naam',
         'action.copied': 'Gekopieerd',
@@ -7486,6 +7495,32 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         }
       }, [current, status, showToast, t])
 
+      // 右键「复制正文」：拿走的不是链接，是整篇正文。
+      //
+      // 要把它交给别的工具（翻译、贴进聊天框、丢给模型）时，开头那段
+      // frontmatter 是噪音；但正文里本来就有的分隔线得留着，所以只按
+      // readNote 给的 body 切，不自己找「---」。
+      const copyBodyOf = React.useCallback(
+        async (path) => {
+          const target = typeof path === 'string' ? path : ''
+          if (target === '') return
+          try {
+            const note = await api(`/read?path=${encodeURIComponent(target)}`)
+            const body = String(note && note.body !== undefined && note.body !== null ? note.body : '')
+            if (body.trim() === '') {
+              showToast(t('note.copyBodyEmpty'))
+              return
+            }
+            await navigator.clipboard.writeText(body)
+            showToast(t('note.copiedBody').replace('{n}', String(countWords(body))))
+          } catch (err) {
+            // 没接剪贴板时不能一声不吭：至少把原因写进错误条
+            setError(err && err.message ? err.message : String(err))
+          }
+        },
+        [setError, showToast, t],
+      )
+
       // 大纲里那一节：把「指向这一节的链接」抄下来。
       //
       // 想引用某一节时得自己拼 [[笔记#小节]]，而拼错了不会报错，只会变成一条
@@ -9332,6 +9367,15 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                               label: t('action.copyRef'),
                               run: () => {
                                 void openNote(entry.path, true).then(() => copyReference())
+                              },
+                            },
+                            // 拿走的不是链接而是整篇正文：贴进聊天框、丢给翻译时
+                            // 用得上，和上面那条「复制引用」是同一个位置的两种拿法。
+                            {
+                              id: 'copy-body',
+                              label: t('note.copyBody'),
+                              run: () => {
+                                void copyBodyOf(entry.path)
                               },
                             },
                             // 复制这一篇：不动原文件，另建一篇「原标题 副本」。
