@@ -11357,3 +11357,130 @@ test('搜索卡片上收起来的「+N」点一下就地摊开全部引用，再
   box.dispatchEvent(new window.Event('input', { bubbles: true }))
   await sleep(400)
 })
+/**
+ * 热力图上每一颗格子原来只有 title：知道那天写了几篇，却打不开那几篇。
+ * 现在点一下按那一天筛，和点目录/标签是同一个动作；再点同一颗取消。
+ */
+test('热力图上点某一天就按那一天筛，左栏顶上多一颗日期胶囊，再点同一颗取消', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+
+  // 退回空态，卡片才会在列表里
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = window.document.querySelector('.dshgn_noteBack')
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(200)
+    }
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox) {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setter.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(400)
+  }
+
+  // 挑一个三十天前的日子：还在 26 周的热力图范围内，又不是今天（今天那格子里
+  // 还堆着别的用例 seed 的笔记，按它筛出来一片，断言会互相串）。
+  const pad = (n) => String(n).padStart(2, '0')
+  const day = new Date()
+  day.setDate(day.getDate() - 30)
+  const dayKey = `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`
+  const front = (date, title) =>
+    ['---', '日期: ' + date, '---', '', '# ' + title, '', '正文', ''].join('\n')
+
+  const madeA = await post('/getnote/create', {
+    dir: '热力图验收',
+    title: '热力图-那一天写的第一篇',
+    content: front(dayKey, '热力图那一天第一篇'),
+    withDatePrefix: false,
+    requestId: 'seed-heat-day-a',
+  })
+  await post('/getnote/create', {
+    dir: '热力图验收',
+    title: '热力图-那一天写的第二篇',
+    content: front(dayKey, '热力图那一天第二篇'),
+    withDatePrefix: false,
+    requestId: 'seed-heat-day-b',
+  })
+  await post('/getnote/create', {
+    dir: '热力图验收',
+    title: '热力图-今天写的另一篇',
+    content: ['# 热力图今天这一篇', '', '正文', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-heat-day-c',
+  })
+  assert.ok(typeof madeA.path === 'string' && madeA.path !== '', '那一篇建好了')
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(700)
+
+  const cellOf = () =>
+    Array.from(window.document.querySelectorAll('button.dshgn_heatCell')).find((el) =>
+      String(el.title || '').startsWith(dayKey),
+    ) || null
+  await waitFor(() => cellOf() !== null, 8000, '热力图上出现那一天那颗格子')
+  assert.equal(cellOf().getAttribute('data-on'), 'false', '还没点的时候不该亮')
+  assert.ok(
+    String(cellOf().title || '').includes('看这一天写了什么'),
+    '格子上要说清点它是干什么的：' + cellOf().title,
+  )
+
+  const cardOf = (title) =>
+    Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => {
+      const node = el.querySelector('.dshgn_cardTitle')
+      return node !== null && (node.textContent || '').trim() === title
+    }) || null
+
+  cellOf().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(500)
+  assert.equal(cellOf().getAttribute('data-on'), 'true', '点了之后那一颗要亮起来')
+  assert.ok(
+    String(cellOf().title || '').includes('再点一下这颗格子就取消'),
+    '亮着的时候要说清再点一次会取消：' + cellOf().title,
+  )
+  const chip = window.document.querySelector('.dshgn_filterChip[data-kind="day"]')
+  assert.ok(chip !== null, '左栏顶上要多一颗日期胶囊，说清现在按哪天筛着')
+  assert.equal((chip.textContent || '').trim(), dayKey, '胶囊上写的就是那一天')
+  await waitFor(() => cardOf('热力图那一天第一篇') !== null, 8000, '那一天的笔记留在列表里')
+  assert.ok(cardOf('热力图那一天第二篇') !== null, '同一天的另外一篇也在')
+  assert.equal(cardOf('热力图今天这一篇'), null, '今天写的那篇不该混进来')
+
+  cellOf().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(500)
+  assert.equal(cellOf().getAttribute('data-on'), 'false', '再点同一颗就取消')
+  assert.equal(
+    window.document.querySelector('.dshgn_filterChip[data-kind="day"]'),
+    null,
+    '取消之后那颗日期胶囊也跟着消失',
+  )
+  await waitFor(() => cardOf('热力图今天这一篇') !== null, 8000, '取消之后今天的笔记回到列表里')
+
+  // 收尾：退回「全部笔记」，别把筛选留给下一条用例
+  const allBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find(
+      (el) => (el.textContent || '').trim() === '全部笔记',
+    )
+  if (allBtn() !== undefined) {
+    allBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+})

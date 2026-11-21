@@ -8515,6 +8515,8 @@ var LEX = {
     "heat.streak": "\u5929\u8FDE\u7EED",
     "heat.unit": "\u7BC7",
     "heat.totalHint": "\u7BC7\uFF08\u8FD1\u534A\u5E74\uFF09",
+    "heat.pickDay": "\u770B\u8FD9\u4E00\u5929\u5199\u4E86\u4EC0\u4E48",
+    "heat.pickDayHint": "\u518D\u70B9\u4E00\u4E0B\u8FD9\u9897\u683C\u5B50\u5C31\u53D6\u6D88",
     "empty.noVault": "\u8FD8\u6CA1\u6709\u672C\u5730\u7B14\u8BB0\u5E93",
     "empty.noVaultDesc": "\u5148\u5728\u300C\u8BBE\u7F6E\u300D\u91CC\u6307\u5B9A\u4E00\u4E2A\u76EE\u5F55\uFF0C\u6216\u8005\u70B9\u300C\u5BFC\u5165\u300D\u628A\u5F97\u5230\u5927\u8111\u7684\u7B14\u8BB0\u6293\u4E0B\u6765\u3002",
     "empty.noNotes": "\u8FD9\u4E2A\u76EE\u5F55\u8FD8\u6CA1\u6709\u7B14\u8BB0",
@@ -9029,6 +9031,8 @@ var LEX = {
     "heat.streak": "day streak",
     "heat.unit": "notes",
     "heat.totalHint": "notes (last 6 months)",
+    "heat.pickDay": "See what was written that day",
+    "heat.pickDayHint": "Click the same square again to clear it",
     "empty.noVault": "No local vault yet",
     "empty.noVaultDesc": "Pick a folder in Settings, or press Import to pull your notes down.",
     "empty.noNotes": "No notes in this folder",
@@ -9538,6 +9542,8 @@ var LEX = {
     "heat.streak": "dagen op rij",
     "heat.unit": "notities",
     "heat.totalHint": "notities (afgelopen half jaar)",
+    "heat.pickDay": "Bekijk wat er die dag geschreven is",
+    "heat.pickDayHint": "Klik nog eens op hetzelfde vakje om het te wissen",
     "empty.noVault": "Nog geen lokale map",
     "empty.noVaultDesc": "Kies een map bij Instellingen, of druk op Importeren om je notities op te halen.",
     "empty.noNotes": "Geen notities in deze map",
@@ -12138,6 +12144,13 @@ var CSS = `
 /* \u672A\u6765\u65E5\u671F\u753B\u6210\u865A\u7EBF\u7A7A\u6846\uFF1A\u5B9E\u5FC3\u7A7A\u6846\u4F1A\u88AB\u8BEF\u8BFB\u6210\u300C\u90A3\u5929\u5199 0 \u7BC7\u300D */
 .dshgn_heatCell[data-future="true"]{background:transparent;
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+/* \u5199\u8FC7\u5B57\u7684\u90A3\u4E00\u5929\u662F\u9897\u6309\u94AE\uFF08\u70B9\u4E00\u4E0B\u6309\u65E5\u671F\u7B5B\uFF09\u30027px \u7684\u5C0F\u65B9\u5757\u5F53\u6309\u94AE\u7528\uFF0C
+   \u6D4F\u89C8\u5668\u9ED8\u8BA4\u7684\u8FB9\u6846\u548C\u5185\u8FB9\u8DDD\u5FC5\u987B\u6E05\u6389\uFF0C\u5426\u5219\u683C\u5B50\u4F1A\u88AB\u6491\u6210 9px \u4EE5\u4E0A\u3001\u6574\u5F20\u56FE\u9519\u4F4D\u3002 */
+button.dshgn_heatCell{appearance:none;padding:0;border:0;cursor:pointer}
+button.dshgn_heatCell:hover{box-shadow:0 0 0 1px var(--dshgn-accentOnDark)}
+button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);outline-offset:1px}
+/* \u9009\u4E2D\u7684\u90A3\u4E00\u5929\u4EAE\u4E00\u5708\uFF1A\u53EA\u52A0\u5916\u5708\u4E0D\u6539\u5E95\u8272\uFF0C\u5426\u5219\u4F1A\u548C data-lv \u7684\u6DF1\u6D45\u6253\u67B6 */
+.dshgn_heatCell[data-on="true"]{box-shadow:0 0 0 1.5px var(--dshgn-accentOnDark)}
 .dshgn_list{flex:none;width:var(--dshgn-listW,260px);display:flex;flex-direction:column;min-height:0;
   border-right:0.5px solid var(--dsw-alias-border-l2)}
 /* \u4E09\u680F\u4E4B\u95F4\u7684\u62D6\u62FD\u624B\u67C4\uFF1A\u5E38\u6001\u662F\u4E00\u6761 1px \u7684\u53D1\u4E1D\u7EBF\uFF0C\u60AC\u505C/\u62D6\u52A8\u65F6\u624D\u4EAE\u8D77\u6765\u3002
@@ -13066,6 +13079,7 @@ function GetnotePage() {
   const [query, setQuery] = h2("");
   const [activeDir, setActiveDir] = h2(bootSession.dir);
   const [activeTag, setActiveTag] = h2(bootSession.tag);
+  const [activeDay, setActiveDay] = h2("");
   const makeSortPref = (key) => {
     const read = () => {
       try {
@@ -13227,12 +13241,13 @@ function GetnotePage() {
       if (activeTag !== "" && !(entry.tags || []).some((tag) => tag === activeTag || tag.startsWith(`${activeTag}/`))) {
         return false;
       }
+      if (activeDay !== "" && entry.date !== activeDay) return false;
       if (needle === "") return true;
       return entry.title.toLowerCase().includes(needle) || entry.path.toLowerCase().includes(needle) || (entry.excerpt || "").toLowerCase().includes(needle) || (entry.tags || []).some((tag) => tag.toLowerCase().includes(needle));
     });
     if (listSort !== "name") return kept;
     return kept.sort((a3, b3) => a3.title.localeCompare(b3.title, "zh"));
-  }, [entries, query, activeDir, activeTag, listSort]);
+  }, [entries, query, activeDir, activeTag, activeDay, listSort]);
   const [hits, setHits] = h2(null);
   const [searching, setSearching] = h2(false);
   y2(() => {
@@ -14716,16 +14731,28 @@ ${insert}
         onPickDir: (dir) => {
           setActiveDir(dir);
           setActiveTag("");
+          setActiveDay("");
         },
         onPickTag: (tag) => {
           setActiveTag(tag);
           setActiveDir("");
+          setActiveDay("");
         },
         onMoveNoteTo: (path, dir) => {
           void moveNoteTo(path, dir);
         },
         onAddTagTo: (path, tag) => {
           void addTagTo(path, tag);
+        },
+        activeDay,
+        // 点某一天就只看那天写的：先把目录/标签筛选让开，否则两个条件一叠加
+        // 常常是空的，用户会以为那天什么都没写。再点同一颗就只取消日期。
+        onPickDay: (day) => {
+          setActiveDay(day);
+          if (day !== "") {
+            setActiveDir("");
+            setActiveTag("");
+          }
         },
         onCreateDir: async (name) => {
           try {
@@ -15010,7 +15037,7 @@ ${insert}
         // 筛选条：左栏点了目录或标签之后，中栏只剩一部分卡片，但界面上一直
         // 没有任何「现在筛的是什么」的痕迹——换个目录再回来，人只会以为
         // 笔记丢了。这里把当前的筛选摆成两颗能点掉的胶囊，全清掉就整条消失。
-        activeDir !== "" || activeTag !== "" ? h4(
+        activeDir !== "" || activeTag !== "" || activeDay !== "" ? h4(
           "div",
           { className: "dshgn_filterBar" },
           activeDir !== "" ? h4(
@@ -15037,6 +15064,19 @@ ${insert}
             },
             h4(Icon, { name: "hash", size: 10 }),
             h4("span", { className: "dshgn_filterChipName" }, activeTag),
+            h4("span", { className: "dshgn_filterChipX" }, h4(Icon, { name: "close", size: 9 }))
+          ) : null,
+          activeDay !== "" ? h4(
+            "button",
+            {
+              type: "button",
+              className: "dshgn_filterChip",
+              "data-kind": "day",
+              title: `${t4("filter.clear")}\uFF1A${activeDay}`,
+              onClick: () => setActiveDay("")
+            },
+            h4(Icon, { name: "calendar", size: 10 }),
+            h4("span", { className: "dshgn_filterChipName" }, activeDay),
             h4("span", { className: "dshgn_filterChipX" }, h4(Icon, { name: "close", size: 9 }))
           ) : null
         ) : null,
@@ -15290,7 +15330,7 @@ ${insert}
                 t4("search.clear")
               ) : null,
               // 出路二：筛着目录或标签，就一键把筛选全撤掉
-              activeDir !== "" || activeTag !== "" ? h4(
+              activeDir !== "" || activeTag !== "" || activeDay !== "" ? h4(
                 "button",
                 {
                   type: "button",
@@ -15298,6 +15338,7 @@ ${insert}
                   onClick: () => {
                     setActiveDir("");
                     setActiveTag("");
+                    setActiveDay("");
                   }
                 },
                 h4(Icon, { name: "close", size: 12 }),
@@ -18973,7 +19014,7 @@ function SkeletonPane(props) {
   );
 }
 function HeatmapStrip(props) {
-  const { t: t4, heatmap } = props;
+  const { t: t4, heatmap, activeDay, onPickDay } = props;
   if (heatmap === null || heatmap === void 0 || !Array.isArray(heatmap.days) || heatmap.days.length === 0) {
     return null;
   }
@@ -19002,15 +19043,30 @@ function HeatmapStrip(props) {
     h4(
       "div",
       { className: "dshgn_heatGrid", style: { gridTemplateRows: "repeat(7, 1fr)", gridAutoFlow: "column" } },
-      days.map(
-        (day) => h4("span", {
+      days.map((day) => {
+        const on2 = activeDay === day.date;
+        const tip = `${day.date} \xB7 ${day.count} ${t4("heat.unit")}`;
+        if (day.count > 0 && typeof onPickDay === "function") {
+          return h4("button", {
+            key: day.date,
+            type: "button",
+            className: "dshgn_heatCell",
+            "data-lv": String(level(day.count)),
+            "data-future": day.future === true ? "true" : "false",
+            "data-on": on2 ? "true" : "false",
+            "aria-pressed": on2 ? "true" : "false",
+            title: `${tip} \xB7 ${on2 ? t4("heat.pickDayHint") : t4("heat.pickDay")}`,
+            onClick: () => onPickDay(on2 ? "" : day.date)
+          });
+        }
+        return h4("span", {
           key: day.date,
           className: "dshgn_heatCell",
           "data-lv": String(level(day.count)),
           "data-future": day.future === true ? "true" : "false",
-          title: `${day.date} \xB7 ${day.count} ${t4("heat.unit")}`
-        })
-      )
+          title: tip
+        });
+      })
     )
   );
 }
@@ -19214,7 +19270,9 @@ function TreePane(props) {
     currentNoteId,
     onNarrowPick,
     onMoveNoteTo,
-    onAddTagTo
+    onAddTagTo,
+    activeDay,
+    onPickDay
   } = props;
   const total = Array.isArray(entries) ? entries.length : 0;
   const picked = (fn2) => (arg) => {
@@ -19561,7 +19619,7 @@ function TreePane(props) {
       "div",
       {
         className: "dshgn_treeRow",
-        "data-on": activeDir === "" && activeTag === "" ? "true" : "false",
+        "data-on": activeDir === "" && activeTag === "" && activeDay === "" ? "true" : "false",
         onClick: picked(() => onPickDir(""))
       },
       h4(Icon, { name: "brain", size: 14 }),
@@ -19570,7 +19628,7 @@ function TreePane(props) {
     ),
     // 热力图放在「全部笔记」正下方：它是「这个库整体在长」的视角，
     // 跟下面按目录/标签切分是两种维度，夹在中间会让人以为它属于某个目录。
-    h4(HeatmapStrip, { t: t4, heatmap }),
+    h4(HeatmapStrip, { t: t4, heatmap, activeDay, onPickDay }),
     // 目录区
     h4(
       "div",

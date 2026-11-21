@@ -662,6 +662,8 @@ async function saveFile(url, filename) {
         'heat.streak': '天连续',
         'heat.unit': '篇',
         'heat.totalHint': '篇（近半年）',
+        'heat.pickDay': '看这一天写了什么',
+        'heat.pickDayHint': '再点一下这颗格子就取消',
         'empty.noVault': '还没有本地笔记库',
         'empty.noVaultDesc': '先在「设置」里指定一个目录，或者点「导入」把得到大脑的笔记抓下来。',
         'empty.noNotes': '这个目录还没有笔记',
@@ -1181,6 +1183,8 @@ async function saveFile(url, filename) {
         'heat.streak': 'day streak',
         'heat.unit': 'notes',
         'heat.totalHint': 'notes (last 6 months)',
+        'heat.pickDay': 'See what was written that day',
+        'heat.pickDayHint': 'Click the same square again to clear it',
         'empty.noVault': 'No local vault yet',
         'empty.noVaultDesc': 'Pick a folder in Settings, or press Import to pull your notes down.',
         'empty.noNotes': 'No notes in this folder',
@@ -1695,6 +1699,8 @@ async function saveFile(url, filename) {
         'heat.streak': 'dagen op rij',
         'heat.unit': 'notities',
         'heat.totalHint': 'notities (afgelopen half jaar)',
+        'heat.pickDay': 'Bekijk wat er die dag geschreven is',
+        'heat.pickDayHint': 'Klik nog eens op hetzelfde vakje om het te wissen',
         'empty.noVault': 'Nog geen lokale map',
         'empty.noVaultDesc': 'Kies een map bij Instellingen, of druk op Importeren om je notities op te halen.',
         'empty.noNotes': 'Geen notities in deze map',
@@ -5055,6 +5061,13 @@ async function saveFile(url, filename) {
 /* 未来日期画成虚线空框：实心空框会被误读成「那天写 0 篇」 */
 .dshgn_heatCell[data-future="true"]{background:transparent;
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+/* 写过字的那一天是颗按钮（点一下按日期筛）。7px 的小方块当按钮用，
+   浏览器默认的边框和内边距必须清掉，否则格子会被撑成 9px 以上、整张图错位。 */
+button.dshgn_heatCell{appearance:none;padding:0;border:0;cursor:pointer}
+button.dshgn_heatCell:hover{box-shadow:0 0 0 1px var(--dshgn-accentOnDark)}
+button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);outline-offset:1px}
+/* 选中的那一天亮一圈：只加外圈不改底色，否则会和 data-lv 的深浅打架 */
+.dshgn_heatCell[data-on="true"]{box-shadow:0 0 0 1.5px var(--dshgn-accentOnDark)}
 .dshgn_list{flex:none;width:var(--dshgn-listW,260px);display:flex;flex-direction:column;min-height:0;
   border-right:0.5px solid var(--dsw-alias-border-l2)}
 /* 三栏之间的拖拽手柄：常态是一条 1px 的发丝线，悬停/拖动时才亮起来。
@@ -6011,6 +6024,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       const [query, setQuery] = React.useState('')
       const [activeDir, setActiveDir] = React.useState(bootSession.dir)
       const [activeTag, setActiveTag] = React.useState(bootSession.tag)
+      // 热力图上点中的那一天（''=没点）。以前格子只有 title，知道那天写了几篇
+      // 却打不开那几篇。现在点一下按日期筛，和点目录/标签是同一套动作。
+      const [activeDay, setActiveDay] = React.useState('')
       // 左栏排序：time（按修改时间）/ name（按名称）/ count（按条数）。
       // 存 localStorage 而不是 host 设置：这是纯展示偏好，不涉及数据，
       // 也没必要为它多一个接口；隐私模式下 localStorage 抛错就回落默认值。
@@ -6266,6 +6282,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           ) {
             return false
           }
+          if (activeDay !== '' && entry.date !== activeDay) return false
           if (needle === '') return true
           return (
             entry.title.toLowerCase().includes(needle) ||
@@ -6278,7 +6295,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         // 而且用 zh 排序规则——纯 localeCompare 会把中文按码位排，读起来像乱序。
         if (listSort !== 'name') return kept
         return kept.sort((a, b) => a.title.localeCompare(b.title, 'zh'))
-      }, [entries, query, activeDir, activeTag, listSort])
+      }, [entries, query, activeDir, activeTag, activeDay, listSort])
 
       // 全文搜索：上面的 visible 只看标题/路径/摘要，正文里提到关键词的那篇
       // 搜不出来。这里在用户停止输入后打一次 /search 补上正文命中，并带上
@@ -8115,16 +8132,28 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             onPickDir: (dir) => {
               setActiveDir(dir)
               setActiveTag('')
+              setActiveDay('')
             },
             onPickTag: (tag) => {
               setActiveTag(tag)
               setActiveDir('')
+              setActiveDay('')
             },
             onMoveNoteTo: (path, dir) => {
               void moveNoteTo(path, dir)
             },
             onAddTagTo: (path, tag) => {
               void addTagTo(path, tag)
+            },
+            activeDay,
+            // 点某一天就只看那天写的：先把目录/标签筛选让开，否则两个条件一叠加
+            // 常常是空的，用户会以为那天什么都没写。再点同一颗就只取消日期。
+            onPickDay: (day) => {
+              setActiveDay(day)
+              if (day !== '') {
+                setActiveDir('')
+                setActiveTag('')
+              }
             },
             onCreateDir: async (name) => {
               try {
@@ -8438,7 +8467,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             // 筛选条：左栏点了目录或标签之后，中栏只剩一部分卡片，但界面上一直
             // 没有任何「现在筛的是什么」的痕迹——换个目录再回来，人只会以为
             // 笔记丢了。这里把当前的筛选摆成两颗能点掉的胶囊，全清掉就整条消失。
-            activeDir !== '' || activeTag !== ''
+            activeDir !== '' || activeTag !== '' || activeDay !== ''
               ? h(
                   'div',
                   { className: 'dshgn_filterBar' },
@@ -8469,6 +8498,21 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                         },
                         h(Icon, { name: 'hash', size: 10 }),
                         h('span', { className: 'dshgn_filterChipName' }, activeTag),
+                        h('span', { className: 'dshgn_filterChipX' }, h(Icon, { name: 'close', size: 9 })),
+                      )
+                    : null,
+                  activeDay !== ''
+                    ? h(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'dshgn_filterChip',
+                          'data-kind': 'day',
+                          title: `${t('filter.clear')}：${activeDay}`,
+                          onClick: () => setActiveDay(''),
+                        },
+                        h(Icon, { name: 'calendar', size: 10 }),
+                        h('span', { className: 'dshgn_filterChipName' }, activeDay),
                         h('span', { className: 'dshgn_filterChipX' }, h(Icon, { name: 'close', size: 9 })),
                       )
                     : null,
@@ -8746,7 +8790,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                           )
                         : null,
                       // 出路二：筛着目录或标签，就一键把筛选全撤掉
-                      activeDir !== '' || activeTag !== ''
+                      activeDir !== '' || activeTag !== '' || activeDay !== ''
                         ? h(
                             'button',
                             {
@@ -8755,6 +8799,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                               onClick: () => {
                                 setActiveDir('')
                                 setActiveTag('')
+                                setActiveDay('')
                               },
                             },
                             h(Icon, { name: 'close', size: 12 }),
@@ -13028,7 +13073,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
     // 只显示最近 16 周：左栏只有 200px 出头，26 周会把格子挤到 5px 看不出深浅。
     // 16 周 × 9px = 144px，留得下，也够看出「最近是不是在坚持」。
     function HeatmapStrip(props) {
-      const { t, heatmap } = props
+      const { t, heatmap, activeDay, onPickDay } = props
       if (heatmap === null || heatmap === undefined || !Array.isArray(heatmap.days) || heatmap.days.length === 0) {
         return null
       }
@@ -13059,15 +13104,32 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         h(
           'div',
           { className: 'dshgn_heatGrid', style: { gridTemplateRows: 'repeat(7, 1fr)', gridAutoFlow: 'column' } },
-          days.map((day) =>
-            h('span', {
+          days.map((day) => {
+            const on = activeDay === day.date
+            const tip = `${day.date} · ${day.count} ${t('heat.unit')}`
+            // 有字的格子才点得动：空日点下去只会筛出一屏「没有笔记」，那是噪声。
+            // 点了就按这一天筛，再点同一颗取消——和左栏点目录是同一个动作。
+            if (day.count > 0 && typeof onPickDay === 'function') {
+              return h('button', {
+                key: day.date,
+                type: 'button',
+                className: 'dshgn_heatCell',
+                'data-lv': String(level(day.count)),
+                'data-future': day.future === true ? 'true' : 'false',
+                'data-on': on ? 'true' : 'false',
+                'aria-pressed': on ? 'true' : 'false',
+                title: `${tip} · ${on ? t('heat.pickDayHint') : t('heat.pickDay')}`,
+                onClick: () => onPickDay(on ? '' : day.date),
+              })
+            }
+            return h('span', {
               key: day.date,
               className: 'dshgn_heatCell',
               'data-lv': String(level(day.count)),
               'data-future': day.future === true ? 'true' : 'false',
-              title: `${day.date} · ${day.count} ${t('heat.unit')}`,
-            }),
-          ),
+              title: tip,
+            })
+          }),
         ),
       )
     }
@@ -13352,6 +13414,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         onNarrowPick,
         onMoveNoteTo,
         onAddTagTo,
+        activeDay,
+        onPickDay,
       } = props
       const total = Array.isArray(entries) ? entries.length : 0
       // 窄窗口里左栏是浮在列表上的抽屉，选完就该消失，不然它一直盖着结果。
@@ -13787,7 +13851,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           'div',
           {
             className: 'dshgn_treeRow',
-            'data-on': activeDir === '' && activeTag === '' ? 'true' : 'false',
+            'data-on': activeDir === '' && activeTag === '' && activeDay === '' ? 'true' : 'false',
             onClick: picked(() => onPickDir('')),
           },
           h(Icon, { name: 'brain', size: 14 }),
@@ -13797,7 +13861,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
 
         // 热力图放在「全部笔记」正下方：它是「这个库整体在长」的视角，
         // 跟下面按目录/标签切分是两种维度，夹在中间会让人以为它属于某个目录。
-        h(HeatmapStrip, { t, heatmap }),
+        h(HeatmapStrip, { t, heatmap, activeDay, onPickDay }),
 
         // 目录区
         h(
