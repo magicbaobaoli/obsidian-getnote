@@ -12928,3 +12928,108 @@ test('别处改过同一篇时，保存先问一句用哪一版，而不是闷�
   window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
   await sleep(200)
 })
+
+/**
+ * 设置页里的自定义模板。
+ *
+ * 列表里那段骨架只露两行，长模板（周报、复盘那种几十行的）在这一屏根本看不出
+ * 全貌，以前只能把它删掉重建一遍才知道自己当初写了什么。这条守三件事：
+ * 「看全文」摊出来的是完整正文（不是截断那段）、再点一下收起、只有标题的模板
+ * 明说它只有标题而不是摊一个空框。
+ */
+test('设置页里每个模板都能摊开看全文，只有标题的也说得明白', async () => {
+  await waitFor(() => window.document.querySelector('.dshgn_root') !== null, 5000, '根节点渲染')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+
+  const longBody = ['## 这一周', '', '- 做完了什么', '- 卡在哪儿', '', '## 下一周', '', '- 先做哪件'].join('\n')
+  await post('/getnote/settings', {
+    templates: [
+      { name: '周报骨架-验收', body: longBody },
+      { name: '只有标题-验收', body: '' },
+    ],
+  })
+
+  // 设置是刚 POST 进去的，面板手上那份 status 还是旧的；先点一次刷新把 status 拉回来，
+  // 否则设置页里还是上一批模板（甚至一个都没有）。
+  const refreshBtn = Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  assert.ok(refreshBtn, '应该有一个刷新按钮')
+  refreshBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(700)
+
+  await clickTab('设置')
+  await waitFor(
+    () => window.document.querySelector('.dshgn_tplList') !== null,
+    5000,
+    '设置页里应该有模板列表',
+  )
+  await sleep(300)
+
+  const rows = () => Array.from(window.document.querySelectorAll('.dshgn_tplRow'))
+  const rowOf = (name) =>
+    rows().find((row) => {
+      const title = row.querySelector('.dshgn_tplName')
+      return title !== null && (title.textContent || '').trim() === name
+    }) || null
+  const buttonIn = (row, label) =>
+    Array.from(row.querySelectorAll('.dshgn_rowBtn')).find((el) => (el.textContent || '').trim() === label) || null
+
+  const longRow = rowOf('周报骨架-验收')
+  assert.ok(longRow !== null, '模板列表里应该有「周报骨架-验收」，实际 ' + rows().map((r) => r.textContent).join(' / '))
+
+  // ① 摊开：摊出来的是整段，不是列表里那两行
+  const openBtn = buttonIn(longRow, '看全文')
+  assert.ok(openBtn !== null, '每一行都该有一颗「看全文」')
+  assert.equal(openBtn.getAttribute('aria-expanded'), 'false')
+  openBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+
+  const full = await waitFor(
+    () => rowOf('周报骨架-验收').querySelector('.dshgn_tplFull'),
+    4000,
+    '点「看全文」之后应该摊出完整骨架',
+  )
+  const fullText = String(full.textContent || '')
+  assert.match(fullText, /下一周/, '摊出来的得是整段，不是截断那两行：' + fullText)
+  assert.match(fullText, /先做哪件/)
+  assert.equal(
+    buttonIn(rowOf('周报骨架-验收'), '收起').getAttribute('aria-expanded'),
+    'true',
+    '摊开之后那颗按钮要变成「收起」',
+  )
+
+  // ② 再点一下收起：回到两行预览
+  buttonIn(rowOf('周报骨架-验收'), '收起').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(
+    () => rowOf('周报骨架-验收').querySelector('.dshgn_tplFull') === null,
+    4000,
+    '再点一下应该收起',
+  )
+  assert.ok(buttonIn(rowOf('周报骨架-验收'), '看全文') !== null, '收起之后按钮要变回「看全文」')
+
+  // ③ 只有标题的模板：明说它只有标题，不摊一个空框
+  const emptyRow = rowOf('只有标题-验收')
+  assert.ok(emptyRow !== null, '只有标题的模板也该在列表里')
+  buttonIn(emptyRow, '看全文').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const emptyText = await waitFor(
+    () => {
+      const row = rowOf('只有标题-验收')
+      const box = row === null ? null : row.querySelector('.dshgn_tplBody')
+      return box !== null && (box.textContent || '').includes('只有标题') ? box.textContent : null
+    },
+    4000,
+    '只有标题的模板要明说它只有标题',
+  )
+  assert.ok(!String(emptyText).includes('undefined'), '不该摊出 undefined')
+  assert.equal(rowOf('只有标题-验收').querySelector('.dshgn_tplFull'), null, '空模板不摊空框')
+
+  // 收尾：把验收用的模板删掉，后面的用例别被它们影响
+  await post('/getnote/settings', { templates: [] })
+  await clickTab('笔记')
+})

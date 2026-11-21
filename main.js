@@ -8712,6 +8712,10 @@ var LEX = {
     "settings.templateEmpty": "\u8FD8\u6CA1\u6709\u81EA\u5B9A\u4E49\u6A21\u677F",
     "settings.templateLimit": "\u6700\u591A 12 \u4E2A",
     "settings.templateRemove": "\u5220\u6389",
+    // 列表里只露两行，骨架长的时候看不出全貌；「看全文」就地摊开，不用去别处
+    "settings.templatePreview": "\u770B\u5168\u6587",
+    "settings.templatePreviewClose": "\u6536\u8D77",
+    "settings.templatePreviewEmpty": "\u8FD9\u4E2A\u6A21\u677F\u53EA\u6709\u6807\u9898",
     "settings.followTitle": "\u8DDF\u7740\u5BBF\u4E3B\u5207\u6362\u7B14\u8BB0",
     "settings.followDesc": "\u4F60\u5728 Obsidian \u91CC\u7FFB\u5230\u54EA\u4E00\u7BC7\uFF0C\u5F00\u7740\u7684\u9762\u677F\u5C31\u8DDF\u7740\u6253\u5F00\u540C\u4E00\u7BC7\uFF0C\u53CD\u94FE\u548C\u540C\u6B65\u72B6\u6001\u7ACB\u523B\u8DDF\u4E0A\u3002\u9762\u677F\u6CA1\u5F00\u7740\u65F6\u4E0D\u4F1A\u66FF\u4F60\u6253\u5F00\u5B83\uFF1B\u4E0D\u5728\u300C\u5F97\u5230\u5927\u8111\u300D\u76EE\u5F55\u91CC\u7684\u7B14\u8BB0\u4E5F\u4E0D\u4F1A\u8DDF\u3002",
     "settings.followToggle": "\u9762\u677F\u8DDF\u7740\u6211\u7FFB",
@@ -9260,6 +9264,9 @@ var LEX = {
     "settings.templateEmpty": "No custom templates yet",
     "settings.templateLimit": "up to 12",
     "settings.templateRemove": "Remove",
+    "settings.templatePreview": "Read it in full",
+    "settings.templatePreviewClose": "Collapse",
+    "settings.templatePreviewEmpty": "This template is title-only",
     "settings.followTitle": "Follow what you open in Obsidian",
     "settings.followDesc": "Open a note in Obsidian and the panel switches to the same one, with its backlinks and sync state right behind it. The panel will not open itself for you, and notes outside the Get\u7B14\u8BB0 folder are ignored.",
     "settings.followToggle": "Keep the panel on the note I open",
@@ -9807,6 +9814,9 @@ var LEX = {
     "settings.templateEmpty": "Nog geen eigen sjablonen",
     "settings.templateLimit": "maximaal 12",
     "settings.templateRemove": "Verwijderen",
+    "settings.templatePreview": "Volledig lezen",
+    "settings.templatePreviewClose": "Inklappen",
+    "settings.templatePreviewEmpty": "Deze template heeft alleen een titel",
     "settings.followTitle": "Volg wat je in Obsidian opent",
     "settings.followDesc": "Open je een notitie in Obsidian, dan springt het paneel naar dezelfde, met de verwijzingen en de synchronisatiestatus erachteraan. Het paneel opent zichzelf niet en notities buiten de map Get\u7B14\u8BB0 worden genegeerd.",
     "settings.followToggle": "Laat het paneel mijn notitie volgen",
@@ -12789,6 +12799,11 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 .dshgn_tplName{font-size:12px;font-weight:600;color:var(--dsw-alias-label-primary)}
 .dshgn_tplBody{font-size:11px;line-height:1.6;color:var(--dsw-alias-label-tertiary);margin-top:2px;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap}
+/* \u644A\u5F00\u5168\u6587\u90A3\u4E00\u5757\uFF1A\u4FDD\u7559\u6362\u884C\u3001\u81EA\u5DF1\u6EDA\uFF0C\u4E0D\u628A\u8BBE\u7F6E\u9875\u6491\u957F\u3002 */
+.dshgn_tplFull{margin:2px 0 0;max-height:220px;overflow:auto;padding:7px 8px;border-radius:6px;
+  background:var(--dsw-alias-bg-base,#0000);border:0.5px solid var(--dsw-alias-border-l1);
+  font-family:var(--font-monospace,monospace);font-size:11px;line-height:1.65;
+  color:var(--dsw-alias-label-secondary);white-space:pre-wrap;word-break:break-word}
 .dshgn_tplForm{display:flex;flex-direction:column;gap:6px}
 .dshgn_btnRow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .dshgn_textarea{width:100%;box-sizing:border-box;min-height:180px;resize:vertical;padding:9px 10px;
@@ -17470,6 +17485,7 @@ function TemplateCard(props) {
   const [adding, setAdding] = h2(false);
   const [name, setName] = h2("");
   const [body, setBody] = h2("");
+  const [previewName, setPreviewName] = h2("");
   const saved = T2(() => {
     const list2 = status !== null && Array.isArray(status.templates) ? status.templates : [];
     return list2.filter((item) => item !== null && typeof item === "object" && typeof item.name === "string");
@@ -17529,7 +17545,18 @@ function TemplateCard(props) {
             "div",
             { className: "dshgn_tplMain" },
             h4("div", { className: "dshgn_tplName" }, item.name),
-            h4("div", { className: "dshgn_tplBody" }, item.body || "\u2014")
+            previewName === item.name ? String(item.body || "").trim() === "" ? h4("div", { className: "dshgn_tplBody" }, t4("settings.templatePreviewEmpty")) : h4("pre", { className: "dshgn_tplFull" }, String(item.body || "").trim()) : h4("div", { className: "dshgn_tplBody" }, item.body || "\u2014")
+          ),
+          h4(
+            "button",
+            {
+              type: "button",
+              className: "dshgn_rowBtn",
+              title: previewName === item.name ? t4("settings.templatePreviewClose") : t4("settings.templatePreview"),
+              "aria-expanded": previewName === item.name ? "true" : "false",
+              onClick: () => setPreviewName(previewName === item.name ? "" : item.name)
+            },
+            previewName === item.name ? t4("settings.templatePreviewClose") : t4("settings.templatePreview")
           ),
           h4(
             "button",

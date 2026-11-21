@@ -827,6 +827,10 @@ async function saveFile(url, filename) {
         'settings.templateEmpty': '还没有自定义模板',
         'settings.templateLimit': '最多 12 个',
         'settings.templateRemove': '删掉',
+        // 列表里只露两行，骨架长的时候看不出全貌；「看全文」就地摊开，不用去别处
+        'settings.templatePreview': '看全文',
+        'settings.templatePreviewClose': '收起',
+        'settings.templatePreviewEmpty': '这个模板只有标题',
         'settings.followTitle': '跟着宿主切换笔记',
         'settings.followDesc': '你在 Obsidian 里翻到哪一篇，开着的面板就跟着打开同一篇，反链和同步状态立刻跟上。面板没开着时不会替你打开它；不在「得到大脑」目录里的笔记也不会跟。',
         'settings.followToggle': '面板跟着我翻',
@@ -1380,6 +1384,9 @@ async function saveFile(url, filename) {
         'settings.templateEmpty': 'No custom templates yet',
         'settings.templateLimit': 'up to 12',
         'settings.templateRemove': 'Remove',
+        'settings.templatePreview': 'Read it in full',
+        'settings.templatePreviewClose': 'Collapse',
+        'settings.templatePreviewEmpty': 'This template is title-only',
         'settings.followTitle': 'Follow what you open in Obsidian',
         'settings.followDesc': 'Open a note in Obsidian and the panel switches to the same one, with its backlinks and sync state right behind it. The panel will not open itself for you, and notes outside the Get笔记 folder are ignored.',
         'settings.followToggle': 'Keep the panel on the note I open',
@@ -1931,6 +1938,9 @@ async function saveFile(url, filename) {
         'settings.templateEmpty': 'Nog geen eigen sjablonen',
         'settings.templateLimit': 'maximaal 12',
         'settings.templateRemove': 'Verwijderen',
+        'settings.templatePreview': 'Volledig lezen',
+        'settings.templatePreviewClose': 'Inklappen',
+        'settings.templatePreviewEmpty': 'Deze template heeft alleen een titel',
         'settings.followTitle': 'Volg wat je in Obsidian opent',
         'settings.followDesc': 'Open je een notitie in Obsidian, dan springt het paneel naar dezelfde, met de verwijzingen en de synchronisatiestatus erachteraan. Het paneel opent zichzelf niet en notities buiten de map Get笔记 worden genegeerd.',
         'settings.followToggle': 'Laat het paneel mijn notitie volgen',
@@ -5707,6 +5717,11 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 .dshgn_tplName{font-size:12px;font-weight:600;color:var(--dsw-alias-label-primary)}
 .dshgn_tplBody{font-size:11px;line-height:1.6;color:var(--dsw-alias-label-tertiary);margin-top:2px;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap}
+/* 摊开全文那一块：保留换行、自己滚，不把设置页撑长。 */
+.dshgn_tplFull{margin:2px 0 0;max-height:220px;overflow:auto;padding:7px 8px;border-radius:6px;
+  background:var(--dsw-alias-bg-base,#0000);border:0.5px solid var(--dsw-alias-border-l1);
+  font-family:var(--font-monospace,monospace);font-size:11px;line-height:1.65;
+  color:var(--dsw-alias-label-secondary);white-space:pre-wrap;word-break:break-word}
 .dshgn_tplForm{display:flex;flex-direction:column;gap:6px}
 .dshgn_btnRow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .dshgn_textarea{width:100%;box-sizing:border-box;min-height:180px;resize:vertical;padding:9px 10px;
@@ -11317,6 +11332,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       const [adding, setAdding] = React.useState(false)
       const [name, setName] = React.useState('')
       const [body, setBody] = React.useState('')
+      // 列表里那段骨架只露两行，长模板看不出全貌。一次只摊开一个——摊开两三个
+      // 设置页立刻变成长文档，想找的那一个反而更难找了。
+      const [previewName, setPreviewName] = React.useState('')
 
       const saved = React.useMemo(() => {
         const list = status !== null && Array.isArray(status.templates) ? status.templates : []
@@ -11386,7 +11404,22 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                     'div',
                     { className: 'dshgn_tplMain' },
                     h('div', { className: 'dshgn_tplName' }, item.name),
-                    h('div', { className: 'dshgn_tplBody' }, item.body || '—'),
+                    previewName === item.name
+                      ? String(item.body || '').trim() === ''
+                        ? h('div', { className: 'dshgn_tplBody' }, t('settings.templatePreviewEmpty'))
+                        : h('pre', { className: 'dshgn_tplFull' }, String(item.body || '').trim())
+                      : h('div', { className: 'dshgn_tplBody' }, item.body || '—'),
+                  ),
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'dshgn_rowBtn',
+                      title: previewName === item.name ? t('settings.templatePreviewClose') : t('settings.templatePreview'),
+                      'aria-expanded': previewName === item.name ? 'true' : 'false',
+                      onClick: () => setPreviewName(previewName === item.name ? '' : item.name),
+                    },
+                    previewName === item.name ? t('settings.templatePreviewClose') : t('settings.templatePreview'),
                   ),
                   h(
                     'button',
