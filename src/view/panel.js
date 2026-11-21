@@ -817,6 +817,7 @@ async function saveFile(url, filename) {
         'note.blockRef': '本页某一段',
         'note.pickTag': '筛这个标签',
         'note.pickDir': '筛这个目录',
+        'note.pickDay': '看这一天写了什么',
         'note.moreTags': '还有 {n} 个标签，点开看全部',
         'note.lessTags': '收起',
         'note.moreLinks': '还有 {n} 处引用，点开看全部',
@@ -1333,6 +1334,7 @@ async function saveFile(url, filename) {
         'note.blockRef': 'A paragraph on this page',
         'note.pickTag': 'Filter by this tag',
         'note.pickDir': 'Filter by this folder',
+        'note.pickDay': 'See what was written that day',
         'note.moreTags': '{n} more tags, click to see them all',
         'note.lessTags': 'Less',
         'note.moreLinks': '{n} more links, click to see them all',
@@ -1848,6 +1850,7 @@ async function saveFile(url, filename) {
         'note.blockRef': 'Een alinea op deze pagina',
         'note.pickTag': 'Filter op deze tag',
         'note.pickDir': 'Filter op deze map',
+        'note.pickDay': 'Bekijk wat er die dag geschreven is',
         'note.moreTags': 'Nog {n} tags, klik om ze allemaal te zien',
         'note.lessTags': 'Minder',
         'note.moreLinks': 'Nog {n} koppelingen, klik om ze allemaal te zien',
@@ -5152,6 +5155,12 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
   overflow:hidden;white-space:nowrap}
 /* 卡片上的标签：和日期、目录挤在同一行，所以只给到能看清的最小尺寸；
    多了就收成 +N，宁可不显示也不让目录被挤掉。 */
+/* 日期做成可点的：和热力图点某一天同一个动作，落在日期那一栏。 */
+.dshgn_cardDay{appearance:none;flex:none;padding:0;border:0;background:transparent;
+  color:inherit;font:inherit;cursor:pointer}
+.dshgn_cardDay:hover{color:var(--dsw-alias-brand-primary);text-decoration:underline}
+.dshgn_cardDay:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_cardDay[data-on="true"]{color:var(--dsw-alias-brand-primary);text-decoration:underline}
 /* 目录做成可点的：和标签胶囊同一个动作（按它筛），只是落在目录那一栏。 */
 .dshgn_cardDir{appearance:none;max-width:120px;padding:0;border:0;background:transparent;
   color:inherit;font:inherit;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -8993,7 +9002,26 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                       h(
                         'div',
                         { className: 'dshgn_cardMeta' },
-                        entry.date ? h('span', null, entry.date) : null,
+                        // 日期也点得动：和热力图上点某一天是同一个动作（按这一天筛），
+                        // 只是从「那一篇卡片上」出发。已经按这一天筛着时再点一下就取消。
+                        entry.date
+                          ? h(
+                              'button',
+                              {
+                                type: 'button',
+                                className: 'dshgn_cardDay',
+                                'data-on': activeDay === entry.date ? 'true' : 'false',
+                                title: `${t('note.pickDay')}：${entry.date}`,
+                                onClick: (event) => {
+                                  event.stopPropagation()
+                                  setActiveDay(activeDay === entry.date ? '' : entry.date)
+                                  setActiveDir('')
+                                  setActiveTag('')
+                                },
+                              },
+                              entry.date,
+                            )
+                          : null,
                         // 目录也点得动：看到一篇在「随手记/录音卡」底下，想知道同一摊里
                         // 还有哪几篇，以前只能回左栏一层层展开去找。点它直接按这个目录筛。
                         entry.dir

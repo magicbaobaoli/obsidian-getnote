@@ -8668,6 +8668,7 @@ var LEX = {
     "note.blockRef": "\u672C\u9875\u67D0\u4E00\u6BB5",
     "note.pickTag": "\u7B5B\u8FD9\u4E2A\u6807\u7B7E",
     "note.pickDir": "\u7B5B\u8FD9\u4E2A\u76EE\u5F55",
+    "note.pickDay": "\u770B\u8FD9\u4E00\u5929\u5199\u4E86\u4EC0\u4E48",
     "note.moreTags": "\u8FD8\u6709 {n} \u4E2A\u6807\u7B7E\uFF0C\u70B9\u5F00\u770B\u5168\u90E8",
     "note.lessTags": "\u6536\u8D77",
     "note.moreLinks": "\u8FD8\u6709 {n} \u5904\u5F15\u7528\uFF0C\u70B9\u5F00\u770B\u5168\u90E8",
@@ -9179,6 +9180,7 @@ var LEX = {
     "note.blockRef": "A paragraph on this page",
     "note.pickTag": "Filter by this tag",
     "note.pickDir": "Filter by this folder",
+    "note.pickDay": "See what was written that day",
     "note.moreTags": "{n} more tags, click to see them all",
     "note.lessTags": "Less",
     "note.moreLinks": "{n} more links, click to see them all",
@@ -9690,6 +9692,7 @@ var LEX = {
     "note.blockRef": "Een alinea op deze pagina",
     "note.pickTag": "Filter op deze tag",
     "note.pickDir": "Filter op deze map",
+    "note.pickDay": "Bekijk wat er die dag geschreven is",
     "note.moreTags": "Nog {n} tags, klik om ze allemaal te zien",
     "note.lessTags": "Minder",
     "note.moreLinks": "Nog {n} koppelingen, klik om ze allemaal te zien",
@@ -12235,6 +12238,12 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
   overflow:hidden;white-space:nowrap}
 /* \u5361\u7247\u4E0A\u7684\u6807\u7B7E\uFF1A\u548C\u65E5\u671F\u3001\u76EE\u5F55\u6324\u5728\u540C\u4E00\u884C\uFF0C\u6240\u4EE5\u53EA\u7ED9\u5230\u80FD\u770B\u6E05\u7684\u6700\u5C0F\u5C3A\u5BF8\uFF1B
    \u591A\u4E86\u5C31\u6536\u6210 +N\uFF0C\u5B81\u53EF\u4E0D\u663E\u793A\u4E5F\u4E0D\u8BA9\u76EE\u5F55\u88AB\u6324\u6389\u3002 */
+/* \u65E5\u671F\u505A\u6210\u53EF\u70B9\u7684\uFF1A\u548C\u70ED\u529B\u56FE\u70B9\u67D0\u4E00\u5929\u540C\u4E00\u4E2A\u52A8\u4F5C\uFF0C\u843D\u5728\u65E5\u671F\u90A3\u4E00\u680F\u3002 */
+.dshgn_cardDay{appearance:none;flex:none;padding:0;border:0;background:transparent;
+  color:inherit;font:inherit;cursor:pointer}
+.dshgn_cardDay:hover{color:var(--dsw-alias-brand-primary);text-decoration:underline}
+.dshgn_cardDay:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_cardDay[data-on="true"]{color:var(--dsw-alias-brand-primary);text-decoration:underline}
 /* \u76EE\u5F55\u505A\u6210\u53EF\u70B9\u7684\uFF1A\u548C\u6807\u7B7E\u80F6\u56CA\u540C\u4E00\u4E2A\u52A8\u4F5C\uFF08\u6309\u5B83\u7B5B\uFF09\uFF0C\u53EA\u662F\u843D\u5728\u76EE\u5F55\u90A3\u4E00\u680F\u3002 */
 .dshgn_cardDir{appearance:none;max-width:120px;padding:0;border:0;background:transparent;
   color:inherit;font:inherit;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -15513,7 +15522,24 @@ ${insert}
                 h4(
                   "div",
                   { className: "dshgn_cardMeta" },
-                  entry.date ? h4("span", null, entry.date) : null,
+                  // 日期也点得动：和热力图上点某一天是同一个动作（按这一天筛），
+                  // 只是从「那一篇卡片上」出发。已经按这一天筛着时再点一下就取消。
+                  entry.date ? h4(
+                    "button",
+                    {
+                      type: "button",
+                      className: "dshgn_cardDay",
+                      "data-on": activeDay === entry.date ? "true" : "false",
+                      title: `${t4("note.pickDay")}\uFF1A${entry.date}`,
+                      onClick: (event) => {
+                        event.stopPropagation();
+                        setActiveDay(activeDay === entry.date ? "" : entry.date);
+                        setActiveDir("");
+                        setActiveTag("");
+                      }
+                    },
+                    entry.date
+                  ) : null,
                   // 目录也点得动：看到一篇在「随手记/录音卡」底下，想知道同一摊里
                   // 还有哪几篇，以前只能回左栏一层层展开去找。点它直接按这个目录筛。
                   entry.dir ? h4(
