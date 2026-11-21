@@ -41,12 +41,19 @@ function extendEl(el) {
   }
   el.addClass = (c) => el.classList.add(c)
   el.removeClass = (c) => el.classList.remove(c)
-  el.createDiv = (opts = {}) => {
-    const child = el.ownerDocument.createElement('div')
+  // Obsidian 的 createEl/createDiv 不只认 cls，还认 text 与 attr —— 兜底报错块
+  // 全靠这两样把原因写到屏幕上，桩里缺了它们就会测成「什么都没画」。
+  el.createEl = (tag, opts = {}) => {
+    const child = el.ownerDocument.createElement(tag)
     if (opts.cls) child.className = opts.cls
+    if (opts.text !== undefined) child.textContent = opts.text
+    if (opts.attr) {
+      for (const [key, value] of Object.entries(opts.attr)) child.setAttribute(key, String(value))
+    }
     el.appendChild(child)
     return extendEl(child)
   }
+  el.createDiv = (opts = {}) => el.createEl('div', opts)
   el.isShown = () => true
   return el
 }
@@ -284,6 +291,56 @@ test('onClose 会把 React 树卸载干净，不给叶子留残余节点', async
   // 面板的定时器/请求还在后台跑。
   assert.equal((view.contentEl.textContent || '').length, 0, '卸载后面板内容应该被清空')
   assert.ok(!window.document.querySelector('.dshgn_root'), 'DOM 里不该留下面板根节点')
+})
+
+test('渲染失败时把原因画到屏幕上，而不是留一片黑', async () => {
+  const { factory } = calls.views[0]
+  const view = factory({})
+  // 真宿主里 ItemView 自带 app；测试桩只给了 contentEl，这里补上，
+  // 好让「顺手落一份到插件目录」那条路也走一遍。
+  view.app = app
+  view.renderFatal(view.contentEl, new Error('测试用的渲染错误'))
+
+  const fatal = view.contentEl.querySelector('.dshgn_fatal')
+  assert.ok(fatal, '应该画出兜底报错块，而不是留一个空容器')
+  const text = fatal.textContent || ''
+  assert.ok(text.includes('得到大脑面板没能打开'), '应该有标题：' + text.slice(0, 120))
+  assert.ok(text.includes('测试用的渲染错误'), '应该写出具体原因：' + text.slice(0, 200))
+  assert.ok(fatal.querySelector('pre') !== null, '应该把堆栈也摊出来')
+
+  // 兜底块不能依赖面板自己的 CSS —— 没画出来的原因很可能正是样式没注入成功
+  const style = fatal.getAttribute('style') || ''
+  assert.ok(style.includes('height:100%'), '兜底块要自带内联尺寸：' + style)
+
+  // 同时落一份到插件目录，用户不用去翻控制台
+  await new Promise((resolve) => window.setTimeout(resolve, 60))
+  const saved = nodes.get('.obsidian/plugins/getnote-brain/panel-error.txt')
+  assert.ok(saved && typeof saved.text === 'string', '应该把错误写进插件目录的 panel-error.txt')
+  assert.ok(saved.text.includes('测试用的渲染错误'), '落盘内容要有原因：' + String(saved.text).slice(0, 160))
+})
+
+test('首帧没画出来时看门狗自己报出来，而不是让用户对着一片黑', async () => {
+  const { factory } = calls.views[0]
+  const view = factory({})
+  // 看门狗要求容器真的在文档里（isConnected），否则它按「叶子已经关了」处理
+  window.document.body.appendChild(view.contentEl)
+  try {
+    await view.onOpen()
+    assert.ok(view.contentEl.querySelector('.dshgn_root') !== null, '正常渲染时根节点应该出现')
+    // 模拟「渲染调用没抛错、但根节点不见了」：看门狗 2 秒后应该发现
+    const root = view.contentEl.querySelector('.dshgn_root')
+    root.parentNode.removeChild(root)
+    await new Promise((resolve) => window.setTimeout(resolve, 2300))
+    const fatal = view.contentEl.querySelector('.dshgn_fatal')
+    assert.ok(fatal, '根节点不见了就该画出兜底报错')
+    assert.ok(
+      (fatal.textContent || '').includes('面板根节点没有出现'),
+      '要报「没画出来」这件事本身：' + (fatal.textContent || '').slice(0, 160),
+    )
+  } finally {
+    await view.onClose()
+    if (view.contentEl.parentNode) view.contentEl.parentNode.removeChild(view.contentEl)
+  }
 })
 
 test('收尾：卸载插件，别把临时目录和监听留着', async () => {

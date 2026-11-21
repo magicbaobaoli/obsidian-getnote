@@ -21673,10 +21673,75 @@ var GetnoteView = class extends import_obsidian.ItemView {
   getIcon() {
     return "brain";
   }
+  /**
+   * 渲染失败时把原因摆到屏幕上，而不是留一片空白。
+   *
+   * 面板是 React 树，onOpen 里任何一步抛错（样式注入、createRoot、首帧渲染）
+   * 都会让这个叶子只剩一个空容器——用户看到的就是「全黑、什么都没有」，
+   * 既不知道出了什么事，也没法把错误贴给我们。这里把异常接住，用内联样式
+   * 画一段可读的报错（不依赖面板自己的 CSS，因为它可能正是没注入成功的那一环），
+   * 同时照常打到控制台，方便复制完整栈。
+   */
+  renderFatal(container, error2) {
+    const message = String(error2 && error2.message || error2 || "\u672A\u77E5\u9519\u8BEF");
+    const stack = String(error2 && error2.stack || "").split("\n").slice(0, 8).join("\n");
+    console.error("\u5F97\u5230\u5927\u8111\uFF1A\u9762\u677F\u6253\u5F00\u5931\u8D25", error2);
+    try {
+      const adapter2 = this.app && this.app.vault ? this.app.vault.adapter : null;
+      const dir = this.app && this.app.vault ? this.app.vault.configDir : ".obsidian";
+      if (adapter2 && typeof adapter2.write === "function") {
+        const body = ["[\u5F97\u5230\u5927\u8111] \u9762\u677F\u6253\u5F00\u5931\u8D25", (/* @__PURE__ */ new Date()).toISOString(), message, "", stack, ""].join("\n");
+        void adapter2.write(`${dir}/plugins/getnote-brain/panel-error.txt`, body).catch(() => {
+        });
+      }
+    } catch {
+    }
+    try {
+      const box = container.createDiv({ cls: "dshgn_fatal" });
+      box.setAttribute(
+        "style",
+        [
+          "box-sizing:border-box",
+          "padding:18px 20px",
+          "font:13px/1.6 var(--font-interface,sans-serif)",
+          "color:var(--text-normal,#ddd)",
+          "background:var(--background-primary,#1e1e1e)",
+          "overflow:auto",
+          "height:100%"
+        ].join(";")
+      );
+      box.createDiv({
+        text: "\u5F97\u5230\u5927\u8111\u9762\u677F\u6CA1\u80FD\u6253\u5F00",
+        attr: { style: "font-size:15px;font-weight:600;margin-bottom:8px" }
+      });
+      box.createDiv({ text: message, attr: { style: "margin-bottom:10px;word-break:break-word" } });
+      if (stack !== "") {
+        box.createEl("pre", {
+          text: stack,
+          attr: {
+            style: "margin:0;padding:10px;border-radius:6px;background:var(--background-secondary,#2a2a2a);font:11px/1.5 var(--font-monospace,monospace);white-space:pre-wrap;word-break:break-word"
+          }
+        });
+      }
+      box.createDiv({
+        text: "\u628A\u4E0A\u9762\u8FD9\u6BB5\u6587\u5B57\u53D1\u7ED9\u5F00\u53D1\u8005\uFF0C\u6216\u8005\u6309 Ctrl+Shift+I \u6253\u5F00\u63A7\u5236\u53F0\u770B\u5B8C\u6574\u62A5\u9519\u3002",
+        attr: { style: "margin-top:10px;opacity:.7" }
+      });
+    } catch {
+    }
+  }
   async onOpen() {
+    const container = this.contentEl;
+    try {
+      await this.openPanel(container);
+    } catch (error2) {
+      this.renderFatal(container, error2);
+    }
+  }
+  /** 真正的挂载流程；异常交给 onOpen 兜住并画到屏幕上。 */
+  async openPanel(container) {
     injectCss();
     setMarkdownHost({ app: this.app, component: this.plugin, MarkdownRenderer: import_obsidian.MarkdownRenderer });
-    const container = this.contentEl;
     container.empty();
     container.addClass("dshgn_view");
     this.containerEl = container;
@@ -21690,6 +21755,22 @@ var GetnoteView = class extends import_obsidian.ItemView {
     beat();
     this.heartbeat = window.setInterval(beat, 2e4);
     this.registerInterval(this.heartbeat);
+    window.setTimeout(() => {
+      if (this.containerEl !== container) return;
+      if (!container.isConnected) return;
+      const root = container.querySelector(".dshgn_root");
+      if (root === null) {
+        this.renderFatal(container, new Error("\u9762\u677F\u6839\u8282\u70B9\u6CA1\u6709\u51FA\u73B0\uFF08\u9996\u5E27\u6CA1\u6709\u6E32\u67D3\u5B8C\u6210\uFF09"));
+        return;
+      }
+      if (root.clientHeight === 0) {
+        const h5 = container.clientHeight;
+        this.renderFatal(
+          container,
+          new Error(`\u9762\u677F\u6839\u8282\u70B9\u9AD8\u5EA6\u4E3A 0\uFF08\u5BB9\u5668\u9AD8\u5EA6 ${h5}px\uFF09\u2014\u2014 \u5E03\u5C40\u6CA1\u6709\u6491\u5F00`)
+        );
+      }
+    }, 2e3);
   }
   async onClose() {
     clearMarkdownHost();
