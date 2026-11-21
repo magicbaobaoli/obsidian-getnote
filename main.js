@@ -8776,6 +8776,13 @@ var LEX = {
     "trash.originalName": "\u539F\u6587\u4EF6",
     "trash.restoreTo": "\u6062\u590D\u5230\u54EA\u4E2A\u76EE\u5F55\uFF08\u7559\u7A7A\u5C31\u653E\u5E93\u6839\uFF09",
     "trash.restoreToClear": "\u6062\u590D\u5230\u5E93\u6839",
+    // 回收站里只剩名字，删之前想确认是哪一篇，不该先恢复出来再看
+    "trash.preview": "\u770B\u4E00\u773C",
+    "trash.previewClose": "\u6536\u8D77",
+    "trash.previewLoading": "\u8BFB\u53D6\u4E2D\u2026",
+    "trash.previewFailed": "\u8FD9\u4E00\u7BC7\u8BFB\u4E0D\u51FA\u6765\u4E86",
+    "trash.previewLong": "\u540E\u9762\u8FD8\u6709 {n} \u4E2A\u5B57\u6CA1\u5C55\u5F00\uFF0C\u6062\u590D\u56DE\u53BB\u5C31\u80FD\u770B\u5168",
+    "trash.previewEmpty": "\u8FD9\u4E00\u7BC7\u5220\u7684\u65F6\u5019\u5C31\u662F\u7A7A\u7684",
     "cloud.newNote": "\u65B0\u5EFA\u4E91\u7AEF\u7B14\u8BB0",
     "cloud.newNoteTitle": "\u6807\u9898",
     "cloud.newNoteBody": "\u6B63\u6587",
@@ -9298,6 +9305,12 @@ var LEX = {
     "trash.originalName": "Original file",
     "trash.restoreTo": "Restore into which folder (empty = vault root)",
     "trash.restoreToClear": "Restore to vault root",
+    "trash.preview": "Take a look",
+    "trash.previewClose": "Collapse",
+    "trash.previewLoading": "Reading...",
+    "trash.previewFailed": "This one cannot be read",
+    "trash.previewLong": "{n} more characters not shown; restore it to read it all",
+    "trash.previewEmpty": "This one was already empty when it was deleted",
     "cloud.newNote": "New cloud note",
     "cloud.newNoteTitle": "Title",
     "cloud.newNoteBody": "Body",
@@ -9820,6 +9833,12 @@ var LEX = {
     "trash.originalName": "Oorspronkelijk bestand",
     "trash.restoreTo": "Naar welke map herstellen (leeg = hoofdmap)",
     "trash.restoreToClear": "Herstellen naar de hoofdmap",
+    "trash.preview": "Even kijken",
+    "trash.previewClose": "Inklappen",
+    "trash.previewLoading": "Lezen...",
+    "trash.previewFailed": "Deze kan niet gelezen worden",
+    "trash.previewLong": "Nog {n} tekens niet getoond; herstel hem om alles te lezen",
+    "trash.previewEmpty": "Deze was al leeg toen hij werd verwijderd",
     "cloud.newNote": "Nieuwe cloudnotitie",
     "cloud.newNoteTitle": "Titel",
     "cloud.newNoteBody": "Tekst",
@@ -12546,6 +12565,9 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 .dshgn_emptyActions{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px;margin-top:4px}
 /* \u56DE\u6536\u7AD9\u7684\u300C\u6062\u590D\u5230\u54EA\u4E2A\u76EE\u5F55\u300D\uFF1A\u4E00\u884C\u8F93\u5165 + \u5019\u9009\uFF0C\u548C\u6279\u91CF\u6761\u90A3\u5957\u540C\u5BBD\u540C\u9AD8 */
 .dshgn_trashTarget{display:flex;flex-direction:column;gap:4px;margin:8px 0 2px;min-width:0}
+.dshgn_trashPreview{display:flex;flex-direction:column;gap:4px;margin:0 0 8px;padding:8px 10px;border-radius:7px;background:var(--dsw-alias-interactive-bg-hover);min-width:0}
+.dshgn_trashPreviewBody{font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary);white-space:pre-wrap;word-break:break-word;max-height:160px;overflow:hidden}
+.dshgn_trashPreviewHint{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--dsw-alias-label-tertiary)}
 .dshgn_pane{flex:1;overflow-y:auto;padding:18px clamp(16px,3vw,28px) 40px}
 .dshgn_cardBox{max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
 .dshgn_section{display:flex;flex-direction:column;gap:8px;padding:14px 15px;border-radius:10px;
@@ -18684,6 +18706,27 @@ function TrashPane(props) {
     setTargetAt(null);
     setTargetIndex(0);
   }, []);
+  const [peekPath, setPeekPath] = h2("");
+  const [peek, setPeek] = h2(null);
+  const togglePeek = q2(
+    async (item) => {
+      if (peekPath === item.path) {
+        setPeekPath("");
+        setPeek(null);
+        return;
+      }
+      setPeekPath(item.path);
+      setPeek({ loading: true });
+      try {
+        const note = await api(`/read?path=${encodeURIComponent(item.path)}`);
+        const body = String(note && note.body !== void 0 && note.body !== null ? note.body : note && note.content ? note.content : "");
+        setPeek({ text: body });
+      } catch (err) {
+        setPeek({ error: err && err.message ? err.message : String(err) });
+      }
+    },
+    [peekPath]
+  );
   const load = q2(async () => {
     setLoading(true);
     try {
@@ -18893,33 +18936,83 @@ function TrashPane(props) {
       { className: "dshgn_cardBox" },
       list.map(
         (item) => h4(
-          "div",
-          { key: item.path, className: "dshgn_rowLine", style: { justifyContent: "space-between", padding: "7px 0", borderBottom: "0.5px solid var(--dsw-alias-border-l1)" } },
+          b,
+          { key: item.path },
           h4(
             "div",
-            { style: { minWidth: 0 } },
-            h4("div", { className: "dshgn_cardTitle", style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, item.title || item.originalName),
+            { className: "dshgn_rowLine", style: { justifyContent: "space-between", padding: "7px 0", borderBottom: "0.5px solid var(--dsw-alias-border-l1)" } },
             h4(
               "div",
-              { className: "dshgn_cardMeta" },
-              `${t4("trash.deletedAt")} ${formatTime(item.trashedAt)} \xB7 ${formatBytes2(item.bytes)}`
-            )
-          ),
-          h4(
-            "div",
-            { className: "dshgn_rowLine", style: { gap: 6, flex: "none" } },
-            h4(
-              "button",
-              { type: "button", className: "dshgn_btn dshgn_btnPri", onClick: () => void restore(item), disabled: busy },
-              h4(Icon, { name: "up", size: 12 }),
-              t4("trash.restore")
+              { style: { minWidth: 0 } },
+              h4("div", { className: "dshgn_cardTitle", style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, item.title || item.originalName),
+              h4(
+                "div",
+                { className: "dshgn_cardMeta" },
+                `${t4("trash.deletedAt")} ${formatTime(item.trashedAt)} \xB7 ${formatBytes2(item.bytes)}`
+              )
             ),
             h4(
-              "button",
-              { type: "button", className: "dshgn_btn dshgn_btnDanger", onClick: () => void purgeOne(item), disabled: busy },
-              t4("trash.purgeOne")
+              "div",
+              { className: "dshgn_rowLine", style: { gap: 6, flex: "none" } },
+              h4(
+                "button",
+                {
+                  type: "button",
+                  className: "dshgn_btn dshgn_trashPeekBtn",
+                  title: peekPath === item.path ? t4("trash.previewClose") : t4("trash.preview"),
+                  "aria-expanded": peekPath === item.path ? "true" : "false",
+                  onClick: () => void togglePeek(item),
+                  disabled: busy
+                },
+                h4(Icon, { name: "note", size: 12 }),
+                peekPath === item.path ? t4("trash.previewClose") : t4("trash.preview")
+              ),
+              h4(
+                "button",
+                { type: "button", className: "dshgn_btn dshgn_btnPri", onClick: () => void restore(item), disabled: busy },
+                h4(Icon, { name: "up", size: 12 }),
+                t4("trash.restore")
+              ),
+              h4(
+                "button",
+                { type: "button", className: "dshgn_btn dshgn_btnDanger", onClick: () => void purgeOne(item), disabled: busy },
+                t4("trash.purgeOne")
+              )
             )
-          )
+          ),
+          peekPath === item.path ? h4(
+            "div",
+            { className: "dshgn_trashPreview" },
+            peek === null || peek.loading === true ? h4(
+              "div",
+              { className: "dshgn_trashPreviewHint" },
+              h4("span", { className: "dshgn_spin" }),
+              t4("trash.previewLoading")
+            ) : peek.error !== void 0 ? h4(
+              "div",
+              { className: "dshgn_trashPreviewHint" },
+              t4("trash.previewFailed"),
+              "\uFF1A",
+              String(peek.error)
+            ) : (() => {
+              const full = String(peek.text || "").replace(/^\s+/, "");
+              if (full === "") {
+                return h4("div", { className: "dshgn_trashPreviewHint" }, t4("trash.previewEmpty"));
+              }
+              const cut = full.length > TRASH_PREVIEW_CHARS;
+              const shownText = cut ? full.slice(0, TRASH_PREVIEW_CHARS) : full;
+              return h4(
+                b,
+                null,
+                h4("div", { className: "dshgn_trashPreviewBody" }, shownText),
+                cut ? h4(
+                  "div",
+                  { className: "dshgn_trashPreviewHint" },
+                  t4("trash.previewLong").replace("{n}", String(full.length - TRASH_PREVIEW_CHARS))
+                ) : null
+              );
+            })()
+          ) : null
         )
       )
     )
@@ -19311,6 +19404,7 @@ function HeatmapStrip(props) {
   );
 }
 var LIST_PAGE_SIZE = 60;
+var TRASH_PREVIEW_CHARS = 320;
 var NAV_LIMIT = 40;
 var TREE_MIN_W = 150;
 var TREE_MAX_W = 360;

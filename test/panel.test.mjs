@@ -12029,3 +12029,128 @@ test('勾上几篇之后能把它们的引用一次抄走，一行一条，链�
   if (allRow !== undefined) allRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
   await sleep(300)
 })
+test('回收站里能就地看一眼删掉的那篇写的是什么，不用先恢复出来', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+  await clickTab('笔记')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+  const shortPath = '回收站预览验收/回收站预览-短的一篇.md'
+  const longPath = '回收站预览验收/回收站预览-长的一篇.md'
+  await post('/getnote/create', {
+    dir: '回收站预览验收',
+    title: '回收站预览-短的一篇',
+    content: ['# 回收站预览-短的一篇', '', '这一篇删掉之前写的是一句认得出来的话。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-trash-peek-a',
+  })
+  await post('/getnote/create', {
+    dir: '回收站预览验收',
+    title: '回收站预览-长的一篇',
+    content: ['# 回收站预览-长的一篇', '', '长'.repeat(400), ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-trash-peek-b',
+  })
+
+  // 退回空态，免得带着上一篇的阅读态进来
+  const backBtn = () => window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(async () => true)
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = backBtn()
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(220)
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(600)
+
+  for (const [path, id] of [[shortPath, 'a'], [longPath, 'b']]) {
+    const deleted = await post('/getnote/delete', { path })
+    assert.equal(deleted.ok, true, '删进回收站失败（' + id + '）：' + JSON.stringify(deleted))
+  }
+
+  await clickTab('回收站')
+  const rowOf = (title) =>
+    Array.from(window.document.querySelectorAll('.dshgn_cardBox .dshgn_rowLine')).find((el) => {
+      const label = el.querySelector('.dshgn_cardTitle')
+      return label !== null && (label.textContent || '').trim() === title
+    }) || null
+  const shortRow = await waitFor(() => rowOf('回收站预览-短的一篇'), 8000, '回收站里出现短的那一篇')
+  const peekBtn = shortRow.querySelector('.dshgn_trashPeekBtn')
+  assert.ok(peekBtn !== null, '每一行都该有「看一眼」')
+  assert.equal((peekBtn.textContent || '').trim(), '看一眼', '按钮上要写明是看一眼')
+  assert.equal(peekBtn.getAttribute('aria-expanded'), 'false', '没摊开时 aria-expanded 是 false')
+
+  peekBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const preview = await waitFor(() => window.document.querySelector('.dshgn_trashPreview'), 8000, '摊开那一块')
+  const previewBody = () => {
+    const node = window.document.querySelector('.dshgn_trashPreviewBody')
+    return node === null ? '' : node.textContent || ''
+  }
+  await waitFor(() => previewBody() !== '', 8000, '读到正文')
+  assert.ok(
+    previewBody().includes('这一篇删掉之前写的是一句认得出来的话'),
+    '摊开的该是那篇的正文，实际：' + previewBody().slice(0, 80),
+  )
+  assert.ok(
+    !previewBody().trimStart().startsWith('---'),
+    '摊开的只是正文，不该把 frontmatter 也搬出来',
+  )
+  // 看一眼不等于把它恢复出来：那一行还在回收站里，恢复按钮也还在
+  assert.ok(rowOf('回收站预览-短的一篇') !== null, '看一眼之后那一篇还该在回收站里')
+  assert.equal(
+    window.document.querySelectorAll('.dshgn_trashPreview').length,
+    1,
+    '一次只摊开一篇',
+  )
+  assert.equal(
+    (shortRow.querySelector('.dshgn_trashPeekBtn').textContent || '').trim(),
+    '收起',
+    '摊开之后按钮该说「收起」',
+  )
+
+  // 再点一次收回去
+  shortRow.querySelector('.dshgn_trashPeekBtn').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_trashPreview') === null, 5000, '收回去')
+  assert.equal(
+    shortRow.querySelector('.dshgn_trashPeekBtn').getAttribute('aria-expanded'),
+    'false',
+    '收回去之后 aria-expanded 回到 false',
+  )
+
+  // 太长的那篇只摊开头一段，尾巴留一句话说明还有多少没展开
+  const longRow = await waitFor(() => rowOf('回收站预览-长的一篇'), 8000, '回收站里出现长的那一篇')
+  longRow.querySelector('.dshgn_trashPeekBtn').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_trashPreviewBody') !== null, 8000, '摊开长的那一篇')
+  const hint = await waitFor(
+    () => {
+      const node = window.document.querySelector('.dshgn_trashPreviewHint')
+      const text = node === null ? '' : node.textContent || ''
+      return text.includes('后面还有') ? text : null
+    },
+    5000,
+    '尾巴要说明还有多少没展开',
+  )
+  assert.ok(String(hint).includes('后面还有'), '长文该留一句「后面还有 N 个字没展开」，实际：' + hint)
+  assert.ok(
+    (window.document.querySelector('.dshgn_trashPreviewBody').textContent || '').length <= 320,
+    '只摆开头一段，不要整篇塞进回收站里',
+  )
+
+  await clickTab('笔记')
+})

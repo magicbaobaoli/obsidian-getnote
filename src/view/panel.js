@@ -925,6 +925,13 @@ async function saveFile(url, filename) {
         'trash.originalName': '原文件',
         'trash.restoreTo': '恢复到哪个目录（留空就放库根）',
         'trash.restoreToClear': '恢复到库根',
+        // 回收站里只剩名字，删之前想确认是哪一篇，不该先恢复出来再看
+        'trash.preview': '看一眼',
+        'trash.previewClose': '收起',
+        'trash.previewLoading': '读取中…',
+        'trash.previewFailed': '这一篇读不出来了',
+        'trash.previewLong': '后面还有 {n} 个字没展开，恢复回去就能看全',
+        'trash.previewEmpty': '这一篇删的时候就是空的',
         'cloud.newNote': '新建云端笔记',
         'cloud.newNoteTitle': '标题',
         'cloud.newNoteBody': '正文',
@@ -1452,6 +1459,12 @@ async function saveFile(url, filename) {
         'trash.originalName': 'Original file',
         'trash.restoreTo': 'Restore into which folder (empty = vault root)',
         'trash.restoreToClear': 'Restore to vault root',
+        'trash.preview': 'Take a look',
+        'trash.previewClose': 'Collapse',
+        'trash.previewLoading': 'Reading...',
+        'trash.previewFailed': 'This one cannot be read',
+        'trash.previewLong': '{n} more characters not shown; restore it to read it all',
+        'trash.previewEmpty': 'This one was already empty when it was deleted',
         'cloud.newNote': 'New cloud note',
         'cloud.newNoteTitle': 'Title',
         'cloud.newNoteBody': 'Body',
@@ -1978,6 +1991,12 @@ async function saveFile(url, filename) {
         'trash.originalName': 'Oorspronkelijk bestand',
         'trash.restoreTo': 'Naar welke map herstellen (leeg = hoofdmap)',
         'trash.restoreToClear': 'Herstellen naar de hoofdmap',
+        'trash.preview': 'Even kijken',
+        'trash.previewClose': 'Inklappen',
+        'trash.previewLoading': 'Lezen...',
+        'trash.previewFailed': 'Deze kan niet gelezen worden',
+        'trash.previewLong': 'Nog {n} tekens niet getoond; herstel hem om alles te lezen',
+        'trash.previewEmpty': 'Deze was al leeg toen hij werd verwijderd',
         'cloud.newNote': 'Nieuwe cloudnotitie',
         'cloud.newNoteTitle': 'Titel',
         'cloud.newNoteBody': 'Tekst',
@@ -5491,6 +5510,9 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 .dshgn_emptyActions{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px;margin-top:4px}
 /* 回收站的「恢复到哪个目录」：一行输入 + 候选，和批量条那套同宽同高 */
 .dshgn_trashTarget{display:flex;flex-direction:column;gap:4px;margin:8px 0 2px;min-width:0}
+.dshgn_trashPreview{display:flex;flex-direction:column;gap:4px;margin:0 0 8px;padding:8px 10px;border-radius:7px;background:var(--dsw-alias-interactive-bg-hover);min-width:0}
+.dshgn_trashPreviewBody{font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary);white-space:pre-wrap;word-break:break-word;max-height:160px;overflow:hidden}
+.dshgn_trashPreviewHint{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--dsw-alias-label-tertiary)}
 .dshgn_pane{flex:1;overflow-y:auto;padding:18px clamp(16px,3vw,28px) 40px}
 .dshgn_cardBox{max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
 .dshgn_section{display:flex;flex-direction:column;gap:8px;padding:14px 15px;border-radius:10px;
@@ -12732,6 +12754,29 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         setTargetAt(null)
         setTargetIndex(0)
       }, [])
+      // 回收站里只剩一个文件名：删之前想确认「是不是这一篇」，以前只能先恢复出来
+      // 再看，看错了还得再删一次。这里就地读一眼，读的是 .trash 里那份原文。
+      const [peekPath, setPeekPath] = React.useState('')
+      const [peek, setPeek] = React.useState(null)
+      const togglePeek = React.useCallback(
+        async (item) => {
+          if (peekPath === item.path) {
+            setPeekPath('')
+            setPeek(null)
+            return
+          }
+          setPeekPath(item.path)
+          setPeek({ loading: true })
+          try {
+            const note = await api(`/read?path=${encodeURIComponent(item.path)}`)
+            const body = String(note && note.body !== undefined && note.body !== null ? note.body : note && note.content ? note.content : '')
+            setPeek({ text: body })
+          } catch (err) {
+            setPeek({ error: err && err.message ? err.message : String(err) })
+          }
+        },
+        [peekPath],
+      )
 
       const load = React.useCallback(async () => {
         setLoading(true)
@@ -12961,8 +13006,11 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                 { className: 'dshgn_cardBox' },
                 list.map((item) =>
                   h(
+                    React.Fragment,
+                    { key: item.path },
+                    h(
                     'div',
-                    { key: item.path, className: 'dshgn_rowLine', style: { justifyContent: 'space-between', padding: '7px 0', borderBottom: '0.5px solid var(--dsw-alias-border-l1)' } },
+                    { className: 'dshgn_rowLine', style: { justifyContent: 'space-between', padding: '7px 0', borderBottom: '0.5px solid var(--dsw-alias-border-l1)' } },
                     h(
                       'div',
                       { style: { minWidth: 0 } },
@@ -12978,6 +13026,19 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                       { className: 'dshgn_rowLine', style: { gap: 6, flex: 'none' } },
                       h(
                         'button',
+                        {
+                          type: 'button',
+                          className: 'dshgn_btn dshgn_trashPeekBtn',
+                          title: peekPath === item.path ? t('trash.previewClose') : t('trash.preview'),
+                          'aria-expanded': peekPath === item.path ? 'true' : 'false',
+                          onClick: () => void togglePeek(item),
+                          disabled: busy,
+                        },
+                        h(Icon, { name: 'note', size: 12 }),
+                        peekPath === item.path ? t('trash.previewClose') : t('trash.preview'),
+                      ),
+                      h(
+                        'button',
                         { type: 'button', className: 'dshgn_btn dshgn_btnPri', onClick: () => void restore(item), disabled: busy },
                         h(Icon, { name: 'up', size: 12 }),
                         t('trash.restore'),
@@ -12988,6 +13049,50 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                         t('trash.purgeOne'),
                       ),
                     ),
+                    ),
+                    peekPath === item.path
+                      ? h(
+                          'div',
+                          { className: 'dshgn_trashPreview' },
+                          peek === null || peek.loading === true
+                            ? h(
+                                'div',
+                                { className: 'dshgn_trashPreviewHint' },
+                                h('span', { className: 'dshgn_spin' }),
+                                t('trash.previewLoading'),
+                              )
+                            : peek.error !== undefined
+                              ? h(
+                                  'div',
+                                  { className: 'dshgn_trashPreviewHint' },
+                                  t('trash.previewFailed'),
+                                  '：',
+                                  String(peek.error),
+                                )
+                              : (() => {
+                                  // 只摆开头一段：回收站里「看一眼」是为了认出是哪一篇，
+                                  // 不是要在这里读完。尾巴留一句说明，别让人以为内容就这些。
+                                  const full = String(peek.text || '').replace(/^\s+/, '')
+                                  if (full === '') {
+                                    return h('div', { className: 'dshgn_trashPreviewHint' }, t('trash.previewEmpty'))
+                                  }
+                                  const cut = full.length > TRASH_PREVIEW_CHARS
+                                  const shownText = cut ? full.slice(0, TRASH_PREVIEW_CHARS) : full
+                                  return h(
+                                    React.Fragment,
+                                    null,
+                                    h('div', { className: 'dshgn_trashPreviewBody' }, shownText),
+                                    cut
+                                      ? h(
+                                          'div',
+                                          { className: 'dshgn_trashPreviewHint' },
+                                          t('trash.previewLong').replace('{n}', String(full.length - TRASH_PREVIEW_CHARS)),
+                                        )
+                                      : null,
+                                  )
+                                })(),
+                        )
+                      : null,
                   ),
                 ),
               ),
@@ -13438,6 +13543,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
     // 列表一次渲染多少条。一屏大约 8~10 张卡片，60 条足够滚两三屏，
     // 又不至于把几千个 DOM 节点一次性建出来。
     const LIST_PAGE_SIZE = 60
+
+    // 回收站里「看一眼」最多摊多少字。这一段是用来认出「是不是这一篇」的，
+    // 不是让人在这儿读完——真要看全就恢复回去。
+    const TRASH_PREVIEW_CHARS = 320
 
     // 前进/后退最多记多少篇。和「读到哪儿」那份一样给个上限：翻一下午不该
     // 在内存里攒出几百条路径，用户真正要回去的往往就是刚才那几篇。
