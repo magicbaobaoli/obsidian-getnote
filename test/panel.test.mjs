@@ -10766,3 +10766,115 @@ test('卡片拖到左栏的标签胶囊上就给这一篇贴上那个标签', as
     panel.setConfirmDialog(null)
   }
 })
+test('空列表那一屏不留一句「没有」就走人：搜不到能一键清空搜索词，筛着空目录能一键撤掉筛选', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+  await clickTab('笔记')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+  await post('/getnote/create', {
+    dir: '空态出路验收',
+    title: '空态出路-先有一篇',
+    content: ['# 空态出路', '', '先放一篇在这儿。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-empty-exit-a',
+  })
+  const madeDir = await post('/getnote/dir/create', { dir: '空态出路验收/还空着的那一支' })
+  assert.equal(madeDir.ok, true, '造空目录失败：' + JSON.stringify(madeDir))
+
+  // 退回空态，免得带着上一篇的阅读态进来
+  const backBtn = () => window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(async () => true)
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = backBtn()
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(220)
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(600)
+
+  const searchBox = () => window.document.querySelector('.dshgn_search')
+  const type = async (text) => {
+    const box = searchBox()
+    assert.ok(box !== null, '搜索框该在')
+    const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setValue.call(box, text)
+    box.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(800)
+  }
+  const emptyOf = () => window.document.querySelector('.dshgn_empty')
+  const emptyBtn = (label) =>
+    Array.from((emptyOf() || window.document).querySelectorAll('.dshgn_emptyActions .dshgn_btn')).find(
+      (el) => (el.textContent || '').trim().includes(label),
+    )
+
+  // 一、搜不到：以前中栏是一片空白，现在得说清「没有匹配」并给一颗「清空」
+  await type('空态出路验收里肯定没有这个词')
+  await waitFor(() => emptyOf() !== null, 8000, '搜不到时也要摆出空列表那一屏')
+  assert.ok(
+    (emptyOf().textContent || '').includes('没有匹配的笔记'),
+    '搜不到要说清是没有匹配：' + emptyOf().textContent,
+  )
+  assert.ok(emptyOf().querySelector('.dshgn_emptyDesc') !== null, '还要给一句换个词试试的建议')
+  const clearSearch = emptyBtn('清空')
+  assert.ok(clearSearch !== undefined, '搜不到时要给一颗「清空」')
+  clearSearch.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(700)
+  assert.equal(String(searchBox().value || ''), '', '点了「清空」搜索框该空掉')
+  await waitFor(
+    () => window.document.querySelectorAll('.dshgn_card').length > 0,
+    8000,
+    '清掉搜索词之后列表该回来',
+  )
+
+  // 二、筛着一个空目录：得有一句解释和一颗「清掉筛选」
+  const rowOf = (name) =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+      const label = el.querySelector('.dshgn_treeName')
+      return label !== null && (label.textContent || '').trim() === name
+    })
+  await waitFor(() => rowOf('还空着的那一支') !== undefined, 8000, '左栏里出现那个空目录')
+  rowOf('还空着的那一支').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(500)
+  await waitFor(() => emptyOf() !== null, 8000, '空目录要摆出空列表那一屏')
+  assert.ok(
+    (emptyOf().textContent || '').includes('这个目录还没有笔记'),
+    '空目录要说清是这一支还没有笔记：' + emptyOf().textContent,
+  )
+  const clearFilter = emptyBtn('清掉筛选')
+  assert.ok(clearFilter !== undefined, '筛着空目录时要给一颗「清掉筛选」')
+  clearFilter.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(600)
+  assert.equal(
+    window.document.querySelector('.dshgn_filterBar'),
+    null,
+    '点了「清掉筛选」筛选条该收起来',
+  )
+  await waitFor(
+    () => window.document.querySelectorAll('.dshgn_card').length > 0,
+    8000,
+    '撤掉筛选之后列表该回来',
+  )
+  // 注意：右栏「选一篇笔记开始阅读」也用 .dshgn_empty，这里只看列表那一屏的按钮行
+  assert.equal(
+    window.document.querySelector('.dshgn_emptyActions'),
+    null,
+    '有卡片了就不该还摆着空列表那一屏',
+  )
+})

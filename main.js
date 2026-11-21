@@ -8525,6 +8525,11 @@ var LEX = {
     "empty.select": "\u9009\u4E00\u7BC7\u7B14\u8BB0\u5F00\u59CB\u9605\u8BFB",
     "empty.selectDesc": "\u5DE6\u680F\u662F\u76EE\u5F55\uFF0C\u4E2D\u95F4\u662F\u7B14\u8BB0\u5217\u8868\u3002\u4E5F\u53EF\u4EE5\u70B9\u300C\u65B0\u5EFA\u300D\u5199\u4E00\u7BC7\u3002",
     "empty.search": "\u6CA1\u6709\u5339\u914D\u7684\u7B14\u8BB0",
+    // 空列表那一屏不能只说一句「没有」：筛着的时候要能一键清掉筛选，
+    // 搜不到的时候要能一键清空搜索词，否则用户只能自己去翻左栏。
+    "empty.filterDesc": "\u8FD9\u4E2A\u7B5B\u9009\u4E0B\u8FD8\u6CA1\u6709\u7B14\u8BB0\uFF0C\u6E05\u6389\u7B5B\u9009\u5C31\u80FD\u770B\u5230\u5168\u90E8\u3002",
+    "empty.clearFilter": "\u6E05\u6389\u7B5B\u9009",
+    "empty.searchDesc": "\u6362\u4E2A\u8BCD\u518D\u8BD5\uFF0C\u6216\u8005\u7528 tag: \u548C dir: \u628A\u8303\u56F4\u7F29\u5C0F\u4E00\u70B9\u3002",
     "meta.notes": "\u7BC7",
     "meta.dirs": "\u4E2A\u76EE\u5F55",
     "reader.missing": "\u6587\u4EF6\u4E0D\u5B58\u5728\u6216\u5DF2\u88AB\u79FB\u52A8",
@@ -9025,6 +9030,9 @@ var LEX = {
     "empty.select": "Pick a note to read",
     "empty.selectDesc": "Folders on the left, notes in the middle. Or press New.",
     "empty.search": "No matching notes",
+    "empty.filterDesc": "Nothing under this filter yet. Clear it to see everything.",
+    "empty.clearFilter": "Clear the filter",
+    "empty.searchDesc": "Try another word, or narrow it down with tag: and dir:.",
     "meta.notes": "notes",
     "meta.dirs": "folders",
     "reader.missing": "File is missing or was moved",
@@ -9522,6 +9530,9 @@ var LEX = {
     "empty.select": "Kies een notitie om te lezen",
     "empty.selectDesc": "Mappen links, notities in het midden. Of druk op Nieuw.",
     "empty.search": "Geen passende notities",
+    "empty.filterDesc": "Nog niets onder deze filter. Haal hem weg om alles te zien.",
+    "empty.clearFilter": "Filter weghalen",
+    "empty.searchDesc": "Probeer een ander woord, of beperk het met tag: en dir:.",
     "meta.notes": "notities",
     "meta.dirs": "mappen",
     "reader.missing": "Bestand ontbreekt of is verplaatst",
@@ -12369,6 +12380,7 @@ var CSS = `
   gap:8px;padding:32px;text-align:center;color:var(--dsw-alias-label-tertiary)}
 .dshgn_emptyTitle{font-size:13px;color:var(--dsw-alias-label-secondary)}
 .dshgn_emptyDesc{font-size:12px;line-height:1.7;max-width:340px}
+.dshgn_emptyActions{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px;margin-top:4px}
 .dshgn_pane{flex:1;overflow-y:auto;padding:18px clamp(16px,3vw,28px) 40px}
 .dshgn_cardBox{max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
 .dshgn_section{display:flex;flex-direction:column;gap:8px;padding:14px 15px;border-radius:10px;
@@ -15201,17 +15213,55 @@ ${insert}
               if (paths.length > 0) void dropIntoDir(paths);
             }
           },
-          visible.length === 0 && !searchMode ? h4(
+          // 一屏空白是最没用的答案。不管是筛着、搜着还是真的空目录，
+          // 都摆一句为什么空、再摆一颗能当场把路走通的按钮。
+          // 搜索态的空结果以前走不到这里（条件里的 !searchMode 把它排除了），
+          // 于是搜不到时中栏一片空白，连「没有匹配」四个字都没有。
+          shown.length === 0 ? h4(
             "div",
             { className: "dshgn_empty", style: { padding: "24px 12px" } },
             h4("div", { className: "dshgn_emptyTitle" }, query.trim() !== "" ? t4("empty.search") : t4("empty.noNotes")),
-            // 空列表最需要的不是一句「没有笔记」，而是一个能马上动手的按钮
-            query.trim() === "" && vaultReady ? h4(
-              "button",
-              { type: "button", className: "dshgn_btn dshgn_btnPrimary", style: { marginTop: 10 }, onClick: () => void newNote() },
-              h4(Icon, { name: "plus", size: 13 }),
-              t4("action.new")
-            ) : null
+            query.trim() !== "" ? h4("div", { className: "dshgn_emptyDesc" }, t4("empty.searchDesc")) : activeDir !== "" || activeTag !== "" ? h4("div", { className: "dshgn_emptyDesc" }, t4("empty.filterDesc")) : null,
+            h4(
+              "div",
+              { className: "dshgn_emptyActions" },
+              // 出路一：搜索词是空的绊脚石，就一键清掉（补全状态一起收）
+              query.trim() !== "" ? h4(
+                "button",
+                {
+                  type: "button",
+                  className: "dshgn_btn",
+                  onClick: () => {
+                    setQuery("");
+                    setSuggestAt(null);
+                    setSuggestIndex(null);
+                  }
+                },
+                h4(Icon, { name: "close", size: 12 }),
+                t4("search.clear")
+              ) : null,
+              // 出路二：筛着目录或标签，就一键把筛选全撤掉
+              activeDir !== "" || activeTag !== "" ? h4(
+                "button",
+                {
+                  type: "button",
+                  className: "dshgn_btn",
+                  onClick: () => {
+                    setActiveDir("");
+                    setActiveTag("");
+                  }
+                },
+                h4(Icon, { name: "close", size: 12 }),
+                t4("empty.clearFilter")
+              ) : null,
+              // 出路三：真的空目录，就当场写一篇
+              query.trim() === "" && vaultReady ? h4(
+                "button",
+                { type: "button", className: "dshgn_btn dshgn_btnPrimary", onClick: () => void newNote() },
+                h4(Icon, { name: "plus", size: 13 }),
+                t4("action.new")
+              ) : null
+            )
           ) : [
             shownSlice.map(
               (entry) => h4(
