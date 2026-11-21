@@ -23081,6 +23081,16 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
             void this.activateView().then(() => requestIntent({ type: "open", path: rel }));
           });
         });
+        const bare = rel.replace(/^.*\//, "").replace(/\.md$/i, "");
+        if (bare !== "") {
+          menu.addItem((item) => {
+            item.setTitle("\u5728\u5F97\u5230\u5927\u8111\u91CC\u641C\u7D22\u8FD9\u4E00\u7BC7\u7684\u540D\u5B57");
+            item.setIcon("search");
+            item.onClick(() => {
+              void this.activateView().then(() => requestIntent({ type: "search", q: bare }));
+            });
+          });
+        }
       })
     );
     this.registerEvent(

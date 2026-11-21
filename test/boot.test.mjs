@@ -1188,6 +1188,19 @@ test('宿主右键菜单里挂着得到大脑的入口，路径口径与面板�
   assert.equal(openItem.icon, 'brain')
   assert.doesNotThrow(() => openItem.handler(), '点下去不该抛')
 
+  // 第二条：按这一篇的名字去搜。名字就在手上，不该让用户再抄一遍。
+  const searchItem = fileMenu.items.find((item) => item.title === '在得到大脑里搜索这一篇的名字')
+  assert.ok(searchItem, '菜单里应该有「在得到大脑里搜索这一篇的名字」')
+  assert.equal(searchItem.icon, 'search')
+  assert.equal(fileMenu.items.length, 2, '一篇笔记上正好两条，不多不少')
+  assert.doesNotThrow(() => searchItem.handler(), '点下去不该抛')
+
+  // 名字里带点、带空格、带括号都只是名字的一部分，剥的只有目录和 .md
+  const oddMenu = new Menu()
+  fileListeners[0](oddMenu, { path: '得到大脑/随手记/甲 v2.1（改）.md' })
+  const oddSearch = oddMenu.items.find((item) => item.title === '在得到大脑里搜索这一篇的名字')
+  assert.ok(oddSearch, '名字带点带括号也要摆出搜索那条')
+
   // 笔记目录外的文件：菜单一条都不加，也不抛
   const otherMenu = new Menu()
   fileListeners[0](otherMenu, { path: '别处的目录/甲.md' })

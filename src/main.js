@@ -483,6 +483,21 @@ export default class GetnoteObsidianPlugin extends Plugin {
             void this.activateView().then(() => requestIntent({ type: 'open', path: rel }))
           })
         })
+        // 第二条：按这一篇的名字去搜。
+        //
+        // 看到一篇叫「录音卡-整理」的笔记、想找同一摊的其它篇时，用户以前只能
+        // 打开面板、把名字敲进搜索框。名字明明就在手上，不该再抄一遍。
+        // 这里只投递关键词，剩下的交给面板：它才拿得到搜索框和结果列表。
+        const bare = rel.replace(/^.*\//, '').replace(/\.md$/i, '')
+        if (bare !== '') {
+          menu.addItem((item) => {
+            item.setTitle('在得到大脑里搜索这一篇的名字')
+            item.setIcon('search')
+            item.onClick(() => {
+              void this.activateView().then(() => requestIntent({ type: 'search', q: bare }))
+            })
+          })
+        }
       }),
     )
     this.registerEvent(
