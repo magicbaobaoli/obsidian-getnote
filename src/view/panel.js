@@ -817,6 +817,8 @@ async function saveFile(url, filename) {
         'note.pickDir': '筛这个目录',
         'note.moreTags': '还有 {n} 个标签，点开看全部',
         'note.lessTags': '收起',
+        'note.moreLinks': '还有 {n} 处引用，点开看全部',
+        'note.lessLinks': '收起',
     'note.footnote': '跳到这条脚注',
     'note.footnoteBack': '回到引用它的地方',
         'note.openEmbed': '打开这一篇',
@@ -1329,6 +1331,8 @@ async function saveFile(url, filename) {
         'note.pickDir': 'Filter by this folder',
         'note.moreTags': '{n} more tags, click to see them all',
         'note.lessTags': 'Less',
+        'note.moreLinks': '{n} more links, click to see them all',
+        'note.lessLinks': 'Less',
     'note.footnote': 'Jump to this footnote',
     'note.footnoteBack': 'Back to where it is cited',
         'note.openEmbed': 'Open this note',
@@ -1840,6 +1844,8 @@ async function saveFile(url, filename) {
         'note.pickDir': 'Filter op deze map',
         'note.moreTags': 'Nog {n} tags, klik om ze allemaal te zien',
         'note.lessTags': 'Minder',
+        'note.moreLinks': 'Nog {n} koppelingen, klik om ze allemaal te zien',
+        'note.lessLinks': 'Minder',
     'note.footnote': 'Naar deze voetnoot',
     'note.footnoteBack': 'Terug naar de verwijzing',
         'note.openEmbed': 'Open deze notitie',
@@ -4830,11 +4836,15 @@ async function saveFile(url, filename) {
 .dshgn_matchText{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_matchHit{padding:0 1px;border-radius:3px;background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-label-primary);font-weight:600}
 .dshgn_cardLinks{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.dshgn_cardLinks[data-open="true"]{overflow:visible}
 .dshgn_cardLinkChip{appearance:none;border:0;background:rgba(var(--dshgn-tintRgb),.08);
   color:var(--dsw-alias-brand-primary);border-radius:6px;padding:1px 6px;font-size:10px;
   cursor:pointer;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_cardLinkChip:hover{background:var(--dsw-alias-interactive-bg-hover-accent)}
-.dshgn_cardLinkMore{font-size:10px;color:var(--dsw-alias-label-dimmed);align-self:center}
+.dshgn_cardLinkMore{appearance:none;flex:none;align-self:center;padding:0 4px;border:0.5px dashed var(--dsw-alias-border-l2);border-radius:999px;background:transparent;color:var(--dsw-alias-label-dimmed);font:inherit;font-size:10px;line-height:1.6;cursor:pointer;white-space:nowrap}
+.dshgn_cardLinkMore:hover{color:var(--dsw-alias-label-secondary);border-color:var(--dsw-alias-border-l2)}
+.dshgn_cardLinkMore:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_cardLinkMore[data-open="true"]{border-style:solid;color:var(--dsw-alias-label-secondary)}
 .dshgn_searchHint{padding:0 10px 7px;font-size:10px;line-height:1.5;
   color:var(--dsw-alias-label-dimmed)}
 /* 搜索补全候选：把库里已有的目录名与标签名摆出来，省得凭记忆猜拼写。
@@ -7361,6 +7371,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 这篇到底还有哪些标签，只能打开它去右栏翻属性区。现在点它就地摊开。
       // 按 path 记而不是按索引：列表会随搜索和排序变，索引会摊错卡片。
       const [openTags, setOpenTags] = React.useState(() => new Set())
+      // 搜索态卡片底下那行「它引用了谁」也只摆四颗，多的收成 +N。和标签那颗
+      // 一样：点一下就地摊开，不跳走、也不筛。同样按 path 记。
+      const [openLinks, setOpenLinks] = React.useState(() => new Set())
       const [batchTag, setBatchTag] = React.useState('')
       const [batchDir, setBatchDir] = React.useState('')
       // 移目录的目标原来是个空输入框，全靠记忆手打：打错一个字不是「没找到」，
@@ -9043,8 +9056,11 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                       searchMode && Array.isArray(entry.links) && entry.links.length > 0
                         ? h(
                             'div',
-                            { className: 'dshgn_cardLinks' },
-                            entry.links.slice(0, 4).map((link) =>
+                            {
+                              className: 'dshgn_cardLinks',
+                              'data-open': openLinks.has(entry.path) ? 'true' : 'false',
+                            },
+                            (openLinks.has(entry.path) ? entry.links : entry.links.slice(0, 4)).map((link) =>
                               h(
                                 'button',
                                 {
@@ -9060,8 +9076,28 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                                 link,
                               ),
                             ),
+                            // 和卡片上那颗标签 +N 一个道理：收起来的引用也得点得开。
                             entry.links.length > 4
-                              ? h('span', { className: 'dshgn_cardLinkMore' }, `+${entry.links.length - 4}`)
+                              ? h(
+                                  'button',
+                                  {
+                                    type: 'button',
+                                    className: 'dshgn_cardLinkMore',
+                                    title: openLinks.has(entry.path) ? t('note.lessLinks') : t('note.moreLinks').replace('{n}', String(entry.links.length - 4)),
+                                    'aria-expanded': openLinks.has(entry.path) ? 'true' : 'false',
+                                    'data-open': openLinks.has(entry.path) ? 'true' : 'false',
+                                    onClick: (event) => {
+                                      event.stopPropagation()
+                                      setOpenLinks((prev) => {
+                                        const next = new Set(prev)
+                                        if (next.has(entry.path)) next.delete(entry.path)
+                                        else next.add(entry.path)
+                                        return next
+                                      })
+                                    },
+                                  },
+                                  openLinks.has(entry.path) ? t('note.lessLinks') : `+${entry.links.length - 4}`,
+                                )
                               : null,
                           )
                         : null,

@@ -11276,3 +11276,84 @@ test('断链页能把整张清单抄成一段 Markdown，按名字分组、带�
 
   await clickTab('笔记')
 })
+
+/*
+ * 搜索结果卡片上收起来的「+N 处引用」。
+ *
+ * 一张卡片最多摆四颗引用胶囊，多的收成 +N。以前那个 +N 只是个数字，想看看
+ * 这一篇还引用了谁就没辙了。现在点它就地摊开，再点收回去。
+ */
+test('搜索卡片上收起来的「+N」点一下就地摊开全部引用，再点收回去，摊开不等于跳走', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const backBtn = window.document.querySelector('.dshgn_noteBack')
+  if (backBtn) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    try {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+  }
+
+  const links = ['引用摊开一', '引用摊开二', '引用摊开三', '引用摊开四', '引用摊开五', '引用摊开六']
+  const body = links.map((one) => '[[' + one + ']]').join('、')
+  const res = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '引用摊开验收',
+      content: '# 引用摊开验收\n\n龙眼记到 ' + body + '\n',
+      withDatePrefix: false,
+      requestId: 'seed-link-open-a',
+    }),
+  })
+  assert.equal(res.status, 200)
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  const box = await waitFor(() => window.document.querySelector('.dshgn_search'), 5000, '搜索框')
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  setter.call(box, '龙眼')
+  box.dispatchEvent(new window.Event('input', { bubbles: true }))
+
+  // 别的用例也 seed 过带「龙眼」的笔记，这里必须认准这一张卡片，
+  // 否则会把别人卡片上的引用胶囊一起数进来。
+  const cardOf = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => {
+      const title = el.querySelector('.dshgn_cardTitle')
+      return title !== null && (title.textContent || '').includes('引用摊开验收')
+    })
+  const card = await waitFor(cardOf, 8000, '搜索卡片上应该出现这一篇')
+  const moreOf = () => card.querySelector('.dshgn_cardLinkMore')
+  const chipsIn = () => card.querySelectorAll('.dshgn_cardLinkChip').length
+  const more = await waitFor(moreOf, 8000, '卡片底下应该有一颗收起来的 +N')
+  assert.equal(more.textContent, '+2', '六处引用摆四颗、多的收成 +2：' + more.textContent)
+  assert.equal(more.getAttribute('data-open'), 'false')
+  assert.equal(more.getAttribute('aria-expanded'), 'false')
+  assert.equal(chipsIn(), 4, '收着的时候只摆四颗')
+
+  more.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => chipsIn() === 6, 4000, '摊开之后六颗都在')
+  const opened = moreOf()
+  assert.equal(opened.getAttribute('data-open'), 'true')
+  assert.equal(opened.getAttribute('aria-expanded'), 'true')
+  assert.equal(opened.textContent, '收起')
+  assert.equal(rootNode().getAttribute('data-has-note'), 'false', '摊开只是把话说完，不把这篇打开')
+  assert.equal(window.document.querySelectorAll('.dshgn_filterChip').length, 0, '摊开不等于按它筛')
+
+  opened.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => chipsIn() === 4, 4000, '再点收回去')
+  assert.equal(moreOf().getAttribute('data-open'), 'false')
+
+  setter.call(box, '')
+  box.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(400)
+})

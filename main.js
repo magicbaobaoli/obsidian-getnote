@@ -8668,6 +8668,8 @@ var LEX = {
     "note.pickDir": "\u7B5B\u8FD9\u4E2A\u76EE\u5F55",
     "note.moreTags": "\u8FD8\u6709 {n} \u4E2A\u6807\u7B7E\uFF0C\u70B9\u5F00\u770B\u5168\u90E8",
     "note.lessTags": "\u6536\u8D77",
+    "note.moreLinks": "\u8FD8\u6709 {n} \u5904\u5F15\u7528\uFF0C\u70B9\u5F00\u770B\u5168\u90E8",
+    "note.lessLinks": "\u6536\u8D77",
     "note.footnote": "\u8DF3\u5230\u8FD9\u6761\u811A\u6CE8",
     "note.footnoteBack": "\u56DE\u5230\u5F15\u7528\u5B83\u7684\u5730\u65B9",
     "note.openEmbed": "\u6253\u5F00\u8FD9\u4E00\u7BC7",
@@ -9175,6 +9177,8 @@ var LEX = {
     "note.pickDir": "Filter by this folder",
     "note.moreTags": "{n} more tags, click to see them all",
     "note.lessTags": "Less",
+    "note.moreLinks": "{n} more links, click to see them all",
+    "note.lessLinks": "Less",
     "note.footnote": "Jump to this footnote",
     "note.footnoteBack": "Back to where it is cited",
     "note.openEmbed": "Open this note",
@@ -9682,6 +9686,8 @@ var LEX = {
     "note.pickDir": "Filter op deze map",
     "note.moreTags": "Nog {n} tags, klik om ze allemaal te zien",
     "note.lessTags": "Minder",
+    "note.moreLinks": "Nog {n} koppelingen, klik om ze allemaal te zien",
+    "note.lessLinks": "Minder",
     "note.footnote": "Naar deze voetnoot",
     "note.footnoteBack": "Terug naar de verwijzing",
     "note.openEmbed": "Open deze notitie",
@@ -11913,11 +11919,15 @@ var CSS = `
 .dshgn_matchText{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_matchHit{padding:0 1px;border-radius:3px;background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-label-primary);font-weight:600}
 .dshgn_cardLinks{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.dshgn_cardLinks[data-open="true"]{overflow:visible}
 .dshgn_cardLinkChip{appearance:none;border:0;background:rgba(var(--dshgn-tintRgb),.08);
   color:var(--dsw-alias-brand-primary);border-radius:6px;padding:1px 6px;font-size:10px;
   cursor:pointer;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_cardLinkChip:hover{background:var(--dsw-alias-interactive-bg-hover-accent)}
-.dshgn_cardLinkMore{font-size:10px;color:var(--dsw-alias-label-dimmed);align-self:center}
+.dshgn_cardLinkMore{appearance:none;flex:none;align-self:center;padding:0 4px;border:0.5px dashed var(--dsw-alias-border-l2);border-radius:999px;background:transparent;color:var(--dsw-alias-label-dimmed);font:inherit;font-size:10px;line-height:1.6;cursor:pointer;white-space:nowrap}
+.dshgn_cardLinkMore:hover{color:var(--dsw-alias-label-secondary);border-color:var(--dsw-alias-border-l2)}
+.dshgn_cardLinkMore:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_cardLinkMore[data-open="true"]{border-style:solid;color:var(--dsw-alias-label-secondary)}
 .dshgn_searchHint{padding:0 10px 7px;font-size:10px;line-height:1.5;
   color:var(--dsw-alias-label-dimmed)}
 /* \u641C\u7D22\u8865\u5168\u5019\u9009\uFF1A\u628A\u5E93\u91CC\u5DF2\u6709\u7684\u76EE\u5F55\u540D\u4E0E\u6807\u7B7E\u540D\u6446\u51FA\u6765\uFF0C\u7701\u5F97\u51ED\u8BB0\u5FC6\u731C\u62FC\u5199\u3002
@@ -14071,6 +14081,7 @@ ${insert}
   );
   const [picked, setPicked] = h2(() => /* @__PURE__ */ new Set());
   const [openTags, setOpenTags] = h2(() => /* @__PURE__ */ new Set());
+  const [openLinks, setOpenLinks] = h2(() => /* @__PURE__ */ new Set());
   const [batchTag, setBatchTag] = h2("");
   const [batchDir, setBatchDir] = h2("");
   const [batchDirAt, setBatchDirAt] = h2(null);
@@ -15554,8 +15565,11 @@ ${insert}
                 // 才知道这篇讲的是哪几篇。点胶囊直接跳过去。
                 searchMode && Array.isArray(entry.links) && entry.links.length > 0 ? h4(
                   "div",
-                  { className: "dshgn_cardLinks" },
-                  entry.links.slice(0, 4).map(
+                  {
+                    className: "dshgn_cardLinks",
+                    "data-open": openLinks.has(entry.path) ? "true" : "false"
+                  },
+                  (openLinks.has(entry.path) ? entry.links : entry.links.slice(0, 4)).map(
                     (link) => h4(
                       "button",
                       {
@@ -15571,7 +15585,27 @@ ${insert}
                       link
                     )
                   ),
-                  entry.links.length > 4 ? h4("span", { className: "dshgn_cardLinkMore" }, `+${entry.links.length - 4}`) : null
+                  // 和卡片上那颗标签 +N 一个道理：收起来的引用也得点得开。
+                  entry.links.length > 4 ? h4(
+                    "button",
+                    {
+                      type: "button",
+                      className: "dshgn_cardLinkMore",
+                      title: openLinks.has(entry.path) ? t4("note.lessLinks") : t4("note.moreLinks").replace("{n}", String(entry.links.length - 4)),
+                      "aria-expanded": openLinks.has(entry.path) ? "true" : "false",
+                      "data-open": openLinks.has(entry.path) ? "true" : "false",
+                      onClick: (event) => {
+                        event.stopPropagation();
+                        setOpenLinks((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(entry.path)) next.delete(entry.path);
+                          else next.add(entry.path);
+                          return next;
+                        });
+                      }
+                    },
+                    openLinks.has(entry.path) ? t4("note.lessLinks") : `+${entry.links.length - 4}`
+                  ) : null
                 ) : null
               )
             ),
