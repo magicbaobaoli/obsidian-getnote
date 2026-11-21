@@ -10567,3 +10567,54 @@ test('头部里那个值是双链时点得开，不用自己去左栏翻', async
     }
   }
 })
+
+test('骨架屏上永远压着一行看得见的字，等太久就直说没连上并给一颗重试', async () => {
+  const { SkeletonPane } = panel.__internals
+  // SkeletonPane 只认这几个键，直接用一张小表，不牵扯整套 LEX。
+  const words = {
+    'panel.loading': '正在读取笔记库…',
+    'panel.loadingSlow': '本地服务好像没连上',
+    'panel.loadingSlowHint': '面板已经打开了，只是还没取到笔记库。',
+    'action.retry': '重试',
+  }
+  const t = (key) => words[key] ?? key
+  const mount = window.document.createElement('div')
+  window.document.body.appendChild(mount)
+  const popRoot = createRoot(mount)
+  try {
+    popRoot.render(React.createElement(SkeletonPane, { t, slow: false }))
+    await waitFor(() => mount.querySelector('.dshgn_skTop') !== null, 4000, '骨架顶上那行字')
+    const top = mount.querySelector('.dshgn_skTop')
+    assert.ok((top.textContent || '').includes('正在读取笔记库'), '还在加载时那行字要说清在等什么：' + top.textContent)
+    assert.ok(top.querySelector('.dshgn_spin') !== null, '正常加载时给一个转圈')
+    assert.equal(mount.querySelector('.dshgn_skSlow'), null, '还在正常加载时不该先摆出「没连上」')
+
+    let retried = 0
+    popRoot.render(
+      React.createElement(SkeletonPane, {
+        t,
+        slow: true,
+        onRetry: () => {
+          retried += 1
+        },
+      }),
+    )
+    await waitFor(() => mount.querySelector('.dshgn_skSlow') !== null, 4000, '等太久之后的提示')
+    assert.ok(
+      (mount.querySelector('.dshgn_skTop').textContent || '').includes('没连上'),
+      '等太久时那行字要改成没连上',
+    )
+    const slow = mount.querySelector('.dshgn_skSlow')
+    assert.ok((slow.textContent || '').includes('还没取到笔记库'), '要说清面板是开着的、只是数据没回来')
+    const retry = Array.from(slow.querySelectorAll('.dshgn_btn')).find(
+      (one) => (one.textContent || '').trim() === '重试',
+    )
+    assert.ok(retry !== undefined, '得有一颗能按的重试')
+    retry.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(60)
+    assert.equal(retried, 1, '按了重试要真的去重新拉一次')
+  } finally {
+    popRoot.unmount()
+    mount.remove()
+  }
+})

@@ -343,6 +343,28 @@ test('首帧没画出来时看门狗自己报出来，而不是让用户对着�
   }
 })
 
+
+test('启动轨迹落在 boot.txt 里：插件加载、服务就绪、视图挂载各留一行', async () => {
+  // 「全黑、一个字都没有」最难的不是修，是先分清坏在哪一层。boot.txt 就是
+  // 给这个用的：用户重开插件后，我们直接读文件就知道走到第几步。
+  const bootPath = '.obsidian/plugins/getnote-brain/boot.txt'
+  const { factory } = calls.views[0]
+  const view = factory({})
+  await view.onOpen()
+  await new Promise((resolve) => window.setTimeout(resolve, 300))
+
+  const saved = nodes.get(bootPath)
+  assert.ok(saved && typeof saved.text === 'string', '应该把启动轨迹写进插件目录的 boot.txt')
+  const text = String(saved.text)
+  assert.ok(text.includes('onload 开始'), '要记下插件本体加载了：' + text)
+  assert.ok(text.includes('视图已注册'), '要记下视图注册这一步：' + text)
+  assert.ok(text.includes('视图 onOpen 被调用'), '要记下面板真的被挂载了：' + text)
+
+  // 只记关键节点，不该把每帧渲染都刷进去
+  assert.ok(text.split('\n').filter((line) => line.trim() !== '').length < 40, '轨迹不该刷屏：' + text)
+
+  await view.onClose()
+})
 test('收尾：卸载插件，别把临时目录和监听留着', async () => {
   plugin.onunload()
   await rm(BASE, { recursive: true, force: true })

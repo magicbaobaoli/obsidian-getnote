@@ -759,6 +759,11 @@ async function saveFile(url, filename) {
         'note.outlinks': '这篇引用了',
         'note.fontSize': '字号',
         'panel.loading': '正在读取笔记库…',
+        // 骨架一直转圈和「一片黑」在用户眼里是一回事：面板开着、什么都没出来。
+        // 超过几秒还没取到就直说，并给一颗能按的「重试」。
+        'panel.loadingSlow': '本地服务好像没连上',
+        'panel.loadingSlowHint':
+          '面板已经打开了，只是还没取到笔记库。多半是本地服务没起来或者端口被占，点「重试」再来一次；还是不行就按 Ctrl+Shift+I 看控制台。',
         'sync.pushOne': '把这篇推到云端',
         'sync.pullOne': '从云端拉这篇',
         'sync.pushedOne': '已推到云端',
@@ -1257,6 +1262,9 @@ async function saveFile(url, filename) {
         'note.outlinks': 'Links from this note',
         'note.fontSize': 'Text size',
         'panel.loading': 'Loading vault…',
+        'panel.loadingSlow': 'The local service is not answering',
+        'panel.loadingSlowHint':
+          'The panel is open, but the vault has not come back yet. The local service is probably not running, or its port is taken. Press Retry; if that still fails, open the console with Ctrl+Shift+I.',
         'sync.pushOne': 'Push this note',
         'sync.pullOne': 'Pull this note',
         'sync.pushedOne': 'Pushed to cloud',
@@ -1754,6 +1762,9 @@ async function saveFile(url, filename) {
         'note.outlinks': 'Links uit deze notitie',
         'note.fontSize': 'Tekstgrootte',
         'panel.loading': 'Notitiemap laden…',
+        'panel.loadingSlow': 'De lokale service antwoordt niet',
+        'panel.loadingSlowHint':
+          'Het paneel is open, maar de notitiemap is nog niet binnen. Waarschijnlijk draait de lokale service niet of is de poort bezet. Druk op Opnieuw; lukt dat niet, open dan de console met Ctrl+Shift+I.',
         'sync.pushOne': 'Deze notitie pushen',
         'sync.pullOne': 'Deze notitie ophalen',
         'sync.pushedOne': 'Naar de cloud gepusht',
@@ -4871,6 +4882,16 @@ async function saveFile(url, filename) {
 @media (prefers-reduced-motion:reduce){
   .dshgn_skRow{animation:none;opacity:.7}
 }
+/* 骨架顶上那行字。色块在深色主题里可能和背景几乎同色，光看色块分不出
+   「在加载」和「挂了」——这行字是那块黑屏里唯一的确定信息，颜色不走
+   主题变量，直接给一个两侧都能看清的中性色。 */
+.dshgn_skTop{flex:none;display:flex;align-items:center;gap:7px;padding:12px 14px 0;
+  font-size:11px;color:var(--dsw-alias-label-secondary)}
+.dshgn_skSlow{flex:none;display:flex;flex-direction:column;gap:8px;margin:10px 14px 0;
+  padding:10px 12px;border-radius:8px;background:rgba(var(--dshgn-tintRgb),.08);
+  box-shadow:inset 0 0 0 0.5px var(--dsw-alias-border-l2)}
+.dshgn_skSlowHint{font-size:11px;line-height:1.6;color:var(--dsw-alias-label-secondary)}
+.dshgn_skSlowRow{display:flex;gap:6px}
 /* 冲突比对：左右两列各自滚动。默认走 Markdown 渲染（.dshgn_diffMd），
    和「笔记」「云端」页读起来一致；切到「原文」时才用 .dshgn_diffBody 的等宽 pre，
    那种模式是为抠空格/换行差异准备的。 */
@@ -5914,6 +5935,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       const [bootSession] = React.useState(() => readSession())
       const [tab, setTab] = React.useState(bootSession.tab === '' ? 'notes' : bootSession.tab)
       const [status, setStatus] = React.useState(null)
+      // 骨架一直转圈和一片黑，在用户眼里是同一件事。status 迟迟不回来（本地服务没起、
+      // 端口被占、宿主没把 origin 传下来）时，骨架顶上那行字换成「没连上」并给一颗
+      // 「重试」，总比让人对着转圈等到放弃强。
+      const [slowLoad, setSlowLoad] = React.useState(false)
       const [tree, setTree] = React.useState(null)
       const [entries, setEntries] = React.useState([])
       const [dirs, setDirs] = React.useState([])
@@ -6116,6 +6141,17 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       React.useEffect(() => {
         void refresh()
       }, [refresh])
+
+      // 首屏等多久算「不对劲」。6 秒是本地接口正常耗时的几十倍：真在加载的话
+      // 早就回来了，还没回来就不是慢，是没连上。
+      React.useEffect(() => {
+        if (status !== null) {
+          setSlowLoad(false)
+          return undefined
+        }
+        const timer = window.setTimeout(() => setSlowLoad(true), 6000)
+        return () => window.clearTimeout(timer)
+      }, [status])
 
 
       // 心跳：告诉 host「面板还开着」。host 侧「仅前台运行」靠它判断要不要
@@ -7933,8 +7969,15 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           showToast,
         })
       } else if (status === null) {
-        // 首次加载：先出骨架，避免一片空白
-        body = h(SkeletonPane, { t })
+        // 首次加载：先出骨架，避免一片空白。等久了（slowLoad）骨架自己会
+        // 换成「没连上 + 重试」，所以这里把刷新也一起传下去。
+        body = h(SkeletonPane, {
+          t,
+          slow: slowLoad,
+          onRetry: () => {
+            void refresh()
+          },
+        })
       } else {
         body = h(
           'div',
@@ -12497,55 +12540,95 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
     // 骨架屏：首次打开面板时 /status 与 /tree 还没回来，原来是一片空白，
     // 用户会以为插件没加载出来。骨架把三栏形状先画出来，内容到了再替换——
     // 空白和「有形状但还没内容」给人的确定感完全不同。
+    //
+    // 光有色块还不够：色块用的是宿主主题里的 hover 色，碰上把 hover 调得和
+    // 背景几乎一样的主题（或者 CSS 变量根本没映射上），整块面板就是一片黑，
+    // 与「渲染挂了」在屏幕上完全分不出来。所以顶上永远压一行看得见的字——
+    // 有这行字就说明面板活着、只是还在等数据。
+    //
+    // 等太久（SLOW_LOAD_MS 之后）再补一段话和一颗「重试」：无限转圈和一片黑
+    // 对用户是同一件事，都得给个能按的东西。
     function SkeletonPane(props) {
-      const { t } = props
+      const { t, slow, onRetry } = props
       const row = (width, height) => h('div', { className: 'dshgn_skRow', style: { width, height } })
       return h(
-        'div',
-        { className: 'dshgn_body', 'aria-busy': 'true', 'aria-label': t('panel.loading') },
+        React.Fragment,
+        null,
         h(
           'div',
-          { className: 'dshgn_tree dshgn_skTree' },
-          row('60%', '10px'),
-          row('82%', '10px'),
-          row('70%', '10px'),
-          row('76%', '10px'),
-          row('54%', '10px'),
+          { className: 'dshgn_skTop' },
+          slow === true ? h(Icon, { name: 'warn', size: 11 }) : h('span', { className: 'dshgn_spin' }),
+          h('span', null, slow === true ? t('panel.loadingSlow') : t('panel.loading')),
         ),
+        slow === true
+          ? h(
+              'div',
+              { className: 'dshgn_skSlow' },
+              h('div', { className: 'dshgn_skSlowHint' }, t('panel.loadingSlowHint')),
+              h(
+                'div',
+                { className: 'dshgn_skSlowRow' },
+                h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'dshgn_btn dshgn_btnPrimary',
+                    onClick: () => {
+                      if (typeof onRetry === 'function') onRetry()
+                    },
+                  },
+                  t('action.retry'),
+                ),
+              ),
+            )
+          : null,
         h(
           'div',
-          { className: 'dshgn_list dshgn_skList' },
+          { className: 'dshgn_body', 'aria-busy': 'true', 'aria-label': t('panel.loading') },
           h(
             'div',
-            { className: 'dshgn_skCard' },
-            row('72%', '12px'),
-            row('40%', '9px'),
-            row('92%', '9px'),
+            { className: 'dshgn_tree dshgn_skTree' },
+            row('60%', '10px'),
+            row('82%', '10px'),
+            row('70%', '10px'),
+            row('76%', '10px'),
+            row('54%', '10px'),
           ),
           h(
             'div',
-            { className: 'dshgn_skCard' },
-            row('58%', '12px'),
-            row('34%', '9px'),
-            row('86%', '9px'),
+            { className: 'dshgn_list dshgn_skList' },
+            h(
+              'div',
+              { className: 'dshgn_skCard' },
+              row('72%', '12px'),
+              row('40%', '9px'),
+              row('92%', '9px'),
+            ),
+            h(
+              'div',
+              { className: 'dshgn_skCard' },
+              row('58%', '12px'),
+              row('34%', '9px'),
+              row('86%', '9px'),
+            ),
+            h(
+              'div',
+              { className: 'dshgn_skCard' },
+              row('66%', '12px'),
+              row('46%', '9px'),
+              row('80%', '9px'),
+            ),
           ),
           h(
-            'div',
-            { className: 'dshgn_skCard' },
-            row('66%', '12px'),
-            row('46%', '9px'),
-            row('80%', '9px'),
+            'section',
+            { className: 'dshgn_note dshgn_skNote' },
+            row('46%', '18px'),
+            row('100%', '10px'),
+            row('96%', '10px'),
+            row('88%', '10px'),
+            row('100%', '10px'),
+            row('72%', '10px'),
           ),
-        ),
-        h(
-          'section',
-          { className: 'dshgn_note dshgn_skNote' },
-          row('46%', '18px'),
-          row('100%', '10px'),
-          row('96%', '10px'),
-          row('88%', '10px'),
-          row('100%', '10px'),
-          row('72%', '10px'),
         ),
       )
     }

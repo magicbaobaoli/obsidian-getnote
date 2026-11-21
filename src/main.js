@@ -92,6 +92,13 @@ export default class GetnoteObsidianPlugin extends Plugin {
 
     settingsStore.configure({ dataDir, vaultBase: basePath, subfolder: DEFAULT_SUBFOLDER })
     configureVfs({ adapter, basePath })
+
+    // 启动即落一份心跳文件。用户报「面板全黑、一个字都没有」时，最难的从来不是
+    // 修，而是先分清问题在哪一层：插件根本没加载？加载了但视图没挂上？视图挂了
+    // 但面板首帧没渲染？这三种在屏幕上长得一模一样，而渲染进程的控制台用户多半
+    // 不会去翻。所以在最早能拿到 adapter 的地方写一行，之后每推进一层再追加一行。
+    this.probe('onload 开始')
+
     // 录音卡的 Python 桥脚本跟 main.js 一起装在插件目录里（构建时复制到 card/）。
     configureCardScripts({ baseDir: dataDir })
 
@@ -238,6 +245,7 @@ export default class GetnoteObsidianPlugin extends Plugin {
       // 令牌由服务自己随机生成（每次启动都换），面板每个请求都要带。
       setApiToken(this.server.token)
       this.localPort = this.server.port
+      this.probe(`本地服务已就绪 http://127.0.0.1:${this.localPort}`)
       // 用户指定的端口没抢到：OAuth 的 redirect_uri 会跟着变，值得说一句。
       // 设置页的状态行里也写着，但用户不一定会去看设置页——第一次撞上时弹一次
       // Notice，让他知道「为什么云端要我重新登录」。
@@ -259,10 +267,12 @@ export default class GetnoteObsidianPlugin extends Plugin {
       this.server = null
       this.localPort = 0
       this.portFallback = false
+      this.probe(`本地服务启动失败：${error && error.message ? error.message : error}`)
       new Notice(`得到大脑：本地服务启动失败 —— ${error && error.message ? error.message : error}`)
     }
 
     this.registerView(VIEW_TYPE_GETNOTE, (leaf) => new GetnoteView(leaf, this))
+    this.probe('视图已注册')
 
     const ribbon = this.addRibbonIcon('brain', '得到大脑', () => { void this.activateView() })
     ribbon.addClass('dshgn_ribbon')
@@ -714,6 +724,31 @@ export default class GetnoteObsidianPlugin extends Plugin {
     }
   }
 
+  /**
+   * 往插件目录的 boot.txt 追加一行启动轨迹。
+   *
+   * 只写关键节点、每行带时间戳；出错也不抛——诊断代码自己把插件搞崩就本末倒置了。
+   * 面板正常打开时这些行就是噪声，所以只保留最近一次启动（首次写入时截断）。
+   */
+  probe(line) {
+    try {
+      const adapter = this.app && this.app.vault ? this.app.vault.adapter : null
+      const dir = this.app && this.app.vault ? this.app.vault.configDir : '.obsidian'
+      if (!adapter || typeof adapter.write !== 'function') return
+      // 攒在内存里再整份写。边读边追加看着更省，但启动那一串调用全是同步连着来的，
+      // 读还没回来写就发出去了，几次写互相覆盖，最后只剩最后一行——正好丢掉
+      // 最要紧的「插件本体加载了」那条。
+      if (!Array.isArray(this.probeLines)) this.probeLines = []
+      const stamp = new Date().toISOString().slice(11, 19)
+      this.probeLines.push(`[${stamp}] ${line}`)
+      if (this.probeLines.length > 200) this.probeLines = this.probeLines.slice(-200)
+      const body = `${this.probeLines.join('\n')}\n`
+      void adapter.write(`${dir}/plugins/getnote-brain/boot.txt`, body).catch(() => {})
+    } catch {
+      // 诊断失败不影响功能
+    }
+  }
+
   onunload() {
     if (typeof this.stopCardAutoImport === 'function') {
       this.stopCardAutoImport()
@@ -940,6 +975,7 @@ export default class GetnoteObsidianPlugin extends Plugin {
 
   /** 打开（或聚焦）面板；`newWindow` 用 Obsidian 的独立窗口打开。 */
   async activateView(newWindow = false) {
+    this.probe(`activateView（本地服务${this.server ? '在' : '不在'}）`)
     if (!this.server) {
       new Notice('得到大脑：本地服务还没就绪，先看一眼设置页里的提示。')
       return

@@ -8611,6 +8611,10 @@ var LEX = {
     "note.outlinks": "\u8FD9\u7BC7\u5F15\u7528\u4E86",
     "note.fontSize": "\u5B57\u53F7",
     "panel.loading": "\u6B63\u5728\u8BFB\u53D6\u7B14\u8BB0\u5E93\u2026",
+    // 骨架一直转圈和「一片黑」在用户眼里是一回事：面板开着、什么都没出来。
+    // 超过几秒还没取到就直说，并给一颗能按的「重试」。
+    "panel.loadingSlow": "\u672C\u5730\u670D\u52A1\u597D\u50CF\u6CA1\u8FDE\u4E0A",
+    "panel.loadingSlowHint": "\u9762\u677F\u5DF2\u7ECF\u6253\u5F00\u4E86\uFF0C\u53EA\u662F\u8FD8\u6CA1\u53D6\u5230\u7B14\u8BB0\u5E93\u3002\u591A\u534A\u662F\u672C\u5730\u670D\u52A1\u6CA1\u8D77\u6765\u6216\u8005\u7AEF\u53E3\u88AB\u5360\uFF0C\u70B9\u300C\u91CD\u8BD5\u300D\u518D\u6765\u4E00\u6B21\uFF1B\u8FD8\u662F\u4E0D\u884C\u5C31\u6309 Ctrl+Shift+I \u770B\u63A7\u5236\u53F0\u3002",
     "sync.pushOne": "\u628A\u8FD9\u7BC7\u63A8\u5230\u4E91\u7AEF",
     "sync.pullOne": "\u4ECE\u4E91\u7AEF\u62C9\u8FD9\u7BC7",
     "sync.pushedOne": "\u5DF2\u63A8\u5230\u4E91\u7AEF",
@@ -9105,6 +9109,8 @@ var LEX = {
     "note.outlinks": "Links from this note",
     "note.fontSize": "Text size",
     "panel.loading": "Loading vault\u2026",
+    "panel.loadingSlow": "The local service is not answering",
+    "panel.loadingSlowHint": "The panel is open, but the vault has not come back yet. The local service is probably not running, or its port is taken. Press Retry; if that still fails, open the console with Ctrl+Shift+I.",
     "sync.pushOne": "Push this note",
     "sync.pullOne": "Pull this note",
     "sync.pushedOne": "Pushed to cloud",
@@ -9599,6 +9605,8 @@ var LEX = {
     "note.outlinks": "Links uit deze notitie",
     "note.fontSize": "Tekstgrootte",
     "panel.loading": "Notitiemap laden\u2026",
+    "panel.loadingSlow": "De lokale service antwoordt niet",
+    "panel.loadingSlowHint": "Het paneel is open, maar de notitiemap is nog niet binnen. Waarschijnlijk draait de lokale service niet of is de poort bezet. Druk op Opnieuw; lukt dat niet, open dan de console met Ctrl+Shift+I.",
     "sync.pushOne": "Deze notitie pushen",
     "sync.pullOne": "Deze notitie ophalen",
     "sync.pushedOne": "Naar de cloud gepusht",
@@ -11957,6 +11965,16 @@ var CSS = `
 @media (prefers-reduced-motion:reduce){
   .dshgn_skRow{animation:none;opacity:.7}
 }
+/* \u9AA8\u67B6\u9876\u4E0A\u90A3\u884C\u5B57\u3002\u8272\u5757\u5728\u6DF1\u8272\u4E3B\u9898\u91CC\u53EF\u80FD\u548C\u80CC\u666F\u51E0\u4E4E\u540C\u8272\uFF0C\u5149\u770B\u8272\u5757\u5206\u4E0D\u51FA
+   \u300C\u5728\u52A0\u8F7D\u300D\u548C\u300C\u6302\u4E86\u300D\u2014\u2014\u8FD9\u884C\u5B57\u662F\u90A3\u5757\u9ED1\u5C4F\u91CC\u552F\u4E00\u7684\u786E\u5B9A\u4FE1\u606F\uFF0C\u989C\u8272\u4E0D\u8D70
+   \u4E3B\u9898\u53D8\u91CF\uFF0C\u76F4\u63A5\u7ED9\u4E00\u4E2A\u4E24\u4FA7\u90FD\u80FD\u770B\u6E05\u7684\u4E2D\u6027\u8272\u3002 */
+.dshgn_skTop{flex:none;display:flex;align-items:center;gap:7px;padding:12px 14px 0;
+  font-size:11px;color:var(--dsw-alias-label-secondary)}
+.dshgn_skSlow{flex:none;display:flex;flex-direction:column;gap:8px;margin:10px 14px 0;
+  padding:10px 12px;border-radius:8px;background:rgba(var(--dshgn-tintRgb),.08);
+  box-shadow:inset 0 0 0 0.5px var(--dsw-alias-border-l2)}
+.dshgn_skSlowHint{font-size:11px;line-height:1.6;color:var(--dsw-alias-label-secondary)}
+.dshgn_skSlowRow{display:flex;gap:6px}
 /* \u51B2\u7A81\u6BD4\u5BF9\uFF1A\u5DE6\u53F3\u4E24\u5217\u5404\u81EA\u6EDA\u52A8\u3002\u9ED8\u8BA4\u8D70 Markdown \u6E32\u67D3\uFF08.dshgn_diffMd\uFF09\uFF0C
    \u548C\u300C\u7B14\u8BB0\u300D\u300C\u4E91\u7AEF\u300D\u9875\u8BFB\u8D77\u6765\u4E00\u81F4\uFF1B\u5207\u5230\u300C\u539F\u6587\u300D\u65F6\u624D\u7528 .dshgn_diffBody \u7684\u7B49\u5BBD pre\uFF0C
    \u90A3\u79CD\u6A21\u5F0F\u662F\u4E3A\u62A0\u7A7A\u683C/\u6362\u884C\u5DEE\u5F02\u51C6\u5907\u7684\u3002 */
@@ -12975,6 +12993,7 @@ function GetnotePage() {
   const [bootSession] = h2(() => readSession());
   const [tab, setTab] = h2(bootSession.tab === "" ? "notes" : bootSession.tab);
   const [status, setStatus] = h2(null);
+  const [slowLoad, setSlowLoad] = h2(false);
   const [tree, setTree] = h2(null);
   const [entries, setEntries] = h2([]);
   const [dirs, setDirs] = h2([]);
@@ -13099,6 +13118,14 @@ function GetnotePage() {
   y2(() => {
     void refresh();
   }, [refresh]);
+  y2(() => {
+    if (status !== null) {
+      setSlowLoad(false);
+      return void 0;
+    }
+    const timer = window.setTimeout(() => setSlowLoad(true), 6e3);
+    return () => window.clearTimeout(timer);
+  }, [status]);
   y2(() => {
     let alive = true;
     const ping = () => {
@@ -14559,7 +14586,13 @@ ${insert}
       showToast
     });
   } else if (status === null) {
-    body = h4(SkeletonPane, { t: t4 });
+    body = h4(SkeletonPane, {
+      t: t4,
+      slow: slowLoad,
+      onRetry: () => {
+        void refresh();
+      }
+    });
   } else {
     body = h4(
       "div",
@@ -18514,54 +18547,84 @@ ${t4("sync.pushAllHint")}`)) return;
   }
 }
 function SkeletonPane(props) {
-  const { t: t4 } = props;
+  const { t: t4, slow, onRetry } = props;
   const row = (width, height) => h4("div", { className: "dshgn_skRow", style: { width, height } });
   return h4(
-    "div",
-    { className: "dshgn_body", "aria-busy": "true", "aria-label": t4("panel.loading") },
+    b,
+    null,
     h4(
       "div",
-      { className: "dshgn_tree dshgn_skTree" },
-      row("60%", "10px"),
-      row("82%", "10px"),
-      row("70%", "10px"),
-      row("76%", "10px"),
-      row("54%", "10px")
+      { className: "dshgn_skTop" },
+      slow === true ? h4(Icon, { name: "warn", size: 11 }) : h4("span", { className: "dshgn_spin" }),
+      h4("span", null, slow === true ? t4("panel.loadingSlow") : t4("panel.loading"))
     ),
-    h4(
+    slow === true ? h4(
       "div",
-      { className: "dshgn_list dshgn_skList" },
+      { className: "dshgn_skSlow" },
+      h4("div", { className: "dshgn_skSlowHint" }, t4("panel.loadingSlowHint")),
       h4(
         "div",
-        { className: "dshgn_skCard" },
-        row("72%", "12px"),
-        row("40%", "9px"),
-        row("92%", "9px")
-      ),
-      h4(
-        "div",
-        { className: "dshgn_skCard" },
-        row("58%", "12px"),
-        row("34%", "9px"),
-        row("86%", "9px")
-      ),
-      h4(
-        "div",
-        { className: "dshgn_skCard" },
-        row("66%", "12px"),
-        row("46%", "9px"),
-        row("80%", "9px")
+        { className: "dshgn_skSlowRow" },
+        h4(
+          "button",
+          {
+            type: "button",
+            className: "dshgn_btn dshgn_btnPrimary",
+            onClick: () => {
+              if (typeof onRetry === "function") onRetry();
+            }
+          },
+          t4("action.retry")
+        )
       )
-    ),
+    ) : null,
     h4(
-      "section",
-      { className: "dshgn_note dshgn_skNote" },
-      row("46%", "18px"),
-      row("100%", "10px"),
-      row("96%", "10px"),
-      row("88%", "10px"),
-      row("100%", "10px"),
-      row("72%", "10px")
+      "div",
+      { className: "dshgn_body", "aria-busy": "true", "aria-label": t4("panel.loading") },
+      h4(
+        "div",
+        { className: "dshgn_tree dshgn_skTree" },
+        row("60%", "10px"),
+        row("82%", "10px"),
+        row("70%", "10px"),
+        row("76%", "10px"),
+        row("54%", "10px")
+      ),
+      h4(
+        "div",
+        { className: "dshgn_list dshgn_skList" },
+        h4(
+          "div",
+          { className: "dshgn_skCard" },
+          row("72%", "12px"),
+          row("40%", "9px"),
+          row("92%", "9px")
+        ),
+        h4(
+          "div",
+          { className: "dshgn_skCard" },
+          row("58%", "12px"),
+          row("34%", "9px"),
+          row("86%", "9px")
+        ),
+        h4(
+          "div",
+          { className: "dshgn_skCard" },
+          row("66%", "12px"),
+          row("46%", "9px"),
+          row("80%", "9px")
+        )
+      ),
+      h4(
+        "section",
+        { className: "dshgn_note dshgn_skNote" },
+        row("46%", "18px"),
+        row("100%", "10px"),
+        row("96%", "10px"),
+        row("88%", "10px"),
+        row("100%", "10px"),
+        row("72%", "10px")
+      )
     )
   );
 }
@@ -21683,6 +21746,7 @@ var GetnoteView = class extends import_obsidian.ItemView {
    * 同时照常打到控制台，方便复制完整栈。
    */
   renderFatal(container, error2) {
+    this.note(`renderFatal\uFF1A${error2 && error2.message ? error2.message : error2}`);
     const message = String(error2 && error2.message || error2 || "\u672A\u77E5\u9519\u8BEF");
     const stack = String(error2 && error2.stack || "").split("\n").slice(0, 8).join("\n");
     console.error("\u5F97\u5230\u5927\u8111\uFF1A\u9762\u677F\u6253\u5F00\u5931\u8D25", error2);
@@ -21730,7 +21794,15 @@ var GetnoteView = class extends import_obsidian.ItemView {
     } catch {
     }
   }
+  /** 往插件的 boot.txt 追加一行；插件没提供就静默跳过（测试里没有）。 */
+  note(line) {
+    try {
+      if (this.plugin && typeof this.plugin.probe === "function") this.plugin.probe(line);
+    } catch {
+    }
+  }
   async onOpen() {
+    this.note("\u89C6\u56FE onOpen \u88AB\u8C03\u7528");
     const container = this.contentEl;
     try {
       await this.openPanel(container);
@@ -21746,8 +21818,10 @@ var GetnoteView = class extends import_obsidian.ItemView {
     container.addClass("dshgn_view");
     this.containerEl = container;
     const mount = container.createDiv({ cls: "dshgn_mount" });
+    this.note("\u5BB9\u5668\u5DF2\u5C31\u7EEA\uFF0C\u5F00\u59CB\u9996\u5E27\u6E32\u67D3");
     this.root = createRoot(mount);
     this.root.render(_(PanelRoot, { plugin: this.plugin }));
+    this.note("\u9996\u5E27\u6E32\u67D3\u8C03\u7528\u5DF2\u8FD4\u56DE");
     const beat = () => {
       if (!this.containerEl || !this.containerEl.isShown()) return;
       this.plugin.markPanelVisible();
@@ -21759,6 +21833,7 @@ var GetnoteView = class extends import_obsidian.ItemView {
       if (this.containerEl !== container) return;
       if (!container.isConnected) return;
       const root = container.querySelector(".dshgn_root");
+      this.note(`\u770B\u95E8\u72D7\uFF1A\u6839\u8282\u70B9${root === null ? "\u6CA1\u51FA\u73B0" : "\u5728"}\uFF0C\u9AD8\u5EA6 ${root === null ? "-" : root.clientHeight}`);
       if (root === null) {
         this.renderFatal(container, new Error("\u9762\u677F\u6839\u8282\u70B9\u6CA1\u6709\u51FA\u73B0\uFF08\u9996\u5E27\u6CA1\u6709\u6E32\u67D3\u5B8C\u6210\uFF09"));
         return;
@@ -21807,6 +21882,7 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     }
     configure2({ dataDir, vaultBase: basePath2, subfolder: DEFAULT_SUBFOLDER });
     configure({ adapter: adapter2, basePath: basePath2 });
+    this.probe("onload \u5F00\u59CB");
     configureCardScripts({ baseDir: dataDir });
     setOpenExternal((url) => {
       try {
@@ -21887,6 +21963,7 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       setApiOrigin(this.server.origin);
       setApiToken(this.server.token);
       this.localPort = this.server.port;
+      this.probe(`\u672C\u5730\u670D\u52A1\u5DF2\u5C31\u7EEA http://127.0.0.1:${this.localPort}`);
       this.portFallback = this.server.portFallback === true;
       if (this.portFallback) {
         new import_obsidian2.Notice(
@@ -21901,9 +21978,11 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       this.server = null;
       this.localPort = 0;
       this.portFallback = false;
+      this.probe(`\u672C\u5730\u670D\u52A1\u542F\u52A8\u5931\u8D25\uFF1A${error2 && error2.message ? error2.message : error2}`);
       new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A\u672C\u5730\u670D\u52A1\u542F\u52A8\u5931\u8D25 \u2014\u2014 ${error2 && error2.message ? error2.message : error2}`);
     }
     this.registerView(VIEW_TYPE_GETNOTE, (leaf) => new GetnoteView(leaf, this));
+    this.probe("\u89C6\u56FE\u5DF2\u6CE8\u518C");
     const ribbon = this.addRibbonIcon("brain", "\u5F97\u5230\u5927\u8111", () => {
       void this.activateView();
     });
@@ -22257,6 +22336,28 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A\u653E\u8FDB\u753B\u5E03\u5931\u8D25 \u2014\u2014 ${error2 && error2.message ? error2.message : error2}`);
     }
   }
+  /**
+   * 往插件目录的 boot.txt 追加一行启动轨迹。
+   *
+   * 只写关键节点、每行带时间戳；出错也不抛——诊断代码自己把插件搞崩就本末倒置了。
+   * 面板正常打开时这些行就是噪声，所以只保留最近一次启动（首次写入时截断）。
+   */
+  probe(line) {
+    try {
+      const adapter2 = this.app && this.app.vault ? this.app.vault.adapter : null;
+      const dir = this.app && this.app.vault ? this.app.vault.configDir : ".obsidian";
+      if (!adapter2 || typeof adapter2.write !== "function") return;
+      if (!Array.isArray(this.probeLines)) this.probeLines = [];
+      const stamp = (/* @__PURE__ */ new Date()).toISOString().slice(11, 19);
+      this.probeLines.push(`[${stamp}] ${line}`);
+      if (this.probeLines.length > 200) this.probeLines = this.probeLines.slice(-200);
+      const body = `${this.probeLines.join("\n")}
+`;
+      void adapter2.write(`${dir}/plugins/getnote-brain/boot.txt`, body).catch(() => {
+      });
+    } catch {
+    }
+  }
   onunload() {
     if (typeof this.stopCardAutoImport === "function") {
       this.stopCardAutoImport();
@@ -22460,6 +22561,7 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
   }
   /** 打开（或聚焦）面板；`newWindow` 用 Obsidian 的独立窗口打开。 */
   async activateView(newWindow = false) {
+    this.probe(`activateView\uFF08\u672C\u5730\u670D\u52A1${this.server ? "\u5728" : "\u4E0D\u5728"}\uFF09`);
     if (!this.server) {
       new import_obsidian2.Notice("\u5F97\u5230\u5927\u8111\uFF1A\u672C\u5730\u670D\u52A1\u8FD8\u6CA1\u5C31\u7EEA\uFF0C\u5148\u770B\u4E00\u773C\u8BBE\u7F6E\u9875\u91CC\u7684\u63D0\u793A\u3002");
       return;

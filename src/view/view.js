@@ -44,6 +44,7 @@ export class GetnoteView extends ItemView {
    * 同时照常打到控制台，方便复制完整栈。
    */
   renderFatal(container, error) {
+    this.note(`renderFatal：${error && error.message ? error.message : error}`)
     const message = String((error && error.message) || error || '未知错误')
     const stack = String((error && error.stack) || '')
       .split('\n')
@@ -101,7 +102,17 @@ export class GetnoteView extends ItemView {
     }
   }
 
+  /** 往插件的 boot.txt 追加一行；插件没提供就静默跳过（测试里没有）。 */
+  note(line) {
+    try {
+      if (this.plugin && typeof this.plugin.probe === 'function') this.plugin.probe(line)
+    } catch {
+      // 诊断失败不影响渲染
+    }
+  }
+
   async onOpen() {
+    this.note('视图 onOpen 被调用')
     const container = this.contentEl
     try {
       await this.openPanel(container)
@@ -126,8 +137,10 @@ export class GetnoteView extends ItemView {
     this.containerEl = container
 
     const mount = container.createDiv({ cls: 'dshgn_mount' })
+    this.note('容器已就绪，开始首帧渲染')
     this.root = createRoot(mount)
     this.root.render(React.createElement(PanelRoot, { plugin: this.plugin }))
+    this.note('首帧渲染调用已返回')
 
     // 「仅前台同步」靠这个心跳判断背后还有没有人在看。视图不可见时
     // Obsidian 不会调 onResize 之类的事件，所以用一个便宜的定时器，
@@ -148,6 +161,7 @@ export class GetnoteView extends ItemView {
       if (this.containerEl !== container) return
       if (!container.isConnected) return
       const root = container.querySelector('.dshgn_root')
+      this.note(`看门狗：根节点${root === null ? '没出现' : '在'}，高度 ${root === null ? '-' : root.clientHeight}`)
       if (root === null) {
         this.renderFatal(container, new Error('面板根节点没有出现（首帧没有渲染完成）'))
         return
