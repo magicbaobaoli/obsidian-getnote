@@ -12252,3 +12252,84 @@ test('待办页里每一篇都能收起来，收起来之后组头和条数还�
 
   await clickTab('笔记')
 })
+test('待办页顶上那颗「全部收起」一次把所有篇都收起来，再按一下全摊开', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+  await clickTab('笔记')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+  await post('/getnote/create', {
+    dir: '待办全收验收',
+    title: '待办全收-甲',
+    content: ['# 待办全收-甲', '', '- [ ] 全收验收甲一', '- [ ] 全收验收甲二', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-todo-fold-all-a',
+  })
+  await post('/getnote/create', {
+    dir: '待办全收验收',
+    title: '待办全收-乙',
+    content: ['# 待办全收-乙', '', '- [ ] 全收验收乙一', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-todo-fold-all-b',
+  })
+
+  await clickTab('待办')
+
+  const rowsOf = (needle) =>
+    Array.from(window.document.querySelectorAll('.dshgn_todoRow')).filter((el) =>
+      (el.textContent || '').includes(needle),
+    )
+  const foldAllBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_todoFoldAll')).find(
+      (el) => (el.textContent || '').trim() === '全部收起',
+    ) ||
+    Array.from(window.document.querySelectorAll('.dshgn_todoFoldAll')).find(
+      (el) => (el.textContent || '').trim() === '全部展开',
+    ) ||
+    null
+
+  await waitFor(() => rowsOf('全收验收甲一').length === 1, 8000, '甲那一篇的待办在单子上')
+  await waitFor(() => rowsOf('全收验收乙一').length === 1, 8000, '乙那一篇的待办也在')
+  assert.equal(rowsOf('全收验收').length, 3, '两篇一共三条')
+
+  const btn = foldAllBtn()
+  assert.ok(btn !== null, '篇数多的时候顶上得有一颗「全部收起」')
+  assert.equal(btn.getAttribute('aria-pressed'), 'false', '一开始是摊开的')
+
+  btn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rowsOf('全收验收').length === 0, 5000, '全收起来之后一条行都不该留')
+
+  // 收起来不等于清空：组头、篇名、条数都还在，说明条数也留着。
+  const heads = Array.from(window.document.querySelectorAll('.dshgn_todoGroup'))
+  const ours = heads.filter((el) => (el.getAttribute('title') || '').includes('待办全收验收/'))
+  assert.equal(ours.length, 2, '两篇的组头都还在')
+  for (const head of ours) {
+    assert.equal(
+      head.querySelector('.dshgn_todoFold').getAttribute('data-folded'),
+      'true',
+      '每一篇的箭头都翻成收起的',
+    )
+  }
+  const unfoldedBtn = Array.from(window.document.querySelectorAll('.dshgn_todoFoldAll')).find(
+    (el) => (el.textContent || '').trim() === '全部展开',
+  )
+  assert.ok(unfoldedBtn !== undefined, '全收着时这颗按钮该改成「全部展开」')
+  assert.equal(unfoldedBtn.getAttribute('aria-pressed'), 'true', '全收着时按下去的状态是开着的')
+
+  unfoldedBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rowsOf('全收验收').length === 3, 5000, '再按一下三条都该回来')
+  assert.equal(
+    Array.from(window.document.querySelectorAll('.dshgn_todoFoldAll'))[0].getAttribute('aria-pressed'),
+    'false',
+    '摊开之后按钮回到「全部收起」',
+  )
+
+  await clickTab('笔记')
+})

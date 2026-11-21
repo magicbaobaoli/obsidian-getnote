@@ -8765,6 +8765,8 @@ var LEX = {
     "todos.fold": "\u6536\u8D77\u8FD9\u4E00\u7BC7",
     "todos.unfold": "\u5C55\u5F00\u8FD9\u4E00\u7BC7",
     "todos.folded": "\u8FD9\u4E00\u7BC7\u7684 {n} \u6761\u6536\u8D77\u6765\u4E86",
+    "todos.foldAll": "\u5168\u90E8\u6536\u8D77",
+    "todos.unfoldAll": "\u5168\u90E8\u5C55\u5F00",
     "trash.desc": "\u5220\u6389\u7684\u7B14\u8BB0\u5148\u653E\u8FD9\u91CC\uFF0C\u968F\u65F6\u53EF\u4EE5\u6062\u590D\u3002\u6062\u590D\u53EA\u662F\u628A\u6587\u4EF6\u642C\u56DE\u5E93\u91CC\uFF0C\u4E0D\u78B0\u5185\u5BB9\u3002",
     "trash.empty": "\u56DE\u6536\u7AD9\u662F\u7A7A\u7684",
     "trash.emptyHint": "\u5728\u7B14\u8BB0\u5217\u8868\u91CC\u70B9\u5220\u9664\uFF0C\u6587\u4EF6\u4F1A\u5148\u5230\u8FD9\u91CC\u3002\u6E05\u7A7A\u624D\u4F1A\u771F\u7684\u5220\u3002",
@@ -9297,6 +9299,8 @@ var LEX = {
     "todos.fold": "Collapse this note",
     "todos.unfold": "Expand this note",
     "todos.folded": "{n} in this note collapsed",
+    "todos.foldAll": "Collapse all",
+    "todos.unfoldAll": "Expand all",
     "trash.desc": "Deleted notes wait here and can be restored. Restoring just moves the file back.",
     "trash.empty": "Trash is empty",
     "trash.emptyHint": "Deleting a note moves it here first. Only purging really deletes it.",
@@ -9828,6 +9832,8 @@ var LEX = {
     "todos.fold": "Deze notitie inklappen",
     "todos.unfold": "Deze notitie uitklappen",
     "todos.folded": "{n} in deze notitie ingeklapt",
+    "todos.foldAll": "Alles inklappen",
+    "todos.unfoldAll": "Alles uitklappen",
     "trash.desc": "Verwijderde notities wachten hier en kunnen worden hersteld. Herstellen zet het bestand gewoon terug.",
     "trash.empty": "De prullenbak is leeg",
     "trash.emptyHint": "Een notitie verwijderen verplaatst hem eerst hierheen. Pas leegmaken verwijdert echt.",
@@ -18576,6 +18582,15 @@ function TodoPane(props) {
     }
     return out;
   }, [list]);
+  const allFolded = groups.length > 0 && groups.every((group) => foldedGroups.has(group.path));
+  const toggleAllFold = q2(() => {
+    setFoldedGroups((prev) => {
+      const next = new Set(prev);
+      if (allFolded) next.clear();
+      else for (const group of groups) next.add(group.path);
+      return next;
+    });
+  }, [allFolded, groups]);
   const summary = t4("todos.found").replace("{n}", String(list.length)).replace("{scanned}", String(scanned));
   return h4(
     "div",
@@ -18594,6 +18609,19 @@ function TodoPane(props) {
           { type: "button", className: "dshgn_btn", title: t4("todo.copyAll"), onClick: () => void copyAll() },
           h4(Icon, { name: "copy", size: 12 }),
           t4("todo.copyAll")
+        ),
+        // 一篇一篇收太慢：整页一起收起来，先看清「都剩哪几篇」。
+        groups.length < 2 ? null : h4(
+          "button",
+          {
+            type: "button",
+            className: "dshgn_btn dshgn_todoFoldAll",
+            title: allFolded ? t4("todos.unfoldAll") : t4("todos.foldAll"),
+            "aria-pressed": allFolded ? "true" : "false",
+            onClick: toggleAllFold
+          },
+          h4(Icon, { name: "chevron", size: 12 }),
+          allFolded ? t4("todos.unfoldAll") : t4("todos.foldAll")
         ),
         h4(
           "button",

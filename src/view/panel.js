@@ -914,6 +914,8 @@ async function saveFile(url, filename) {
         'todos.fold': '收起这一篇',
         'todos.unfold': '展开这一篇',
         'todos.folded': '这一篇的 {n} 条收起来了',
+        'todos.foldAll': '全部收起',
+        'todos.unfoldAll': '全部展开',
         'trash.desc': '删掉的笔记先放这里，随时可以恢复。恢复只是把文件搬回库里，不碰内容。',
         'trash.empty': '回收站是空的',
         'trash.emptyHint': '在笔记列表里点删除，文件会先到这里。清空才会真的删。',
@@ -1451,6 +1453,8 @@ async function saveFile(url, filename) {
       'todos.fold': 'Collapse this note',
       'todos.unfold': 'Expand this note',
       'todos.folded': '{n} in this note collapsed',
+      'todos.foldAll': 'Collapse all',
+      'todos.unfoldAll': 'Expand all',
         'trash.desc': 'Deleted notes wait here and can be restored. Restoring just moves the file back.',
         'trash.empty': 'Trash is empty',
         'trash.emptyHint': 'Deleting a note moves it here first. Only purging really deletes it.',
@@ -1986,6 +1990,8 @@ async function saveFile(url, filename) {
       'todos.fold': 'Deze notitie inklappen',
       'todos.unfold': 'Deze notitie uitklappen',
       'todos.folded': '{n} in deze notitie ingeklapt',
+      'todos.foldAll': 'Alles inklappen',
+      'todos.unfoldAll': 'Alles uitklappen',
         'trash.desc': 'Verwijderde notities wachten hier en kunnen worden hersteld. Herstellen zet het bestand gewoon terug.',
         'trash.empty': 'De prullenbak is leeg',
         'trash.emptyHint': 'Een notitie verwijderen verplaatst hem eerst hierheen. Pas leegmaken verwijdert echt.',
@@ -12618,6 +12624,19 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         }
         return out
       }, [list])
+
+      // 整页一起收/展：七八篇各剩几条的时候，想先扫一眼「都剩哪几篇」得一篇篇点。
+      // 全收着的时候这颗按钮改成「全部展开」，和左栏那两颗「全部收起」同一套。
+      const allFolded = groups.length > 0 && groups.every((group) => foldedGroups.has(group.path))
+      const toggleAllFold = React.useCallback(() => {
+        setFoldedGroups((prev) => {
+          const next = new Set(prev)
+          if (allFolded) next.clear()
+          else for (const group of groups) next.add(group.path)
+          return next
+        })
+      }, [allFolded, groups])
+
       const summary = t('todos.found').replace('{n}', String(list.length)).replace('{scanned}', String(scanned))
 
       return h(
@@ -12639,6 +12658,21 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                   { type: 'button', className: 'dshgn_btn', title: t('todo.copyAll'), onClick: () => void copyAll() },
                   h(Icon, { name: 'copy', size: 12 }),
                   t('todo.copyAll'),
+                ),
+            // 一篇一篇收太慢：整页一起收起来，先看清「都剩哪几篇」。
+            groups.length < 2
+              ? null
+              : h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'dshgn_btn dshgn_todoFoldAll',
+                    title: allFolded ? t('todos.unfoldAll') : t('todos.foldAll'),
+                    'aria-pressed': allFolded ? 'true' : 'false',
+                    onClick: toggleAllFold,
+                  },
+                  h(Icon, { name: 'chevron', size: 12 }),
+                  allFolded ? t('todos.unfoldAll') : t('todos.foldAll'),
                 ),
             h(
               'button',
