@@ -9713,3 +9713,142 @@ test('新建笔记时能指定建到哪个目录，不用建完再挪一次', as
   if (back) back.click()
   await sleep(150)
 })
+
+test('双链指到还不存在的笔记时，报错行里那颗「写一篇」就地把它建出来', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+
+  // 退回空态
+  panel.setConfirmDialog(() => true)
+  for (let i = 0; i < 4; i += 1) {
+    const back = window.document.querySelector('.dshgn_noteBack')
+    if (back === null) break
+    back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(200)
+  }
+  clickTab('笔记')
+  await waitFor(
+    () => {
+      const root = rootNode()
+      return root !== null && root.querySelector('.dshgn_search') !== null
+    },
+    4000,
+    '搜索框',
+  )
+  const searchBox = window.document.querySelector('.dshgn_search')
+  const setInput = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  setInput.call(searchBox, '')
+  searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(400)
+  const allRow = Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+    const label = el.querySelector('.dshgn_treeName')
+    return label !== null && (label.textContent || '').trim() === '全部笔记'
+  })
+  if (allRow !== undefined) {
+    allRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(200)
+  }
+
+  const name = '补写验收-还没写的那一篇'
+  const source = await post('/getnote/create', {
+    dir: '补写验收',
+    title: '补写验收-引用方',
+    content: ['# 补写验收-引用方', '', `这里提到 [[${name}]]。`, ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-create-missing-source',
+  })
+  assert.ok(source.path !== undefined, '引用方该建得出来')
+
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+
+  const card = await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_card')).find(
+        (el) => el.getAttribute('title') === source.path,
+      ) || null,
+    8000,
+    '引用方那一篇',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 8000, '打开那一篇')
+
+  const dead = await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_md .dshgn_wikilink')).find(
+        (el) => (el.textContent || '').trim() === name,
+      ) || null,
+    6000,
+    '那条还没写的双链',
+  )
+  assert.ok(String(dead.className).includes('dshgn_wikilinkDead'), '还没写的该暗着')
+
+  dead.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const fixBtn = await waitFor(
+    () => window.document.querySelector('.dshgn_error .dshgn_errorBtn'),
+    6000,
+    '报错行里的补救按钮',
+  )
+  assert.ok(
+    String(fixBtn.textContent || '').includes(name),
+    `按钮该说清要写哪一篇，实际 ${fixBtn.textContent}`,
+  )
+  assert.ok(
+    String(fixBtn.getAttribute('title') || '').includes('同一个目录') ||
+      String(fixBtn.getAttribute('title') || '').includes('目录'),
+    '悬停该说清会落在哪儿',
+  )
+
+  fixBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(
+    () => String((window.document.querySelector('.dshgn_notePath') || {}).textContent || '').includes(name),
+    8000,
+    '建完当场打开',
+  )
+  assert.equal(
+    window.document.querySelector('.dshgn_notePath').textContent,
+    `补写验收/${name}.md`,
+    '落在引用方那一篇所在的目录里',
+  )
+  assert.equal(window.document.querySelector('.dshgn_error'), null, '建好之后那句「找不到」该收掉')
+
+  // 回到引用方那一篇：那条双链现在指得到了
+  const back = window.document.querySelector('.dshgn_noteBack')
+  back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+  const cardAgain = await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_card')).find(
+        (el) => el.getAttribute('title') === source.path,
+      ) || null,
+    8000,
+    '回到列表',
+  )
+  cardAgain.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 8000, '再打开引用方')
+  const link = await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_md .dshgn_wikilink')).find(
+        (el) => (el.textContent || '').trim() === name,
+      ) || null,
+    6000,
+    '那条双链',
+  )
+  assert.equal(
+    String(link.className).includes('dshgn_wikilinkDead'),
+    false,
+    '补上之后不该再暗着',
+  )
+
+  window.document.querySelector('.dshgn_noteBack').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 8000, '退回列表')
+})

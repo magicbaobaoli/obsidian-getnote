@@ -8611,6 +8611,9 @@ var LEX = {
     "note.fontSize.m": "\u6807\u51C6",
     "note.fontSize.l": "\u5927\u5B57",
     "note.wikilinkMissing": "\u5E93\u91CC\u627E\u4E0D\u5230\u300C{name}\u300D\u8FD9\u7BC7\u7B14\u8BB0",
+    "note.createMissing": "\u5199\u4E00\u7BC7\u300C{name}\u300D",
+    "note.createMissingHint": "\u5EFA\u5728\u5F53\u524D\u8FD9\u4E00\u7BC7\u6240\u5728\u7684\u76EE\u5F55\u91CC\uFF0C\u5EFA\u5B8C\u5F53\u573A\u6253\u5F00",
+    "note.createMissingDone": "\u300C{name}\u300D\u5DF2\u7ECF\u5EFA\u597D\u4E86",
     "note.anchorMissing": "\u8FD9\u4E00\u7BC7\u91CC\u6CA1\u6709\u300C{name}\u300D\u8FD9\u4E00\u8282",
     "note.blockRef": "\u672C\u9875\u67D0\u4E00\u6BB5",
     "note.pickTag": "\u7B5B\u8FD9\u4E2A\u6807\u7B7E",
@@ -9088,6 +9091,9 @@ var LEX = {
     "note.fontSize.m": "Normal",
     "note.fontSize.l": "Large",
     "note.wikilinkMissing": 'No note named "{name}" in this vault',
+    "note.createMissing": 'Create "{name}"',
+    "note.createMissingHint": "Lands in the same folder as this note and opens right away",
+    "note.createMissingDone": '"{name}" is ready',
     "note.anchorMissing": 'No section called "{name}" in this note',
     "note.blockRef": "A paragraph on this page",
     "note.pickTag": "Filter by this tag",
@@ -9565,6 +9571,9 @@ var LEX = {
     "note.fontSize.m": "Normaal",
     "note.fontSize.l": "Groot",
     "note.wikilinkMissing": "Geen notitie met de naam \u2018{name}\u2019 in deze map",
+    "note.createMissing": "\u2018{name}\u2019 aanmaken",
+    "note.createMissingHint": "Komt in dezelfde map als deze notitie en opent meteen",
+    "note.createMissingDone": "\u2018{name}\u2019 staat klaar",
     "note.anchorMissing": "Geen kop met de naam \u2018{name}\u2019 in deze notitie",
     "note.blockRef": "Een alinea op deze pagina",
     "note.pickTag": "Filter op deze tag",
@@ -12250,7 +12259,11 @@ var CSS = `
   background:var(--dsw-alias-interactive-bg-hover);font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,monospace);
   font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary);white-space:pre-wrap}
 .dshgn_error{padding:8px 10px;border-radius:8px;font-size:11.5px;line-height:1.6;
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
   color:var(--dsw-alias-state-error-primary);background:var(--dsw-alias-interactive-bg-hover)}
+/* \u62A5\u9519\u884C\u91CC\u90A3\u9897\u8865\u6551\u6309\u94AE\uFF1A\u6587\u6848\u7528\u4E3B\u8272\u800C\u4E0D\u662F\u9519\u8BEF\u8272\uFF0C\u5B83\u662F\u4E00\u6761\u51FA\u8DEF\u4E0D\u662F\u53C8\u4E00\u53E5\u574F\u6D88\u606F */
+.dshgn_errorBtn{flex:none;height:24px;padding:0 9px;font-size:11px;
+  color:var(--dsw-alias-brand-primary);box-shadow:inset 0 0 0 0.5px var(--dsw-alias-brand-primary)}
 .dshgn_toast{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);z-index:20;
   display:flex;align-items:center;gap:6px;padding:7px 13px;border-radius:9px;
   background:var(--dsw-alias-toast-bg);color:var(--dsw-alias-toast-label);
@@ -12915,6 +12928,7 @@ function GetnotePage() {
   const [newDir, setNewDir] = h2("");
   const [newDirAt, setNewDirAt] = h2(null);
   const [newDirIndex, setNewDirIndex] = h2(null);
+  const [missingRef, setMissingRef] = h2("");
   const [helpOpen, setHelpOpen] = h2(false);
   const helpOpenRef = A2(false);
   helpOpenRef.current = helpOpen;
@@ -13107,9 +13121,11 @@ function GetnotePage() {
         setCurrent(null);
         setDraft(null);
         setError(null);
+        setMissingRef("");
         return;
       }
       setError(null);
+      setMissingRef("");
       try {
         const note = await api(`/read?path=${encodeURIComponent(path)}`);
         if (openSeq.current !== seq) return;
@@ -13240,6 +13256,7 @@ function GetnotePage() {
         return;
       }
       setError(t4("note.wikilinkMissing").replace("{name}", wanted));
+      setMissingRef(wanted);
     },
     [current, entries, openNote, requestAnchor, status, t4]
   );
@@ -13787,6 +13804,39 @@ ${insert}
       }
     },
     [openNote, refresh, showToast, t4]
+  );
+  const createMissing = q2(
+    async (name) => {
+      const title = String(name || "").trim().replace(/^\/+|\/+$/g, "");
+      if (title === "") return;
+      setBusy(true);
+      try {
+        const here = current !== null && typeof current.path === "string" ? current.path : "";
+        const slash = here.lastIndexOf("/");
+        const dir = slash === -1 ? "" : here.slice(0, slash);
+        const created = await api("/create", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            dir,
+            title,
+            content: `# ${title}
+
+`,
+            withDatePrefix: false,
+            requestId: requestId()
+          })
+        });
+        showToast(t4("note.createMissingDone").replace("{name}", title));
+        await refresh();
+        await openNote(created.path);
+      } catch (err) {
+        setError(err && err.message ? err.message : String(err));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [current, openNote, refresh, showToast, t4]
   );
   const syncCurrent = q2(
     async (direction) => {
@@ -15271,7 +15321,25 @@ ${insert}
         "data-has-note": current !== null ? "true" : "false"
       },
       head,
-      error2 !== null ? h4("div", { className: "dshgn_error", role: "alert" }, `${t4("error.prefix")}: ${error2}`) : null,
+      error2 !== null ? h4(
+        "div",
+        { className: "dshgn_error", role: "alert" },
+        h4("span", null, `${t4("error.prefix")}: ${error2}`),
+        // 报「找不到」的同时把那一步也递到手上：这一篇本来就是
+        // 用户想写的，光报错等于让他自己再走一遍新建流程。
+        missingRef === "" ? null : h4(
+          "button",
+          {
+            type: "button",
+            className: "dshgn_btn dshgn_errorBtn",
+            title: t4("note.createMissingHint"),
+            disabled: busy,
+            onClick: () => void createMissing(missingRef)
+          },
+          h4(Icon, { name: "plus", size: 12 }),
+          t4("note.createMissing").replace("{name}", missingRef)
+        )
+      ) : null,
       // key 用 tab：切换页签时 React 会换掉整个节点，动画才会从头播一遍。
       // 不加 key 的话 React 复用同一个 DOM，transition 没有「变化」可播，
       // 表现就是切页签时内容硬跳一下。

@@ -789,6 +789,9 @@ async function saveFile(url, filename) {
         'note.fontSize.m': '标准',
         'note.fontSize.l': '大字',
         'note.wikilinkMissing': '库里找不到「{name}」这篇笔记',
+        'note.createMissing': '写一篇「{name}」',
+        'note.createMissingHint': '建在当前这一篇所在的目录里，建完当场打开',
+        'note.createMissingDone': '「{name}」已经建好了',
         'note.anchorMissing': '这一篇里没有「{name}」这一节',
         'note.blockRef': '本页某一段',
         'note.pickTag': '筛这个标签',
@@ -1270,6 +1273,9 @@ async function saveFile(url, filename) {
         'note.fontSize.m': 'Normal',
         'note.fontSize.l': 'Large',
         'note.wikilinkMissing': 'No note named "{name}" in this vault',
+        'note.createMissing': 'Create "{name}"',
+        'note.createMissingHint': 'Lands in the same folder as this note and opens right away',
+        'note.createMissingDone': '"{name}" is ready',
         'note.anchorMissing': 'No section called "{name}" in this note',
         'note.blockRef': 'A paragraph on this page',
         'note.pickTag': 'Filter by this tag',
@@ -1750,6 +1756,9 @@ async function saveFile(url, filename) {
         'note.fontSize.m': 'Normaal',
         'note.fontSize.l': 'Groot',
         'note.wikilinkMissing': 'Geen notitie met de naam ‘{name}’ in deze map',
+        'note.createMissing': '‘{name}’ aanmaken',
+        'note.createMissingHint': 'Komt in dezelfde map als deze notitie en opent meteen',
+        'note.createMissingDone': '‘{name}’ staat klaar',
         'note.anchorMissing': 'Geen kop met de naam ‘{name}’ in deze notitie',
         'note.blockRef': 'Een alinea op deze pagina',
         'note.pickTag': 'Filter op deze tag',
@@ -5194,7 +5203,11 @@ async function saveFile(url, filename) {
   background:var(--dsw-alias-interactive-bg-hover);font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,monospace);
   font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary);white-space:pre-wrap}
 .dshgn_error{padding:8px 10px;border-radius:8px;font-size:11.5px;line-height:1.6;
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
   color:var(--dsw-alias-state-error-primary);background:var(--dsw-alias-interactive-bg-hover)}
+/* 报错行里那颗补救按钮：文案用主色而不是错误色，它是一条出路不是又一句坏消息 */
+.dshgn_errorBtn{flex:none;height:24px;padding:0 9px;font-size:11px;
+  color:var(--dsw-alias-brand-primary);box-shadow:inset 0 0 0 0.5px var(--dsw-alias-brand-primary)}
 .dshgn_toast{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);z-index:20;
   display:flex;align-items:center;gap:6px;padding:7px 13px;border-radius:9px;
   background:var(--dsw-alias-toast-bg);color:var(--dsw-alias-toast-label);
@@ -5939,6 +5952,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       const [newDir, setNewDir] = React.useState('')
       const [newDirAt, setNewDirAt] = React.useState(null)
       const [newDirIndex, setNewDirIndex] = React.useState(null)
+      // 点了指向不存在笔记的双链：那一条的名字留在这里，界面上就多一颗
+      // 「写一篇」的按钮。以前只报一句「库里找不到」，可那一刻用户其实
+      // 就想把这一篇写出来——还得自己去新建、自己补标题、自己放对目录。
+      const [missingRef, setMissingRef] = React.useState('')
 
       // 快捷键速查表。面板里能按的键散在编辑区提示行和按钮 title 里，
       // 谁也不会一个个去发现：这张表把散落的键位收在一处，按 ? 或点顶栏那个问号就能翻。
@@ -6219,9 +6236,11 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             setCurrent(null)
             setDraft(null)
             setError(null)
+            setMissingRef('')
             return
           }
           setError(null)
+          setMissingRef('')
           try {
             const note = await api(`/read?path=${encodeURIComponent(path)}`)
             if (openSeq.current !== seq) return
@@ -6402,6 +6421,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             return
           }
           setError(t('note.wikilinkMissing').replace('{name}', wanted))
+          setMissingRef(wanted)
         },
         [current, entries, openNote, requestAnchor, status, t],
       )
@@ -7080,6 +7100,43 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           }
         },
         [openNote, refresh, showToast, t],
+      )
+
+      // 双链指到一篇还不存在的笔记：就地把它建出来。
+      // 名字照双链里写的那个来——用户写下 [[某某]] 时脑子里就是这个名字；
+      // 落在当前这一篇所在的目录里（两篇本来就该挨着），建完当场打开。
+      // 不叠今天的日期前缀：那是「今天新建一篇」的习惯，这里是「补上我
+      // 刚才写下的那个名字」，多一个日期就指不回来了。
+      const createMissing = React.useCallback(
+        async (name) => {
+          const title = String(name || '').trim().replace(/^\/+|\/+$/g, '')
+          if (title === '') return
+          setBusy(true)
+          try {
+            const here = current !== null && typeof current.path === 'string' ? current.path : ''
+            const slash = here.lastIndexOf('/')
+            const dir = slash === -1 ? '' : here.slice(0, slash)
+            const created = await api('/create', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({
+                dir,
+                title,
+                content: `# ${title}\n\n`,
+                withDatePrefix: false,
+                requestId: requestId(),
+              }),
+            })
+            showToast(t('note.createMissingDone').replace('{name}', title))
+            await refresh()
+            await openNote(created.path)
+          } catch (err) {
+            setError(err && err.message ? err.message : String(err))
+          } finally {
+            setBusy(false)
+          }
+        },
+        [current, openNote, refresh, showToast, t],
       )
 
       // B1 单篇同步：把当前这篇推上云端 / 从云端拉下来。
@@ -8764,7 +8821,29 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             'data-has-note': current !== null ? 'true' : 'false',
           },
           head,
-          error !== null ? h('div', { className: 'dshgn_error', role: 'alert' }, `${t('error.prefix')}: ${error}`) : null,
+          error !== null
+            ? h(
+                'div',
+                { className: 'dshgn_error', role: 'alert' },
+                h('span', null, `${t('error.prefix')}: ${error}`),
+                // 报「找不到」的同时把那一步也递到手上：这一篇本来就是
+                // 用户想写的，光报错等于让他自己再走一遍新建流程。
+                missingRef === ''
+                  ? null
+                  : h(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'dshgn_btn dshgn_errorBtn',
+                        title: t('note.createMissingHint'),
+                        disabled: busy,
+                        onClick: () => void createMissing(missingRef),
+                      },
+                      h(Icon, { name: 'plus', size: 12 }),
+                      t('note.createMissing').replace('{name}', missingRef),
+                    ),
+              )
+            : null,
           // key 用 tab：切换页签时 React 会换掉整个节点，动画才会从头播一遍。
           // 不加 key 的话 React 复用同一个 DOM，transition 没有「变化」可播，
           // 表现就是切页签时内容硬跳一下。
