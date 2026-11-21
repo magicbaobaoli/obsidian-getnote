@@ -911,6 +911,9 @@ async function saveFile(url, filename) {
         'todos.unticked': '勾掉这一篇的 {n} 条',
         'todos.untickedDone': '这一篇的 {n} 条都勾掉了',
         'todos.atLine': '第 {n} 行',
+        'todos.fold': '收起这一篇',
+        'todos.unfold': '展开这一篇',
+        'todos.folded': '这一篇的 {n} 条收起来了',
         'trash.desc': '删掉的笔记先放这里，随时可以恢复。恢复只是把文件搬回库里，不碰内容。',
         'trash.empty': '回收站是空的',
         'trash.emptyHint': '在笔记列表里点删除，文件会先到这里。清空才会真的删。',
@@ -1445,6 +1448,9 @@ async function saveFile(url, filename) {
       'todos.unticked': 'Tick all {n} in this note',
       'todos.untickedDone': 'Ticked off {n} in this note',
       'todos.atLine': 'line {n}',
+      'todos.fold': 'Collapse this note',
+      'todos.unfold': 'Expand this note',
+      'todos.folded': '{n} in this note collapsed',
         'trash.desc': 'Deleted notes wait here and can be restored. Restoring just moves the file back.',
         'trash.empty': 'Trash is empty',
         'trash.emptyHint': 'Deleting a note moves it here first. Only purging really deletes it.',
@@ -1977,6 +1983,9 @@ async function saveFile(url, filename) {
       'todos.unticked': 'Alle {n} in deze notitie afvinken',
       'todos.untickedDone': '{n} in deze notitie afgevinkt',
       'todos.atLine': 'regel {n}',
+      'todos.fold': 'Deze notitie inklappen',
+      'todos.unfold': 'Deze notitie uitklappen',
+      'todos.folded': '{n} in deze notitie ingeklapt',
         'trash.desc': 'Verwijderde notities wachten hier en kunnen worden hersteld. Herstellen zet het bestand gewoon terug.',
         'trash.empty': 'De prullenbak is leeg',
         'trash.emptyHint': 'Een notitie verwijderen verplaatst hem eerst hierheen. Pas leegmaken verwijdert echt.',
@@ -5966,6 +5975,11 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
 .dshgn_rowBtnDanger:hover{background:rgba(255,255,255,.18);color:var(--dsw-alias-state-error-primary)}
 /* 标签项外层：给行内菜单留位置，同时避免 button 套 button */
 .dshgn_tagWrap{display:inline-flex;align-items:center;gap:2px;max-width:100%;min-width:0}
+.dshgn_todoFold{appearance:none;flex:none;display:inline-flex;align-items:center;justify-content:center;width:12px;height:16px;padding:0;border:0;border-radius:3px;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer}
+.dshgn_todoFold:hover{color:var(--dsw-alias-label-primary);background:rgba(255,255,255,.14)}
+.dshgn_todoFold:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_todoFold svg{transform:rotate(90deg);transition:transform .12s ease}
+.dshgn_todoFold[data-folded="true"] svg{transform:rotate(0deg)}
 .dshgn_tagFold{appearance:none;flex:none;display:inline-flex;align-items:center;justify-content:center;width:12px;height:16px;padding:0;border:0;border-radius:3px;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer}
 .dshgn_tagFold:hover{color:var(--dsw-alias-label-primary);background:rgba(255,255,255,.14)}
 .dshgn_tagFold:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
@@ -12469,6 +12483,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       const [truncated, setTruncated] = React.useState(false)
       const [loading, setLoading] = React.useState(false)
       const [busy, setBusy] = React.useState('')
+      // 收起来的篇（记路径）。一篇里塞十几条时，清单会被这一篇撑满，别的篇
+      // 全被顶到屏幕外面去；组头还留着，所以收起来不等于「这篇没待办了」。
+      // 和左栏目录/标签的折叠同一套：只活在这次会话里，不落盘。
+      const [foldedGroups, setFoldedGroups] = React.useState(() => new Set())
 
       const load = React.useCallback(async () => {
         setLoading(true)
@@ -12572,6 +12590,16 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         [load, onChanged, onError, showToast, t],
       )
 
+      // 收/展一篇的待办：只改这一次会话里的折叠状态，不碰文件、不重查。
+      const toggleGroupFold = React.useCallback((path) => {
+        setFoldedGroups((prev) => {
+          const next = new Set(prev)
+          if (next.has(path)) next.delete(path)
+          else next.add(path)
+          return next
+        })
+      }, [])
+
       const list = items === null ? [] : items
       // 按篇分组：几十条待办散在七八篇里时，光看每行「第几行」不知道还剩几篇没弄，
       // 也不知道哪几篇其实已经清空了。顺序沿用后端给的（先按路径、再按行号）。
@@ -12647,6 +12675,22 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                     h(
                       'div',
                       { className: 'dshgn_todoGroup', title: group.path },
+                      // 这一篇的几条能一起收起来：一篇里塞十几条时，清单会被它
+                      // 一个人撑满，别的篇全被顶出屏幕。收起来之后组头还在，
+                      // 数也还在——「这一篇还剩几条」这个信息不能跟着行一起消失。
+                      h(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'dshgn_todoFold',
+                          title: foldedGroups.has(group.path) ? t('todos.unfold') : t('todos.fold'),
+                          'aria-label': foldedGroups.has(group.path) ? t('todos.unfold') : t('todos.fold'),
+                          'aria-expanded': foldedGroups.has(group.path) ? 'false' : 'true',
+                          'data-folded': foldedGroups.has(group.path) ? 'true' : 'false',
+                          onClick: () => toggleGroupFold(group.path),
+                        },
+                        h(Icon, { name: 'chevron', size: 11 }),
+                      ),
                       h(
                         'button',
                         {
@@ -12673,7 +12717,16 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                         t('todos.unticked').replace('{n}', String(group.items.length)),
                       ),
                     ),
-                    group.items.map((item) => {
+                    foldedGroups.has(group.path)
+                      ? h(
+                          'div',
+                          { className: 'dshgn_sectionDesc' },
+                          t('todos.folded').replace('{n}', String(group.items.length)),
+                        )
+                      : null,
+                    foldedGroups.has(group.path)
+                      ? null
+                      : group.items.map((item) => {
                   const key = `${item.path}#${item.index}`
                   return h(
                     'div',

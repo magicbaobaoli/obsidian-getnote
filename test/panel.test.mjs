@@ -12154,3 +12154,101 @@ test('回收站里能就地看一眼删掉的那篇写的是什么，不用先�
 
   await clickTab('笔记')
 })
+test('待办页里每一篇都能收起来，收起来之后组头和条数还留着', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+  await clickTab('笔记')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+  await post('/getnote/create', {
+    dir: '待办折叠验收',
+    title: '待办折叠-话多的那一篇',
+    content: [
+      '# 待办折叠-话多的那一篇',
+      '',
+      '- [ ] 折叠验收第一条',
+      '- [ ] 折叠验收第二条',
+      '- [ ] 折叠验收第三条',
+      '',
+    ].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-todo-fold-a',
+  })
+  await post('/getnote/create', {
+    dir: '待办折叠验收',
+    title: '待办折叠-另一篇',
+    content: ['# 待办折叠-另一篇', '', '- [ ] 折叠验收别的一篇的那一条', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-todo-fold-b',
+  })
+
+  await clickTab('待办')
+
+  const rowsOf = (needle) =>
+    Array.from(window.document.querySelectorAll('.dshgn_todoRow')).filter((el) =>
+      (el.textContent || '').includes(needle),
+    )
+  const groupHeadOf = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_todoGroup')).find((el) =>
+      (el.getAttribute('title') || '').endsWith('待办折叠-话多的那一篇.md'),
+    ) || null
+  const foldedHintOf = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_sectionDesc')).find((el) =>
+      (el.textContent || '').includes('收起来了'),
+    ) || null
+
+  await waitFor(() => groupHeadOf() !== null, 8000, '待办页里要出现这一篇的组头')
+  await waitFor(() => rowsOf('折叠验收第一条').length === 1, 8000, '这一篇的三条都在单子上')
+  assert.equal(rowsOf('折叠验收第').length, 3, '收着的时候这一篇该摆三条')
+  assert.equal(rowsOf('折叠验收别的一篇').length, 1, '另一篇的那一条也在')
+
+  const head = groupHeadOf()
+  const foldBtn = head.querySelector('.dshgn_todoFold')
+  assert.ok(foldBtn !== null, '组头前面得有一颗能收起来的小箭头')
+  assert.equal(foldBtn.getAttribute('data-folded'), 'false', '一开始是展开的')
+  assert.equal(foldBtn.getAttribute('aria-expanded'), 'true', '一开始是展开的')
+  assert.equal(foldBtn.getAttribute('title'), '收起这一篇')
+
+  foldBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rowsOf('折叠验收第').length === 0, 5000, '收起来之后这一篇的行该全不见')
+
+  // 收起来不等于「这一篇没待办了」：组头、篇名、条数、那颗「勾掉这一篇的 N 条」都得还在。
+  const stillHead = groupHeadOf()
+  assert.ok(stillHead !== null, '收起来之后组头不能跟着消失')
+  assert.ok((stillHead.textContent || '').includes('待办折叠-话多的那一篇'), '组头还写着篇名')
+  assert.ok((stillHead.textContent || '').includes('3'), '组头还标着这一篇有几条：' + stillHead.textContent)
+  assert.ok(stillHead.querySelector('.dshgn_todoGroupAll') !== null, '「勾掉这一篇的 N 条」也得留着')
+  assert.equal(
+    stillHead.querySelector('.dshgn_todoFold').getAttribute('data-folded'),
+    'true',
+    '箭头要翻过来',
+  )
+  assert.equal(stillHead.querySelector('.dshgn_todoFold').getAttribute('title'), '展开这一篇')
+  assert.equal(stillHead.querySelector('.dshgn_todoFold').getAttribute('aria-expanded'), 'false')
+
+  const hint = foldedHintOf()
+  assert.ok(hint !== null, '收起来的地方要说一句，不能留一片空白')
+  assert.ok((hint.textContent || '').includes('这一篇的 3 条收起来了'), '要说清收了几条：' + (hint ? hint.textContent : ''))
+
+  // 别的篇不受影响——收的是这一篇，不是整页。
+  assert.equal(rowsOf('折叠验收别的一篇').length, 1, '别的篇的行不该跟着收起来')
+
+  // 再点一下摊开，三条原样回来、那句说明收回去。
+  groupHeadOf().querySelector('.dshgn_todoFold').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rowsOf('折叠验收第').length === 3, 5000, '再点一下三条该回来')
+  assert.equal(foldedHintOf(), null, '摊开之后那句说明该收回去')
+  assert.equal(
+    groupHeadOf().querySelector('.dshgn_todoFold').getAttribute('data-folded'),
+    'false',
+    '箭头要转回来',
+  )
+
+  await clickTab('笔记')
+})

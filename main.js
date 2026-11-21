@@ -8762,6 +8762,9 @@ var LEX = {
     "todos.unticked": "\u52FE\u6389\u8FD9\u4E00\u7BC7\u7684 {n} \u6761",
     "todos.untickedDone": "\u8FD9\u4E00\u7BC7\u7684 {n} \u6761\u90FD\u52FE\u6389\u4E86",
     "todos.atLine": "\u7B2C {n} \u884C",
+    "todos.fold": "\u6536\u8D77\u8FD9\u4E00\u7BC7",
+    "todos.unfold": "\u5C55\u5F00\u8FD9\u4E00\u7BC7",
+    "todos.folded": "\u8FD9\u4E00\u7BC7\u7684 {n} \u6761\u6536\u8D77\u6765\u4E86",
     "trash.desc": "\u5220\u6389\u7684\u7B14\u8BB0\u5148\u653E\u8FD9\u91CC\uFF0C\u968F\u65F6\u53EF\u4EE5\u6062\u590D\u3002\u6062\u590D\u53EA\u662F\u628A\u6587\u4EF6\u642C\u56DE\u5E93\u91CC\uFF0C\u4E0D\u78B0\u5185\u5BB9\u3002",
     "trash.empty": "\u56DE\u6536\u7AD9\u662F\u7A7A\u7684",
     "trash.emptyHint": "\u5728\u7B14\u8BB0\u5217\u8868\u91CC\u70B9\u5220\u9664\uFF0C\u6587\u4EF6\u4F1A\u5148\u5230\u8FD9\u91CC\u3002\u6E05\u7A7A\u624D\u4F1A\u771F\u7684\u5220\u3002",
@@ -9291,6 +9294,9 @@ var LEX = {
     "todos.unticked": "Tick all {n} in this note",
     "todos.untickedDone": "Ticked off {n} in this note",
     "todos.atLine": "line {n}",
+    "todos.fold": "Collapse this note",
+    "todos.unfold": "Expand this note",
+    "todos.folded": "{n} in this note collapsed",
     "trash.desc": "Deleted notes wait here and can be restored. Restoring just moves the file back.",
     "trash.empty": "Trash is empty",
     "trash.emptyHint": "Deleting a note moves it here first. Only purging really deletes it.",
@@ -9819,6 +9825,9 @@ var LEX = {
     "todos.unticked": "Alle {n} in deze notitie afvinken",
     "todos.untickedDone": "{n} in deze notitie afgevinkt",
     "todos.atLine": "regel {n}",
+    "todos.fold": "Deze notitie inklappen",
+    "todos.unfold": "Deze notitie uitklappen",
+    "todos.folded": "{n} in deze notitie ingeklapt",
     "trash.desc": "Verwijderde notities wachten hier en kunnen worden hersteld. Herstellen zet het bestand gewoon terug.",
     "trash.empty": "De prullenbak is leeg",
     "trash.emptyHint": "Een notitie verwijderen verplaatst hem eerst hierheen. Pas leegmaken verwijdert echt.",
@@ -13021,6 +13030,11 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
 .dshgn_rowBtnDanger:hover{background:rgba(255,255,255,.18);color:var(--dsw-alias-state-error-primary)}
 /* \u6807\u7B7E\u9879\u5916\u5C42\uFF1A\u7ED9\u884C\u5185\u83DC\u5355\u7559\u4F4D\u7F6E\uFF0C\u540C\u65F6\u907F\u514D button \u5957 button */
 .dshgn_tagWrap{display:inline-flex;align-items:center;gap:2px;max-width:100%;min-width:0}
+.dshgn_todoFold{appearance:none;flex:none;display:inline-flex;align-items:center;justify-content:center;width:12px;height:16px;padding:0;border:0;border-radius:3px;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer}
+.dshgn_todoFold:hover{color:var(--dsw-alias-label-primary);background:rgba(255,255,255,.14)}
+.dshgn_todoFold:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_todoFold svg{transform:rotate(90deg);transition:transform .12s ease}
+.dshgn_todoFold[data-folded="true"] svg{transform:rotate(0deg)}
 .dshgn_tagFold{appearance:none;flex:none;display:inline-flex;align-items:center;justify-content:center;width:12px;height:16px;padding:0;border:0;border-radius:3px;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer}
 .dshgn_tagFold:hover{color:var(--dsw-alias-label-primary);background:rgba(255,255,255,.14)}
 .dshgn_tagFold:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
@@ -18450,6 +18464,7 @@ function TodoPane(props) {
   const [truncated, setTruncated] = h2(false);
   const [loading, setLoading] = h2(false);
   const [busy, setBusy] = h2("");
+  const [foldedGroups, setFoldedGroups] = h2(() => /* @__PURE__ */ new Set());
   const load = q2(async () => {
     setLoading(true);
     try {
@@ -18537,6 +18552,14 @@ function TodoPane(props) {
     },
     [load, onChanged, onError, showToast, t4]
   );
+  const toggleGroupFold = q2((path) => {
+    setFoldedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
   const list = items === null ? [] : items;
   const groups = T2(() => {
     const out = [];
@@ -18603,6 +18626,22 @@ function TodoPane(props) {
           h4(
             "div",
             { className: "dshgn_todoGroup", title: group.path },
+            // 这一篇的几条能一起收起来：一篇里塞十几条时，清单会被它
+            // 一个人撑满，别的篇全被顶出屏幕。收起来之后组头还在，
+            // 数也还在——「这一篇还剩几条」这个信息不能跟着行一起消失。
+            h4(
+              "button",
+              {
+                type: "button",
+                className: "dshgn_todoFold",
+                title: foldedGroups.has(group.path) ? t4("todos.unfold") : t4("todos.fold"),
+                "aria-label": foldedGroups.has(group.path) ? t4("todos.unfold") : t4("todos.fold"),
+                "aria-expanded": foldedGroups.has(group.path) ? "false" : "true",
+                "data-folded": foldedGroups.has(group.path) ? "true" : "false",
+                onClick: () => toggleGroupFold(group.path)
+              },
+              h4(Icon, { name: "chevron", size: 11 })
+            ),
             h4(
               "button",
               {
@@ -18629,7 +18668,12 @@ function TodoPane(props) {
               t4("todos.unticked").replace("{n}", String(group.items.length))
             )
           ),
-          group.items.map((item) => {
+          foldedGroups.has(group.path) ? h4(
+            "div",
+            { className: "dshgn_sectionDesc" },
+            t4("todos.folded").replace("{n}", String(group.items.length))
+          ) : null,
+          foldedGroups.has(group.path) ? null : group.items.map((item) => {
             const key = `${item.path}#${item.index}`;
             return h4(
               "div",
