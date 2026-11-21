@@ -23340,6 +23340,63 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     } catch {
     }
   }
+  /**
+   * 把 boot.txt 读出来。
+   *
+   * 读不到就返回空串：这是诊断用的，自己抛错就把「帮用户说清问题」变成了新的问题。
+   */
+  async readBootTrace() {
+    try {
+      const adapter2 = this.app && this.app.vault ? this.app.vault.adapter : null;
+      const dir = this.app && this.app.vault ? this.app.vault.configDir : ".obsidian";
+      if (!adapter2 || typeof adapter2.read !== "function") return "";
+      const text = await adapter2.read(`${dir}/plugins/getnote-brain/boot.txt`);
+      return typeof text === "string" ? text : "";
+    } catch {
+      return "";
+    }
+  }
+  /**
+   * 设置页里那颗「看最近的轨迹」：把最后几行摊在页面上。
+   *
+   * boot.txt 一直是给开发者看的——用户报「全黑」时得先找到插件目录、再打开一个
+   * 文本文件，这一步对大多数人就已经断了。摊在设置页上，截个图就能说清卡在哪。
+   */
+  async showBootTrace(containerEl) {
+    try {
+      if (!containerEl || typeof containerEl.createEl !== "function") return;
+      const old = typeof containerEl.querySelector === "function" ? containerEl.querySelector(".dshgn_bootTrace") : null;
+      if (old) {
+        if (old.parentNode && typeof old.parentNode.removeChild === "function") {
+          old.parentNode.removeChild(old);
+        } else if (typeof containerEl.removeChild === "function") {
+          containerEl.removeChild(old);
+        }
+      }
+      const text = await this.readBootTrace();
+      const body = text.trim() === "" ? "\u8FD8\u6CA1\u6709\u8F68\u8FF9\uFF08\u63D2\u4EF6\u521A\u88C5\u597D\uFF0C\u6216\u8005\u8FD9\u4E00\u7248\u6CA1\u5199\u8FDB\u53BB\uFF09\u3002" : text;
+      containerEl.createEl("pre", { cls: "dshgn_bootTrace", text: body });
+    } catch {
+    }
+  }
+  /** 设置页里的「复制」：把轨迹放进剪贴板，用户直接粘进对话里。 */
+  async copyBootTrace() {
+    try {
+      const text = await this.readBootTrace();
+      if (text.trim() === "") {
+        new import_obsidian2.Notice("\u5F97\u5230\u5927\u8111\uFF1A\u8FD8\u6CA1\u6709\u542F\u52A8\u8F68\u8FF9");
+        return;
+      }
+      if (typeof navigator === "undefined" || !navigator.clipboard) {
+        new import_obsidian2.Notice("\u5F97\u5230\u5927\u8111\uFF1A\u8FD9\u4E2A\u73AF\u5883\u62FF\u4E0D\u5230\u526A\u8D34\u677F\uFF0C\u53BB\u63D2\u4EF6\u76EE\u5F55\u91CC\u770B boot.txt");
+        return;
+      }
+      await navigator.clipboard.writeText(text);
+      new import_obsidian2.Notice("\u5F97\u5230\u5927\u8111\uFF1A\u542F\u52A8\u8F68\u8FF9\u5DF2\u590D\u5236");
+    } catch {
+      new import_obsidian2.Notice("\u5F97\u5230\u5927\u8111\uFF1A\u590D\u5236\u5931\u8D25\uFF0C\u53BB\u63D2\u4EF6\u76EE\u5F55\u91CC\u770B boot.txt");
+    }
+  }
   onunload() {
     if (typeof this.stopCardAutoImport === "function") {
       this.stopCardAutoImport();
@@ -24103,6 +24160,21 @@ var GetnoteSettingTab = class extends import_obsidian2.PluginSettingTab {
         this.plugin.debugLogging = value === true;
         setDebugLogging(this.plugin.debugLogging);
         await updateSettings({ debugLogging: this.plugin.debugLogging });
+      });
+    });
+    containerEl.createEl("h3", { text: "\u9762\u677F\u6253\u4E0D\u5F00\u7684\u65F6\u5019" });
+    containerEl.createEl("p", {
+      cls: "setting-item-description",
+      text: "\u70B9\u300C\u770B\u6700\u8FD1\u7684\u8F68\u8FF9\u300D\u628A\u8FD9\u6B21\u542F\u52A8\u8D70\u8FC7\u7684\u6BCF\u4E00\u6B65\u644A\u5728\u4E0B\u9762\uFF1B\u8FD8\u662F\u4E00\u7247\u7A7A\u767D\u7684\u8BDD\uFF0C\u70B9\u300C\u590D\u5236\u300D\u628A\u5B83\u8D34\u7ED9\u5F00\u53D1\u8005\u3002"
+    });
+    const traceBox = containerEl.createDiv();
+    new import_obsidian2.Setting(containerEl).setName("\u542F\u52A8\u8F68\u8FF9").setDesc("\u63D2\u4EF6\u52A0\u8F7D\u3001\u672C\u5730\u670D\u52A1\u5C31\u7EEA\u3001\u89C6\u56FE\u6302\u8F7D\u3001\u9996\u5E27\u6E32\u67D3\u5404\u7559\u4E86\u4E00\u884C\u3002").addButton((button) => {
+      button.setButtonText("\u770B\u6700\u8FD1\u7684\u8F68\u8FF9").onClick(() => {
+        void this.plugin.showBootTrace(traceBox);
+      });
+    }).addButton((button) => {
+      button.setButtonText("\u590D\u5236").onClick(() => {
+        void this.plugin.copyBootTrace();
       });
     });
     new import_obsidian2.Setting(containerEl).setName("\u6253\u5F00\u9762\u677F").setDesc("\u4E5F\u53EF\u4EE5\u7528\u5DE6\u4FA7\u680F\u7684\u5927\u8111\u56FE\u6807\uFF0C\u6216\u547D\u4EE4\u9762\u677F\u91CC\u7684\u300C\u6253\u5F00\u5F97\u5230\u5927\u8111\u9762\u677F\u300D\u3002").addButton((button) => {

@@ -79,3 +79,24 @@ body {
 .dshgn_ribbon {
   --icon-color: var(--text-muted);
 }
+
+/*
+ * 设置页里那份启动轨迹。
+ *
+ * 等宽字、可滚动、不换行地保留时间戳对齐——用户截图或粘贴时行首的时间才看得清。
+ * 高度卡在 320px：轨迹最多 200 行，不设上限会把下面的设置项全顶出屏幕。
+ */
+.dshgn_bootTrace {
+  max-height: 320px;
+  margin: 8px 0 16px;
+  padding: 10px 12px;
+  overflow: auto;
+  border-radius: 6px;
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+}

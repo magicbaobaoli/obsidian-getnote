@@ -135,6 +135,19 @@ function fakeModalEl(tag = 'div', opts = {}) {
     click() { for (const fn of el.handlers.click || []) fn() },
     focus() {},
     empty() { el.children.length = 0 },
+    // 设置页里的「看最近的轨迹」会先摘掉上一份再摆新的，这里够用就行：
+    // 只按类名找直接子元素，不做完整的 CSS 选择器。
+    querySelector(sel) {
+      const want = String(sel || '').replace(/^\./, '')
+      if (want === '') return null
+      const hit = el.children.find((child) => String(child.cls || '').split(/\s+/).includes(want))
+      return hit || null
+    },
+    removeChild(child) {
+      const at = el.children.indexOf(child)
+      if (at >= 0) el.children.splice(at, 1)
+      return child
+    },
   }
   return el
 }
@@ -1729,4 +1742,57 @@ test('面板开不出来时把原因写进轨迹、弹一句能看懂的提示�
     lines.some((line) => String(line).includes('activateView 失败')),
     '轨迹里要留下这一句：' + lines.join(' | '),
   )
+})
+test('设置页里能把启动轨迹摊出来、也能一次抄走，读不到时说一句而不是空着', async () => {
+  await adapter.mkdir('得到大脑')
+  // 假 adapter 和真宿主一样不会替你建父目录：插件目录不在，探针那一下会被 catch 吞掉，
+  // boot.txt 根本写不出来。先把目录摆好，再写一行。
+  await adapter.mkdir('.obsidian')
+  await adapter.mkdir('.obsidian/plugins')
+  await adapter.mkdir('.obsidian/plugins/getnote-brain')
+  plugin.probe('设置页轨迹验收')
+  await new Promise((done) => setTimeout(done, 30))
+
+  // ① 摊出来：pre 里就是 boot.txt 的原文，第二次点不会叠两份
+  const box = fakeModalEl('div')
+  await plugin.showBootTrace(box)
+  const pre = box.children.find((child) => String(child.cls || '') === 'dshgn_bootTrace')
+  assert.ok(pre, '设置页里应该摆出一块轨迹')
+  assert.ok(pre.text.includes('设置页轨迹验收'), '轨迹里要有刚写进去的那一行')
+  await plugin.showBootTrace(box)
+  assert.equal(
+    box.children.filter((child) => String(child.cls || '') === 'dshgn_bootTrace').length,
+    1,
+    '再点一次是换掉那一份，不是叠一份',
+  )
+
+  // ② 复制：写进剪贴板的应该就是那一份原文
+  const realClipboard = globalThis.navigator && globalThis.navigator.clipboard
+  let copied = ''
+  Object.defineProperty(globalThis, 'navigator', {
+    value: { clipboard: { writeText: async (text) => { copied = String(text) } } },
+    configurable: true,
+    writable: true,
+  })
+  try {
+    await plugin.copyBootTrace()
+    assert.ok(copied.includes('设置页轨迹验收'), '复制到的应该就是轨迹原文')
+  } finally {
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { clipboard: realClipboard },
+      configurable: true,
+      writable: true,
+    })
+  }
+
+  // ③ 读不到的时候不空着：返回空串，设置页里写一句人话
+  const realAdapter = app.vault.adapter
+  app.vault.adapter = { async read() { throw new Error('ENOENT') } }
+  assert.equal(await plugin.readBootTrace(), '', '读不到就返回空串，不抛')
+  const emptyBox = fakeModalEl('div')
+  await plugin.showBootTrace(emptyBox)
+  const emptyPre = emptyBox.children.find((child) => String(child.cls || '') === 'dshgn_bootTrace')
+  assert.ok(emptyPre, '读不到也要摆一块，说明没有轨迹')
+  assert.ok(emptyPre.text.includes('还没有轨迹'), '读不到时要说一句人话')
+  app.vault.adapter = realAdapter
 })

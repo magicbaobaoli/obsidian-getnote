@@ -795,6 +795,71 @@ export default class GetnoteObsidianPlugin extends Plugin {
     }
   }
 
+  /**
+   * 把 boot.txt 读出来。
+   *
+   * 读不到就返回空串：这是诊断用的，自己抛错就把「帮用户说清问题」变成了新的问题。
+   */
+  async readBootTrace() {
+    try {
+      const adapter = this.app && this.app.vault ? this.app.vault.adapter : null
+      const dir = this.app && this.app.vault ? this.app.vault.configDir : '.obsidian'
+      if (!adapter || typeof adapter.read !== 'function') return ''
+      const text = await adapter.read(`${dir}/plugins/getnote-brain/boot.txt`)
+      return typeof text === 'string' ? text : ''
+    } catch {
+      return ''
+    }
+  }
+
+  /**
+   * 设置页里那颗「看最近的轨迹」：把最后几行摊在页面上。
+   *
+   * boot.txt 一直是给开发者看的——用户报「全黑」时得先找到插件目录、再打开一个
+   * 文本文件，这一步对大多数人就已经断了。摊在设置页上，截个图就能说清卡在哪。
+   */
+  async showBootTrace(containerEl) {
+    try {
+      if (!containerEl || typeof containerEl.createEl !== 'function') return
+      const old = typeof containerEl.querySelector === 'function'
+        ? containerEl.querySelector('.dshgn_bootTrace')
+        : null
+      // 摘上一份：优先走它自己的 parentNode，拿不到就退回容器（宿主里两者都在，
+      // 但换一份实现时 parentNode 未必有，那时候直接往容器上摘更稳）。
+      if (old) {
+        if (old.parentNode && typeof old.parentNode.removeChild === 'function') {
+          old.parentNode.removeChild(old)
+        } else if (typeof containerEl.removeChild === 'function') {
+          containerEl.removeChild(old)
+        }
+      }
+      const text = await this.readBootTrace()
+      const body = text.trim() === '' ? '还没有轨迹（插件刚装好，或者这一版没写进去）。' : text
+      containerEl.createEl('pre', { cls: 'dshgn_bootTrace', text: body })
+    } catch {
+      // 诊断失败不影响功能
+    }
+  }
+
+  /** 设置页里的「复制」：把轨迹放进剪贴板，用户直接粘进对话里。 */
+  async copyBootTrace() {
+    try {
+      const text = await this.readBootTrace()
+      if (text.trim() === '') {
+        new Notice('得到大脑：还没有启动轨迹')
+        return
+      }
+      if (typeof navigator === 'undefined' || !navigator.clipboard) {
+        new Notice('得到大脑：这个环境拿不到剪贴板，去插件目录里看 boot.txt')
+        return
+      }
+      await navigator.clipboard.writeText(text)
+      new Notice('得到大脑：启动轨迹已复制')
+    } catch {
+      new Notice('得到大脑：复制失败，去插件目录里看 boot.txt')
+    }
+  }
+
   onunload() {
     if (typeof this.stopCardAutoImport === 'function') {
       this.stopCardAutoImport()
@@ -1682,6 +1747,25 @@ class GetnoteSettingTab extends PluginSettingTab {
           setDebugLogging(this.plugin.debugLogging)
           await settingsStore.updateSettings({ debugLogging: this.plugin.debugLogging })
         })
+      })
+
+    // 面板一片空白的时候，用户能拿出来的东西就只有这一份轨迹。
+    // 以前它躺在 .obsidian/plugins/getnote-brain/boot.txt 里，得先知道有这回事；
+    // 现在摊在设置页上，看得到、抄得走。
+    containerEl.createEl('h3', { text: '面板打不开的时候' })
+    containerEl.createEl('p', {
+      cls: 'setting-item-description',
+      text: '点「看最近的轨迹」把这次启动走过的每一步摊在下面；还是一片空白的话，点「复制」把它贴给开发者。',
+    })
+    const traceBox = containerEl.createDiv()
+    new Setting(containerEl)
+      .setName('启动轨迹')
+      .setDesc('插件加载、本地服务就绪、视图挂载、首帧渲染各留了一行。')
+      .addButton((button) => {
+        button.setButtonText('看最近的轨迹').onClick(() => { void this.plugin.showBootTrace(traceBox) })
+      })
+      .addButton((button) => {
+        button.setButtonText('复制').onClick(() => { void this.plugin.copyBootTrace() })
       })
 
     new Setting(containerEl)
