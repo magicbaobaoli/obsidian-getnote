@@ -23028,6 +23028,16 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
   }
   /** 打开（或聚焦）面板；`newWindow` 用 Obsidian 的独立窗口打开。 */
   async activateView(newWindow = false) {
+    try {
+      await this.openPanelLeaf(newWindow);
+    } catch (error2) {
+      const message = error2 && error2.message ? error2.message : String(error2);
+      this.probe(`activateView \u5931\u8D25\uFF1A${message}`);
+      new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A\u9762\u677F\u6CA1\u80FD\u6253\u5F00 \u2014\u2014 ${message}`);
+    }
+  }
+  /** activateView 的真身：挑叶子、必要时换掉空壳、挂上视图。 */
+  async openPanelLeaf(newWindow) {
     this.probe(`activateView\uFF08\u672C\u5730\u670D\u52A1${this.server ? "\u5728" : "\u4E0D\u5728"}\uFF09`);
     if (!this.server) {
       new import_obsidian2.Notice("\u5F97\u5230\u5927\u8111\uFF1A\u672C\u5730\u670D\u52A1\u8FD8\u6CA1\u5C31\u7EEA\uFF0C\u5148\u770B\u4E00\u773C\u8BBE\u7F6E\u9875\u91CC\u7684\u63D0\u793A\u3002");
@@ -23047,7 +23057,9 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       }
     }
     const leaf = newWindow ? this.app.workspace.openPopoutLeaf({ size: { width: 1100, height: 780 } }) : this.app.workspace.getLeaf(true);
+    this.probe("\u51C6\u5907\u6302\u4E0A\u89C6\u56FE\uFF1A" + (leaf === null || leaf === void 0 ? "\u53F6\u5B50\u662F\u7A7A\u7684" : "\u6709\u53F6\u5B50"));
     await leaf.setViewState({ type: VIEW_TYPE_GETNOTE, active: true });
+    this.probe("setViewState \u5DF2\u8FD4\u56DE");
     this.app.workspace.revealLeaf(leaf);
     if (typeof window !== "undefined" && window && typeof window.setTimeout === "function") {
       window.setTimeout(() => {

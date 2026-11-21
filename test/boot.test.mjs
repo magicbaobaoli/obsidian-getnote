@@ -1691,3 +1691,29 @@ test('onunload 会关掉本地服务', async () => {
   // 库根是 mkdtemp 出来的，测完删掉，别在临时目录里留垃圾
   await rm(BASE, { recursive: true, force: true })
 })
+
+test('面板开不出来时把原因写进轨迹、弹一句能看懂的提示，不留一条没人接的拒绝', async () => {
+  // 调用方几乎都是 `void plugin.activateView()`：里面抛出去就是一条没人接的
+  // Promise 拒绝——屏幕没反应、boot.txt 也一个字不留，用户只能对着黑屏猜。
+  const realGetLeaf = app.workspace.getLeaf
+  // 前面几条用例可能已经把服务停掉了；这里要验的是「挑叶子这一步炸了」的兜底，
+  // 不是「服务没起来」，所以先摆一个占位服务，跑完再还回去。
+  const realServer = plugin.server
+  plugin.server = { origin: 'http://127.0.0.1:1' }
+  app.workspace.getLeaf = () => { throw new Error('宿主不给叶子') }
+  const before = calls.notices.length
+  try {
+    await assert.doesNotReject(() => plugin.activateView())
+  } finally {
+    app.workspace.getLeaf = realGetLeaf
+    plugin.server = realServer
+  }
+  assert.equal(calls.notices.length, before + 1, '开不出来得说一句')
+  assert.match(String(calls.notices[calls.notices.length - 1]), /面板没能打开/, '提示要说明是面板没开成')
+  assert.match(String(calls.notices[calls.notices.length - 1]), /宿主不给叶子/, '提示里要带上真正的原因')
+  const lines = Array.isArray(plugin.probeLines) ? plugin.probeLines : []
+  assert.ok(
+    lines.some((line) => String(line).includes('activateView 失败')),
+    '轨迹里要留下这一句：' + lines.join(' | '),
+  )
+})

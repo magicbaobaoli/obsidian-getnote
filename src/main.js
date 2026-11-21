@@ -1006,6 +1006,20 @@ export default class GetnoteObsidianPlugin extends Plugin {
 
   /** 打开（或聚焦）面板；`newWindow` 用 Obsidian 的独立窗口打开。 */
   async activateView(newWindow = false) {
+    // 整段包一层：调用方基本都是 `void this.activateView()`，里面抛出去就是一条
+    // 没人接的 Promise 拒绝——屏幕上没反应、boot.txt 里也一个字不留，用户只能
+    // 对着黑屏猜。这里自己接住，写进轨迹再弹一句能看懂的话。
+    try {
+      await this.openPanelLeaf(newWindow)
+    } catch (error) {
+      const message = error && error.message ? error.message : String(error)
+      this.probe(`activateView 失败：${message}`)
+      new Notice(`得到大脑：面板没能打开 —— ${message}`)
+    }
+  }
+
+  /** activateView 的真身：挑叶子、必要时换掉空壳、挂上视图。 */
+  async openPanelLeaf(newWindow) {
     this.probe(`activateView（本地服务${this.server ? '在' : '不在'}）`)
     if (!this.server) {
       new Notice('得到大脑：本地服务还没就绪，先看一眼设置页里的提示。')
@@ -1032,7 +1046,9 @@ export default class GetnoteObsidianPlugin extends Plugin {
     const leaf = newWindow
       ? this.app.workspace.openPopoutLeaf({ size: { width: 1100, height: 780 } })
       : this.app.workspace.getLeaf(true)
+    this.probe('准备挂上视图：' + (leaf === null || leaf === undefined ? '叶子是空的' : '有叶子'))
     await leaf.setViewState({ type: VIEW_TYPE_GETNOTE, active: true })
+    this.probe('setViewState 已返回')
     this.app.workspace.revealLeaf(leaf)
     // setViewState 只是把视图摆上去，onOpen 是否真的跑了要另说。1.5 秒后回头
     // 看一眼轨迹里有没有「视图 onOpen 被调用」——没有就说明这条路也不通，
