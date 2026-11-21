@@ -814,6 +814,7 @@ async function saveFile(url, filename) {
         'note.anchorMissing': '这一篇里没有「{name}」这一节',
         'note.blockRef': '本页某一段',
         'note.pickTag': '筛这个标签',
+        'note.pickDir': '筛这个目录',
         'note.moreTags': '还有 {n} 个标签，点开看全部',
         'note.lessTags': '收起',
     'note.footnote': '跳到这条脚注',
@@ -1323,6 +1324,7 @@ async function saveFile(url, filename) {
         'note.anchorMissing': 'No section called "{name}" in this note',
         'note.blockRef': 'A paragraph on this page',
         'note.pickTag': 'Filter by this tag',
+        'note.pickDir': 'Filter by this folder',
         'note.moreTags': '{n} more tags, click to see them all',
         'note.lessTags': 'Less',
     'note.footnote': 'Jump to this footnote',
@@ -1831,6 +1833,7 @@ async function saveFile(url, filename) {
         'note.anchorMissing': 'Geen kop met de naam ‘{name}’ in deze notitie',
         'note.blockRef': 'Een alinea op deze pagina',
         'note.pickTag': 'Filter op deze tag',
+        'note.pickDir': 'Filter op deze map',
         'note.moreTags': 'Nog {n} tags, klik om ze allemaal te zien',
         'note.lessTags': 'Minder',
     'note.footnote': 'Naar deze voetnoot',
@@ -5120,6 +5123,11 @@ async function saveFile(url, filename) {
   overflow:hidden;white-space:nowrap}
 /* 卡片上的标签：和日期、目录挤在同一行，所以只给到能看清的最小尺寸；
    多了就收成 +N，宁可不显示也不让目录被挤掉。 */
+/* 目录做成可点的：和标签胶囊同一个动作（按它筛），只是落在目录那一栏。 */
+.dshgn_cardDir{appearance:none;max-width:120px;padding:0;border:0;background:transparent;
+  color:inherit;font:inherit;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_cardDir:hover{color:var(--dsw-alias-brand-primary);text-decoration:underline}
+.dshgn_cardDir:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dshgn_cardTags{display:inline-flex;align-items:center;gap:3px;min-width:0;overflow:hidden}
 .dshgn_cardTag{appearance:none;max-width:88px;padding:0 5px;border:0.5px solid var(--dsw-alias-border-l2);
   border-radius:999px;background:transparent;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:9px;
@@ -8921,7 +8929,24 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                         'div',
                         { className: 'dshgn_cardMeta' },
                         entry.date ? h('span', null, entry.date) : null,
-                        entry.dir ? h('span', null, entry.dir) : null,
+                        // 目录也点得动：看到一篇在「随手记/录音卡」底下，想知道同一摊里
+                        // 还有哪几篇，以前只能回左栏一层层展开去找。点它直接按这个目录筛。
+                        entry.dir
+                          ? h(
+                              'button',
+                              {
+                                type: 'button',
+                                className: 'dshgn_cardDir',
+                                title: `${t('note.pickDir')}：${entry.dir}`,
+                                onClick: (event) => {
+                                  event.stopPropagation()
+                                  setActiveDir(entry.dir)
+                                  setActiveTag('')
+                                },
+                              },
+                              entry.dir,
+                            )
+                          : null,
                         // 标签摆在卡片上：光看标题和目录，常常想不起这篇属于哪一摊事。
                         // 点一颗就按它筛——和左栏标签区、属性区里那几颗是同一个动作。
                         // 最多三颗，多出来的收成「+N」，否则标签多的一行会把目录挤没。

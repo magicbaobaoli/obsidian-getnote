@@ -11072,3 +11072,111 @@ test('卡片上收起来的「+N」点一下就地摊开全部标签，再点收
     await sleep(300)
   }
 })
+
+/**
+ * 卡片 meta 行里的目录原来是死文字：看到一篇在「随手记/录音卡」底下，想找同一摊
+ * 的其它篇，只能回左栏一层层展开。现在点它直接按这个目录筛，和点标签同一个动作。
+ */
+test('卡片上那个目录也点得动：点了就按这个目录筛，左栏那一行跟着亮，不把笔记打开', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+
+  // 上一个用例可能把某篇开着：先退回空态，卡片才会在列表里
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = window.document.querySelector('.dshgn_noteBack')
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(200)
+    }
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox) {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setter.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(400)
+  }
+
+  const madeA = await post('/getnote/create', {
+    dir: '卡片目录验收/录音卡',
+    title: '卡片目录-这一篇',
+    content: ['# 卡片目录', '', '正文', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-card-dir-a',
+  })
+  const pathA = madeA.path
+  await post('/getnote/create', {
+    dir: '卡片目录别处',
+    title: '卡片目录-另一摊',
+    content: ['# 另一摊', '', '正文', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-card-dir-b',
+  })
+  assert.ok(typeof pathA === 'string' && pathA !== '', '那一篇建好了')
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+
+  const cardOf = (path) =>
+    Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === path) || null
+  const card = await waitFor(() => cardOf(pathA), 8000, '那一篇的卡片')
+
+  const dirBtn = card.querySelector('.dshgn_cardDir')
+  assert.ok(dirBtn !== null, '卡片上那颗目录要能点')
+  assert.equal((dirBtn.textContent || '').trim(), '卡片目录验收/录音卡', '摆的就是它所在的目录')
+  assert.ok(
+    String(dirBtn.getAttribute('title') || '').includes('筛这个目录'),
+    '悬停要说清点一下会怎样，实际 ' + dirBtn.getAttribute('title'),
+  )
+
+  dirBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const cardTitles = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_card')).map((el) => el.getAttribute('title'))
+  await waitFor(
+    () => {
+      const list = cardTitles()
+      return list.length === 1 && list[0] === pathA
+    },
+    5000,
+    '点目录之后只剩这个目录里的笔记：' + JSON.stringify(cardTitles()),
+  )
+  assert.equal(rootNode().getAttribute('data-has-note'), 'false', '点目录不该顺带把笔记打开')
+
+  const chip = window.document.querySelector('.dshgn_filterChip[data-kind="dir"]')
+  assert.ok(chip !== null, '筛选条上要摆一颗点得掉的目录胶囊')
+  assert.equal((chip.querySelector('.dshgn_filterChipName').textContent || '').trim(), '卡片目录验收/录音卡')
+
+  const dirRow = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) =>
+      String(el.getAttribute('title') || '').startsWith('卡片目录验收/录音卡\n'),
+    ) || null
+  const onRow = await waitFor(dirRow, 5000, '左栏里那个目录行')
+  assert.equal(onRow.getAttribute('data-on'), 'true', '左栏要跟着亮起来，同一个动作')
+
+  // 收尾：把筛选退回去，别影响后面的用例
+  const allRow = Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+    const label = el.querySelector('.dshgn_treeName')
+    return label !== null && (label.textContent || '').trim() === '全部笔记'
+  })
+  if (allRow !== undefined) {
+    allRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+})
