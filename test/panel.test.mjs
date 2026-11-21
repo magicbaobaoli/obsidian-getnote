@@ -10180,3 +10180,58 @@ test('断链页按「指不到的那个名字」分组，一处名字一行头�
   assert.equal(json.hits.filter((hit) => hit.target === target).length, 0, '补出来之后不该还挂着断链')
   await backToList()
 })
+
+test('目录行右键「在这里新建笔记」直接建在这个目录里并当场打开，不用先建完再挪', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const backToList = async () => {
+    const back = rootNode().querySelector('.dshgn_noteBack')
+    if (back !== null) {
+      panel.setConfirmDialog(() => Promise.resolve(true))
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false')
+  }
+  await backToList()
+  await clickTab('笔记')
+  await waitFor(() => rootNode().querySelector('.dshgn_search') !== null, 4000, '搜索框')
+  const search = rootNode().querySelector('.dshgn_search')
+  Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(search, '')
+  search.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(400)
+
+  const dirName = '右键新建验收'
+  const seed = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({ dir: dirName, title: '右键新建-先有一篇', content: '# 右键新建-先有一篇\n\n正文。\n', withDatePrefix: false, requestId: 'seed-menu-new-a' }),
+  })
+  assert.equal(seed.ok, true, '造目录里那一篇失败：' + seed.status)
+
+  const refreshBtn = () => Array.from(rootNode().querySelectorAll('.dshgn_iconBtn')).find((el) => el.getAttribute('title') === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const rowOf = () => Array.from(rootNode().querySelectorAll('.dshgn_treeRow')).find((el) => {
+    const name = el.querySelector('.dshgn_treeName')
+    return name !== null && String(name.textContent || '') === dirName
+  }) || null
+  const row = await waitFor(rowOf, 8000, '左栏该出现这个目录')
+  row.dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true }))
+  const menu = await waitFor(() => rootNode().querySelector('.dshgn_rowMenu'), 4000, '右键菜单')
+  const newBtn = Array.from(menu.querySelectorAll('.dshgn_rowBtn')).find((el) => String(el.getAttribute('title') || '') === '在这里新建笔记')
+  assert.ok(newBtn !== undefined, '目录的右键菜单里该有「在这里新建笔记」')
+
+  const before = await (await realFetch(server.origin + '/getnote/tree', { headers: { 'x-getnote-token': server.token } })).json()
+  const beforeCount = (before.entries || []).length
+
+  newBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 8000, '建完该当场打开那一篇')
+  const pathEl = rootNode().querySelector('.dshgn_notePath')
+  const openedPath = String(pathEl.textContent || '')
+  assert.equal(openedPath.startsWith(dirName + '/'), true, '新笔记该落在这个目录里：' + openedPath)
+  assert.equal(openedPath.endsWith('.md'), true, '打开的该是一篇笔记：' + openedPath)
+
+  const after = await (await realFetch(server.origin + '/getnote/tree', { headers: { 'x-getnote-token': server.token } })).json()
+  assert.equal((after.entries || []).length, beforeCount + 1, '库里该多出这一篇')
+  const written = await realFetch(server.origin + '/getnote/read?path=' + encodeURIComponent(openedPath), { headers: { 'x-getnote-token': server.token } })
+  assert.equal(written.status, 200, '刚建的那一篇该读得回来')
+  await backToList()
+})

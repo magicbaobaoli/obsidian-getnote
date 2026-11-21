@@ -8501,6 +8501,7 @@ var LEX = {
     "tree.menuDelete": "\u5220\u9664",
     "tree.menuCancel": "\u53D6\u6D88",
     "tree.menuRename": "\u6539\u540D",
+    "tree.menuNewNote": "\u5728\u8FD9\u91CC\u65B0\u5EFA\u7B14\u8BB0",
     "tree.menuReveal": "\u5728\u6587\u4EF6\u5217\u8868\u91CC\u5B9A\u4F4D",
     "tree.tagRenamed": "\u6807\u7B7E\u5DF2\u6539\u540D",
     "tree.dirRenamed": "\u76EE\u5F55\u5DF2\u6539\u540D",
@@ -8990,6 +8991,7 @@ var LEX = {
     "tree.menuDelete": "Delete",
     "tree.menuCancel": "Cancel",
     "tree.menuRename": "Rename",
+    "tree.menuNewNote": "New note here",
     "tree.menuReveal": "Reveal in file explorer",
     "tree.tagRenamed": "Tag renamed",
     "tree.dirRenamed": "Folder renamed",
@@ -9478,6 +9480,7 @@ var LEX = {
     "tree.menuDelete": "Verwijderen",
     "tree.menuCancel": "Annuleren",
     "tree.menuRename": "Naam wijzigen",
+    "tree.menuNewNote": "Nieuwe notitie hier",
     "tree.menuReveal": "Toon in bestandsverkenner",
     "tree.tagRenamed": "Tag hernoemd",
     "tree.dirRenamed": "Map hernoemd",
@@ -14550,6 +14553,29 @@ ${insert}
             setError(err && err.message ? err.message : String(err));
           }
         },
+        // 目录行右键「在这里新建笔记」：直接建在这个目录里并当场打开，
+        // 省掉「点 + → 在菜单里把目录名打一遍 → 挑模板」这三步。
+        // 用 t('action.new') 当标题，和顶上「+」建出来的那篇同名同形。
+        onNewNoteIn: async (dir) => {
+          const where = String(dir || "").trim().replace(/^\/+|\/+$/g, "");
+          try {
+            const created = await api("/create", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                dir: where,
+                title: t4("action.new"),
+                content: "",
+                requestId: requestId()
+              })
+            });
+            showToast(t4("note.created"));
+            await refresh();
+            await openNote(created.path);
+          } catch (err) {
+            setError(err && err.message ? err.message : String(err));
+          }
+        },
         onDeleteDir: async (name) => {
           try {
             await api("/dir/delete", {
@@ -18690,6 +18716,7 @@ function TreePane(props) {
     onCreateTag,
     onRenameTag,
     onRenameDir,
+    onNewNoteIn,
     heatmap,
     currentNoteId,
     onNarrowPick,
@@ -18913,6 +18940,24 @@ function TreePane(props) {
         },
         h4(Icon, { name: "edit", size: 11 }),
         h4("span", null, t4("tree.menuRename"))
+      ) : null,
+      // 「在这里新建笔记」：目录行右键时最想干的事之一，以前只能回顶上点「+」
+      // 再在菜单里把目录打一遍（或者建完再挪）。它走的是同一条 /create，
+      // 只是把 dir 直接钉成这个目录，标题沿用「新建笔记」那条默认。
+      target.kind === "dir" && typeof onNewNoteIn === "function" ? h4(
+        "button",
+        {
+          type: "button",
+          className: "dshgn_rowBtn",
+          title: t4("tree.menuNewNote"),
+          onClick: () => {
+            setMenu(null);
+            Promise.resolve(onNewNoteIn(target.name)).catch(() => {
+            });
+          }
+        },
+        h4(Icon, { name: "plus", size: 11 }),
+        h4("span", null, t4("tree.menuNewNote"))
       ) : null,
       // 「在文件列表里定位」：面板的列表是平的，用户想知道这个目录在库里
       // 的哪儿、旁边还有什么时，把它交给宿主的文件列表比自己解释路径直观。

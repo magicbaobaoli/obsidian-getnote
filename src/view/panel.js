@@ -648,6 +648,7 @@ async function saveFile(url, filename) {
         'tree.menuDelete': '删除',
         'tree.menuCancel': '取消',
         'tree.menuRename': '改名',
+        'tree.menuNewNote': '在这里新建笔记',
         'tree.menuReveal': '在文件列表里定位',
         'tree.tagRenamed': '标签已改名',
         'tree.dirRenamed': '目录已改名',
@@ -1141,6 +1142,7 @@ async function saveFile(url, filename) {
         'tree.menuDelete': 'Delete',
         'tree.menuCancel': 'Cancel',
         'tree.menuRename': 'Rename',
+        'tree.menuNewNote': 'New note here',
         'tree.menuReveal': 'Reveal in file explorer',
         'tree.tagRenamed': 'Tag renamed',
         'tree.dirRenamed': 'Folder renamed',
@@ -1633,6 +1635,7 @@ async function saveFile(url, filename) {
         'tree.menuDelete': 'Verwijderen',
         'tree.menuCancel': 'Annuleren',
         'tree.menuRename': 'Naam wijzigen',
+        'tree.menuNewNote': 'Nieuwe notitie hier',
         'tree.menuReveal': 'Toon in bestandsverkenner',
         'tree.tagRenamed': 'Tag hernoemd',
         'tree.dirRenamed': 'Map hernoemd',
@@ -7917,6 +7920,29 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                 setError(err && err.message ? err.message : String(err))
               }
             },
+            // 目录行右键「在这里新建笔记」：直接建在这个目录里并当场打开，
+            // 省掉「点 + → 在菜单里把目录名打一遍 → 挑模板」这三步。
+            // 用 t('action.new') 当标题，和顶上「+」建出来的那篇同名同形。
+            onNewNoteIn: async (dir) => {
+              const where = String(dir || '').trim().replace(/^\/+|\/+$/g, '')
+              try {
+                const created = await api('/create', {
+                  method: 'POST',
+                  headers: { 'content-type': 'application/json' },
+                  body: JSON.stringify({
+                    dir: where,
+                    title: t('action.new'),
+                    content: '',
+                    requestId: requestId(),
+                  }),
+                })
+                showToast(t('note.created'))
+                await refresh()
+                await openNote(created.path)
+              } catch (err) {
+                setError(err && err.message ? err.message : String(err))
+              }
+            },
             onDeleteDir: async (name) => {
               try {
                 await api('/dir/delete', {
@@ -12755,6 +12781,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         onCreateTag,
         onRenameTag,
         onRenameDir,
+        onNewNoteIn,
         heatmap,
         currentNoteId,
         onNarrowPick,
@@ -13041,6 +13068,25 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                 },
                 h(Icon, { name: 'edit', size: 11 }),
                 h('span', null, t('tree.menuRename')),
+              )
+            : null,
+          // 「在这里新建笔记」：目录行右键时最想干的事之一，以前只能回顶上点「+」
+          // 再在菜单里把目录打一遍（或者建完再挪）。它走的是同一条 /create，
+          // 只是把 dir 直接钉成这个目录，标题沿用「新建笔记」那条默认。
+          target.kind === 'dir' && typeof onNewNoteIn === 'function'
+            ? h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dshgn_rowBtn',
+                  title: t('tree.menuNewNote'),
+                  onClick: () => {
+                    setMenu(null)
+                    Promise.resolve(onNewNoteIn(target.name)).catch(() => {})
+                  },
+                },
+                h(Icon, { name: 'plus', size: 11 }),
+                h('span', null, t('tree.menuNewNote')),
               )
             : null,
           // 「在文件列表里定位」：面板的列表是平的，用户想知道这个目录在库里
