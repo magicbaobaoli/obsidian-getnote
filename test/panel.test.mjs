@@ -12540,3 +12540,132 @@ test('左栏那个筛只筛目录和标签：命中行的祖先留着，清掉�
 
   await clickTab('笔记')
 })
+
+test('读到列表中间那一篇时，笔记头上能接着看上一篇/下一篇，脚下写着排第几', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+  await clickTab('笔记')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+  // 三篇，名字带序号，这样「按名称」排序时顺序是确定的
+  for (const [idx, suffix] of [
+    [1, '甲'],
+    [2, '乙'],
+    [3, '丙'],
+  ]) {
+    await post('/getnote/create', {
+      dir: '相邻导航验收',
+      title: '相邻导航-0' + idx + '-' + suffix,
+      content: ['# 相邻导航-0' + idx + '-' + suffix, '', '相邻导航的正文第' + idx + '篇', ''].join('\n'),
+      withDatePrefix: false,
+      requestId: 'seed-adjacent-' + idx,
+    })
+  }
+
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox !== null) {
+    const setValue0 = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setValue0.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(300)
+  }
+  const refreshBtn = Array.from(window.document.querySelectorAll('button')).find(
+    (el) => (el.getAttribute('title') || '') === '刷新',
+  )
+  if (refreshBtn) refreshBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(900)
+
+  // 点进这一摊（别的用例 seed 过几百篇，按名称排序时目标不一定落在前 60 张里）
+  const dirRow = await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+        const label = el.querySelector('.dshgn_treeName')
+        return label !== null && (label.textContent || '').trim() === '相邻导航验收'
+      }),
+    8000,
+    '左栏里出现相邻导航验收这一支',
+  )
+  dirRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(500)
+
+  const cardOf = (title) =>
+    Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => {
+      const label = el.querySelector('.dshgn_cardTitle')
+      return label !== null && (label.textContent || '').trim() === title
+    }) || null
+
+  const openCard = async (title) => {
+    const card = await waitFor(() => cardOf(title), 8000, '列表里出现 ' + title)
+    card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(600)
+  }
+
+  // 先打开中间那篇。注意：列表默认按「最近改的」倒序，三篇是同一秒建出来的，
+  // 谁在前谁在后不可预测——所以这里不押「上一篇一定是甲、下一篇一定是丙」，
+  // 只押「两颗都在、悬停能说清是哪一篇、脚下写着第 2 / 3 篇」，再用脚下一步步
+  // 走到两头去验边界。
+  await openCard('相邻导航-02-乙')
+  const adjBtns = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_adjBtn'))
+  const prevBtnOf = () => adjBtns().find((el) => el.getAttribute('aria-label') === '上一篇')
+  const nextBtnOf = () => adjBtns().find((el) => el.getAttribute('aria-label') === '下一篇')
+  const posText = () =>
+    (window.document.querySelector('.dshgn_readPos') || { textContent: '' }).textContent.trim()
+  await waitFor(() => adjBtns().length === 2, 5000, '笔记头上有两颗「上一篇/下一篇」')
+  const prevBtn = prevBtnOf()
+  const nextBtn = nextBtnOf()
+  assert.ok(prevBtn, '中间那篇该有「上一篇」')
+  assert.ok(nextBtn, '中间那篇该有「下一篇」')
+  assert.ok(
+    (prevBtn.getAttribute('title') || '').includes('相邻导航-'),
+    '上一篇悬停要说清是哪一篇：' + prevBtn.getAttribute('title'),
+  )
+  assert.ok(
+    (nextBtn.getAttribute('title') || '').includes('相邻导航-'),
+    '下一篇悬停要说清是哪一篇：' + nextBtn.getAttribute('title'),
+  )
+  assert.ok(
+    prevBtn.getAttribute('title') !== nextBtn.getAttribute('title'),
+    '上一篇和下一篇不该指向同一篇',
+  )
+  // 脚下写着排第几
+  await waitFor(() => posText() !== '', 3000, '阅读态脚下写着排第几')
+  assert.equal(posText(), '第 2 / 3 篇', '脚下要写着第几篇、一共几篇')
+
+  // 一直往「下一篇」走到头：脚下走到 3 / 3，那颗按钮跟着收起来
+  for (let step = 0; step < 3; step += 1) {
+    const btn = nextBtnOf()
+    if (btn === undefined) break
+    btn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(600)
+  }
+  await waitFor(() => posText().includes('第 3 / 3 篇'), 5000, '走到最后一篇之后脚下写着第 3 / 3 篇')
+  assert.equal(nextBtnOf(), undefined, '已经是最后一篇了，不该还摆一颗按了没反应的「下一篇」')
+  assert.ok(prevBtnOf(), '最后一篇仍该有「上一篇」')
+
+  // 一直往「上一篇」走回最前面：脚下走到 1 / 3，那颗按钮也跟着收起来
+  for (let step = 0; step < 3; step += 1) {
+    const btn = prevBtnOf()
+    if (btn === undefined) break
+    btn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(600)
+  }
+  await waitFor(() => posText().includes('第 1 / 3 篇'), 5000, '走回第一篇')
+  assert.equal(prevBtnOf(), undefined, '第一篇前面没有别的了，不该还摆一颗「上一篇」')
+  assert.ok(nextBtnOf(), '第一篇后面还有，仍该有「下一篇」')
+
+  // 收尾：退回列表，别把右栏留给后面那些用例
+  const backBtn = window.document.querySelector('.dshgn_noteBack')
+  if (backBtn !== null) {
+    backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(400)
+  }
+  await clickTab('笔记')
+})

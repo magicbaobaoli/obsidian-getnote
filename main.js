@@ -8614,6 +8614,9 @@ var LEX = {
     "zoom.next": "\u4E0B\u4E00\u5F20",
     "zoom.count": "{n} / {total}",
     "note.navBack": "\u56DE\u4E0A\u4E00\u7BC7",
+    "note.adjPrev": "\u4E0A\u4E00\u7BC7",
+    "note.adjNext": "\u4E0B\u4E00\u7BC7",
+    "reader.pos": "\u7B2C {i} / {n} \u7BC7",
     "note.navForward": "\u53BB\u4E0B\u4E00\u7BC7",
     "note.find": "\u5728\u8FD9\u7BC7\u91CC\u627E",
     "note.findPlaceholder": "\u627E\u4EC0\u4E48\u2026",
@@ -9154,6 +9157,9 @@ var LEX = {
     "zoom.next": "Next image",
     "zoom.count": "{n} / {total}",
     "note.navBack": "Previous note",
+    "note.adjPrev": "Earlier in the list",
+    "note.adjNext": "Later in the list",
+    "reader.pos": "{i} of {n} in this list",
     "note.navForward": "Next note",
     "note.find": "Find in this note",
     "note.findPlaceholder": "Find\u2026",
@@ -9691,6 +9697,9 @@ var LEX = {
     "zoom.next": "Volgende afbeelding",
     "zoom.count": "{n} / {total}",
     "note.navBack": "Vorige notitie",
+    "note.adjPrev": "Vorige in de lijst",
+    "note.adjNext": "Volgende in de lijst",
+    "reader.pos": "{i} van {n} in deze lijst",
     "note.navForward": "Volgende notitie",
     "note.find": "Zoek in deze notitie",
     "note.findPlaceholder": "Zoeken\u2026",
@@ -12562,6 +12571,7 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
   color:var(--dsw-alias-label-tertiary);flex:0 0 auto}
 .dshgn_editorHint{margin-left:auto;opacity:.75}
 .dshgn_readFoot{color:var(--dsw-alias-label-tertiary)}
+.dshgn_readPos{flex:none;font-size:10px;color:var(--dsw-alias-label-dimmed)}
 
 .dshgn_linkPick{display:flex;flex-wrap:wrap;gap:6px;padding:6px clamp(16px,3vw,32px);border-top:0.5px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-secondary);max-height:112px;overflow-y:auto}
 .dshgn_linkPickItem{display:inline-flex;align-items:center;gap:5px;appearance:none;max-width:100%;padding:2px 9px;border:0.5px solid var(--dsw-alias-border-l1);border-radius:999px;background:var(--dsw-alias-bg-primary);font:inherit;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary);cursor:pointer}
@@ -13743,6 +13753,39 @@ function GetnotePage() {
   );
   const navBack = q2(() => navTo(-1), [navTo]);
   const navForward = q2(() => navTo(1), [navTo]);
+  const adjacentAt = T2(() => {
+    if (current === null || typeof current.path !== "string") return -1;
+    const list = shown || [];
+    for (let i3 = 0; i3 < list.length; i3 += 1) {
+      if (list[i3] !== null && list[i3].path === current.path) return i3;
+    }
+    return -1;
+  }, [current, shown]);
+  const adjacentTotal = (shown || []).length;
+  const gotoAdjacent = q2(
+    (delta) => {
+      const list = shown || [];
+      const from = adjacentAt;
+      if (from < 0) return;
+      const next = from + delta;
+      if (next < 0 || next >= list.length) return;
+      const entry = list[next];
+      if (entry === null || entry === void 0 || typeof entry.path !== "string") return;
+      const go = () => {
+        void openNote(entry.path);
+      };
+      if (!dirty) {
+        go();
+        return;
+      }
+      void confirmDialog(t4("note.unsaved")).then((ok) => {
+        if (ok) go();
+      });
+    },
+    [adjacentAt, dirty, openNote, shown, t4]
+  );
+  const navPrev = q2(() => gotoAdjacent(-1), [gotoAdjacent]);
+  const navNext = q2(() => gotoAdjacent(1), [gotoAdjacent]);
   const jumpToMatch = q2(
     (path, match) => {
       const target = String(path || "");
@@ -16061,6 +16104,14 @@ ${insert}
         canForward: navState.canForward,
         onNavBack: navBack,
         onNavForward: navForward,
+        // 列表里的上一篇/下一篇：历史栈只认「我点过的顺序」，从搜索结果点进
+        // 第 7 条时想接着看第 8 条，栈里没有它。
+        onPrevNote: navPrev,
+        onNextNote: navNext,
+        prevPath: adjacentAt > 0 && shown[adjacentAt - 1] ? shown[adjacentAt - 1].path : "",
+        nextPath: adjacentAt >= 0 && adjacentAt < adjacentTotal - 1 && shown[adjacentAt + 1] ? shown[adjacentAt + 1].path : "",
+        listPos: adjacentAt >= 0 ? adjacentAt + 1 : 0,
+        listTotal: adjacentTotal,
         // 双链补全要「库里有哪些笔记」：名字打一半时从这上面挑
         noteNames: entries.map((entry) => entry.path),
         // 标签补全要「库里已经有哪些标签」：只补用过的，凭空敲新词时没有候选。
@@ -20467,6 +20518,12 @@ function NotePane(props) {
   const canForward = props.canForward === true;
   const onNavBack = typeof props.onNavBack === "function" ? props.onNavBack : null;
   const onNavForward = typeof props.onNavForward === "function" ? props.onNavForward : null;
+  const onPrevNote = typeof props.onPrevNote === "function" ? props.onPrevNote : null;
+  const onNextNote = typeof props.onNextNote === "function" ? props.onNextNote : null;
+  const prevPath = typeof props.prevPath === "string" ? props.prevPath : "";
+  const nextPath = typeof props.nextPath === "string" ? props.nextPath : "";
+  const listPos = Number(props.listPos) > 0 ? Number(props.listPos) : 0;
+  const listTotal = Number(props.listTotal) > 0 ? Number(props.listTotal) : 0;
   const onJumpToLine = typeof props.onJumpToLine === "function" ? props.onJumpToLine : null;
   const onCreateFromText = typeof props.onCreateFromText === "function" ? props.onCreateFromText : null;
   const onDuplicate = typeof props.onDuplicate === "function" ? props.onDuplicate : null;
@@ -21155,6 +21212,31 @@ function NotePane(props) {
           }
         },
         h4(Icon, { name: "chevron", size: 15 })
+      ),
+      // 列表里的上一篇 / 下一篇：历史栈只认「我点过的顺序」，从搜索结果里点进
+      // 第 7 条，想接着看第 8 条时栈里没有它。这两颗按当前这次筛出来的列表
+      // 顺序走，和屏幕上看到的顺序一致；没有上一篇/下一篇时就不摆。
+      prevPath === "" || onPrevNote === null ? null : h4(
+        "button",
+        {
+          type: "button",
+          className: "dshgn_iconBtn dshgn_adjBtn",
+          title: `${t4("note.adjPrev")}\uFF1A${prevPath}`,
+          "aria-label": t4("note.adjPrev"),
+          onClick: () => onPrevNote()
+        },
+        h4("span", { style: { display: "inline-flex", transform: "rotate(180deg)" } }, h4(Icon, { name: "chevron", size: 13 }))
+      ),
+      nextPath === "" || onNextNote === null ? null : h4(
+        "button",
+        {
+          type: "button",
+          className: "dshgn_iconBtn dshgn_adjBtn",
+          title: `${t4("note.adjNext")}\uFF1A${nextPath}`,
+          "aria-label": t4("note.adjNext"),
+          onClick: () => onNextNote()
+        },
+        h4(Icon, { name: "chevron", size: 13 })
       ),
       // 路径这一行顺手也能点：读到一半想知道「这一篇在库里的哪儿、旁边还有哪些」，
       // 跑到右键菜单里找「在文件列表里定位」是绕远路。宿主没这个接口时退回纯文字，
@@ -22010,6 +22092,13 @@ ${t4("tree.menuReveal")}` : absolute,
         "div",
         { className: "dshgn_editorFoot dshgn_readFoot" },
         h4("span", null, t4("reader.words").replace("{n}", String(readWords))),
+        // 这一篇在当前这次筛出来的列表里排第几。读到第 7 篇时知道
+        // 「还有 40 篇」和「已经是最后一篇」，决定要不要接着翻。
+        listPos > 0 && listTotal > 0 ? h4(
+          "span",
+          { className: "dshgn_readPos", title: t4("reader.pos").replace("{i}", String(listPos)).replace("{n}", String(listTotal)) },
+          t4("reader.pos").replace("{i}", String(listPos)).replace("{n}", String(listTotal))
+        ) : null,
         h4(
           "span",
           { className: "dshgn_editorHint" },
