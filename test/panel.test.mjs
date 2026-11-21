@@ -12770,3 +12770,161 @@ test('卡片右键能把这一篇的正文整段抄走，带走的是正文不�
     panel.setNoteMenu(null)
   }
 })
+
+/**
+ * 同一篇在两个地方改过：后保存的那一份不能把前一份悄悄盖掉。
+ *
+ * 面板开着这一篇、用户在 Obsidian 编辑器里也改了同一篇（或者另一台设备同步下来一版），
+ * 面板这边再按保存——以前是直接写盘，对方那份就没了，而且没有任何痕迹。
+ * 现在带着「我读到的是哪一版」去存，对不上就问一句「用哪一版」。
+ */
+test('别处改过同一篇时，保存先问一句用哪一版，而不是闷头盖掉', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const backBtn = window.document.querySelector('.dshgn_noteBack')
+  if (backBtn) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    try {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+  }
+
+  const title = '保存撞车-这一篇'
+  const path = '保存撞车验收/' + title + '.md'
+  const created = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '保存撞车验收',
+      title,
+      content: '# ' + title + '\n\n原始正文。\n',
+      withDatePrefix: false,
+      requestId: 'seed-save-conflict-a',
+    }),
+  })
+  assert.equal(created.status, 200, '种下这一篇')
+
+  // 在「别处」改这一篇：绕开面板自己的保存流程，直接打服务接口
+  const writeElsewhere = async (text) => {
+    const res = await realFetch(server.origin + '/getnote/save', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({ path, content: text }),
+    })
+    assert.equal(res.status, 200, '别处写盘应该成功')
+  }
+
+  await clickTab('笔记')
+  // 前面的用例可能留着搜索词或目录筛选：不先撤掉的话，新种下的这一篇根本不会出现在列表里
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox !== null) {
+    const setValue0 = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setValue0.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(300)
+  }
+  const allRow = Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+    const name = el.querySelector('.dshgn_treeName')
+    return name !== null && (name.textContent || '').trim() === '全部笔记'
+  })
+  if (allRow !== null) {
+    allRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(600)
+
+  const cardOf = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => {
+      const name = el.querySelector('.dshgn_cardTitle')
+      return name !== null && (name.textContent || '').trim() === title
+    })
+  const card = await waitFor(cardOf, 8000, '列表里出现这一篇')
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 8000, '笔记打开')
+
+  const enterEdit = async () => {
+    const btn = Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '编辑')
+    assert.ok(btn, '阅读态应该有编辑按钮')
+    btn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    return await waitFor(() => window.document.querySelector('.dshgn_editor'), 5000, '进入编辑态')
+  }
+  const typeInto = async (area, text) => {
+    area.value = text
+    area.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(60)
+  }
+  const pressSave = async () => {
+    // 整套测试并行跑时机器可能很吃紧，一次按键的处理器要排一会儿队才轮到；
+    // 重按几次（真的坏了仍然会失败，只是不会因为慢就判红）。
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 's', ctrlKey: true, metaKey: true, bubbles: true }))
+      await sleep(400)
+    }
+  }
+
+  // ① 面板里改一笔，然后别处也改一笔 —— 保存时必须问，选了「用别处那一版」
+  const area = await enterEdit()
+  await typeInto(area, '# ' + title + '\n\n面板里改的正文。\n')
+  await sleep(20)
+  await writeElsewhere('# ' + title + '\n\n别处改的正文。\n')
+
+  const asked = []
+  panel.setConfirmDialog((message, options) => {
+    asked.push({ message: String(message), options: options || {} })
+    return Promise.resolve(false)
+  })
+  try {
+    await pressSave()
+    await waitFor(() => asked.length > 0, 8000, '撞车时应该问一句')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  assert.match(asked[0].message, /在别处被改过/, '提示要说清是别处改过：' + asked[0].message)
+  assert.equal(asked[0].options.confirmText, '存我这一版', '两颗按钮都得说清各自是哪个选择')
+  assert.equal(asked[0].options.cancelText, '用别处那一版')
+
+  // 选了「用别处那一版」：手上这份丢掉，正文换成磁盘上的。
+  // 这时候还留在编辑态，正文在 textarea 里，阅读态那个 .dshgn_note 根本不在。
+  await waitFor(
+    () => {
+      const area = window.document.querySelector('.dshgn_editor')
+      return area !== null && String(area.value || '').includes('别处改的正文')
+    },
+    8000,
+    '选「用别处那一版」之后正文要换成那一版',
+  )
+  const afterTheir = await realFetch(server.origin + '/getnote/read?path=' + encodeURIComponent(path), {
+    headers: { 'x-getnote-token': server.token },
+  }).then((res) => res.json())
+  assert.match(afterTheir.content, /别处改的正文/, '磁盘上还是别处那一版，没被我们覆盖')
+
+  // ② 再来一次，这次选「存我这一版」：写进去的必须是我手上这一份
+  const area2 = await waitFor(() => window.document.querySelector('.dshgn_editor'), 5000, '还留在编辑态')
+  await typeInto(area2, '# ' + title + '\n\n我这一版。\n')
+  await sleep(20)
+  await writeElsewhere('# ' + title + '\n\n别处又改了一版。\n')
+
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    await pressSave()
+    await sleep(700)
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  const afterMine = await realFetch(server.origin + '/getnote/read?path=' + encodeURIComponent(path), {
+    headers: { 'x-getnote-token': server.token },
+  }).then((res) => res.json())
+  assert.match(afterMine.content, /我这一版/, '选了「存我这一版」就得真的写进去：' + afterMine.content)
+  assert.ok(!/别处又改了一版/.test(afterMine.content), '不该还留着别处那一版')
+
+  // 收尾：退出编辑态，别把草稿留给后面的用例
+  window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  await sleep(200)
+})

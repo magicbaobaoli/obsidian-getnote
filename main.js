@@ -954,12 +954,29 @@ async function saveAsset(root, relNote, name, data) {
 async function writeNote(root, rel, content, options = {}) {
   const backup = options.backup !== false;
   const { abs, rel: normalized } = resolveInside(root, rel);
+  const expectMtimeMs = typeof options.expectMtimeMs === "number" && Number.isFinite(options.expectMtimeMs) ? options.expectMtimeMs : null;
   if (!normalized.toLowerCase().endsWith(NOTE_EXT)) {
     throw Object.assign(new Error("\u53EA\u80FD\u5199\u5165 .md \u6587\u4EF6"), { status: 400 });
   }
   if (typeof content !== "string") throw Object.assign(new Error("content \u5FC5\u987B\u662F\u5B57\u7B26\u4E32"), { status: 400 });
   if (Buffer.byteLength(content, "utf8") > MAX_WRITE) {
     throw Object.assign(new Error("\u5185\u5BB9\u8D85\u8FC7 2MB \u4E0A\u9650"), { status: 413 });
+  }
+  if (expectMtimeMs !== null) {
+    let nowMs = null;
+    try {
+      nowMs = (await stat2(abs)).mtimeMs;
+    } catch {
+      nowMs = null;
+    }
+    if (nowMs !== null && nowMs !== expectMtimeMs) {
+      const err = new Error("\u8FD9\u4E00\u7BC7\u5728\u522B\u5904\u88AB\u6539\u8FC7\u4E86");
+      err.status = 409;
+      err.code = "conflict";
+      err.path = normalized;
+      err.mtimeMs = nowMs;
+      throw err;
+    }
   }
   await mkdir2((0, import_node_path4.dirname)(abs), { recursive: true });
   if (backup) {
@@ -5203,7 +5220,9 @@ function sweepPending() {
 function fail2(res, error2) {
   const status = error2 && typeof error2.status === "number" ? error2.status : 500;
   const message = error2 && error2.message ? error2.message : "internal error";
-  send(res, status, { error: message });
+  const payload = { error: message };
+  if (error2 && error2.conflict !== void 0 && error2.conflict !== null) payload.conflict = error2.conflict;
+  send(res, status, payload);
 }
 async function ensureAccessToken({ allowRefresh = true } = {}) {
   const auth = await readAuth();
@@ -5842,7 +5861,25 @@ function createHandler(config) {
       await snapshotNote(root, path);
     } catch {
     }
-    const saved = await writeNote(root, path, content, { backup: false });
+    const expect = typeof body.expectMtimeMs === "number" && Number.isFinite(body.expectMtimeMs) ? body.expectMtimeMs : null;
+    let saved;
+    try {
+      saved = await writeNote(root, path, content, { backup: false, expectMtimeMs: expect });
+    } catch (error2) {
+      if (error2 && error2.status === 409) {
+        let now = null;
+        try {
+          const fresh = await readNote(root, path);
+          now = { content: fresh.content, mtimeMs: fresh.mtimeMs };
+        } catch {
+          now = null;
+        }
+        const conflict = Object.assign(new Error("\u8FD9\u4E00\u7BC7\u5728\u522B\u5904\u88AB\u6539\u8FC7\u4E86"), { status: 409 });
+        conflict.conflict = now;
+        throw conflict;
+      }
+      throw error2;
+    }
     send(res, 200, { ok: true, ...saved });
   }
   async function handleBatch(req, res) {
@@ -8168,10 +8205,10 @@ var __confirm = null;
 function setConfirmDialog(fn2) {
   __confirm = typeof fn2 === "function" ? fn2 : null;
 }
-function confirmDialog(message) {
+function confirmDialog(message, options) {
   if (__confirm !== null) {
     try {
-      return Promise.resolve(__confirm(String(message))).then(
+      return Promise.resolve(__confirm(String(message), options)).then(
         (value) => value === true,
         () => window.confirm(String(message))
       );
@@ -8602,6 +8639,11 @@ var LEX = {
     "note.saved": "\u5DF2\u4FDD\u5B58",
     "note.deleted": "\u5DF2\u79FB\u5165\u56DE\u6536\u7AD9",
     "note.unsaved": "\u6709\u672A\u4FDD\u5B58\u7684\u4FEE\u6539",
+    // 保存撞车：别处已经改过同一篇。{when} 换成那边改动的时间。
+    "note.conflict": "\u8FD9\u4E00\u7BC7\u5728\u522B\u5904\u88AB\u6539\u8FC7\u4E86\uFF08{when}\uFF09\uFF0C\u4F60\u624B\u4E0A\u8FD9\u4E00\u7248\u8FD8\u6CA1\u5B58",
+    "note.conflictKeep": "\u5B58\u6211\u8FD9\u4E00\u7248",
+    "note.conflictTheir": "\u7528\u522B\u5904\u90A3\u4E00\u7248",
+    "note.conflictTheirDone": "\u5DF2\u6362\u6210\u522B\u5904\u90A3\u4E00\u7248",
     // 没存完的草稿救回来时用的三句。{when} 换成「几月几号几点」。
     "draft.found": "\u4E0A\u6B21\u5199\u5230\u4E00\u534A\u6CA1\u5B58\uFF08{when}\uFF09",
     "draft.resume": "\u63A5\u7740\u5199",
@@ -9149,6 +9191,10 @@ var LEX = {
     "note.saved": "Saved",
     "note.deleted": "Moved to trash",
     "note.unsaved": "Unsaved changes",
+    "note.conflict": "This note was changed elsewhere ({when}); your version is not saved yet",
+    "note.conflictKeep": "Keep my version",
+    "note.conflictTheir": "Take theirs",
+    "note.conflictTheirDone": "Switched to the other version",
     "draft.found": "Unfinished draft from {when}",
     "draft.resume": "Keep writing",
     "draft.discard": "Discard",
@@ -9692,6 +9738,10 @@ var LEX = {
     "note.saved": "Opgeslagen",
     "note.deleted": "Naar prullenbak",
     "note.unsaved": "Niet-opgeslagen wijzigingen",
+    "note.conflict": "Deze notitie is elders gewijzigd ({when}); jouw versie is nog niet opgeslagen",
+    "note.conflictKeep": "Mijn versie bewaren",
+    "note.conflictTheir": "Hun versie nemen",
+    "note.conflictTheirDone": "Overgezet naar de andere versie",
     "draft.found": "Onvoltooide tekst van {when}",
     "draft.resume": "Verder schrijven",
     "draft.discard": "Weggooien",
@@ -10131,11 +10181,12 @@ async function api(path, init) {
       if (!res.ok) {
         const err = new Error(json && json.error || `HTTP ${res.status}`);
         err.status = res.status;
+        err.body = json;
         throw err;
       }
       return json;
     } catch (error2) {
-      const aborted = error2 !== null && typeof error2 === "object" && (error2.name === "AbortError" || signal.aborted);
+      const aborted = error2 !== null && typeof error2 === "object" && (error2.name === "AbortError" || signal !== void 0 && signal !== null && signal.aborted === true);
       if (aborted) throw error2;
       const hasStatus = error2 !== null && typeof error2 === "object" && typeof error2.status === "number";
       const retryable = idempotent && !hasStatus && attempt < RETRY_DELAYS.length;
@@ -13814,22 +13865,46 @@ function GetnotePage() {
     },
     [dirty, openNote, requestAnchor, t4]
   );
-  const saveNote = q2(async () => {
+  const saveNote = q2(async (force = false) => {
     if (current === null || draft === null) return;
     setBusy(true);
     selfSavedRef.current = { path: current.path };
     try {
-      await api("/save", {
+      const body2 = { path: current.path, content: draft, requestId: requestId() };
+      if (!force && typeof current.mtimeMs === "number" && Number.isFinite(current.mtimeMs)) {
+        body2.expectMtimeMs = current.mtimeMs;
+      }
+      const saved = await api("/save", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ path: current.path, content: draft, requestId: requestId() })
+        body: JSON.stringify(body2)
       });
-      setCurrent({ ...current, content: draft });
+      setCurrent({ ...current, content: draft, mtimeMs: saved && typeof saved.mtimeMs === "number" ? saved.mtimeMs : current.mtimeMs });
       dropDraft(current.path);
       showToast(t4("note.saved"));
       void refresh();
+      return;
     } catch (err) {
       selfSavedRef.current = null;
+      const theirs = err && err.body && err.body.conflict ? err.body.conflict : null;
+      if (theirs !== null && typeof theirs === "object") {
+        const when = formatTime(new Date(theirs.mtimeMs).toISOString());
+        const keepMine = await confirmDialog(t4("note.conflict").replace("{when}", when), {
+          confirmText: t4("note.conflictKeep"),
+          cancelText: t4("note.conflictTheir")
+        });
+        if (keepMine) {
+          setBusy(false);
+          await saveNote(true);
+          return;
+        }
+        setCurrent({ ...current, content: theirs.content, mtimeMs: theirs.mtimeMs });
+        setDraft(theirs.content);
+        dropDraft(current.path);
+        showToast(t4("note.conflictTheirDone"));
+        void refresh();
+        return;
+      }
       setError(err && err.message ? err.message : String(err));
     } finally {
       setBusy(false);
@@ -21323,7 +21398,12 @@ ${t4("tree.menuReveal")}` : absolute,
         null,
         h4(
           "button",
-          { type: "button", className: "dshgn_btn dshgn_btnPrimary", onClick: onSave, disabled: busy || !dirty },
+          // 不能直接挂 onSave：Preact 会把点击事件当第一个参数传进去，
+          // 而 saveNote 的第一个参数是「撞车了也硬存」的 force——一个事件对象
+          // 是真值，等于每次点保存都绕过冲突检查。
+          { type: "button", className: "dshgn_btn dshgn_btnPrimary", onClick: () => {
+            void onSave();
+          }, disabled: busy || !dirty },
           h4(Icon, { name: "check", size: 13 }),
           t4("action.save")
         ),
@@ -23105,7 +23185,7 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       menu.showAtMouseEvent(event);
       return true;
     });
-    setConfirmDialog((message) => this.askConfirm(message));
+    setConfirmDialog((message, options) => this.askConfirm(message, options));
     setOpenInEditor((path) => this.openInVaultEditor(path));
     setMarkdownLink((path) => this.markdownLinkFor(path));
     setAssetUrl((path) => this.assetUrlFor(path));
@@ -23901,8 +23981,11 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
    *
    * 返回 Promise<boolean>，用户点「确定」才是 true；关窗（Esc、点遮罩）算取消。
    */
-  askConfirm(message) {
+  askConfirm(message, options) {
     if (typeof import_obsidian2.Modal !== "function") return Promise.resolve(false);
+    const opts = options !== null && typeof options === "object" ? options : {};
+    const okText = typeof opts.confirmText === "string" && opts.confirmText !== "" ? opts.confirmText : "\u786E\u5B9A";
+    const cancelText = typeof opts.cancelText === "string" && opts.cancelText !== "" ? opts.cancelText : "\u53D6\u6D88";
     return new Promise((resolve5) => {
       let settled = false;
       const finish = (value) => {
@@ -23915,12 +23998,12 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
           const { contentEl } = this;
           contentEl.createEl("p", { text: String(message) });
           const bar = contentEl.createDiv({ cls: "modal-button-container" });
-          const ok = bar.createEl("button", { text: "\u786E\u5B9A", cls: "mod-cta" });
+          const ok = bar.createEl("button", { text: okText, cls: "mod-cta" });
           ok.addEventListener("click", () => {
             finish(true);
             this.close();
           });
-          const cancel = bar.createEl("button", { text: "\u53D6\u6D88" });
+          const cancel = bar.createEl("button", { text: cancelText });
           cancel.addEventListener("click", () => {
             finish(false);
             this.close();

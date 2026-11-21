@@ -617,12 +617,37 @@ export async function saveAsset(root, relNote, name, data) {
 export async function writeNote(root, rel, content, options = {}) {
   const backup = options.backup !== false
   const { abs, rel: normalized } = resolveInside(root, rel)
+  // 「我读到的是这一版，才允许写」：面板开着的时候用户在宿主编辑器里也改了同一篇，
+  // 后保存的那一份会把前一份悄悄盖掉，而且盖完没有任何痕迹（历史里倒是有，
+  // 但用户不会知道要去看）。带上前一次读到的 mtimeMs，对不上就抛 409，
+  // 让上面问一句「要用哪一版」，而不是闷头覆盖。
+  // 不传 expectMtimeMs 就是「不管现状、直接写」——导入、同步、脚本都靠这条老路子。
+  const expectMtimeMs = typeof options.expectMtimeMs === 'number' && Number.isFinite(options.expectMtimeMs)
+    ? options.expectMtimeMs
+    : null
   if (!normalized.toLowerCase().endsWith(NOTE_EXT)) {
     throw Object.assign(new Error('只能写入 .md 文件'), { status: 400 })
   }
   if (typeof content !== 'string') throw Object.assign(new Error('content 必须是字符串'), { status: 400 })
   if (Buffer.byteLength(content, 'utf8') > MAX_WRITE) {
     throw Object.assign(new Error('内容超过 2MB 上限'), { status: 413 })
+  }
+  if (expectMtimeMs !== null) {
+    let nowMs = null
+    try {
+      nowMs = (await stat(abs)).mtimeMs
+    } catch {
+      // 文件不在（新建 / 刚被删）：没有「被谁改过」可言，照写
+      nowMs = null
+    }
+    if (nowMs !== null && nowMs !== expectMtimeMs) {
+      const err = new Error('这一篇在别处被改过了')
+      err.status = 409
+      err.code = 'conflict'
+      err.path = normalized
+      err.mtimeMs = nowMs
+      throw err
+    }
   }
   await mkdir(dirname(abs), { recursive: true })
   if (backup) {

@@ -187,10 +187,13 @@ async function saveFile(url, filename) {
     export function setConfirmDialog(fn) {
       __confirm = typeof fn === 'function' ? fn : null
     }
-    function confirmDialog(message) {
+    // options.confirmText / options.cancelText：两个按钮上写什么。
+    // 「存我这一版 / 用别处那一版」这种两边都不是「取消」的选择，写
+    // 「确定 / 取消」等于让用户猜哪个是哪个——猜错就把自己那一版丢了。
+    function confirmDialog(message, options) {
       if (__confirm !== null) {
         try {
-          return Promise.resolve(__confirm(String(message))).then(
+          return Promise.resolve(__confirm(String(message), options)).then(
             (value) => value === true,
             () => window.confirm(String(message)),
           )
@@ -750,6 +753,11 @@ async function saveFile(url, filename) {
         'note.saved': '已保存',
         'note.deleted': '已移入回收站',
         'note.unsaved': '有未保存的修改',
+        // 保存撞车：别处已经改过同一篇。{when} 换成那边改动的时间。
+        'note.conflict': '这一篇在别处被改过了（{when}），你手上这一版还没存',
+        'note.conflictKeep': '存我这一版',
+        'note.conflictTheir': '用别处那一版',
+        'note.conflictTheirDone': '已换成别处那一版',
         // 没存完的草稿救回来时用的三句。{when} 换成「几月几号几点」。
         'draft.found': '上次写到一半没存（{when}）',
         'draft.resume': '接着写',
@@ -1302,6 +1310,10 @@ async function saveFile(url, filename) {
         'note.saved': 'Saved',
         'note.deleted': 'Moved to trash',
         'note.unsaved': 'Unsaved changes',
+        'note.conflict': 'This note was changed elsewhere ({when}); your version is not saved yet',
+        'note.conflictKeep': 'Keep my version',
+        'note.conflictTheir': 'Take theirs',
+        'note.conflictTheirDone': 'Switched to the other version',
         'draft.found': 'Unfinished draft from {when}',
         'draft.resume': 'Keep writing',
         'draft.discard': 'Discard',
@@ -1849,6 +1861,10 @@ async function saveFile(url, filename) {
         'note.saved': 'Opgeslagen',
         'note.deleted': 'Naar prullenbak',
         'note.unsaved': 'Niet-opgeslagen wijzigingen',
+        'note.conflict': 'Deze notitie is elders gewijzigd ({when}); jouw versie is nog niet opgeslagen',
+        'note.conflictKeep': 'Mijn versie bewaren',
+        'note.conflictTheir': 'Hun versie nemen',
+        'note.conflictTheirDone': 'Overgezet naar de andere versie',
         'draft.found': 'Onvoltooide tekst van {when}',
         'draft.resume': 'Verder schrijven',
         'draft.discard': 'Weggooien',
@@ -2363,12 +2379,20 @@ async function saveFile(url, filename) {
           if (!res.ok) {
             const err = new Error((json && json.error) || `HTTP ${res.status}`)
             err.status = res.status
+            // 响应正文也挂上：409 撞车时服务端会附带「磁盘上现在是哪一版」，
+            // 只留一句 error 文案的话，上层想知道细节还得再打一次请求。
+            err.body = json
             throw err
           }
           return json
         } catch (error) {
+          // 写操作没有自己的 AbortController，signal 就是 undefined——直接读
+          // signal.aborted 会在这里抛 TypeError，把真正的原因（比如 409 撞车）
+          // 整个盖掉，上层只看到一句「Cannot read properties of undefined」。
           const aborted =
-            error !== null && typeof error === 'object' && (error.name === 'AbortError' || signal.aborted)
+            error !== null &&
+            typeof error === 'object' &&
+            (error.name === 'AbortError' || (signal !== undefined && signal !== null && signal.aborted === true))
           // 被更新的同类请求顶掉了：这是正常流程，静默退出
           if (aborted) throw error
           // 业务错误带 status，说明服务是活的，重试没有意义
@@ -7036,26 +7060,65 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         [dirty, openNote, requestAnchor, t],
       )
 
-      const saveNote = React.useCallback(async () => {
+      /**
+       * 把手上这一版写回去。
+       *
+       * `force` 是「撞车了，但用户说了算他这一版」——只有用户在冲突提示里
+       * 明确点过「存我这一版」才会为 true，那时候不再带 baseMtime，
+       * 否则会跟同一个冲突再撞一次、原地打转。
+       */
+      const saveNote = React.useCallback(async (force = false) => {
         if (current === null || draft === null) return
         setBusy(true)
         // 先记下来再写：宿主的 modify 可能比 /save 的响应还早到
         selfSavedRef.current = { path: current.path }
         try {
-          await api('/save', {
+          const body = { path: current.path, content: draft, requestId: requestId() }
+          // 带上「我读到的是哪一版」：宿主里同一篇被别人改过时，服务端回 409，
+          // 而不是把对方那一版悄悄盖掉。mtimeMs 读不到（老版本服务 / 新建）就不带，
+          // 退化成原来的「直接写」。
+          if (!force && typeof current.mtimeMs === 'number' && Number.isFinite(current.mtimeMs)) {
+            body.expectMtimeMs = current.mtimeMs
+          }
+          const saved = await api('/save', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ path: current.path, content: draft, requestId: requestId() }),
+            body: JSON.stringify(body),
           })
-          setCurrent({ ...current, content: draft })
+          setCurrent({ ...current, content: draft, mtimeMs: saved && typeof saved.mtimeMs === 'number' ? saved.mtimeMs : current.mtimeMs })
           // 落盘了，那份救急草稿就没有存在的意义了；留着它，下次打开这篇
           // 还会弹一句「上次写到一半没存」，而其实早就存好了。
           dropDraft(current.path)
           showToast(t('note.saved'))
           void refresh()
+          return
         } catch (err) {
           // 没存成：磁盘上什么都没变，别让下一次真正的改动被我们吞掉
           selfSavedRef.current = null
+          const theirs = err && err.body && err.body.conflict ? err.body.conflict : null
+          if (theirs !== null && typeof theirs === 'object') {
+            // 撞车了：问一句「用哪一版」，而不是报个错就完了——报错之后
+            // 用户手上这一版还悬在编辑器里，他不知道该丢还是该留。
+            const when = formatTime(new Date(theirs.mtimeMs).toISOString())
+            const keepMine = await confirmDialog(t('note.conflict').replace('{when}', when), {
+              confirmText: t('note.conflictKeep'),
+              cancelText: t('note.conflictTheir'),
+            })
+            if (keepMine) {
+              // 用户选了自己这一版：清掉 baseMtime 再存一次，这次一定写得进去。
+              // 递归一层就够——force 之后不会再走冲突分支。
+              setBusy(false)
+              await saveNote(true)
+              return
+            }
+            // 选了「用别处那一版」：手上这份直接丢掉，正文换成磁盘上的。
+            setCurrent({ ...current, content: theirs.content, mtimeMs: theirs.mtimeMs })
+            setDraft(theirs.content)
+            dropDraft(current.path)
+            showToast(t('note.conflictTheirDone'))
+            void refresh()
+            return
+          }
           setError(err && err.message ? err.message : String(err))
         } finally {
           setBusy(false)
@@ -15983,7 +16046,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                 null,
                 h(
                   'button',
-                  { type: 'button', className: 'dshgn_btn dshgn_btnPrimary', onClick: onSave, disabled: busy || !dirty },
+                  // 不能直接挂 onSave：Preact 会把点击事件当第一个参数传进去，
+                  // 而 saveNote 的第一个参数是「撞车了也硬存」的 force——一个事件对象
+                  // 是真值，等于每次点保存都绕过冲突检查。
+                  { type: 'button', className: 'dshgn_btn dshgn_btnPrimary', onClick: () => { void onSave() }, disabled: busy || !dirty },
                   h(Icon, { name: 'check', size: 13 }),
                   t('action.save'),
                 ),

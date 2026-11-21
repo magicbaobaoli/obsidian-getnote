@@ -191,7 +191,9 @@ export default class GetnoteObsidianPlugin extends Plugin {
     // 面板里原本用 window.confirm：它在 Electron 里能用，但长得跟宿主完全不搭，
     // 移动端 WebView 还可能根本不弹——删除、清空这种不可逆的动作就没有二次确认了。
     // Modal 由宿主渲染，键盘焦点、遮罩、Esc 都由 Obsidian 管。
-    setConfirmDialog((message) => this.askConfirm(message))
+    // options 要一起透传：冲突提示的按钮是「存我这一版 / 用别处那一版」，
+    // 只把 message 递下去的话，面板挑好的文案到宿主这里就被换回确定/取消了。
+    setConfirmDialog((message, options) => this.askConfirm(message, options))
 
     // 「在 Obsidian 里打开」：面板的编辑器够用来看和改正文，但没有补全、没有
     // Vim、没有别的插件挂上来的命令。真要动结构的时候，得把用户送回宿主编辑器。
@@ -1207,8 +1209,13 @@ export default class GetnoteObsidianPlugin extends Plugin {
    *
    * 返回 Promise<boolean>，用户点「确定」才是 true；关窗（Esc、点遮罩）算取消。
    */
-  askConfirm(message) {
+  askConfirm(message, options) {
     if (typeof Modal !== 'function') return Promise.resolve(false)
+    // 按钮文案可以换：冲突提示里的两个选择是「存我这一版 / 用别处那一版」，
+    // 两边都不是「取消」，写死成确定/取消会让人分不清哪个是哪个。
+    const opts = options !== null && typeof options === 'object' ? options : {}
+    const okText = typeof opts.confirmText === 'string' && opts.confirmText !== '' ? opts.confirmText : '确定'
+    const cancelText = typeof opts.cancelText === 'string' && opts.cancelText !== '' ? opts.cancelText : '取消'
     return new Promise((resolve) => {
       // close() 会触发 onClose，点按钮和按 Esc 都走同一条路。用标记保证只
       // resolve 一次：否则「先点确定、再按 Esc」会 resolve 两回。
@@ -1223,12 +1230,12 @@ export default class GetnoteObsidianPlugin extends Plugin {
           const { contentEl } = this
           contentEl.createEl('p', { text: String(message) })
           const bar = contentEl.createDiv({ cls: 'modal-button-container' })
-          const ok = bar.createEl('button', { text: '确定', cls: 'mod-cta' })
+          const ok = bar.createEl('button', { text: okText, cls: 'mod-cta' })
           ok.addEventListener('click', () => {
             finish(true)
             this.close()
           })
-          const cancel = bar.createEl('button', { text: '取消' })
+          const cancel = bar.createEl('button', { text: cancelText })
           cancel.addEventListener('click', () => {
             finish(false)
             this.close()

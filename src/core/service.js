@@ -326,7 +326,11 @@ function sweepPending() {
 function fail(res, error) {
   const status = error && typeof error.status === 'number' ? error.status : 500
   const message = error && error.message ? error.message : 'internal error'
-  send(res, status, { error: message })
+  const payload = { error: message }
+  // 保存撞车时把「磁盘上现在是什么」一起带回去：只回一句「被改过了」，
+  // 面板只能干瞪眼，用户还得自己去翻那一篇才知道差在哪。
+  if (error && error.conflict !== undefined && error.conflict !== null) payload.conflict = error.conflict
+  send(res, status, payload)
 }
 
 /**
@@ -1229,9 +1233,31 @@ export function createHandler(config) {
     } catch {
       // 历史是附加价值，不是保存的前置条件
     }
+    // 面板带着「我读到的是哪一版」来存时，磁盘上那份已经不是那一版了就别写：
+    // 用户在宿主编辑器里改的、或者另一台设备同步下来的，都会被这一次保存悄悄盖掉。
+    // 抛 409 之外还把磁盘上现在的内容一起带回去，好让面板能问「用哪一版」——
+    // 只报个错，用户还得自己去翻那篇，等于把冲突丢回给他。
+    const expect = typeof body.expectMtimeMs === 'number' && Number.isFinite(body.expectMtimeMs) ? body.expectMtimeMs : null
     // backup:false — 已经有历史了，再留 .bak 只会让库里多出一个
     // 用户看不到、删不掉的副本（`.bak` 不在扫描范围内，等于永久垃圾）。
-    const saved = await writeNote(root, path, content, { backup: false })
+    let saved
+    try {
+      saved = await writeNote(root, path, content, { backup: false, expectMtimeMs: expect })
+    } catch (error) {
+      if (error && error.status === 409) {
+        let now = null
+        try {
+          const fresh = await readNote(root, path)
+          now = { content: fresh.content, mtimeMs: fresh.mtimeMs }
+        } catch {
+          now = null
+        }
+        const conflict = Object.assign(new Error('这一篇在别处被改过了'), { status: 409 })
+        conflict.conflict = now
+        throw conflict
+      }
+      throw error
+    }
     send(res, 200, { ok: true, ...saved })
   }
 
