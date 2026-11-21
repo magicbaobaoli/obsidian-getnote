@@ -11737,6 +11737,12 @@ var CSS = `
   background:rgba(var(--dshgn-tintRgb),.1);font:inherit;font-size:11px;
   color:var(--dsw-alias-brand-primary);cursor:pointer}
 .dshgn_propTag:hover{background:var(--dsw-alias-interactive-bg-hover-accent)}
+/* \u5934\u90E8\u91CC\u90A3\u4E2A\u503C\u662F\u53CC\u94FE\u65F6\uFF1A\u8DDF\u6807\u7B7E\u80F6\u56CA\u540C\u6B3E\uFF0C\u4F46\u989C\u8272\u8D70\u94FE\u63A5\u8272\uFF0C\u4E00\u773C\u5206\u5F97\u6E05\u300C\u70B9\u4E86\u4F1A\u8DF3\u300D\u548C\u300C\u70B9\u4E86\u4F1A\u7B5B\u300D */
+.dshgn_propLink{appearance:none;border:0;border-radius:9px;padding:1px 7px;margin:0 4px 4px 0;
+  background:transparent;color:var(--dsw-alias-brand-primary);font:inherit;font-size:11px;
+  line-height:1.5;cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_propLink:hover{background:var(--dsw-alias-interactive-bg-hover-accent)}
+.dshgn_propLink:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 /* \u5173\u8054\u7B14\u8BB0\uFF1A\u6B63\u6587\u8BFB\u5B8C\u624D\u51FA\u73B0\uFF0C\u6240\u4EE5\u6837\u5F0F\u6BD4\u5927\u7EB2\u66F4\u8F7B\u2014\u2014\u5B83\u662F\u4E00\u6761\u8865\u5145\u4FE1\u606F\uFF0C\u4E0D\u8BE5\u62A2\u6B63\u6587\u89C6\u7EBF\u3002 */
 /* \u65AD\u94FE\u6E05\u5355\uFF1A\u4E00\u884C\u4E00\u5904\u3002\u76EE\u6807\u540D\u5B57\u7528\u9519\u8BEF\u8272\uFF0C\u56E0\u4E3A\u8FD9\u4E00\u884C\u672C\u8EAB\u5C31\u662F\u300C\u8FD9\u91CC\u6709\u95EE\u9898\u300D\uFF1B
    \u5E95\u4E0B\u7684\u4F4D\u7F6E\u4E0E\u4E0A\u4E0B\u6587\u7528\u6DE1\u8272\uFF0C\u626B\u4E00\u773C\u5C31\u80FD\u8DF3\u8FC7\u6B63\u5E38\u7684\u90A3\u4E9B\u3002 */
@@ -19921,7 +19927,21 @@ function NotePane(props) {
         tags = list.map((item) => String(item === null || item === void 0 ? "" : item).trim()).filter((item) => item !== "");
         if (tags.length === 0) tags = null;
       }
-      rows.push({ key, text, tags });
+      let link = null;
+      if (tags === null && typeof raw === "string") {
+        const hit = /^\[\[([^\]\n]+)\]\]$/.exec(raw.trim());
+        if (hit !== null) {
+          const inner = hit[1];
+          const pipe = inner.indexOf("|");
+          const left = (pipe === -1 ? inner : inner.slice(0, pipe)).trim();
+          const hash = left.indexOf("#");
+          const target = (hash === -1 ? left : left.slice(0, hash)).trim();
+          const anchor = hash === -1 ? "" : left.slice(hash + 1).trim();
+          const label = pipe === -1 ? "" : inner.slice(pipe + 1).trim();
+          if (target !== "") link = { target, anchor, label };
+        }
+      }
+      rows.push({ key, text, tags, link });
     }
     return rows;
   }, [current]);
@@ -20728,6 +20748,16 @@ ${t4("tree.menuReveal")}` : absolute,
                     },
                     tag
                   )
+                ) : row.link !== null && typeof onOpenWikiLink2 === "function" ? h4(
+                  "button",
+                  {
+                    key: "link",
+                    type: "button",
+                    className: "dshgn_propLink",
+                    title: row.link.target + (row.link.anchor === "" ? "" : ` \u203A ${row.link.anchor}`),
+                    onClick: () => onOpenWikiLink2(row.link.target, row.link.anchor)
+                  },
+                  row.link.label || (row.link.anchor === "" ? row.link.target : `${row.link.target} \u203A ${row.link.anchor}`)
                 ) : row.text
               )
             )

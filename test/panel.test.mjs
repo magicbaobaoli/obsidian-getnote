@@ -10476,3 +10476,94 @@ test('列表顶上那颗「全部勾上」一次把这次筛出来的都选上�
   rowOf('全部笔记').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
   await sleep(250)
 })
+
+test('头部里那个值是双链时点得开，不用自己去左栏翻', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const backBtn = () => window.document.querySelector('.dshgn_noteBack')
+  const seed = async (dir, title, content, requestId) => {
+    const res = await realFetch(server.origin + '/getnote/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({ dir, title, content, withDatePrefix: false, requestId }),
+    })
+    return (await res.json()).path
+  }
+
+  panel.setConfirmDialog(async () => true)
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = backBtn()
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(220)
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  const tabBtn = Array.from(window.document.querySelectorAll('.dshgn_tab')).find(
+    (el) => (el.textContent || '').trim() === '笔记',
+  )
+  assert.ok(tabBtn, '找不到「笔记」标签按钮')
+  tabBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_search') !== null, 4000, '搜索框')
+
+  const searchBox = window.document.querySelector('.dshgn_search')
+  const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  setValue.call(searchBox, '')
+  searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(300)
+
+  // 被指向的那一篇
+  const target = await seed('头部链接验收', '头部链接-被指向的那一篇', '# 头部链接-被指向的那一篇\n\n这边是被指的那一篇。\n', 'seed-prop-link-target')
+  // 头部里挂着一条双链，正文里一次都没提它——只能从属性区点过去
+  const source = await seed(
+    '头部链接验收',
+    '头部链接-引用方',
+    ['---', '相关: "[[头部链接-被指向的那一篇]]"', '---', '', '# 头部链接-引用方', '', '正文里一次都没提它。', ''].join('\n'),
+    'seed-prop-link-source',
+  )
+
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+
+  const cardOf = (path) =>
+    Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === path)
+  const card = await waitFor(() => cardOf(source), 8000, '引用方那一篇出现在列表里')
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(
+    () => ((window.document.querySelector('.dshgn_note') || {}).textContent || '').includes('正文里一次都没提它'),
+    8000,
+    '引用方那一篇打开了',
+  )
+
+  const props = await waitFor(() => window.document.querySelector('.dshgn_props'), 5000, '属性区出现')
+  const linkBtn = props.querySelector('.dshgn_propLink')
+  assert.ok(linkBtn, '头部里那条双链该做成能点的')
+  assert.equal((linkBtn.textContent || '').trim(), '头部链接-被指向的那一篇', '按钮上显示的就是被指的那一篇')
+  assert.equal(linkBtn.title, '头部链接-被指向的那一篇', '悬停说清点了会去哪一篇')
+  // 同一条双链不该被当成普通文字原样摊出来
+  assert.ok(!(props.textContent || '').includes('[['), '双链不该原样露出方括号')
+
+  linkBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(
+    () => ((window.document.querySelector('.dshgn_note') || {}).textContent || '').includes('这边是被指的那一篇'),
+    8000,
+    '点一下就打开了被指的那一篇',
+  )
+
+  // 收尾：退回列表
+  const back = backBtn()
+  if (back) {
+    panel.setConfirmDialog(async () => true)
+    try {
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(250)
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+  }
+})

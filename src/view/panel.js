@@ -4651,6 +4651,12 @@ async function saveFile(url, filename) {
   background:rgba(var(--dshgn-tintRgb),.1);font:inherit;font-size:11px;
   color:var(--dsw-alias-brand-primary);cursor:pointer}
 .dshgn_propTag:hover{background:var(--dsw-alias-interactive-bg-hover-accent)}
+/* 头部里那个值是双链时：跟标签胶囊同款，但颜色走链接色，一眼分得清「点了会跳」和「点了会筛」 */
+.dshgn_propLink{appearance:none;border:0;border-radius:9px;padding:1px 7px;margin:0 4px 4px 0;
+  background:transparent;color:var(--dsw-alias-brand-primary);font:inherit;font-size:11px;
+  line-height:1.5;cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_propLink:hover{background:var(--dsw-alias-interactive-bg-hover-accent)}
+.dshgn_propLink:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 /* 关联笔记：正文读完才出现，所以样式比大纲更轻——它是一条补充信息，不该抢正文视线。 */
 /* 断链清单：一行一处。目标名字用错误色，因为这一行本身就是「这里有问题」；
    底下的位置与上下文用淡色，扫一眼就能跳过正常的那些。 */
@@ -14310,7 +14316,24 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
               .filter((item) => item !== '')
             if (tags.length === 0) tags = null
           }
-          rows.push({ key, text, tags })
+          // 值本身就是一个双链（`related: "[[另一篇]]"` 这种写法很常见）时，
+          // 把它做成能点的：这里摆着一条通向另一篇的路，却要用户自己去左栏翻，
+          // 等于把链接当成一段普通文字。带小节的写法 `[[笔记#小节]]` 也认。
+          let link = null
+          if (tags === null && typeof raw === 'string') {
+            const hit = /^\[\[([^\]\n]+)\]\]$/.exec(raw.trim())
+            if (hit !== null) {
+              const inner = hit[1]
+              const pipe = inner.indexOf('|')
+              const left = (pipe === -1 ? inner : inner.slice(0, pipe)).trim()
+              const hash = left.indexOf('#')
+              const target = (hash === -1 ? left : left.slice(0, hash)).trim()
+              const anchor = hash === -1 ? '' : left.slice(hash + 1).trim()
+              const label = pipe === -1 ? '' : inner.slice(pipe + 1).trim()
+              if (target !== '') link = { target, anchor, label }
+            }
+          }
+          rows.push({ key, text, tags, link })
         }
         return rows
       }, [current])
@@ -15232,7 +15255,24 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                                         tag,
                                       ),
                                     )
-                                  : row.text,
+                                  : row.link !== null && typeof onOpenWikiLink === 'function'
+                                    ? h(
+                                        'button',
+                                        {
+                                          key: 'link',
+                                          type: 'button',
+                                          className: 'dshgn_propLink',
+                                          title:
+                                            row.link.target +
+                                            (row.link.anchor === '' ? '' : ` › ${row.link.anchor}`),
+                                          onClick: () => onOpenWikiLink(row.link.target, row.link.anchor),
+                                        },
+                                        row.link.label ||
+                                          (row.link.anchor === ''
+                                            ? row.link.target
+                                            : `${row.link.target} › ${row.link.anchor}`),
+                                      )
+                                    : row.text,
                               ),
                             ),
                           ),
