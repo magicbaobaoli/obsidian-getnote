@@ -10295,3 +10295,99 @@ test('列表底下的「全部显示」一次把剩下的都摊出来，不用�
   assert.equal(rootNode().querySelector('.dshgn_moreRow'), null, '全摊开之后底下那颗就不该还在')
   await backToList()
 })
+
+test('左栏目录和标签各自有一颗「全部收起」，一次收干净再一次摊开', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const seed = async (title, dir, tags, requestId) => {
+    const head = tags.length > 0 ? ['---', 'tags: [' + tags.join(', ') + ']', '---', ''] : []
+    const content = head.concat(['# ' + title, '', '正文', '']).join('\n')
+    const res = await realFetch(server.origin + '/getnote/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({ dir, title, content, withDatePrefix: false, requestId }),
+    })
+    const json = await res.json()
+    return json.path
+  }
+
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = window.document.querySelector('.dshgn_noteBack')
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(120)
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  await clickTab('笔记')
+  await waitFor(() => rootNode().querySelector('.dshgn_search') !== null, 4000, '搜索框')
+  const searchBox = rootNode().querySelector('.dshgn_search')
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  setter.call(searchBox, '')
+  searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(400)
+
+  // 两支带子目录的目录、两支带子标签的标签：两区都各自有「还能收的行」
+  await seed('全收验收-甲', '全收验收/全收甲子', [], 'seed-fold-all-a')
+  await seed('全收验收-乙', '全收验收/全收乙子', [], 'seed-fold-all-b')
+  await seed('全收验收-标签一', '随手记', ['全收标签/子一'], 'seed-fold-all-c')
+  await seed('全收验收-标签二', '随手记', ['全收标签/子二'], 'seed-fold-all-d')
+
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+
+  // 每区标题行右侧的动作组：目录区是第 0 个，标签区是第 1 个
+  const heads = () => Array.from(window.document.querySelectorAll('.dshgn_treeHeadRight'))
+  const foldAllOf = (index) => {
+    const head = heads()[index]
+    return head === undefined ? null : head.querySelector('.dshgn_treeFoldAll')
+  }
+  const dirRow = (name) =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+      const label = el.querySelector('.dshgn_treeName')
+      return label !== null && label.textContent === name
+    }) || null
+  const tagRow = (title) =>
+    Array.from(window.document.querySelectorAll('.dshgn_tagRow')).find((el) => el.title === title) || null
+
+  await waitFor(() => dirRow('全收甲子') !== null, 8000, '子目录一开始是展开的')
+  assert.ok(dirRow('全收乙子') !== null, '另一支子目录也展开着')
+  assert.ok(tagRow('全收标签/子一') !== null, '子标签一开始也展开着')
+
+  const dirFoldAll = foldAllOf(0)
+  const tagFoldAll = foldAllOf(1)
+  assert.ok(dirFoldAll !== null, '目录区要有一颗「全部收起」')
+  assert.ok(tagFoldAll !== null, '标签区也要有一颗')
+  assert.equal(dirFoldAll.title, '全部收起', '悬停说清点它会怎样')
+  assert.equal(dirFoldAll.getAttribute('aria-pressed'), 'false', '一开始是展开态')
+
+  // 目录区全收：所有子目录一次收掉，标签区不受影响
+  dirFoldAll.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => dirRow('全收甲子') === null, 5000, '目录该一次全收起来')
+  assert.equal(dirRow('全收乙子'), null, '同一支以外的子目录也一起收掉')
+  assert.ok(dirRow('全收验收') !== null, '顶层目录自己还在')
+  assert.ok(tagRow('全收标签/子一') !== null, '标签区不该被目录那颗按钮带着收')
+  assert.equal(foldAllOf(0).title, '全部展开', '全收之后这颗按钮改成「全部展开」')
+  assert.equal(foldAllOf(0).getAttribute('aria-pressed'), 'true', '无障碍属性跟着走')
+
+  // 标签区全收
+  foldAllOf(1).dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => tagRow('全收标签/子一') === null, 5000, '标签该一次全收起来')
+  assert.equal(tagRow('全收标签/子二'), null, '另一颗子标签也一起收掉')
+  assert.ok(tagRow('全收标签') !== null, '父标签自己还在')
+  assert.equal(foldAllOf(1).title, '全部展开', '标签区那颗也改成「全部展开」')
+
+  // 再点一次全摊开：两区都回到展开
+  foldAllOf(0).dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => dirRow('全收甲子') !== null, 5000, '再点该一次全展开')
+  assert.ok(dirRow('全收乙子') !== null, '另一支也回来了')
+  assert.equal(foldAllOf(0).title, '全部收起', '按钮回到「全部收起」')
+  foldAllOf(1).dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => tagRow('全收标签/子一') !== null, 5000, '标签区再点也全展开')
+  assert.equal(foldAllOf(1).title, '全部收起', '标签区按钮也回到「全部收起」')
+})

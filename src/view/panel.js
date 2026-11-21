@@ -641,6 +641,8 @@ async function saveFile(url, filename) {
         'tree.unfold': '展开子目录',
         'tree.foldTag': '收起子标签',
         'tree.unfoldTag': '展开子标签',
+        'tree.foldAll': '全部收起',
+        'tree.unfoldAll': '全部展开',
         'tree.dirCreated': '目录已创建',
         'tree.movedTo': '已挪到 {dir}',
         'tree.tagCreated': '标签已添加到当前笔记',
@@ -1136,6 +1138,8 @@ async function saveFile(url, filename) {
         'tree.unfold': 'Expand subfolders',
         'tree.foldTag': 'Collapse subtags',
         'tree.unfoldTag': 'Expand subtags',
+        'tree.foldAll': 'Collapse all',
+        'tree.unfoldAll': 'Expand all',
         'tree.dirCreated': 'Folder created',
         'tree.movedTo': 'Moved to {dir}',
         'tree.tagCreated': 'Tag added to the open note',
@@ -1630,6 +1634,8 @@ async function saveFile(url, filename) {
         'tree.unfold': 'Submappen uitklappen',
         'tree.foldTag': 'Subtags inklappen',
         'tree.unfoldTag': 'Subtags uitklappen',
+        'tree.foldAll': 'Alles inklappen',
+        'tree.unfoldAll': 'Alles uitklappen',
         'tree.dirCreated': 'Map aangemaakt',
         'tree.movedTo': 'Verplaatst naar {dir}',
         'tree.tagCreated': 'Tag toegevoegd aan de geopende notitie',
@@ -5625,6 +5631,18 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
    会让它看起来像标题的一部分，用户不会想到那是个按钮。 */
 .dshgn_treeHeadRight{display:flex;align-items:center;gap:2px;flex:none;margin-left:auto}
 .dshgn_treeHeadTitle{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* 「全部收起 / 全部展开」：一个小三角，收着的时候转回水平，和行里的箭头
+   用同一个方向语言（朝下=还收着，朝右=已收起）。 */
+.dshgn_treeFoldAll{
+  display:inline-flex;align-items:center;justify-content:center;
+  height:18px;min-width:18px;padding:0 3px;border:0;border-radius:5px;
+  background:transparent;color:var(--dsw-alias-label-tertiary);
+  font:inherit;cursor:pointer;
+}
+.dshgn_treeFoldAll:hover{background:rgba(255,255,255,.14);color:var(--dsw-alias-label-primary)}
+.dshgn_treeFoldAll:focus-visible{outline:1px solid var(--dshgn-accentOnDark);outline-offset:1px}
+.dshgn_treeFoldAll svg{transform:rotate(90deg);transition:transform .12s ease}
+.dshgn_treeFoldAll[data-folded="true"] svg{transform:rotate(0deg)}
 .dshgn_treeSort,
 .dshgn_treeAdd{
   display:inline-flex;align-items:center;justify-content:center;
@@ -13012,6 +13030,15 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         return rows
       }, [tagCounts, entries, tagSort, foldedTags])
 
+      // 「全部收起」要按「这一区里所有还能收的行都已经收着」来判定，而不是
+      // 数个数：收起来之后子行本来就不在 flat / tagTree 里了，个数会跟着变，
+      // 拿它比永远对不上。收着的行仍留在列表里（只是不再往下走），所以这一批
+      // 路径是稳定的判据。
+      const dirFoldable = flat.filter((node) => node.hasKids).map((node) => node.path)
+      const allDirsFolded = dirFoldable.length > 0 && dirFoldable.every((one) => folded.has(one))
+      const tagFoldable = tagTree.filter((row) => row.hasKids).map((row) => row.path)
+      const allTagsFolded = tagFoldable.length > 0 && tagFoldable.every((one) => foldedTags.has(one))
+
       const runCreate = async () => {
         const name = draft.trim()
         if (name === '') {
@@ -13167,9 +13194,34 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         const mode = kind === 'dir' ? dirSort : tagSort
         const setMode = kind === 'dir' ? onDirSortChange : onTagSortChange
         const nextMode = mode === 'time' ? 'name' : mode === 'name' ? 'count' : 'time'
+        // 「全部收起 / 全部展开」：库里目录攒到二三十支之后，一支一支点箭头
+        // 是几十次点击；而「只想看顶层结构」恰恰是最常见的一眼需求。
+        // 一次全收之后再展开，等于把整个结构重置回最省地方的样子。
+        // 没有任何可收的行（全是叶子）时这颗按钮按了只会什么都不变，所以不摆。
+        const foldable = kind === 'dir' ? dirFoldable : tagFoldable
+        const allFolded = kind === 'dir' ? allDirsFolded : allTagsFolded
+        const foldAll = () => {
+          if (kind === 'dir') setFolded(allFolded ? new Set() : new Set(dirFoldable))
+          else setFoldedTags(allFolded ? new Set() : new Set(tagFoldable))
+        }
         return h(
           'div',
           { className: 'dshgn_treeHeadRight' },
+          foldable.length === 0
+            ? null
+            : h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dshgn_treeFoldAll',
+                  title: allFolded ? t('tree.unfoldAll') : t('tree.foldAll'),
+                  'aria-label': allFolded ? t('tree.unfoldAll') : t('tree.foldAll'),
+                  'aria-pressed': allFolded ? 'true' : 'false',
+                  'data-folded': allFolded ? 'true' : 'false',
+                  onClick: foldAll,
+                },
+                h(Icon, { name: 'chevron', size: 10 }),
+              ),
           h(
             'button',
             {

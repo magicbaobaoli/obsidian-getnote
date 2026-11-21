@@ -8494,6 +8494,8 @@ var LEX = {
     "tree.unfold": "\u5C55\u5F00\u5B50\u76EE\u5F55",
     "tree.foldTag": "\u6536\u8D77\u5B50\u6807\u7B7E",
     "tree.unfoldTag": "\u5C55\u5F00\u5B50\u6807\u7B7E",
+    "tree.foldAll": "\u5168\u90E8\u6536\u8D77",
+    "tree.unfoldAll": "\u5168\u90E8\u5C55\u5F00",
     "tree.dirCreated": "\u76EE\u5F55\u5DF2\u521B\u5EFA",
     "tree.movedTo": "\u5DF2\u632A\u5230 {dir}",
     "tree.tagCreated": "\u6807\u7B7E\u5DF2\u6DFB\u52A0\u5230\u5F53\u524D\u7B14\u8BB0",
@@ -8985,6 +8987,8 @@ var LEX = {
     "tree.unfold": "Expand subfolders",
     "tree.foldTag": "Collapse subtags",
     "tree.unfoldTag": "Expand subtags",
+    "tree.foldAll": "Collapse all",
+    "tree.unfoldAll": "Expand all",
     "tree.dirCreated": "Folder created",
     "tree.movedTo": "Moved to {dir}",
     "tree.tagCreated": "Tag added to the open note",
@@ -9475,6 +9479,8 @@ var LEX = {
     "tree.unfold": "Submappen uitklappen",
     "tree.foldTag": "Subtags inklappen",
     "tree.unfoldTag": "Subtags uitklappen",
+    "tree.foldAll": "Alles inklappen",
+    "tree.unfoldAll": "Alles uitklappen",
     "tree.dirCreated": "Map aangemaakt",
     "tree.movedTo": "Verplaatst naar {dir}",
     "tree.tagCreated": "Tag toegevoegd aan de geopende notitie",
@@ -12711,6 +12717,18 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
    \u4F1A\u8BA9\u5B83\u770B\u8D77\u6765\u50CF\u6807\u9898\u7684\u4E00\u90E8\u5206\uFF0C\u7528\u6237\u4E0D\u4F1A\u60F3\u5230\u90A3\u662F\u4E2A\u6309\u94AE\u3002 */
 .dshgn_treeHeadRight{display:flex;align-items:center;gap:2px;flex:none;margin-left:auto}
 .dshgn_treeHeadTitle{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* \u300C\u5168\u90E8\u6536\u8D77 / \u5168\u90E8\u5C55\u5F00\u300D\uFF1A\u4E00\u4E2A\u5C0F\u4E09\u89D2\uFF0C\u6536\u7740\u7684\u65F6\u5019\u8F6C\u56DE\u6C34\u5E73\uFF0C\u548C\u884C\u91CC\u7684\u7BAD\u5934
+   \u7528\u540C\u4E00\u4E2A\u65B9\u5411\u8BED\u8A00\uFF08\u671D\u4E0B=\u8FD8\u6536\u7740\uFF0C\u671D\u53F3=\u5DF2\u6536\u8D77\uFF09\u3002 */
+.dshgn_treeFoldAll{
+  display:inline-flex;align-items:center;justify-content:center;
+  height:18px;min-width:18px;padding:0 3px;border:0;border-radius:5px;
+  background:transparent;color:var(--dsw-alias-label-tertiary);
+  font:inherit;cursor:pointer;
+}
+.dshgn_treeFoldAll:hover{background:rgba(255,255,255,.14);color:var(--dsw-alias-label-primary)}
+.dshgn_treeFoldAll:focus-visible{outline:1px solid var(--dshgn-accentOnDark);outline-offset:1px}
+.dshgn_treeFoldAll svg{transform:rotate(90deg);transition:transform .12s ease}
+.dshgn_treeFoldAll[data-folded="true"] svg{transform:rotate(0deg)}
 .dshgn_treeSort,
 .dshgn_treeAdd{
   display:inline-flex;align-items:center;justify-content:center;
@@ -18896,6 +18914,10 @@ function TreePane(props) {
     walk(root, "", 0);
     return rows;
   }, [tagCounts, entries, tagSort, foldedTags]);
+  const dirFoldable = flat.filter((node) => node.hasKids).map((node) => node.path);
+  const allDirsFolded = dirFoldable.length > 0 && dirFoldable.every((one) => folded.has(one));
+  const tagFoldable = tagTree.filter((row) => row.hasKids).map((row) => row.path);
+  const allTagsFolded = tagFoldable.length > 0 && tagFoldable.every((one) => foldedTags.has(one));
   const runCreate = async () => {
     const name = draft.trim();
     if (name === "") {
@@ -19030,9 +19052,28 @@ function TreePane(props) {
     const mode = kind === "dir" ? dirSort : tagSort;
     const setMode = kind === "dir" ? onDirSortChange : onTagSortChange;
     const nextMode = mode === "time" ? "name" : mode === "name" ? "count" : "time";
+    const foldable = kind === "dir" ? dirFoldable : tagFoldable;
+    const allFolded = kind === "dir" ? allDirsFolded : allTagsFolded;
+    const foldAll = () => {
+      if (kind === "dir") setFolded(allFolded ? /* @__PURE__ */ new Set() : new Set(dirFoldable));
+      else setFoldedTags(allFolded ? /* @__PURE__ */ new Set() : new Set(tagFoldable));
+    };
     return h4(
       "div",
       { className: "dshgn_treeHeadRight" },
+      foldable.length === 0 ? null : h4(
+        "button",
+        {
+          type: "button",
+          className: "dshgn_treeFoldAll",
+          title: allFolded ? t4("tree.unfoldAll") : t4("tree.foldAll"),
+          "aria-label": allFolded ? t4("tree.unfoldAll") : t4("tree.foldAll"),
+          "aria-pressed": allFolded ? "true" : "false",
+          "data-folded": allFolded ? "true" : "false",
+          onClick: foldAll
+        },
+        h4(Icon, { name: "chevron", size: 10 })
+      ),
       h4(
         "button",
         {
