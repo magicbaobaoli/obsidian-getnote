@@ -8504,6 +8504,9 @@ var LEX = {
     "tree.unfoldTag": "\u5C55\u5F00\u5B50\u6807\u7B7E",
     "tree.foldAll": "\u5168\u90E8\u6536\u8D77",
     "tree.unfoldAll": "\u5168\u90E8\u5C55\u5F00",
+    "tree.filter": "\u7B5B\u76EE\u5F55\u548C\u6807\u7B7E",
+    "tree.filterClear": "\u6E05\u6389\u5DE6\u680F\u8FD9\u4E2A\u7B5B",
+    "tree.filterNone": "\u6CA1\u6709\u5BF9\u5F97\u4E0A\u7684\u76EE\u5F55\u6216\u6807\u7B7E",
     "tree.dirCreated": "\u76EE\u5F55\u5DF2\u521B\u5EFA",
     "tree.movedTo": "\u5DF2\u632A\u5230 {dir}",
     "note.taggedWith": "\u5DF2\u52A0\u4E0A\u6807\u7B7E #{tag}",
@@ -9045,6 +9048,9 @@ var LEX = {
     "tree.unfoldTag": "Expand subtags",
     "tree.foldAll": "Collapse all",
     "tree.unfoldAll": "Expand all",
+    "tree.filter": "Filter folders and tags",
+    "tree.filterClear": "Clear this filter",
+    "tree.filterNone": "No folder or tag matches",
     "tree.dirCreated": "Folder created",
     "tree.movedTo": "Moved to {dir}",
     "note.taggedWith": "Tagged #{tag}",
@@ -9579,6 +9585,9 @@ var LEX = {
     "tree.unfoldTag": "Subtags uitklappen",
     "tree.foldAll": "Alles inklappen",
     "tree.unfoldAll": "Alles uitklappen",
+    "tree.filter": "Mappen en tags filteren",
+    "tree.filterClear": "Deze filter wissen",
+    "tree.filterNone": "Geen map of tag gevonden",
     "tree.dirCreated": "Map aangemaakt",
     "tree.movedTo": "Verplaatst naar {dir}",
     "note.taggedWith": "Getagd met #{tag}",
@@ -12236,6 +12245,18 @@ var CSS = `
 .dshgn_treeFoldGap{flex:none;display:inline-block;width:12px;margin-left:-12px}
 .dshgn_treeRow[data-drop="true"]{background:rgba(var(--dshgn-tintRgb),.10);color:var(--dsw-alias-brand-primary);
   box-shadow:inset 0 0 0 1px var(--dsw-alias-brand-primary)}
+/* \u5DE6\u680F\u81EA\u5DF1\u7684\u7B5B\uFF1A\u7EC6\u4E00\u53F7\u7684\u8F93\u5165\u6846\uFF0C\u538B\u5728\u300C\u5168\u90E8\u7B14\u8BB0\u300D\u4E0B\u9762\u3001\u70ED\u529B\u56FE\u4E0A\u9762\u3002
+   min-width:0 \u662F\u627F\u91CD\u7684\u2014\u2014\u8F93\u5165\u6846\u9ED8\u8BA4\u6709\u81EA\u5DF1\u7684\u6700\u5C0F\u5BBD\u5EA6\uFF0C\u4E0D\u5199\u4F1A\u628A\u5DE6\u680F\u6491\u7834\u3002 */
+.dshgn_treeFilter{flex:none;display:flex;align-items:center;gap:4px;margin:2px 4px 4px;padding:0 6px;
+  border-radius:7px;background:var(--dsw-alias-interactive-bg-hover)}
+.dshgn_treeFilterInput{flex:1;min-width:0;height:22px;padding:0;border:0;background:transparent;
+  color:var(--dsw-alias-label-secondary);font:inherit;font-size:11px;outline:none}
+.dshgn_treeFilterInput::placeholder{color:var(--dsw-alias-label-tertiary)}
+.dshgn_treeFilterClear{appearance:none;flex:none;display:inline-flex;align-items:center;justify-content:center;
+  width:16px;height:16px;padding:0;border:0;border-radius:50%;background:transparent;
+  color:var(--dsw-alias-label-tertiary);cursor:pointer}
+.dshgn_treeFilterClear:hover{color:var(--dsw-alias-label-primary);background:rgba(var(--dshgn-tintRgb),.10)}
+.dshgn_treeFilterClear:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dshgn_treeName{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;font-size:12px}
 .dshgn_treeCount{flex:none;font-size:10px;color:var(--dsw-alias-label-dimmed)}
 /* max-width + \u7701\u7565\u53F7\u662F\u627F\u91CD\u7684\uFF1A\u6807\u7B7E\u540D\u662F\u7528\u6237\u968F\u624B\u8D77\u7684\uFF0C\u4E00\u4E2A\u957F\u6807\u7B7E\u5728 190px \u7684\u5DE6\u680F\u91CC
@@ -19743,6 +19764,7 @@ function TreePane(props) {
     });
   };
   const [foldedTags, setFoldedTags] = h2(() => /* @__PURE__ */ new Set());
+  const [treeFilter, setTreeFilter] = h2("");
   const toggleTagFold = (path) => {
     setFoldedTags((prev) => {
       const next = new Set(prev);
@@ -19765,6 +19787,18 @@ function TreePane(props) {
     event.preventDefault();
     event.stopPropagation();
     setMenu({ kind, name });
+  };
+  const filterTreeRows = (rows, text) => {
+    const q4 = String(text || "").trim().toLowerCase();
+    if (q4 === "") return rows;
+    const keep = /* @__PURE__ */ new Set();
+    for (const row of rows) {
+      if (!String(row.path || "").toLowerCase().includes(q4)) continue;
+      keep.add(row.path);
+      const parts = String(row.path).split("/");
+      for (let i3 = 1; i3 < parts.length; i3 += 1) keep.add(parts.slice(0, i3).join("/"));
+    }
+    return rows.filter((row) => keep.has(row.path));
   };
   const flat = T2(() => {
     const latest = (path) => {
@@ -19802,8 +19836,8 @@ function TreePane(props) {
       fallback.sort(compare);
       list.push(...fallback);
     }
-    return list;
-  }, [tree, dirs, entries, dirSort, folded]);
+    return filterTreeRows(list, treeFilter);
+  }, [tree, dirs, entries, dirSort, folded, treeFilter]);
   const sortedTags = T2(() => {
     const copy = [...tagCounts];
     if (tagSort === "name") {
@@ -19870,8 +19904,8 @@ function TreePane(props) {
       }
     };
     walk(root, "", 0);
-    return rows;
-  }, [tagCounts, entries, tagSort, foldedTags]);
+    return filterTreeRows(rows, treeFilter);
+  }, [tagCounts, entries, tagSort, foldedTags, treeFilter]);
   const dirFoldable = flat.filter((node) => node.hasKids).map((node) => node.path);
   const allDirsFolded = dirFoldable.length > 0 && dirFoldable.every((one) => folded.has(one));
   const tagFoldable = tagTree.filter((row) => row.hasKids).map((row) => row.path);
@@ -20072,6 +20106,40 @@ function TreePane(props) {
       h4("span", { className: "dshgn_treeName" }, t4("tree.all")),
       h4("span", { className: "dshgn_treeCount" }, String(total))
     ),
+    // 左栏自己的筛：目录树和标签云都可能上百行，滚半天找不到想要的那一支。
+    // 只筛左栏，不碰中栏的搜索框——两件事混在一起时，用户会分不清
+    // 「我是在搜笔记还是在找目录」。
+    h4(
+      "div",
+      { className: "dshgn_treeFilter" },
+      h4("input", {
+        className: "dshgn_treeFilterInput",
+        type: "text",
+        value: treeFilter,
+        placeholder: t4("tree.filter"),
+        "aria-label": t4("tree.filter"),
+        onChange: (event) => setTreeFilter(event.target.value),
+        onKeyDown: (event) => {
+          if (event.key === "Escape" && treeFilter !== "") {
+            event.preventDefault();
+            event.stopPropagation();
+            setTreeFilter("");
+          }
+        }
+      }),
+      treeFilter.trim() === "" ? null : h4(
+        "button",
+        {
+          type: "button",
+          className: "dshgn_treeFilterClear",
+          title: t4("tree.filterClear"),
+          "aria-label": t4("tree.filterClear"),
+          onClick: () => setTreeFilter("")
+        },
+        h4(Icon, { name: "close", size: 10 })
+      )
+    ),
+    treeFilter.trim() !== "" && flat.length === 0 && tagTree.length === 0 ? h4("div", { className: "dshgn_sectionDesc" }, t4("tree.filterNone")) : null,
     // 热力图放在「全部笔记」正下方：它是「这个库整体在长」的视角，
     // 跟下面按目录/标签切分是两种维度，夹在中间会让人以为它属于某个目录。
     h4(HeatmapStrip, { t: t4, heatmap, activeDay, onPickDay }),

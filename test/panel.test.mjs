@@ -12420,3 +12420,123 @@ test('连笔记库都还没有的时候，空列表那一屏直说没有库，�
     await sleep(600)
   }
 })
+
+test('左栏那个筛只筛目录和标签：命中行的祖先留着，清掉就回全量', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+  await clickTab('笔记')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+  const seeded = [
+    ['左栏筛验收/甲摊', '左栏筛验收-甲', 'seed-tree-filter-a', '左栏筛验收标签/一'],
+    ['左栏筛验收/乙摊/更深一层', '左栏筛验收-乙', 'seed-tree-filter-b', '左栏筛验收标签/二'],
+  ]
+  for (const [dir, title, requestId, tag] of seeded) {
+    await post('/getnote/create', {
+      dir,
+      title,
+      content: ['---', 'tags: [' + tag + ']', '---', '', '# ' + title, '', '左栏筛验收的正文', ''].join(
+        '\n',
+      ),
+      withDatePrefix: false,
+      requestId,
+    })
+  }
+
+  // 刷新一次，让左栏认出新目录和新标签
+  const refreshBtn = Array.from(window.document.querySelectorAll('button')).find(
+    (el) => (el.getAttribute('title') || '') === '刷新' || (el.textContent || '').trim() === '刷新',
+  )
+  if (refreshBtn) refreshBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(900)
+
+  const dirRows = () => Array.from(window.document.querySelectorAll('.dshgn_treeRow'))
+  const dirNames = () =>
+    dirRows()
+      .map((el) => {
+        const label = el.querySelector('.dshgn_treeName')
+        return label === null ? '' : (label.textContent || '').trim()
+      })
+      .filter((name) => name !== '')
+  const tagRows = () => Array.from(window.document.querySelectorAll('.dshgn_tagRow'))
+  const tagTitles = () => tagRows().map((el) => el.getAttribute('title') || '')
+
+  await waitFor(() => dirNames().includes('甲摊'), 8000, '左栏里出现甲摊这一支')
+  const beforeDirs = dirNames().length
+  const beforeTags = tagTitles().length
+
+  const box = await waitFor(
+    () => window.document.querySelector('.dshgn_treeFilterInput'),
+    5000,
+    '左栏那个筛',
+  )
+  assert.equal(box.getAttribute('placeholder'), '筛目录和标签', '输入框上得写着它是筛什么的')
+  assert.equal(
+    window.document.querySelector('.dshgn_treeFilterClear'),
+    null,
+    '没敲字的时候不摆清空那颗',
+  )
+
+  const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  const type = async (text) => {
+    setValue.call(box, text)
+    box.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(200)
+  }
+
+  await type('左栏筛验收')
+  // 只留命中的那几支：别的用例 seed 过的目录不该还在
+  assert.ok(dirNames().includes('甲摊'), '命中那一支要留着')
+  assert.ok(dirNames().includes('乙摊'), '另一支命中的也要留着')
+  assert.ok(dirNames().includes('左栏筛验收'), '命中的上级目录要留着，不然那一支看着像凭空出现的')
+  assert.equal(dirNames().includes('待办全收验收'), false, '不相关的目录要收起来')
+  assert.ok(dirNames().length < beforeDirs, '筛完之后行数要变少')
+  assert.ok(tagTitles().includes('左栏筛验收标签/一'), '标签云也一起筛')
+  assert.equal(tagTitles().includes('筛选条标签'), false, '不相关的标签要收起来')
+  assert.ok(tagTitles().length <= beforeTags, '标签行不会变多')
+
+  // 清掉那颗一按就回全量
+  const clearBtn = await waitFor(
+    () => window.document.querySelector('.dshgn_treeFilterClear'),
+    3000,
+    '清空那颗按钮',
+  )
+  clearBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(200)
+  assert.equal(box.value, '', '清掉之后输入框该空了')
+  assert.equal(dirNames().length, beforeDirs, '清掉之后目录行回到原来那么多')
+  assert.equal(
+    window.document.querySelector('.dshgn_treeFilterClear'),
+    null,
+    '空了之后清空那颗要收起来',
+  )
+
+  // 敲一个肯定没有的词：得明说没有对得上的，而不是留一片空白
+  await type('zzz-左栏筛验收肯定没有这个')
+  await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_sectionDesc')).some((el) =>
+        (el.textContent || '').includes('没有对得上的目录或标签'),
+      ),
+    3000,
+    '没有对得上时的说明',
+  )
+  assert.equal(dirNames().includes('甲摊'), false, '一个都没对上时不该还留着目录行')
+
+  // Esc 只清左栏这个筛，别把整个面板的 Esc 一起触发
+  box.dispatchEvent(
+    new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+  )
+  await sleep(200)
+  assert.equal(box.value, '', 'Esc 也该把左栏这个筛清掉')
+  assert.equal(dirNames().length, beforeDirs, 'Esc 之后目录行回到原来那么多')
+
+  await clickTab('笔记')
+})

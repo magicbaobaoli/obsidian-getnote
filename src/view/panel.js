@@ -651,6 +651,9 @@ async function saveFile(url, filename) {
         'tree.unfoldTag': '展开子标签',
         'tree.foldAll': '全部收起',
         'tree.unfoldAll': '全部展开',
+        'tree.filter': '筛目录和标签',
+        'tree.filterClear': '清掉左栏这个筛',
+        'tree.filterNone': '没有对得上的目录或标签',
         'tree.dirCreated': '目录已创建',
         'tree.movedTo': '已挪到 {dir}',
         'note.taggedWith': '已加上标签 #{tag}',
@@ -1197,6 +1200,9 @@ async function saveFile(url, filename) {
         'tree.unfoldTag': 'Expand subtags',
         'tree.foldAll': 'Collapse all',
         'tree.unfoldAll': 'Expand all',
+        'tree.filter': 'Filter folders and tags',
+        'tree.filterClear': 'Clear this filter',
+        'tree.filterNone': 'No folder or tag matches',
         'tree.dirCreated': 'Folder created',
         'tree.movedTo': 'Moved to {dir}',
         'note.taggedWith': 'Tagged #{tag}',
@@ -1736,6 +1742,9 @@ async function saveFile(url, filename) {
         'tree.unfoldTag': 'Subtags uitklappen',
         'tree.foldAll': 'Alles inklappen',
         'tree.unfoldAll': 'Alles uitklappen',
+        'tree.filter': 'Mappen en tags filteren',
+        'tree.filterClear': 'Deze filter wissen',
+        'tree.filterNone': 'Geen map of tag gevonden',
         'tree.dirCreated': 'Map aangemaakt',
         'tree.movedTo': 'Verplaatst naar {dir}',
         'note.taggedWith': 'Getagd met #{tag}',
@@ -5181,6 +5190,18 @@ async function saveFile(url, filename) {
 .dshgn_treeFoldGap{flex:none;display:inline-block;width:12px;margin-left:-12px}
 .dshgn_treeRow[data-drop="true"]{background:rgba(var(--dshgn-tintRgb),.10);color:var(--dsw-alias-brand-primary);
   box-shadow:inset 0 0 0 1px var(--dsw-alias-brand-primary)}
+/* 左栏自己的筛：细一号的输入框，压在「全部笔记」下面、热力图上面。
+   min-width:0 是承重的——输入框默认有自己的最小宽度，不写会把左栏撑破。 */
+.dshgn_treeFilter{flex:none;display:flex;align-items:center;gap:4px;margin:2px 4px 4px;padding:0 6px;
+  border-radius:7px;background:var(--dsw-alias-interactive-bg-hover)}
+.dshgn_treeFilterInput{flex:1;min-width:0;height:22px;padding:0;border:0;background:transparent;
+  color:var(--dsw-alias-label-secondary);font:inherit;font-size:11px;outline:none}
+.dshgn_treeFilterInput::placeholder{color:var(--dsw-alias-label-tertiary)}
+.dshgn_treeFilterClear{appearance:none;flex:none;display:inline-flex;align-items:center;justify-content:center;
+  width:16px;height:16px;padding:0;border:0;border-radius:50%;background:transparent;
+  color:var(--dsw-alias-label-tertiary);cursor:pointer}
+.dshgn_treeFilterClear:hover{color:var(--dsw-alias-label-primary);background:rgba(var(--dshgn-tintRgb),.10)}
+.dshgn_treeFilterClear:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dshgn_treeName{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;font-size:12px}
 .dshgn_treeCount{flex:none;font-size:10px;color:var(--dsw-alias-label-dimmed)}
 /* max-width + 省略号是承重的：标签名是用户随手起的，一个长标签在 190px 的左栏里
@@ -14012,6 +14033,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 标签云会把整个左栏顶下去。和目录分开记（同一个名字既是目录又是标签前缀
       // 的时候，收一个不该顺手把另一个也收了），同样不落盘。
       const [foldedTags, setFoldedTags] = React.useState(() => new Set())
+      // 左栏那个筛：目录树和标签云都可能上百行，滚半天找不到想要的那一支。
+      // 只筛左栏自己（不碰中栏的搜索框），清空就回到全量；状态不落盘。
+      const [treeFilter, setTreeFilter] = React.useState('')
       const toggleTagFold = (path) => {
         setFoldedTags((prev) => {
           const next = new Set(prev)
@@ -14047,6 +14071,21 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 扁平化目录树（缩进按层级），比折叠树更适合窄侧栏：一屏看全库结构。
       // 排序在这里做而不是让 host 排：三种排序都是纯前端视角，多跑一趟
       // 请求只为换个顺序不值当，而且切换要立刻生效不能等网络。
+      // 命中行的祖先也留着：目录树和标签云都是靠缩进表示层级的，只留命中的那一行
+      // 会让它看着像从天上掉下来的，用户还得自己想「这属于哪一支」。
+      const filterTreeRows = (rows, text) => {
+        const q = String(text || '').trim().toLowerCase()
+        if (q === '') return rows
+        const keep = new Set()
+        for (const row of rows) {
+          if (!String(row.path || '').toLowerCase().includes(q)) continue
+          keep.add(row.path)
+          const parts = String(row.path).split('/')
+          for (let i = 1; i < parts.length; i += 1) keep.add(parts.slice(0, i).join('/'))
+        }
+        return rows.filter((row) => keep.has(row.path))
+      }
+
       const flat = React.useMemo(() => {
         // 「按修改时间」用的是目录下最新一篇的 mtime：目录本身没有 mtime 的
         // 语义（建完就不动了），而用户想找的是「我最近在动的那个目录」。
@@ -14093,8 +14132,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           fallback.sort(compare)
           list.push(...fallback)
         }
-        return list
-      }, [tree, dirs, entries, dirSort, folded])
+        return filterTreeRows(list, treeFilter)
+      }, [tree, dirs, entries, dirSort, folded, treeFilter])
 
       const sortedTags = React.useMemo(() => {
         const copy = [...tagCounts]
@@ -14172,8 +14211,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           }
         }
         walk(root, '', 0)
-        return rows
-      }, [tagCounts, entries, tagSort, foldedTags])
+        return filterTreeRows(rows, treeFilter)
+      }, [tagCounts, entries, tagSort, foldedTags, treeFilter])
 
       // 「全部收起」要按「这一区里所有还能收的行都已经收着」来判定，而不是
       // 数个数：收起来之后子行本来就不在 flat / tagTree 里了，个数会跟着变，
@@ -14410,6 +14449,46 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           h('span', { className: 'dshgn_treeName' }, t('tree.all')),
           h('span', { className: 'dshgn_treeCount' }, String(total)),
         ),
+
+        // 左栏自己的筛：目录树和标签云都可能上百行，滚半天找不到想要的那一支。
+        // 只筛左栏，不碰中栏的搜索框——两件事混在一起时，用户会分不清
+        // 「我是在搜笔记还是在找目录」。
+        h(
+          'div',
+          { className: 'dshgn_treeFilter' },
+          h('input', {
+            className: 'dshgn_treeFilterInput',
+            type: 'text',
+            value: treeFilter,
+            placeholder: t('tree.filter'),
+            'aria-label': t('tree.filter'),
+            onChange: (event) => setTreeFilter(event.target.value),
+            onKeyDown: (event) => {
+              if (event.key === 'Escape' && treeFilter !== '') {
+                // 这一下只清左栏这个筛，别让它冒到页面级那个 Esc 上去
+                event.preventDefault()
+                event.stopPropagation()
+                setTreeFilter('')
+              }
+            },
+          }),
+          treeFilter.trim() === ''
+            ? null
+            : h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dshgn_treeFilterClear',
+                  title: t('tree.filterClear'),
+                  'aria-label': t('tree.filterClear'),
+                  onClick: () => setTreeFilter(''),
+                },
+                h(Icon, { name: 'close', size: 10 }),
+              ),
+        ),
+        treeFilter.trim() !== '' && flat.length === 0 && tagTree.length === 0
+          ? h('div', { className: 'dshgn_sectionDesc' }, t('tree.filterNone'))
+          : null,
 
         // 热力图放在「全部笔记」正下方：它是「这个库整体在长」的视角，
         // 跟下面按目录/标签切分是两种维度，夹在中间会让人以为它属于某个目录。
