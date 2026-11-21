@@ -8444,6 +8444,10 @@ var LEX = {
     "search.clear": "\u6E05\u7A7A",
     "search.copy": "\u590D\u5236\u8FD9\u6B21\u641C\u5230\u7684 {n} \u7BC7\uFF08\u540D\u5B57\u548C\u4F4D\u7F6E\uFF09",
     "search.copied": "\u5DF2\u590D\u5236 {n} \u7BC7\u7684\u6E05\u5355",
+    // 搜过什么、下次还想再搜：这一条记在 localStorage 里，重启 Obsidian 也在。
+    "search.recent": "\u6700\u8FD1\u641C\u8FC7",
+    "search.recentClear": "\u6E05\u6389\u8FD9\u4E9B\u8BB0\u5F55",
+    "search.recentEmpty": "\u8FD8\u6CA1\u6709\u641C\u8FC7\u4EC0\u4E48",
     "tree.all": "\u5168\u90E8\u7B14\u8BB0",
     "tree.dirs": "\u76EE\u5F55",
     "tree.tags": "\u6807\u7B7E",
@@ -8973,6 +8977,9 @@ var LEX = {
     "search.clear": "Clear",
     "search.copy": "Copy the {n} notes found (names and places)",
     "search.copied": "Copied a list of {n} notes",
+    "search.recent": "Searched recently",
+    "search.recentClear": "Clear this list",
+    "search.recentEmpty": "Nothing searched yet",
     "tree.all": "All notes",
     "tree.dirs": "Folders",
     "tree.tags": "Tags",
@@ -9490,6 +9497,9 @@ var LEX = {
     "search.clear": "Wissen",
     "search.copy": "Kopieer de {n} gevonden notities (namen en plaatsen)",
     "search.copied": "Een lijst van {n} notities gekopieerd",
+    "search.recent": "Onlangs gezocht",
+    "search.recentClear": "Deze lijst wissen",
+    "search.recentEmpty": "Nog niets gezocht",
     "tree.all": "Alle notities",
     "tree.dirs": "Mappen",
     "tree.tags": "Tags",
@@ -11991,6 +12001,26 @@ var CSS = `
 .dshgn_cardLinkMore[data-open="true"]{border-style:solid;color:var(--dsw-alias-label-secondary)}
 .dshgn_searchHint{padding:0 10px 7px;font-size:10px;line-height:1.5;
   color:var(--dsw-alias-label-dimmed)}
+/* \u6700\u8FD1\u641C\u8FC7\u7684\u8BCD\uFF1A\u641C\u7D22\u6846\u7A7A\u7740\u65F6\u6446\u5728\u5B83\u4E0B\u9762\u4E00\u884C\u3002\u53EA\u6446\u8BCD\u4E0D\u6446\u7ED3\u679C\u2014\u2014\u7ED3\u679C\u4F1A\u8FC7\u671F\uFF0C
+   \u91CD\u641C\u4E00\u904D\u62FF\u5230\u7684\u624D\u662F\u5F53\u4E0B\u7684\u5E93\u3002\u6574\u6761\u7528\u4E00\u6392\u5C0F\u80F6\u56CA\uFF0C\u548C\u8865\u5168\u5019\u9009\u540C\u4E00\u4E2A\u89C6\u89C9\u8BED\u8A00\u3002 */
+.dshgn_recent{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:4px;
+  padding:0 10px 7px}
+.dshgn_recentLabel{flex:none;font-size:10px;color:var(--dsw-alias-label-tertiary);
+  margin-right:1px}
+.dshgn_recentChip{appearance:none;max-width:150px;padding:1px 7px;
+  border:0.5px solid var(--dsw-alias-border-l2);border-radius:999px;
+  background:rgba(var(--dshgn-tintRgb),.06);color:var(--dsw-alias-label-secondary);
+  font:inherit;font-size:10px;line-height:1.7;cursor:pointer;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_recentChip:hover{background:var(--dsw-alias-interactive-bg-hover);
+  color:var(--dsw-alias-label-primary)}
+.dshgn_recentChip:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_recentClear{appearance:none;flex:none;display:inline-flex;align-items:center;
+  justify-content:center;width:16px;height:16px;padding:0;border:0;border-radius:50%;
+  background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer}
+.dshgn_recentClear:hover{background:var(--dsw-alias-interactive-bg-hover);
+  color:var(--dsw-alias-label-primary)}
+.dshgn_recentClear:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 /* \u641C\u7D22\u8865\u5168\u5019\u9009\uFF1A\u628A\u5E93\u91CC\u5DF2\u6709\u7684\u76EE\u5F55\u540D\u4E0E\u6807\u7B7E\u540D\u6446\u51FA\u6765\uFF0C\u7701\u5F97\u51ED\u8BB0\u5FC6\u731C\u62FC\u5199\u3002
    \u6446\u5728\u641C\u7D22\u884C\u6B63\u4E0B\u65B9\u3001\u4E0E\u641C\u7D22\u6846\u540C\u5BBD\uFF0C\u548C\u5217\u8868\u5361\u7247\u533A\u5206\u5F00\uFF08\u4E0D\u5360\u5361\u7247\u7684\u4F4D\u7F6E\u611F\uFF09\u3002 */
 .dshgn_suggest{flex:none;display:flex;flex-wrap:wrap;gap:4px;padding:0 10px 7px}
@@ -13148,6 +13178,25 @@ function GetnotePage() {
   const [entries, setEntries] = h2([]);
   const [dirs, setDirs] = h2([]);
   const [query, setQuery] = h2("");
+  const [recentSearches, setRecentSearches] = h2(() => readRecentSearches());
+  const rememberSearch = q2((text) => {
+    const word = String(text === null || text === void 0 ? "" : text).trim();
+    if (word === "") return;
+    setRecentSearches((prev) => {
+      const keep = prev.filter((item) => item !== word && !item.startsWith(word) && !word.startsWith(item));
+      const next = [word, ...keep].slice(0, RECENT_LIMIT);
+      if (next.length === prev.length && next.every((item, index) => item === prev[index])) return prev;
+      writeRecentSearches(next);
+      return next;
+    });
+  }, []);
+  const clearRecentSearches = q2(() => {
+    setRecentSearches([]);
+    try {
+      window.localStorage.removeItem(RECENT_KEY);
+    } catch {
+    }
+  }, []);
   const [activeDir, setActiveDir] = h2(bootSession.dir);
   const [activeTag, setActiveTag] = h2(bootSession.tag);
   const [activeDay, setActiveDay] = h2("");
@@ -13347,6 +13396,12 @@ function GetnotePage() {
       window.clearTimeout(timer);
     };
   }, [query]);
+  y2(() => {
+    const word = query.trim();
+    if (word === "" || hits === null) return void 0;
+    const timer = window.setTimeout(() => rememberSearch(word), 1200);
+    return () => window.clearTimeout(timer);
+  }, [query, hits, rememberSearch]);
   const searchMode = query.trim() !== "" && hits !== null;
   const searchTerms = T2(() => searchTermsOf(query), [query]);
   const [suggestAt, setSuggestAt] = h2(null);
@@ -15132,6 +15187,41 @@ ${insert}
               h4(Icon, { name: item.kind === "dir" ? "folder" : "hash", size: 11 }),
               h4("span", { className: "dshgn_suggestName" }, item.value)
             )
+          )
+        ) : null,
+        // 最近搜过的词。搜索框空着的时候才摆——正在搜的时候摆一排别的词，
+        // 只会把人往岔路上带。整条只在真搜过之后才出现，第一次用不占位置。
+        recentSearches.length > 0 && query.trim() === "" ? h4(
+          "div",
+          { className: "dshgn_recent" },
+          h4("span", { className: "dshgn_recentLabel" }, t4("search.recent")),
+          recentSearches.map(
+            (word) => h4(
+              "button",
+              {
+                key: "recent-" + word,
+                type: "button",
+                className: "dshgn_recentChip",
+                title: word,
+                onClick: () => {
+                  setQuery(word);
+                  const box = findInPanel(".dshgn_search");
+                  if (box !== null) box.focus();
+                }
+              },
+              word
+            )
+          ),
+          h4(
+            "button",
+            {
+              type: "button",
+              className: "dshgn_recentClear",
+              title: t4("search.recentClear"),
+              "aria-label": t4("search.recentClear"),
+              onClick: clearRecentSearches
+            },
+            h4(Icon, { name: "close", size: 10 })
           )
         ) : null,
         // 限定语法提示：`tag:` / `dir:` 是隐藏功能，不提示没人会知道。
@@ -19197,6 +19287,32 @@ var TREE_MAX_W = 360;
 var LIST_MIN_W = 200;
 var LIST_MAX_W = 520;
 var COL_WIDTH_KEY = "dshgn.colWidths";
+var RECENT_KEY = "dshgn.recentSearches";
+var RECENT_LIMIT = 8;
+function readRecentSearches() {
+  try {
+    const raw = window.localStorage.getItem(RECENT_KEY);
+    if (raw === null) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const out = [];
+    for (const item of parsed) {
+      const text = String(item === null || item === void 0 ? "" : item).trim();
+      if (text === "" || out.includes(text)) continue;
+      out.push(text);
+      if (out.length >= RECENT_LIMIT) break;
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+function writeRecentSearches(list) {
+  try {
+    window.localStorage.setItem(RECENT_KEY, JSON.stringify(list));
+  } catch {
+  }
+}
 function readColWidths() {
   const fallback = { tree: 204, list: 260 };
   try {

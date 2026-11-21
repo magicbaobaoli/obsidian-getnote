@@ -591,6 +591,10 @@ async function saveFile(url, filename) {
         'search.clear': '清空',
         'search.copy': '复制这次搜到的 {n} 篇（名字和位置）',
         'search.copied': '已复制 {n} 篇的清单',
+        // 搜过什么、下次还想再搜：这一条记在 localStorage 里，重启 Obsidian 也在。
+        'search.recent': '最近搜过',
+        'search.recentClear': '清掉这些记录',
+        'search.recentEmpty': '还没有搜过什么',
         'tree.all': '全部笔记',
         'tree.dirs': '目录',
         'tree.tags': '标签',
@@ -1125,6 +1129,9 @@ async function saveFile(url, filename) {
         'search.clear': 'Clear',
         'search.copy': 'Copy the {n} notes found (names and places)',
         'search.copied': 'Copied a list of {n} notes',
+        'search.recent': 'Searched recently',
+        'search.recentClear': 'Clear this list',
+        'search.recentEmpty': 'Nothing searched yet',
         'tree.all': 'All notes',
         'tree.dirs': 'Folders',
         'tree.tags': 'Tags',
@@ -1647,6 +1654,9 @@ async function saveFile(url, filename) {
         'search.clear': 'Wissen',
         'search.copy': 'Kopieer de {n} gevonden notities (namen en plaatsen)',
         'search.copied': 'Een lijst van {n} notities gekopieerd',
+        'search.recent': 'Onlangs gezocht',
+        'search.recentClear': 'Deze lijst wissen',
+        'search.recentEmpty': 'Nog niets gezocht',
         'tree.all': 'Alle notities',
         'tree.dirs': 'Mappen',
         'tree.tags': 'Tags',
@@ -4936,6 +4946,26 @@ async function saveFile(url, filename) {
 .dshgn_cardLinkMore[data-open="true"]{border-style:solid;color:var(--dsw-alias-label-secondary)}
 .dshgn_searchHint{padding:0 10px 7px;font-size:10px;line-height:1.5;
   color:var(--dsw-alias-label-dimmed)}
+/* 最近搜过的词：搜索框空着时摆在它下面一行。只摆词不摆结果——结果会过期，
+   重搜一遍拿到的才是当下的库。整条用一排小胶囊，和补全候选同一个视觉语言。 */
+.dshgn_recent{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:4px;
+  padding:0 10px 7px}
+.dshgn_recentLabel{flex:none;font-size:10px;color:var(--dsw-alias-label-tertiary);
+  margin-right:1px}
+.dshgn_recentChip{appearance:none;max-width:150px;padding:1px 7px;
+  border:0.5px solid var(--dsw-alias-border-l2);border-radius:999px;
+  background:rgba(var(--dshgn-tintRgb),.06);color:var(--dsw-alias-label-secondary);
+  font:inherit;font-size:10px;line-height:1.7;cursor:pointer;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_recentChip:hover{background:var(--dsw-alias-interactive-bg-hover);
+  color:var(--dsw-alias-label-primary)}
+.dshgn_recentChip:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_recentClear{appearance:none;flex:none;display:inline-flex;align-items:center;
+  justify-content:center;width:16px;height:16px;padding:0;border:0;border-radius:50%;
+  background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer}
+.dshgn_recentClear:hover{background:var(--dsw-alias-interactive-bg-hover);
+  color:var(--dsw-alias-label-primary)}
+.dshgn_recentClear:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 /* 搜索补全候选：把库里已有的目录名与标签名摆出来，省得凭记忆猜拼写。
    摆在搜索行正下方、与搜索框同宽，和列表卡片区分开（不占卡片的位置感）。 */
 .dshgn_suggest{flex:none;display:flex;flex-wrap:wrap;gap:4px;padding:0 10px 7px}
@@ -6121,6 +6151,32 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       const [entries, setEntries] = React.useState([])
       const [dirs, setDirs] = React.useState([])
       const [query, setQuery] = React.useState('')
+      // 最近搜过的几个词。搜「录音卡」这种词一周要打好几次，每次从零敲太亏；
+      // 而搜过什么只有用户自己知道，宿主那边没有这个信息。跟栏宽一样是纯界面
+      // 状态，存 localStorage 就够（见 readRecentSearches）。
+      const [recentSearches, setRecentSearches] = React.useState(() => readRecentSearches())
+      const rememberSearch = React.useCallback((text) => {
+        const word = String(text === null || text === undefined ? '' : text).trim()
+        if (word === '') return
+        setRecentSearches((prev) => {
+          // 打「录音」停下来又接着打成「录音卡」时，只该留最后那个整词：
+          // 把它的前缀/被它包含的旧条目一起剔掉，不然列表里全是半截词。
+          const keep = prev.filter((item) => item !== word && !item.startsWith(word) && !word.startsWith(item))
+          const next = [word, ...keep].slice(0, RECENT_LIMIT)
+          // 一条都没变就别写盘：同一个词连搜两次不该让 localStorage 再动一次
+          if (next.length === prev.length && next.every((item, index) => item === prev[index])) return prev
+          writeRecentSearches(next)
+          return next
+        })
+      }, [])
+      const clearRecentSearches = React.useCallback(() => {
+        setRecentSearches([])
+        try {
+          window.localStorage.removeItem(RECENT_KEY)
+        } catch {
+          // 存不了也删不了，那就这次先清空着
+        }
+      }, [])
       const [activeDir, setActiveDir] = React.useState(bootSession.dir)
       const [activeTag, setActiveTag] = React.useState(bootSession.tag)
       // 热力图上点中的那一天（''=没点）。以前格子只有 title，知道那天写了几篇
@@ -6430,6 +6486,14 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           window.clearTimeout(timer)
         }
       }, [query])
+      // 搜过什么记下来：等搜索停手一会儿再记，避免把「录」「录音」「录音卡」
+      // 这种边打边搜的中间态全存进去。只记词不记结果——结果会过期。
+      React.useEffect(() => {
+        const word = query.trim()
+        if (word === '' || hits === null) return undefined
+        const timer = window.setTimeout(() => rememberSearch(word), 1200)
+        return () => window.clearTimeout(timer)
+      }, [query, hits, rememberSearch])
 
       // 搜索命中优先用 /search 的结果：它包含正文命中，且已经按相关度排过序。
       // 只有在 /search 还没回来（或失败）时才退回本地过滤，避免输入时列表闪空。
@@ -8597,6 +8661,43 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                       h(Icon, { name: item.kind === 'dir' ? 'folder' : 'hash', size: 11 }),
                       h('span', { className: 'dshgn_suggestName' }, item.value),
                     ),
+                  ),
+                )
+              : null,
+            // 最近搜过的词。搜索框空着的时候才摆——正在搜的时候摆一排别的词，
+            // 只会把人往岔路上带。整条只在真搜过之后才出现，第一次用不占位置。
+            recentSearches.length > 0 && query.trim() === ''
+              ? h(
+                  'div',
+                  { className: 'dshgn_recent' },
+                  h('span', { className: 'dshgn_recentLabel' }, t('search.recent')),
+                  recentSearches.map((word) =>
+                    h(
+                      'button',
+                      {
+                        key: 'recent-' + word,
+                        type: 'button',
+                        className: 'dshgn_recentChip',
+                        title: word,
+                        onClick: () => {
+                          setQuery(word)
+                          const box = findInPanel('.dshgn_search')
+                          if (box !== null) box.focus()
+                        },
+                      },
+                      word,
+                    ),
+                  ),
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'dshgn_recentClear',
+                      title: t('search.recentClear'),
+                      'aria-label': t('search.recentClear'),
+                      onClick: clearRecentSearches,
+                    },
+                    h(Icon, { name: 'close', size: 10 }),
                   ),
                 )
               : null,
@@ -13308,6 +13409,42 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
     const LIST_MIN_W = 200
     const LIST_MAX_W = 520
     const COL_WIDTH_KEY = 'dshgn.colWidths'
+
+    // 最近搜过的几个词。
+    //
+    // 搜「录音卡」这种词一周要打好几次，每次都得从零敲；而搜过什么只有用户自己
+    // 知道，宿主那边没有这个信息。跟栏宽一样是纯界面状态，存 localStorage 就够，
+    // 不必为它多一个接口。只存词不存结果：结果会过期，重搜一遍才是当下的库。
+    const RECENT_KEY = 'dshgn.recentSearches'
+    const RECENT_LIMIT = 8
+
+    function readRecentSearches() {
+      try {
+        const raw = window.localStorage.getItem(RECENT_KEY)
+        if (raw === null) return []
+        const parsed = JSON.parse(raw)
+        if (!Array.isArray(parsed)) return []
+        const out = []
+        for (const item of parsed) {
+          const text = String(item === null || item === undefined ? '' : item).trim()
+          // 去重且保序：同一条只留最前面那次（越靠前越新）
+          if (text === '' || out.includes(text)) continue
+          out.push(text)
+          if (out.length >= RECENT_LIMIT) break
+        }
+        return out
+      } catch {
+        return []
+      }
+    }
+
+    function writeRecentSearches(list) {
+      try {
+        window.localStorage.setItem(RECENT_KEY, JSON.stringify(list))
+      } catch {
+        // 隐私模式下存不了，这次先记在内存里，下次打开就没了
+      }
+    }
 
     /**
      * 读回上次拖出来的栏宽。

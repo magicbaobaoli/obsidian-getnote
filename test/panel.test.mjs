@@ -11825,3 +11825,96 @@ test('版本历史里点开一版，头部直说恢复之后会多几行还是�
     await sleep(300)
   }
 })
+
+/**
+ * 搜过的词只有用户自己知道，宿主那边没有这个信息。以前每次都得从零敲一遍，
+ * 隔一天回来连上次搜的是「录音卡」还是「录音卡片」都想不起来。
+ * 现在搜索框空着的时候，下面摆着最近搜过的几个词。
+ */
+test('搜索框空着的时候摆着最近搜过的词，点一下就填回去，也能一次清掉', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  const box = () => window.document.querySelector('.dshgn_search')
+  const typeIn = async (text) => {
+    setter.call(box(), text)
+    box().dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(400)
+  }
+
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = window.document.querySelector('.dshgn_noteBack')
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(200)
+    }
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  await typeIn('')
+
+  const word = '最近搜索验收词'
+  await post('/getnote/create', {
+    dir: '最近搜索验收',
+    title: '最近搜索-甲',
+    content: ['# 最近搜索甲', '', '这一篇里写着' + word + '。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-recent-search-a',
+  })
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(700)
+
+  await typeIn(word)
+  await waitFor(() => window.document.querySelector('.dshgn_card') !== null, 8000, '搜到那一篇')
+  // 停手一会儿才记：边打边搜的中间态（「最近」「最近搜索」）不该全存进去
+  await sleep(1800)
+
+  await typeIn('')
+  const chips = await waitFor(() => {
+    const all = Array.from(window.document.querySelectorAll('.dshgn_recentChip'))
+    return all.some((el) => (el.textContent || '').trim() === word) ? all : null
+  }, 6000, '搜索框空着时摆出最近搜过的词')
+  const recentBar = window.document.querySelector('.dshgn_recent')
+  assert.ok(recentBar !== null, '最近搜过的那一条要真的画出来')
+  assert.ok((recentBar.textContent || '').includes('最近搜过'), '这一条得有个标题：' + recentBar.textContent)
+
+  // 存进 localStorage：重启 Obsidian 之后还在（和栏宽、上次看到哪儿同一类偏好）
+  const stored = window.localStorage.getItem('dshgn.recentSearches')
+  assert.ok(stored !== null && stored.includes(word), '搜过的词要落进 localStorage：' + stored)
+
+  // 点一颗就把词填回搜索框，并且真的又搜了一遍
+  const mine = chips.find((el) => (el.textContent || '').trim() === word)
+  mine.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => box().value === word, 3000, '点一下就填回搜索框')
+  await waitFor(() => window.document.querySelector('.dshgn_card') !== null, 8000, '填回去之后又搜出结果')
+
+  // 正搜着的时候不摆这一排别的词：只会把人往岔路上带
+  assert.equal(window.document.querySelector('.dshgn_recent'), null, '搜索框里有字时不摆最近搜过')
+
+  await typeIn('')
+  const clearBtn = await waitFor(
+    () => window.document.querySelector('.dshgn_recentClear'),
+    6000,
+    '清掉记录那颗按钮',
+  )
+  clearBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_recent') === null, 4000, '清掉之后整条收起来')
+  assert.equal(window.localStorage.getItem('dshgn.recentSearches'), null, '清掉也要把落盘的那份删干净')
+})
