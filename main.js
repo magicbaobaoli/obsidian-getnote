@@ -8690,6 +8690,9 @@ var LEX = {
     "history.restore": "\u6062\u590D\u8FD9\u4E00\u7248",
     "history.empty": "\u8FD8\u6CA1\u6709\u5386\u53F2\u7248\u672C",
     "history.emptyHint": "\u4FDD\u5B58\u6216\u5220\u9664\u7B14\u8BB0\u65F6\u63D2\u4EF6\u4F1A\u81EA\u52A8\u7559\u4E00\u7248\u5FEB\u7167\uFF0C\u6700\u591A\u7559\u6700\u8FD1 10 \u7248\u3002",
+    "history.diffAdded": "\u6062\u590D\u540E\u591A {n} \u884C",
+    "history.diffRemoved": "\u6062\u590D\u540E\u5C11 {n} \u884C",
+    "history.diffSame": "\u548C\u73B0\u5728\u4E00\u6837",
     "archive.title": "\u6574\u5E93\u5907\u4EFD",
     "archive.desc": "\u5BFC\u51FA\u6210\u4E00\u4E2A zip\uFF08\u542B\u9644\u4EF6\uFF09\uFF0C\u6362\u7535\u8111\u6216\u91CD\u88C5\u65F6\u5BFC\u56DE\u6765\u3002\u5BFC\u5165\u9010\u7BC7\u5408\u5E76\uFF0C\u4E0D\u8986\u76D6\u4F60\u5DF2\u6709\u7684\u7B14\u8BB0\u3002",
     "archive.export": "\u5BFC\u51FA zip",
@@ -9204,6 +9207,9 @@ var LEX = {
     "history.restore": "Restore this version",
     "history.empty": "No versions yet",
     "history.emptyHint": "A snapshot is saved automatically each time you save or delete a note, keeping the latest 10.",
+    "history.diffAdded": "{n} lines more if restored",
+    "history.diffRemoved": "{n} lines fewer if restored",
+    "history.diffSame": "Same as now",
     "archive.title": "Whole-vault backup",
     "archive.desc": "Exports one zip (attachments included) so you can restore on another machine. Import merges note by note and never overwrites what you already have.",
     "archive.export": "Export zip",
@@ -9718,6 +9724,9 @@ var LEX = {
     "history.restore": "Deze versie herstellen",
     "history.empty": "Nog geen versies",
     "history.emptyHint": "Bij elke keer opslaan of verwijderen wordt automatisch een momentopname bewaard; de laatste 10 blijven staan.",
+    "history.diffAdded": "{n} regels meer als je herstelt",
+    "history.diffRemoved": "{n} regels minder als je herstelt",
+    "history.diffSame": "Hetzelfde als nu",
     "archive.title": "Volledige back-up van de map",
     "archive.desc": "Exporteert \xE9\xE9n zip (bijlagen inbegrepen) zodat je op een andere machine kunt herstellen. Importeren voegt notitie voor notitie samen en overschrijft nooit wat je al hebt.",
     "archive.export": "Zip exporteren",
@@ -11121,6 +11130,43 @@ function readingMinutes(words) {
   if (!Number.isFinite(n2) || n2 <= 0) return 0;
   return Math.max(1, Math.round(n2 / 300));
 }
+function diffLineCounts(fromText, toText) {
+  const split = (value) => String(value === null || value === void 0 ? "" : value).replace(/\r\n/g, "\n").split("\n");
+  const from = split(fromText);
+  const to = split(toText);
+  if (from.length > 1 && from[from.length - 1] === "") from.pop();
+  if (to.length > 1 && to[to.length - 1] === "") to.pop();
+  if (from.length * to.length > 4e6) {
+    const pool = /* @__PURE__ */ new Map();
+    for (const line of from) pool.set(line, (pool.get(line) || 0) + 1);
+    let added = 0;
+    for (const line of to) {
+      const left = pool.get(line) || 0;
+      if (left > 0) pool.set(line, left - 1);
+      else added += 1;
+    }
+    let removed = 0;
+    for (const count of pool.values()) removed += count;
+    return { added, removed };
+  }
+  let prev = new Array(to.length + 1).fill(0);
+  for (let i3 = 1; i3 <= from.length; i3 += 1) {
+    const next = new Array(to.length + 1).fill(0);
+    for (let j4 = 1; j4 <= to.length; j4 += 1) {
+      next[j4] = from[i3 - 1] === to[j4 - 1] ? prev[j4 - 1] + 1 : prev[j4] >= next[j4 - 1] ? prev[j4] : next[j4 - 1];
+    }
+    prev = next;
+  }
+  const same = prev[to.length];
+  return { added: to.length - same, removed: from.length - same };
+}
+function historyDiffBadge(fromText, toText, t4) {
+  const counts = diffLineCounts(fromText, toText);
+  const parts = [];
+  if (counts.added > 0) parts.push(t4("history.diffAdded").replace("{n}", String(counts.added)));
+  if (counts.removed > 0) parts.push(t4("history.diffRemoved").replace("{n}", String(counts.removed)));
+  return parts.length === 0 ? t4("history.diffSame") : parts.join(" \xB7 ");
+}
 function continueListLine(text, caret) {
   const source = String(text === null || text === void 0 ? "" : text);
   const at = Number.isInteger(caret) ? caret : source.length;
@@ -12064,6 +12110,9 @@ var CSS = `
 /* \u7248\u672C\u5386\u53F2\uFF1A\u5360\u6EE1\u9605\u8BFB\u533A\uFF0C\u7528\u5217\u8868 + \u9884\u89C8\u4E24\u6BB5\u5F0F\u3002\u65F6\u95F4\u7528\u7B49\u5BBD\u6570\u5B57\u5BF9\u9F50\uFF0C
    \u4E00\u5217\u626B\u4E0B\u6765\u80FD\u7ACB\u523B\u770B\u51FA\u300C\u54EA\u4E2A\u662F\u6211\u8981\u7684\u90A3\u6B21\u4FDD\u5B58\u300D\u3002 */
 .dshgn_historyPane{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+/* \u8FD9\u4E00\u7248\u548C\u73B0\u5728\u5DEE\u591A\u5C11\uFF1A\u8DDF\u5728\u4FDD\u5B58\u65F6\u95F4\u540E\u9762\u7684\u4E00\u5C0F\u6BB5\u7070\u5B57\uFF0C\u4E0D\u62A2\u6B63\u6587\u3002 */
+.dshgn_historyDiff{flex:none;padding:0 6px;border-radius:999px;font-size:10px;
+  background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}
 .dshgn_historyHead{flex:none;display:flex;align-items:center;gap:6px;padding:8px 12px;
   font-size:12px;color:var(--dsw-alias-label-secondary);
   border-bottom:0.5px solid var(--dsw-alias-border-l1)}
@@ -21240,6 +21289,17 @@ ${t4("tree.menuReveal")}` : absolute,
           "div",
           { className: "dshgn_rowLine", style: { padding: "6px 12px", gap: 8 } },
           h4("span", { className: "dshgn_fieldHint" }, formatTime(historyPreview.savedAt)),
+          // 这一版和现在差多少：光看正文得自己一行行比对，先给个量。
+          // 方向是「从现在换成这一版」，所以现在的内容在前、这一版在后。
+          h4(
+            "span",
+            { className: "dshgn_historyDiff", title: t4("history.title") },
+            historyDiffBadge(
+              current === null ? "" : current.body !== void 0 && current.body !== null ? current.body : current.content,
+              historyPreview.content,
+              t4
+            )
+          ),
           h4(
             "button",
             { type: "button", className: "dshgn_btn dshgn_btnPri", style: { marginLeft: "auto" }, onClick: () => void restoreHistory(historyPreview.name), disabled: historyBusy },

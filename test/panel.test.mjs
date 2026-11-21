@@ -11702,3 +11702,126 @@ test('搜完之后能把这次找到的几篇一次抄成一段清单，一行�
   await sleep(400)
   assert.equal(copyBtn(), null, '清空搜索之后这颗按钮跟着收起来')
 })
+
+/**
+ * 版本历史点开一版，以前只能看正文长什么样，多几行少几行得自己一行行比对。
+ * 现在头部直接写「恢复后多/少 N 行」，方向是「从现在换成这一版」。
+ */
+test('版本历史里点开一版，头部直说恢复之后会多几行还是少几行', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = window.document.querySelector('.dshgn_noteBack')
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(200)
+    }
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox) {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setter.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(400)
+  }
+
+  // 第一版三行；再存一版多三行 —— 保存时会把第一版留成快照。
+  const made = await post('/getnote/create', {
+    dir: '历史差异验收',
+    title: '历史差异-改过的那一篇',
+    content: ['# 历史差异-改过的那一篇', '', '最初就这三行', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-history-diff-a',
+  })
+  const notePath = made.path
+  assert.ok(typeof notePath === 'string' && notePath !== '', '那一篇建好了')
+  await post('/getnote/save', {
+    path: notePath,
+    content: ['# 历史差异-改过的那一篇', '', '最初就这三行', '后来加的一行', '又加的一行', '再加一行', ''].join('\n'),
+  })
+
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(700)
+
+  const treeRow = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find(
+      (el) => (el.querySelector('.dshgn_treeName') || {}).textContent === '历史差异验收',
+    )
+  await waitFor(() => treeRow() !== undefined, 8000, '左栏出现这个目录')
+  treeRow().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+
+  const cardOf = () => {
+    const cards = Array.from(window.document.querySelectorAll('.dshgn_card'))
+    return cards.find((el) => {
+      const node = el.querySelector('.dshgn_cardTitle')
+      return node !== null && (node.textContent || '').trim() === '历史差异-改过的那一篇'
+    })
+  }
+  await waitFor(() => cardOf() !== undefined, 8000, '列表里出现这一篇')
+  cardOf().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 8000, '这一篇打开')
+
+  const historyBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '版本历史')
+  await waitFor(() => historyBtn() !== undefined, 5000, '笔记头上有版本历史那颗按钮')
+  historyBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_historyItem') !== null, 8000, '历史列表出来了')
+
+  const item = window.document.querySelector('.dshgn_historyItem')
+  item.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_historyDiff') !== null, 8000, '点开一版有差异徽章')
+
+  const badge = window.document.querySelector('.dshgn_historyDiff')
+  assert.equal(
+    (badge.textContent || '').trim(),
+    '恢复后少 3 行',
+    '这一版比现在少三行，徽章要直说少三行：' + badge.textContent,
+  )
+  assert.equal(badge.getAttribute('title'), '版本历史', '徽章的悬停说明跟着这块走')
+  // 徽章是「从现在换成这一版」，所以正文里那一版确实是短的那一版
+  const previewBody = window.document.querySelector('.dshgn_diffBody')
+  assert.ok(
+    previewBody !== null && !(previewBody.textContent || '').includes('后来加的一行'),
+    '预览里应该是旧的那一版',
+  )
+
+  // 收尾：退回列表，别把历史面板和目录筛选留给下一条用例
+  const closeBtn = Array.from(window.document.querySelectorAll('.dshgn_historyHead .dshgn_btn')).find(
+    (el) => (el.textContent || '').trim() === '关闭',
+  )
+  if (closeBtn) {
+    closeBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(250)
+  }
+  const back = window.document.querySelector('.dshgn_noteBack')
+  if (back) {
+    back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+  const allBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find(
+      (el) => (el.querySelector('.dshgn_treeName') || {}).textContent === '全部笔记',
+    )
+  if (allBtn() !== undefined) {
+    allBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+})

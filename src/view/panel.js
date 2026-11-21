@@ -839,6 +839,9 @@ async function saveFile(url, filename) {
         'history.restore': '恢复这一版',
         'history.empty': '还没有历史版本',
         'history.emptyHint': '保存或删除笔记时插件会自动留一版快照，最多留最近 10 版。',
+        'history.diffAdded': '恢复后多 {n} 行',
+        'history.diffRemoved': '恢复后少 {n} 行',
+        'history.diffSame': '和现在一样',
         'archive.title': '整库备份',
         'archive.desc': '导出成一个 zip（含附件），换电脑或重装时导回来。导入逐篇合并，不覆盖你已有的笔记。',
         'archive.export': '导出 zip',
@@ -1358,6 +1361,9 @@ async function saveFile(url, filename) {
         'history.restore': 'Restore this version',
         'history.empty': 'No versions yet',
         'history.emptyHint': 'A snapshot is saved automatically each time you save or delete a note, keeping the latest 10.',
+        'history.diffAdded': '{n} lines more if restored',
+        'history.diffRemoved': '{n} lines fewer if restored',
+        'history.diffSame': 'Same as now',
         'archive.title': 'Whole-vault backup',
         'archive.desc': 'Exports one zip (attachments included) so you can restore on another machine. Import merges note by note and never overwrites what you already have.',
         'archive.export': 'Export zip',
@@ -1876,6 +1882,9 @@ async function saveFile(url, filename) {
         'history.restore': 'Deze versie herstellen',
         'history.empty': 'Nog geen versies',
         'history.emptyHint': 'Bij elke keer opslaan of verwijderen wordt automatisch een momentopname bewaard; de laatste 10 blijven staan.',
+        'history.diffAdded': '{n} regels meer als je herstelt',
+        'history.diffRemoved': '{n} regels minder als je herstelt',
+        'history.diffSame': 'Hetzelfde als nu',
         'archive.title': 'Volledige back-up van de map',
         'archive.desc': 'Exporteert één zip (bijlagen inbegrepen) zodat je op een andere machine kunt herstellen. Importeren voegt notitie voor notitie samen en overschrijft nooit wat je al hebt.',
         'archive.export': 'Zip exporteren',
@@ -3853,6 +3862,71 @@ async function saveFile(url, filename) {
     }
 
     /**
+     * 版本历史里「这一版和现在差多少」。
+     *
+     * 以前点开一版只能看它长什么样，得自己一行行比对才知道是多了几段还是改了几个字。
+     * 这里按行做一次最长公共子序列：版本里有、现在没有的是「恢复之后会多出来的行」，
+     * 现在有、版本里没有的是「恢复之后会丢掉的行」。
+     *
+     * 文件很大时退一步只数集合差：LCS 是 O(n·m)，两万行乘两万行会把面板卡住，
+     * 而历史快照本来最多留十版、每版几分钟前的样子，粗一点不影响判断。
+     */
+    function diffLineCounts(fromText, toText) {
+      const split = (value) =>
+        String(value === null || value === undefined ? '' : value)
+          .replace(/\r\n/g, '\n')
+          .split('\n')
+      const from = split(fromText)
+      const to = split(toText)
+      // 末尾那个空串是文件结尾的换行，不是一行内容，两边都去掉再比。
+      if (from.length > 1 && from[from.length - 1] === '') from.pop()
+      if (to.length > 1 && to[to.length - 1] === '') to.pop()
+      if (from.length * to.length > 4000000) {
+        const pool = new Map()
+        for (const line of from) pool.set(line, (pool.get(line) || 0) + 1)
+        let added = 0
+        for (const line of to) {
+          const left = pool.get(line) || 0
+          if (left > 0) pool.set(line, left - 1)
+          else added += 1
+        }
+        let removed = 0
+        for (const count of pool.values()) removed += count
+        return { added, removed }
+      }
+      // 滚动数组的 LCS，只留长度，不回头找具体是哪几行。
+      let prev = new Array(to.length + 1).fill(0)
+      for (let i = 1; i <= from.length; i += 1) {
+        const next = new Array(to.length + 1).fill(0)
+        for (let j = 1; j <= to.length; j += 1) {
+          next[j] =
+            from[i - 1] === to[j - 1]
+              ? prev[j - 1] + 1
+              : prev[j] >= next[j - 1]
+                ? prev[j]
+                : next[j - 1]
+        }
+        prev = next
+      }
+      const same = prev[to.length]
+      return { added: to.length - same, removed: from.length - same }
+    }
+
+    /**
+     * 版本历史里那一小行「恢复后会多几行 / 少几行」。
+     *
+     * 数字取绝对值，两种差别同时存在时都写出来（改了几行在 LCS 眼里就是一行多一行少）；
+     * 一行都不差时说「和现在一样」——空着不写会让人以为没算。
+     */
+    function historyDiffBadge(fromText, toText, t) {
+      const counts = diffLineCounts(fromText, toText)
+      const parts = []
+      if (counts.added > 0) parts.push(t('history.diffAdded').replace('{n}', String(counts.added)))
+      if (counts.removed > 0) parts.push(t('history.diffRemoved').replace('{n}', String(counts.removed)))
+      return parts.length === 0 ? t('history.diffSame') : parts.join(' · ')
+    }
+
+    /**
      * 在列表里按回车，接着写下一行。
      *
      * 记笔记最常做的一件事是往清单里再添一条，而 textarea 只会老老实实插一个换行：
@@ -4981,6 +5055,9 @@ async function saveFile(url, filename) {
 /* 版本历史：占满阅读区，用列表 + 预览两段式。时间用等宽数字对齐，
    一列扫下来能立刻看出「哪个是我要的那次保存」。 */
 .dshgn_historyPane{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+/* 这一版和现在差多少：跟在保存时间后面的一小段灰字，不抢正文。 */
+.dshgn_historyDiff{flex:none;padding:0 6px;border-radius:999px;font-size:10px;
+  background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}
 .dshgn_historyHead{flex:none;display:flex;align-items:center;gap:6px;padding:8px 12px;
   font-size:12px;color:var(--dsw-alias-label-secondary);
   border-bottom:0.5px solid var(--dsw-alias-border-l1)}
@@ -15818,6 +15895,17 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                         'div',
                         { className: 'dshgn_rowLine', style: { padding: '6px 12px', gap: 8 } },
                         h('span', { className: 'dshgn_fieldHint' }, formatTime(historyPreview.savedAt)),
+                        // 这一版和现在差多少：光看正文得自己一行行比对，先给个量。
+                        // 方向是「从现在换成这一版」，所以现在的内容在前、这一版在后。
+                        h(
+                          'span',
+                          { className: 'dshgn_historyDiff', title: t('history.title') },
+                          historyDiffBadge(
+                            current === null ? '' : current.body !== undefined && current.body !== null ? current.body : current.content,
+                            historyPreview.content,
+                            t,
+                          ),
+                        ),
                         h(
                           'button',
                           { type: 'button', className: 'dshgn_btn dshgn_btnPri', style: { marginLeft: 'auto' }, onClick: () => void restoreHistory(historyPreview.name), disabled: historyBusy },
@@ -17007,7 +17095,7 @@ export const __internals = {
   TrashPane, TodoPane, renderEmbed, assetLabel, ThemeCard, readSession, writeSession, SESSION_KEY,
   themeVars, parseHex, rgbToHsl, hslToHex, ConflictPane, ArchiveCard, CardPane,
   TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale,
-  reportSync, dailyTemplateOf, frontmatterText, isTagKey, FollowCard, parseTable, countWords, readingMinutes,
+  reportSync, dailyTemplateOf, frontmatterText, isTagKey, FollowCard, parseTable, countWords, readingMinutes, diffLineCounts,
   isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote, scrollToFootnoteRef, parseImageSize, renderParagraph, blockTextOf, markdownLinkTarget,
   tagBodyOf, ZoomOverlay, continueListLine, indentLines, wrapInline, linkPaste, wikilinkQueryAt, wikilinkMatches, tagQueryAt, tagMatches, findInBody, findAllBodyMatches, countTextMatches, findInBodyMatch, findInText, textHasParts,
       readScrollMarks, writeScrollMark, scrollMarkOf, SCROLL_KEY,
