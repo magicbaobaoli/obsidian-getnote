@@ -883,9 +883,19 @@ try {
   // ── 目录 / 标签增删（第七批左栏右键菜单 + 「+」）─────────────────────────
   const madeDir = await jpost('/dir/create', { dir: '临时目录' })
   check('新建目录成功', madeDir.ok === true && madeDir.path === '临时目录', JSON.stringify(madeDir))
-  check('新建目录提示空目录暂时看不见', madeDir.empty === true, JSON.stringify(madeDir))
+  check('新建目录回 empty 标记（此时还没笔记）', madeDir.empty === true, JSON.stringify(madeDir))
   const dupDir = await jpost('/dir/create', { dir: '临时目录' })
   check('重复建同名目录不报错（mkdir recursive）', dupDir.ok === true, JSON.stringify(dupDir))
+  // 空目录也要出现在左栏：用户刚建好就准备往里写，它却当场消失，看着像没建成
+  const treeWithEmpty = await call('/tree')
+  const emptyNode = (treeWithEmpty.json.tree.children || []).find((c) => c.kind === 'dir' && c.path === '临时目录')
+  check('空目录出现在 /tree 的树上', emptyNode !== undefined, JSON.stringify(treeWithEmpty.json.tree.children.map((c) => c.path)))
+  check('空目录计数是 0', emptyNode !== undefined && emptyNode.count === 0, String(emptyNode && emptyNode.count))
+  check(
+    '空目录也进 /tree 的 dirs 清单',
+    (treeWithEmpty.json.dirs || []).includes('临时目录'),
+    JSON.stringify(treeWithEmpty.json.dirs),
+  )
   const emptyDirName = await call('/dir/create', postJson('/dir/create', { dir: '   ' }))
   check('空目录名回 400', emptyDirName.status === 400, String(emptyDirName.status))
 

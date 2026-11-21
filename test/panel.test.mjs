@@ -9852,3 +9852,95 @@ test('双链指到还不存在的笔记时，报错行里那颗「写一篇」�
   window.document.querySelector('.dshgn_noteBack').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
   await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 8000, '退回列表')
 })
+
+test('刚建好还空着的目录也摆在左栏里、计数 0，点它能筛出空列表，右键还能删掉', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+  await clickTab('笔记')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+  // 先造一篇别的笔记，保证库里有东西、左栏确实在渲染目录树
+  await post('/getnote/create', {
+    dir: '空目录验收',
+    title: '空目录验收-先有一篇',
+    content: ['# 空目录验收', '', '先放一篇在这儿。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-empty-dir-note',
+  })
+  const madeDir = await post('/getnote/dir/create', { dir: '空目录验收/还空着的那一支' })
+  assert.equal(madeDir.ok, true, '造空目录失败：' + JSON.stringify(madeDir))
+
+  // 退回空态、清搜索、退回全量
+  const backBtn = () => window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(async () => true)
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = backBtn()
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(220)
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox !== null) {
+    const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setValue.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(300)
+  }
+  const rowOf = (name) =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+      const label = el.querySelector('.dshgn_treeName')
+      return label !== null && (label.textContent || '').trim() === name
+    })
+  const allRow = rowOf('全部笔记')
+  if (allRow !== undefined) {
+    allRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rowOf('还空着的那一支') !== undefined, 8000, '左栏里出现那个空目录')
+
+  // 空目录也在树上，计数写着 0
+  const emptyRow = rowOf('还空着的那一支')
+  const countEl = emptyRow.querySelector('.dshgn_treeCount')
+  assert.ok(countEl !== null, '空目录也该显示计数')
+  assert.equal((countEl.textContent || '').trim(), '0', '空目录的计数该是 0')
+  // 父目录还在、还能折
+  assert.ok(rowOf('空目录验收') !== undefined, '空目录的父目录也该在')
+
+  // 点它能筛出空列表，而不是弹一句「没有笔记」就没了
+  emptyRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+  assert.equal(rowOf('还空着的那一支').getAttribute('data-on'), 'true', '点空目录也该选中它')
+  const cardsAfter = Array.from(window.document.querySelectorAll('.dshgn_card'))
+  assert.equal(cardsAfter.length, 0, '空目录里不该有卡片')
+  assert.ok(window.document.querySelector('.dshgn_empty') !== null, '空目录要摆出「这里还没有笔记」那一屏')
+
+  // 右键能删掉（空目录才删得掉）
+  emptyRow.dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+  await sleep(220)
+  const menu = window.document.querySelector('.dshgn_rowMenu')
+  assert.ok(menu !== null, '右键该弹出菜单')
+  const delBtn = menu.querySelector('.dshgn_rowBtnDanger')
+  assert.ok(delBtn !== null, '空目录右键菜单里该有「删除」')
+  delBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(250)
+  // 删除前先弹一次确认：空目录才删得掉，非空的会被后端挡下来
+  const okBtn = window.document.querySelector('.dshgn_modal .dshgn_btnDanger')
+  assert.ok(okBtn !== null, '删除前该弹一次确认')
+  okBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rowOf('还空着的那一支') === undefined, 8000, '删掉之后这一行该消失')
+})

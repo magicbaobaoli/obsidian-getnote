@@ -703,6 +703,8 @@ async function scanVault(root, options = {}) {
   }
   const entries = [];
   const errors = [];
+  const filled = /* @__PURE__ */ new Set([""]);
+  const allDirs = /* @__PURE__ */ new Set([""]);
   let truncated = false;
   async function walk(dir, relDir, depth) {
     if (depth > MAX_DEPTH || truncated) return;
@@ -721,12 +723,15 @@ async function scanVault(root, options = {}) {
       const name = dirent2.name;
       if (dirent2.isDirectory()) {
         if (IGNORED_DIRS.has(name)) continue;
-        await walk((0, import_node_path4.join)(dir, name), relDir === "" ? name : `${relDir}/${name}`, depth + 1);
+        const childRel = relDir === "" ? name : `${relDir}/${name}`;
+        allDirs.add(childRel);
+        await walk((0, import_node_path4.join)(dir, name), childRel, depth + 1);
         continue;
       }
       if (!dirent2.isFile()) continue;
       if ((0, import_node_path4.extname)(name).toLowerCase() !== NOTE_EXT) continue;
       const rel = relDir === "" ? name : `${relDir}/${name}`;
+      filled.add(relDir);
       const abs = (0, import_node_path4.join)(dir, name);
       try {
         const st = await stat2(abs);
@@ -778,7 +783,8 @@ async function scanVault(root, options = {}) {
     if (da !== db) return db.localeCompare(da);
     return b3.mtimeMs - a3.mtimeMs;
   });
-  const result = { entries, errors, truncated };
+  const emptyDirs = [...allDirs].filter((dir) => !filled.has(dir));
+  const result = { entries, errors, truncated, emptyDirs };
   if (key !== null) {
     if (errors.length === 0 && !truncated) {
       scanCache.set(key, result);
@@ -790,14 +796,13 @@ async function scanVault(root, options = {}) {
   }
   return result;
 }
-function buildTree(entries) {
+function buildTree(entries, emptyDirs = []) {
   const root = { name: "", path: "", kind: "dir", children: [], count: 0 };
   const dirMap = /* @__PURE__ */ new Map([["", root]]);
-  for (const entry of entries) {
-    const segments = entry.path.split("/").slice(0, -1);
+  const ensure = (rel) => {
     let cursor = root;
     let acc = "";
-    for (const segment of segments) {
+    for (const segment of rel.split("/")) {
       acc = acc === "" ? segment : `${acc}/${segment}`;
       let node = dirMap.get(acc);
       if (!node) {
@@ -807,7 +812,17 @@ function buildTree(entries) {
       }
       cursor = node;
     }
+    return cursor;
+  };
+  for (const entry of entries) {
+    const segments = entry.path.split("/").slice(0, -1);
+    let acc = "";
+    for (const segment of segments) acc = acc === "" ? segment : `${acc}/${segment}`;
+    const cursor = acc === "" ? root : ensure(acc);
     cursor.children.push({ name: entry.name, path: entry.path, kind: "file", entry });
+  }
+  for (const dir of emptyDirs) {
+    if (typeof dir === "string" && dir !== "") ensure(dir);
   }
   const countAll = (node) => {
     let n2 = 0;
@@ -2116,8 +2131,16 @@ async function vaultStats(root, entries) {
   }
   return { notes: entries.length, dirs: dirs.size, bytes };
 }
-function listDirs(entries) {
+function listDirs(entries, emptyDirs = []) {
   const dirs = /* @__PURE__ */ new Set([""]);
+  for (const dir of emptyDirs) {
+    if (typeof dir !== "string" || dir === "") continue;
+    let acc = "";
+    for (const segment of dir.split("/")) {
+      acc = acc === "" ? segment : `${acc}/${segment}`;
+      dirs.add(acc);
+    }
+  }
   for (const entry of entries) {
     const segments = entry.path.split("/").slice(0, -1);
     let acc = "";
@@ -5444,8 +5467,15 @@ function createHandler(config) {
   async function handleTree(res) {
     const { root, missing } = await currentRoot();
     if (missing) return send(res, 200, { root, tree: { name: "", path: "", kind: "dir", children: [], count: 0 }, entries: [] });
-    const { entries, errors, truncated } = await scanVault(root);
-    send(res, 200, { root, tree: buildTree(entries), entries, dirs: listDirs(entries), errors, truncated });
+    const { entries, errors, truncated, emptyDirs } = await scanVault(root);
+    send(res, 200, {
+      root,
+      tree: buildTree(entries, emptyDirs),
+      entries,
+      dirs: listDirs(entries, emptyDirs),
+      errors,
+      truncated
+    });
   }
   async function handleList(res, url) {
     const { root, missing } = await currentRoot();
@@ -8462,7 +8492,7 @@ var LEX = {
     "tree.dirNotEmpty": "\u8FD9\u4E2A\u76EE\u5F55\u91CC\u8FD8\u6709\u7B14\u8BB0\uFF0C\u5148\u628A\u5B83\u4EEC\u79FB\u8D70",
     "tree.fold": "\u6536\u8D77\u5B50\u76EE\u5F55",
     "tree.unfold": "\u5C55\u5F00\u5B50\u76EE\u5F55",
-    "tree.dirCreated": "\u76EE\u5F55\u5DF2\u521B\u5EFA\uFF08\u7A7A\u76EE\u5F55\u6682\u65F6\u4E0D\u663E\u793A\u5728\u5217\u8868\u91CC\uFF09",
+    "tree.dirCreated": "\u76EE\u5F55\u5DF2\u521B\u5EFA",
     "tree.movedTo": "\u5DF2\u632A\u5230 {dir}",
     "tree.tagCreated": "\u6807\u7B7E\u5DF2\u6DFB\u52A0\u5230\u5F53\u524D\u7B14\u8BB0",
     "tree.tagNeedNote": "\u5148\u6253\u5F00\u4E00\u7BC7\u7B14\u8BB0\u518D\u5EFA\u6807\u7B7E",
@@ -8943,7 +8973,7 @@ var LEX = {
     "tree.dirNotEmpty": "This folder still has notes \u2014 move them out first",
     "tree.fold": "Collapse subfolders",
     "tree.unfold": "Expand subfolders",
-    "tree.dirCreated": "Folder created (empty folders stay hidden)",
+    "tree.dirCreated": "Folder created",
     "tree.movedTo": "Moved to {dir}",
     "tree.tagCreated": "Tag added to the open note",
     "tree.tagNeedNote": "Open a note first to add a tag",
@@ -9423,7 +9453,7 @@ var LEX = {
     "tree.dirNotEmpty": "Er staan nog notities in deze map \u2014 verplaats ze eerst",
     "tree.fold": "Submappen inklappen",
     "tree.unfold": "Submappen uitklappen",
-    "tree.dirCreated": "Map aangemaakt (lege mappen blijven verborgen)",
+    "tree.dirCreated": "Map aangemaakt",
     "tree.movedTo": "Verplaatst naar {dir}",
     "tree.tagCreated": "Tag toegevoegd aan de geopende notitie",
     "tree.tagNeedNote": "Open eerst een notitie om een tag toe te voegen",

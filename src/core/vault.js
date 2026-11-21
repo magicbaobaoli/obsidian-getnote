@@ -299,6 +299,11 @@ export async function scanVault(root, options = {}) {
 
   const entries = []
   const errors = []
+  // 有笔记的目录，以及所有目录（含空目录）。
+  // 空目录原来是不进结果的——「只列有笔记的目录」读起来像省事，实际后果是
+  // 用户刚在左栏建好一个目录、准备往里写，它却当场消失，看着像没建成。
+  const filled = new Set([''])
+  const allDirs = new Set([''])
   let truncated = false
 
   async function walk(dir, relDir, depth) {
@@ -318,12 +323,15 @@ export async function scanVault(root, options = {}) {
       const name = dirent.name
       if (dirent.isDirectory()) {
         if (IGNORED_DIRS.has(name)) continue
-        await walk(join(dir, name), relDir === '' ? name : `${relDir}/${name}`, depth + 1)
+        const childRel = relDir === '' ? name : `${relDir}/${name}`
+        allDirs.add(childRel)
+        await walk(join(dir, name), childRel, depth + 1)
         continue
       }
       if (!dirent.isFile()) continue
       if (extname(name).toLowerCase() !== NOTE_EXT) continue
       const rel = relDir === '' ? name : `${relDir}/${name}`
+      filled.add(relDir)
       const abs = join(dir, name)
       try {
         const st = await stat(abs)
@@ -379,7 +387,10 @@ export async function scanVault(root, options = {}) {
     if (da !== db) return db.localeCompare(da)
     return b.mtimeMs - a.mtimeMs
   })
-  const result = { entries, errors, truncated }
+  // 空目录单独带出去：它们既不是笔记、也不该被当成「有内容的目录」参与计数，
+  // 但左栏要让用户看得见自己刚建的那个。
+  const emptyDirs = [...allDirs].filter((dir) => !filled.has(dir))
+  const result = { entries, errors, truncated, emptyDirs }
   if (key !== null) {
     // 只缓存「扫得干净」的结果：有错误或截断时下一次应当重试，而不是把
     // 一次不完整的快照当成真相缓存下来。
@@ -394,15 +405,21 @@ export async function scanVault(root, options = {}) {
   return result
 }
 
-/** 由扁平条目建目录树（只含真正有笔记的目录，空目录不显示）。 */
-export function buildTree(entries) {
+/**
+ * 由扁平条目建目录树。
+ *
+ * `emptyDirs` 是「磁盘上有、但一篇笔记都没有」的目录：它们也要出现在树上，
+ * 计数是 0。以前空目录一概不列，用户刚建好一个目录准备往里写，它却当场消失，
+ * 看着像没建成；而建目录这个动作本身又提示「空目录暂时不显示」——那等于
+ * 承认这个洞。
+ */
+export function buildTree(entries, emptyDirs = []) {
   const root = { name: '', path: '', kind: 'dir', children: [], count: 0 }
   const dirMap = new Map([['', root]])
-  for (const entry of entries) {
-    const segments = entry.path.split('/').slice(0, -1)
+  const ensure = (rel) => {
     let cursor = root
     let acc = ''
-    for (const segment of segments) {
+    for (const segment of rel.split('/')) {
       acc = acc === '' ? segment : `${acc}/${segment}`
       let node = dirMap.get(acc)
       if (!node) {
@@ -412,7 +429,17 @@ export function buildTree(entries) {
       }
       cursor = node
     }
+    return cursor
+  }
+  for (const entry of entries) {
+    const segments = entry.path.split('/').slice(0, -1)
+    let acc = ''
+    for (const segment of segments) acc = acc === '' ? segment : `${acc}/${segment}`
+    const cursor = acc === '' ? root : ensure(acc)
     cursor.children.push({ name: entry.name, path: entry.path, kind: 'file', entry })
+  }
+  for (const dir of emptyDirs) {
+    if (typeof dir === 'string' && dir !== '') ensure(dir)
   }
   // 统计每个目录（含子孙）的笔记数，并把目录排前面、同类按名称排
   const countAll = (node) => {
@@ -2296,9 +2323,21 @@ export async function vaultStats(root, entries) {
   return { notes: entries.length, dirs: dirs.size, bytes }
 }
 
-/** 库内目录列表（用于新建笔记时的目标目录下拉）。 */
-export function listDirs(entries) {
+/**
+ * 库内目录列表（用于新建笔记时的目标目录下拉）。
+ *
+ * 空目录也算：新建时最想挑的往往正是那个刚建好、还空着的目录。
+ */
+export function listDirs(entries, emptyDirs = []) {
   const dirs = new Set([''])
+  for (const dir of emptyDirs) {
+    if (typeof dir !== 'string' || dir === '') continue
+    let acc = ''
+    for (const segment of dir.split('/')) {
+      acc = acc === '' ? segment : `${acc}/${segment}`
+      dirs.add(acc)
+    }
+  }
   for (const entry of entries) {
     const segments = entry.path.split('/').slice(0, -1)
     let acc = ''

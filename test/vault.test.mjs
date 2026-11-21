@@ -34,6 +34,8 @@ import {
   findBacklinks,
   findBrokenLinks,
   renameTag,
+  createDir,
+  removeDir,
   heatmapOf,
   toggleTodo,
   listOpenTodos,
@@ -191,6 +193,31 @@ note_url: https://www.biji.com/note/1200000000000000001
       JSON.stringify(parsedQuery.nots) === JSON.stringify(['排除', '也不要 这个']),
     JSON.stringify(parsedQuery),
   )
+
+  // 9c. 空目录：刚建好、还没写东西的那个目录也要出现在树和目录清单里。
+  // 以前一概不列，用户建完目录它就消失，看着像没建成。
+  await createDir(root, '空着待用的目录')
+  const scanEmpty = await scanVault(root, { fresh: true })
+  check('scanVault: 空目录被单独记下来', scanEmpty.emptyDirs.includes('空着待用的目录'), JSON.stringify(scanEmpty.emptyDirs))
+  check('scanVault: 有笔记的目录不算空', !scanEmpty.emptyDirs.includes('随手记'), JSON.stringify(scanEmpty.emptyDirs))
+  const treeEmpty = buildTree(scanEmpty.entries, scanEmpty.emptyDirs)
+  const emptyNode = treeEmpty.children.find((c) => c.kind === 'dir' && c.path === '空着待用的目录')
+  check('buildTree: 空目录出现在树上', emptyNode !== undefined, JSON.stringify(treeEmpty.children.map((c) => c.path)))
+  check('buildTree: 空目录计数是 0', emptyNode !== undefined && emptyNode.count === 0, String(emptyNode && emptyNode.count))
+  check(
+    'buildTree: 空目录的父目录也跟着出现',
+    treeEmpty.children.some((c) => c.kind === 'dir' && c.path === '随手记'),
+    JSON.stringify(treeEmpty.children.map((c) => c.path)),
+  )
+  const dirsEmpty = listDirs(scanEmpty.entries, scanEmpty.emptyDirs)
+  check('listDirs: 空目录也在清单里', dirsEmpty.includes('空着待用的目录'), JSON.stringify(dirsEmpty))
+  const treeNoArg = buildTree(scanEmpty.entries)
+  check(
+    'buildTree: 不传空目录时仍只按笔记建树（向后兼容）',
+    !treeNoArg.children.some((c) => c.path === '空着待用的目录'),
+    JSON.stringify(treeNoArg.children.map((c) => c.path)),
+  )
+  await removeDir(root, '空着待用的目录')
 
   // 10. 统计与目录
   const stats = await vaultStats(root, scan2.entries)

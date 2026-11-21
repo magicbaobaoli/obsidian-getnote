@@ -678,8 +678,15 @@ export function createHandler(config) {
   async function handleTree(res) {
     const { root, missing } = await currentRoot()
     if (missing) return send(res, 200, { root, tree: { name: '', path: '', kind: 'dir', children: [], count: 0 }, entries: [] })
-    const { entries, errors, truncated } = await scanVault(root)
-    send(res, 200, { root, tree: buildTree(entries), entries, dirs: listDirs(entries), errors, truncated })
+    const { entries, errors, truncated, emptyDirs } = await scanVault(root)
+    send(res, 200, {
+      root,
+      tree: buildTree(entries, emptyDirs),
+      entries,
+      dirs: listDirs(entries, emptyDirs),
+      errors,
+      truncated,
+    })
   }
 
   async function handleList(res, url) {
@@ -842,9 +849,8 @@ export function createHandler(config) {
   /**
    * 新建目录。
    *
-   * 左栏「目录」标题行右侧的「+」走这里。空目录建完在树上暂时看不见
-   * （scanVault 只收 .md），返回里带 `empty: true` 让面板提示一句，
-   * 否则用户会以为没建成又点一次。
+   * 左栏「目录」标题行右侧的「+」走这里。空目录现在会出现在树上（计数 0），
+   * 返回里仍带 `empty: true`，面板可以据此说一句「还没有笔记」之类的提示。
    */
   async function handleCreateDir(req, res) {
     const body = await readJsonBody(req)
