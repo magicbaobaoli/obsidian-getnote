@@ -881,6 +881,8 @@ async function saveFile(url, filename) {
         'broken.times': '{n} 处',
         'broken.writeOne': '写一篇',
         'broken.writeOneHint': '在库根建一篇同名的空笔记，建完当场打开',
+        'broken.copyAll': '复制这份清单',
+        'broken.copied': '已复制 {n} 处断链',
         'todo.jump': '去这一条',
         'todo.copyAll': '复制这份清单',
         'todo.copied': '已复制 {n} 条待办',
@@ -1391,6 +1393,8 @@ async function saveFile(url, filename) {
         'broken.times': '{n} places',
         'broken.writeOne': 'Create it',
         'broken.writeOneHint': 'Creates an empty note with this name at the vault root and opens it',
+        'broken.copyAll': 'Copy this list',
+        'broken.copied': 'Copied {n} broken links',
         'todo.jump': 'Jump to this item',
         'todo.copyAll': 'Copy this list',
         'todo.copied': 'Copied {n} to-dos',
@@ -1900,6 +1904,8 @@ async function saveFile(url, filename) {
         'broken.times': '{n} plekken',
         'broken.writeOne': 'Aanmaken',
         'broken.writeOneHint': 'Maakt een lege notitie met deze naam in de hoofdmap en opent die',
+        'broken.copyAll': 'Deze lijst kopiëren',
+        'broken.copied': '{n} dode links gekopieerd',
         'todo.jump': 'Naar dit punt',
         'todo.copyAll': 'Deze lijst kopiëren',
         'todo.copied': '{n} taken gekopieerd',
@@ -8027,6 +8033,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
               setError(err && err.message ? err.message : String(err))
             }
           },
+          showToast,
         })
       } else if (tab === 'todos') {
         body = h(TodoPane, {
@@ -11853,7 +11860,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
      * 所以把它当路标写在旁边）。
      */
     function BrokenPane(props) {
-      const { t, status, onError, onOpen, onOpenLine, onCreate } = props
+      const { t, status, onError, onOpen, onOpenLine, onCreate, showToast } = props
       const [hits, setHits] = React.useState(null)
       const [scanned, setScanned] = React.useState(0)
       const [truncated, setTruncated] = React.useState(false)
@@ -11898,6 +11905,42 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         return order.map((name) => byName.get(name))
       }, [list])
 
+      // 把整份断链清单抄成一段 Markdown：想一次修完、或者发给别人一起看时，
+      // 一屏截图远不如一段能搜索的文本。按「指不到的那个名字」分组，和屏幕上一致；
+      // 每条带上出处的篇名、行号和那一句原文（原文为空时只写行号）。
+      const copyAll = React.useCallback(async () => {
+        const rows = hits === null ? [] : hits
+        if (rows.length === 0) return
+        const order = []
+        const byName = new Map()
+        for (const hit of rows) {
+          const name = String(hit.target || '')
+          if (!byName.has(name)) {
+            byName.set(name, [])
+            order.push(name)
+          }
+          byName.get(name).push(hit)
+        }
+        const lines = []
+        for (const name of order) {
+          lines.push('## [[' + name + ']]')
+          for (const hit of byName.get(name)) {
+            const where = (hit.title || hit.path) + ' · ' + t('broken.line') + ' ' + hit.line
+            const snip = typeof hit.text === 'string' && hit.text.trim() !== '' ? '：' + hit.text.trim() : ''
+            lines.push('- ' + where + snip)
+          }
+          lines.push('')
+        }
+        const text = lines.join('\n').trim()
+        try {
+          await navigator.clipboard.writeText(text)
+          if (typeof showToast === 'function') showToast(t('broken.copied').replace('{n}', String(rows.length)))
+        } catch {
+          // 没有剪贴板权限时把正文摊出来让用户自己选，总比点了没反应强
+          if (typeof showToast === 'function') showToast(text)
+        }
+      }, [hits, showToast, t])
+
       return h(
         'div',
         { className: 'dshgn_pane' },
@@ -11908,6 +11951,15 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             'div',
             { className: 'dshgn_sectionHead' },
             h('div', { className: 'dshgn_sectionTitle' }, t('tab.broken')),
+            // 一条都没有时别摆一颗按了没反应的「复制」——清单空着没有可抄的东西。
+            list.length === 0
+              ? null
+              : h(
+                  'button',
+                  { type: 'button', className: 'dshgn_btn', title: t('broken.copyAll'), onClick: () => void copyAll() },
+                  h(Icon, { name: 'copy', size: 12 }),
+                  t('broken.copyAll'),
+                ),
             h(
               'button',
               { type: 'button', className: 'dshgn_btn', onClick: () => void load(), disabled: loading },

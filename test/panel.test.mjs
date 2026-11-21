@@ -11180,3 +11180,99 @@ test('卡片上那个目录也点得动：点了就按这个目录筛，左栏�
     await sleep(300)
   }
 })
+
+/**
+ * 断链页那一整张清单，光在屏幕上看没用：想一次修完，得把「哪几个名字指不到、
+ * 各自出现在哪几篇的第几行」摊成一段能搜索的文本。这里验抄出来的样子，
+ * 以及一条断链都没有时不摆那颗按了没反应的按钮。
+ */
+test('断链页能把整张清单抄成一段 Markdown，按名字分组、带篇名行号和原句', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+
+  // 上一个用例可能把某篇开着：先退回空态
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = window.document.querySelector('.dshgn_noteBack')
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(200)
+    }
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+
+  // 同一个错名字写在两篇里 + 另一个错名字一篇：抄出来应该是两组
+  const seedOne = async (dir, title, body, requestId) => {
+    const res = await post('/getnote/create', {
+      dir,
+      title,
+      content: ['# ' + title, '', body, ''].join('\n'),
+      withDatePrefix: false,
+      requestId,
+    })
+    assert.equal(res.path, dir + '/' + title + '.md', '造笔记失败：' + JSON.stringify(res))
+  }
+  await seedOne('随手记', '断链抄写验收甲', '坏的 [[抄写验收-没写的那篇]]。', 'seed-broken-copy-a')
+  await seedOne('随手记', '断链抄写验收乙', '也是 [[抄写验收-没写的那篇]]。', 'seed-broken-copy-b')
+  await seedOne('随手记', '断链抄写验收丙', '另起的 [[抄写验收-另一篇没写的]]。', 'seed-broken-copy-c')
+
+  await clickTab('断链')
+  const copyBtn = await waitFor(
+    () => Array.from(window.document.querySelectorAll('.dshgn_pane .dshgn_btn')).find((el) =>
+      (el.textContent || '').trim() === '复制这份清单',
+    ) || null,
+    8000,
+    '断链页里那颗「复制这份清单」',
+  )
+  assert.equal(copyBtn.getAttribute('title'), '复制这份清单')
+
+  const written = []
+  clipboard.writeText = async (text) => { written.push(String(text)) }
+  copyBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => written.length > 0, 5000, '抄到剪贴板')
+  const text = written[0]
+
+  const lines = text.split('\n')
+  const headA = lines.findIndex((one) => one.trim() === '## [[抄写验收-没写的那篇]]')
+  const headB = lines.findIndex((one) => one.trim() === '## [[抄写验收-另一篇没写的]]')
+  assert.ok(headA >= 0, '同一个名字要收成一个小标题，实际：' + text)
+  assert.ok(headB >= 0, '另一个名字也要有一个小标题，实际：' + text)
+  // 组的先后跟后端的路径序走（中文按码位排，不是拼音），这里只验「同一个名字
+  // 底下那两处收在同一组里」，不押具体谁先谁后。
+  const nextHead = (from) => {
+    for (let i = from + 1; i < lines.length; i += 1) {
+      if (lines[i].trim().startsWith('## ')) return i
+    }
+    return lines.length
+  }
+  const between = lines.slice(headA + 1, nextHead(headA)).filter((one) => one.trim() !== '')
+  assert.equal(between.length, 2, '同一个错名字的两处要收在同一组里，实际：' + JSON.stringify(between))
+  for (const one of between) assert.ok(one.startsWith('- '), '每条以 - 开头，实际 ' + one)
+  const joined = between.join('\n')
+  assert.ok(joined.includes('断链抄写验收甲'), '要带出处的篇名，实际 ' + joined)
+  assert.ok(joined.includes('断链抄写验收乙'), '两处各自的篇名都要在，实际 ' + joined)
+  assert.ok(joined.includes('第 '), '要带行号，实际 ' + joined)
+  assert.ok(joined.includes('抄写验收-没写的那篇'), '要带那一句原文，实际 ' + joined)
+
+  // 抄完给一句提示，说清抄了多少处
+  const toast = await waitFor(
+    () => window.document.querySelector('.dshgn_toast'),
+    3000,
+    '抄完的提示条',
+  )
+  assert.ok((toast.textContent || '').includes('断链'), '提示条要说清抄的是什么，实际 ' + toast.textContent)
+
+  await clickTab('笔记')
+})

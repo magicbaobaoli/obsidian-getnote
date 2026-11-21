@@ -8732,6 +8732,8 @@ var LEX = {
     "broken.times": "{n} \u5904",
     "broken.writeOne": "\u5199\u4E00\u7BC7",
     "broken.writeOneHint": "\u5728\u5E93\u6839\u5EFA\u4E00\u7BC7\u540C\u540D\u7684\u7A7A\u7B14\u8BB0\uFF0C\u5EFA\u5B8C\u5F53\u573A\u6253\u5F00",
+    "broken.copyAll": "\u590D\u5236\u8FD9\u4EFD\u6E05\u5355",
+    "broken.copied": "\u5DF2\u590D\u5236 {n} \u5904\u65AD\u94FE",
     "todo.jump": "\u53BB\u8FD9\u4E00\u6761",
     "todo.copyAll": "\u590D\u5236\u8FD9\u4EFD\u6E05\u5355",
     "todo.copied": "\u5DF2\u590D\u5236 {n} \u6761\u5F85\u529E",
@@ -9237,6 +9239,8 @@ var LEX = {
     "broken.times": "{n} places",
     "broken.writeOne": "Create it",
     "broken.writeOneHint": "Creates an empty note with this name at the vault root and opens it",
+    "broken.copyAll": "Copy this list",
+    "broken.copied": "Copied {n} broken links",
     "todo.jump": "Jump to this item",
     "todo.copyAll": "Copy this list",
     "todo.copied": "Copied {n} to-dos",
@@ -9742,6 +9746,8 @@ var LEX = {
     "broken.times": "{n} plekken",
     "broken.writeOne": "Aanmaken",
     "broken.writeOneHint": "Maakt een lege notitie met deze naam in de hoofdmap en opent die",
+    "broken.copyAll": "Deze lijst kopi\xEBren",
+    "broken.copied": "{n} dode links gekopieerd",
     "todo.jump": "Naar dit punt",
     "todo.copyAll": "Deze lijst kopi\xEBren",
     "todo.copied": "{n} taken gekopieerd",
@@ -14631,7 +14637,8 @@ ${insert}
         } catch (err) {
           setError(err && err.message ? err.message : String(err));
         }
-      }
+      },
+      showToast
     });
   } else if (tab === "todos") {
     body = h4(TodoPane, {
@@ -17930,7 +17937,7 @@ function ConflictPane(props) {
   );
 }
 function BrokenPane(props) {
-  const { t: t4, status, onError, onOpen, onOpenLine, onCreate } = props;
+  const { t: t4, status, onError, onOpen, onOpenLine, onCreate, showToast } = props;
   const [hits, setHits] = h2(null);
   const [scanned, setScanned] = h2(0);
   const [truncated, setTruncated] = h2(false);
@@ -17967,6 +17974,37 @@ function BrokenPane(props) {
     }
     return order.map((name) => byName.get(name));
   }, [list]);
+  const copyAll = q2(async () => {
+    const rows = hits === null ? [] : hits;
+    if (rows.length === 0) return;
+    const order = [];
+    const byName = /* @__PURE__ */ new Map();
+    for (const hit of rows) {
+      const name = String(hit.target || "");
+      if (!byName.has(name)) {
+        byName.set(name, []);
+        order.push(name);
+      }
+      byName.get(name).push(hit);
+    }
+    const lines = [];
+    for (const name of order) {
+      lines.push("## [[" + name + "]]");
+      for (const hit of byName.get(name)) {
+        const where = (hit.title || hit.path) + " \xB7 " + t4("broken.line") + " " + hit.line;
+        const snip = typeof hit.text === "string" && hit.text.trim() !== "" ? "\uFF1A" + hit.text.trim() : "";
+        lines.push("- " + where + snip);
+      }
+      lines.push("");
+    }
+    const text = lines.join("\n").trim();
+    try {
+      await navigator.clipboard.writeText(text);
+      if (typeof showToast === "function") showToast(t4("broken.copied").replace("{n}", String(rows.length)));
+    } catch {
+      if (typeof showToast === "function") showToast(text);
+    }
+  }, [hits, showToast, t4]);
   return h4(
     "div",
     { className: "dshgn_pane" },
@@ -17977,6 +18015,13 @@ function BrokenPane(props) {
         "div",
         { className: "dshgn_sectionHead" },
         h4("div", { className: "dshgn_sectionTitle" }, t4("tab.broken")),
+        // 一条都没有时别摆一颗按了没反应的「复制」——清单空着没有可抄的东西。
+        list.length === 0 ? null : h4(
+          "button",
+          { type: "button", className: "dshgn_btn", title: t4("broken.copyAll"), onClick: () => void copyAll() },
+          h4(Icon, { name: "copy", size: 12 }),
+          t4("broken.copyAll")
+        ),
         h4(
           "button",
           { type: "button", className: "dshgn_btn", onClick: () => void load(), disabled: loading },
