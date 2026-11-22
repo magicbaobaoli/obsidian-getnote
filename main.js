@@ -9214,6 +9214,13 @@ var LEX = {
     "broken.retargetOk": "\u6539\u8FC7\u53BB",
     "broken.retargetDone": "\u6539\u4E86 {n} \u7BC7\u91CC\u7684\u94FE\u63A5",
     "broken.retargetFailed": "\u6709 {n} \u7BC7\u6CA1\u80FD\u6539",
+    // 断链上限 500 处，一屏翻不完。想修的那一条常常只记得半个名字，
+    // 所以给一个筛：按名字或篇名挑，清掉就回全量。
+    "broken.filter": "\u6309\u540D\u5B57\u6216\u7BC7\u540D\u627E\u4E00\u5904",
+    "broken.filterClear": "\u6E05\u6389\u8FD9\u4E2A\u7B5B",
+    "broken.filtered": "\u7B5B\u51FA {n} \u5904\uFF0C\u4E00\u5171 {total} \u5904",
+    "broken.filterNone": "\u6CA1\u6709\u5BF9\u5F97\u4E0A\u7684\u65AD\u94FE",
+    "broken.filterNoneHint": "\u6E05\u6389\u4E0A\u9762\u90A3\u4E2A\u7B5B\u5C31\u80FD\u770B\u5230\u5168\u90E8\u65AD\u94FE\u3002",
     "todo.jump": "\u53BB\u8FD9\u4E00\u6761",
     "todo.copyAll": "\u590D\u5236\u8FD9\u4EFD\u6E05\u5355",
     "todo.copied": "\u5DF2\u590D\u5236 {n} \u6761\u5F85\u529E",
@@ -9806,6 +9813,11 @@ var LEX = {
     "broken.retargetOk": "Rewrite",
     "broken.retargetDone": "Rewrote links in {n} notes",
     "broken.retargetFailed": "{n} notes could not be rewritten",
+    "broken.filter": "Find one by name or note",
+    "broken.filterClear": "Clear this filter",
+    "broken.filtered": "{n} of {total} shown",
+    "broken.filterNone": "No broken link matches",
+    "broken.filterNoneHint": "Clear the filter above to see them all.",
     "todo.jump": "Jump to this item",
     "todo.copyAll": "Copy this list",
     "todo.copied": "Copied {n} to-dos",
@@ -10397,6 +10409,11 @@ var LEX = {
     "broken.retargetOk": "Omzetten",
     "broken.retargetDone": "Koppelingen in {n} notities aangepast",
     "broken.retargetFailed": "{n} notities konden niet worden aangepast",
+    "broken.filter": "Zoek er een op naam of notitie",
+    "broken.filterClear": "Dit filter wissen",
+    "broken.filtered": "{n} van {total} getoond",
+    "broken.filterNone": "Geen dode link gevonden",
+    "broken.filterNoneHint": "Wis het filter hierboven om ze allemaal te zien.",
     "todo.jump": "Naar dit punt",
     "todo.copyAll": "Deze lijst kopi\xEBren",
     "todo.copied": "{n} taken gekopieerd",
@@ -12558,6 +12575,12 @@ var CSS = `
 .dshgn_brokenRetarget{display:flex;align-items:center;gap:6px;padding:4px 2px 2px}
 .dshgn_brokenRetargetInput{flex:1 1 auto;min-width:0;height:24px;font-size:11.5px}
 .dshgn_brokenRetargetGo{flex:none;height:24px;padding:0 8px;font-size:11px}
+/* \u65AD\u94FE\u9875\u81EA\u5DF1\u7684\u7B5B\uFF1A\u53EA\u6309\u8FD9\u4E00\u9875\u7684\u6E05\u5355\u6311\u4E00\u5904\uFF0C\u4E0D\u78B0\u4E2D\u680F\u90A3\u4E2A\u641C\u7D22\u6846\u3002
+   \u4E0A\u9650 500 \u5904\uFF0C\u4E00\u5C4F\u7FFB\u4E0D\u5B8C\uFF1B\u60F3\u4FEE\u7684\u90A3\u4E00\u6761\u5E38\u5E38\u53EA\u8BB0\u5F97\u534A\u4E2A\u540D\u5B57\u3002 */
+.dshgn_brokenFilterRow{display:flex;align-items:center;gap:6px;padding:2px 10px 6px;
+  color:var(--dsw-alias-label-dimmed)}
+.dshgn_brokenFilter{flex:1 1 auto;min-width:0;height:24px;font-size:11.5px}
+.dshgn_brokenFilterClear{flex:none;height:24px;padding:0 6px;font-size:11px}
 /* \u5F85\u529E\u6E05\u5355\uFF1A\u4E00\u884C\u4E00\u6761\u3002\u65B9\u6846\u590D\u7528\u9605\u8BFB\u533A\u90A3\u4E2A\uFF08\u540C\u6837\u5927\u5C0F\u3001\u540C\u6837\u80FD\u70B9\uFF09\uFF0C\u53F3\u8FB9\u662F\u6B63\u6587\u4E0E\u51FA\u5904\u3002
    \u65B9\u6846\u5916\u9762\u5957\u4E00\u5C42\u900F\u660E\u6309\u94AE\uFF0C\u662F\u4E3A\u4E86\u8BA9\u6574\u5757\u65B9\u6846\u8FDE\u5468\u8FB9\u7684\u70B9\u51FB\u70ED\u533A\u4E00\u8D77\u53EF\u70B9\u2014\u201412px \u7684\u65B9\u6846
    \u76F4\u63A5\u70B9\u5F88\u96BE\u70B9\u4E2D\uFF0C\u624B\u673A\u4E0A\u5C24\u5176\u3002 */
@@ -19314,6 +19337,7 @@ function BrokenPane(props) {
   const [creating, setCreating] = h2("");
   const [retarget, setRetarget] = h2(null);
   const [retargetBusy, setRetargetBusy] = h2(false);
+  const [filter, setFilter] = h2("");
   const nameList = T2(() => {
     const raw = Array.isArray(props.noteNames) ? props.noteNames : [];
     const seen = /* @__PURE__ */ new Set();
@@ -19344,8 +19368,15 @@ function BrokenPane(props) {
   y2(() => {
     void load();
   }, [load]);
-  const list = hits === null ? [] : hits;
-  const summary = t4("broken.found").replace("{n}", String(list.length)).replace("{scanned}", String(scanned));
+  const allHits = hits === null ? [] : hits;
+  const needle = filter.trim().toLowerCase();
+  const list = needle === "" ? allHits : allHits.filter((hit) => {
+    const name = String(hit.target || "").toLowerCase();
+    const where = String(hit.title || hit.path || "").toLowerCase();
+    const snip = String(hit.text || "").toLowerCase();
+    return name.includes(needle) || where.includes(needle) || snip.includes(needle);
+  });
+  const summary = t4("broken.found").replace("{n}", String(allHits.length)).replace("{scanned}", String(scanned));
   const groups = T2(() => {
     const order = [];
     const byName = /* @__PURE__ */ new Map();
@@ -19390,7 +19421,7 @@ function BrokenPane(props) {
     }
   }, [retarget, hits, onRetarget, load, onError, showToast, t4]);
   const copyAll = q2(async () => {
-    const rows = hits === null ? [] : hits;
+    const rows = list;
     if (rows.length === 0) return;
     const order = [];
     const byName = /* @__PURE__ */ new Map();
@@ -19419,7 +19450,7 @@ function BrokenPane(props) {
     } catch {
       if (typeof showToast === "function") showToast(text);
     }
-  }, [hits, showToast, t4]);
+  }, [list, showToast, t4]);
   return h4(
     "div",
     { className: "dshgn_pane" },
@@ -19445,15 +19476,51 @@ function BrokenPane(props) {
         )
       ),
       h4("div", { className: "dshgn_sectionDesc" }, t4("broken.desc")),
-      hits !== null && list.length > 0 ? h4("div", { className: "dshgn_sectionDesc" }, summary) : null,
+      allHits.length === 0 ? null : h4(
+        "div",
+        { className: "dshgn_brokenFilterRow" },
+        h4(Icon, { name: "search", size: 12 }),
+        h4("input", {
+          type: "text",
+          className: "dshgn_input dshgn_brokenFilter",
+          value: filter,
+          placeholder: t4("broken.filter"),
+          "aria-label": t4("broken.filter"),
+          onInput: (event) => setFilter(String(event.target.value || "")),
+          onKeyDown: (event) => {
+            if (event.key !== "Escape") return;
+            event.preventDefault();
+            event.stopPropagation();
+            setFilter("");
+          }
+        }),
+        filter.trim() === "" ? null : h4(
+          "button",
+          {
+            type: "button",
+            className: "dshgn_btn dshgn_brokenFilterClear",
+            title: t4("broken.filterClear"),
+            onClick: () => setFilter("")
+          },
+          h4(Icon, { name: "close", size: 12 })
+        )
+      ),
+      hits !== null && allHits.length > 0 ? h4("div", { className: "dshgn_sectionDesc" }, summary) : null,
+      // 一处都没筛出来时不报「筛出 0 处」——下面那一屏已经说清没有对得上的了
+      needle === "" || list.length === 0 ? null : h4(
+        "div",
+        { className: "dshgn_sectionDesc dshgn_brokenFiltered" },
+        t4("broken.filtered").replace("{n}", String(list.length)).replace("{total}", String(allHits.length))
+      ),
       truncated ? h4("div", { className: "dshgn_sectionDesc" }, t4("broken.truncated")) : null
     ),
     loading && list.length === 0 ? h4("div", { className: "dshgn_emptyState" }, h4("span", { className: "dshgn_spin" })) : list.length === 0 ? h4(
       "div",
       { className: "dshgn_empty" },
-      h4(Icon, { name: "check", size: 24 }),
-      h4("div", { className: "dshgn_emptyTitle" }, t4("broken.empty")),
-      h4("div", { className: "dshgn_emptyDesc" }, t4("broken.emptyHint"))
+      h4(Icon, { name: needle === "" ? "check" : "search", size: 24 }),
+      // 筛着的时候不能说「库里每一条双链都指得到东西」——那是在说另一件事
+      h4("div", { className: "dshgn_emptyTitle" }, needle === "" ? t4("broken.empty") : t4("broken.filterNone")),
+      h4("div", { className: "dshgn_emptyDesc" }, needle === "" ? t4("broken.emptyHint") : t4("broken.filterNoneHint"))
     ) : h4(
       "div",
       { className: "dshgn_cardBox" },

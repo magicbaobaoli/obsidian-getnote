@@ -982,6 +982,13 @@ async function saveFile(url, filename) {
         'broken.retargetOk': '改过去',
         'broken.retargetDone': '改了 {n} 篇里的链接',
         'broken.retargetFailed': '有 {n} 篇没能改',
+        // 断链上限 500 处，一屏翻不完。想修的那一条常常只记得半个名字，
+        // 所以给一个筛：按名字或篇名挑，清掉就回全量。
+        'broken.filter': '按名字或篇名找一处',
+        'broken.filterClear': '清掉这个筛',
+        'broken.filtered': '筛出 {n} 处，一共 {total} 处',
+        'broken.filterNone': '没有对得上的断链',
+        'broken.filterNoneHint': '清掉上面那个筛就能看到全部断链。',
         'todo.jump': '去这一条',
         'todo.copyAll': '复制这份清单',
         'todo.copied': '已复制 {n} 条待办',
@@ -1579,6 +1586,11 @@ async function saveFile(url, filename) {
         'broken.retargetOk': 'Rewrite',
         'broken.retargetDone': 'Rewrote links in {n} notes',
         'broken.retargetFailed': '{n} notes could not be rewritten',
+        'broken.filter': 'Find one by name or note',
+        'broken.filterClear': 'Clear this filter',
+        'broken.filtered': '{n} of {total} shown',
+        'broken.filterNone': 'No broken link matches',
+        'broken.filterNoneHint': 'Clear the filter above to see them all.',
         'todo.jump': 'Jump to this item',
         'todo.copyAll': 'Copy this list',
         'todo.copied': 'Copied {n} to-dos',
@@ -2174,6 +2186,11 @@ async function saveFile(url, filename) {
         'broken.retargetOk': 'Omzetten',
         'broken.retargetDone': 'Koppelingen in {n} notities aangepast',
         'broken.retargetFailed': '{n} notities konden niet worden aangepast',
+        'broken.filter': 'Zoek er een op naam of notitie',
+        'broken.filterClear': 'Dit filter wissen',
+        'broken.filtered': '{n} van {total} getoond',
+        'broken.filterNone': 'Geen dode link gevonden',
+        'broken.filterNoneHint': 'Wis het filter hierboven om ze allemaal te zien.',
         'todo.jump': 'Naar dit punt',
         'todo.copyAll': 'Deze lijst kopiëren',
         'todo.copied': '{n} taken gekopieerd',
@@ -5143,6 +5160,12 @@ async function saveFile(url, filename) {
 .dshgn_brokenRetarget{display:flex;align-items:center;gap:6px;padding:4px 2px 2px}
 .dshgn_brokenRetargetInput{flex:1 1 auto;min-width:0;height:24px;font-size:11.5px}
 .dshgn_brokenRetargetGo{flex:none;height:24px;padding:0 8px;font-size:11px}
+/* 断链页自己的筛：只按这一页的清单挑一处，不碰中栏那个搜索框。
+   上限 500 处，一屏翻不完；想修的那一条常常只记得半个名字。 */
+.dshgn_brokenFilterRow{display:flex;align-items:center;gap:6px;padding:2px 10px 6px;
+  color:var(--dsw-alias-label-dimmed)}
+.dshgn_brokenFilter{flex:1 1 auto;min-width:0;height:24px;font-size:11.5px}
+.dshgn_brokenFilterClear{flex:none;height:24px;padding:0 6px;font-size:11px}
 /* 待办清单：一行一条。方框复用阅读区那个（同样大小、同样能点），右边是正文与出处。
    方框外面套一层透明按钮，是为了让整块方框连周边的点击热区一起可点——12px 的方框
    直接点很难点中，手机上尤其。 */
@@ -13072,6 +13095,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 只会让人分不清自己在改哪一组。`to` 是输入框里的字。
       const [retarget, setRetarget] = React.useState(null)
       const [retargetBusy, setRetargetBusy] = React.useState(false)
+      // 断链上限 500 处，一屏翻不完；想修的那一条常常只记得半个名字。
+      // 这个筛只在这一页里生效，不碰中栏那个搜索框。
+      const [filter, setFilter] = React.useState('')
       // 库里已有的名字，给输入框当候选：改错字时多半是改成库里另一篇的名字，
       // 让人凭记忆敲一遍不如直接挑。只用文件名（双链最常这么写），去重。
       const nameList = React.useMemo(() => {
@@ -13107,8 +13133,18 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         void load()
       }, [load])
 
-      const list = hits === null ? [] : hits
-      const summary = t('broken.found').replace('{n}', String(list.length)).replace('{scanned}', String(scanned))
+      const allHits = hits === null ? [] : hits
+      const needle = filter.trim().toLowerCase()
+      const list =
+        needle === ''
+          ? allHits
+          : allHits.filter((hit) => {
+              const name = String(hit.target || '').toLowerCase()
+              const where = String(hit.title || hit.path || '').toLowerCase()
+              const snip = String(hit.text || '').toLowerCase()
+              return name.includes(needle) || where.includes(needle) || snip.includes(needle)
+            })
+      const summary = t('broken.found').replace('{n}', String(allHits.length)).replace('{scanned}', String(scanned))
       // 按「指不到的那个名字」分组：同一个名字在七八篇里各写一次，就是七八条一模一样的
       // 红字，而真正要决定的事只有一件——这个名字到底要不要存在。顺序沿用后端的
       // 路径 + 行号，组头里报「几处」。
@@ -13163,7 +13199,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 一屏截图远不如一段能搜索的文本。按「指不到的那个名字」分组，和屏幕上一致；
       // 每条带上出处的篇名、行号和那一句原文（原文为空时只写行号）。
       const copyAll = React.useCallback(async () => {
-        const rows = hits === null ? [] : hits
+        // 抄的是眼下屏幕上这一份：筛着的时候抄筛出来的那几处，没筛时就是全量。
+        const rows = list
         if (rows.length === 0) return
         const order = []
         const byName = new Map()
@@ -13193,7 +13230,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           // 没有剪贴板权限时把正文摊出来让用户自己选，总比点了没反应强
           if (typeof showToast === 'function') showToast(text)
         }
-      }, [hits, showToast, t])
+      }, [list, showToast, t])
 
       return h(
         'div',
@@ -13222,7 +13259,49 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             ),
           ),
           h('div', { className: 'dshgn_sectionDesc' }, t('broken.desc')),
-          hits !== null && list.length > 0 ? h('div', { className: 'dshgn_sectionDesc' }, summary) : null,
+          allHits.length === 0
+            ? null
+            : h(
+                'div',
+                { className: 'dshgn_brokenFilterRow' },
+                h(Icon, { name: 'search', size: 12 }),
+                h('input', {
+                  type: 'text',
+                  className: 'dshgn_input dshgn_brokenFilter',
+                  value: filter,
+                  placeholder: t('broken.filter'),
+                  'aria-label': t('broken.filter'),
+                  onInput: (event) => setFilter(String(event.target.value || '')),
+                  onKeyDown: (event) => {
+                    if (event.key !== 'Escape') return
+                    // Esc 只清这一页的筛，别顺手把别处的输入也一起收了
+                    event.preventDefault()
+                    event.stopPropagation()
+                    setFilter('')
+                  },
+                }),
+                filter.trim() === ''
+                  ? null
+                  : h(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'dshgn_btn dshgn_brokenFilterClear',
+                        title: t('broken.filterClear'),
+                        onClick: () => setFilter(''),
+                      },
+                      h(Icon, { name: 'close', size: 12 }),
+                    ),
+              ),
+          hits !== null && allHits.length > 0 ? h('div', { className: 'dshgn_sectionDesc' }, summary) : null,
+          // 一处都没筛出来时不报「筛出 0 处」——下面那一屏已经说清没有对得上的了
+          needle === '' || list.length === 0
+            ? null
+            : h(
+                'div',
+                { className: 'dshgn_sectionDesc dshgn_brokenFiltered' },
+                t('broken.filtered').replace('{n}', String(list.length)).replace('{total}', String(allHits.length)),
+              ),
           truncated ? h('div', { className: 'dshgn_sectionDesc' }, t('broken.truncated')) : null,
         ),
         loading && list.length === 0
@@ -13231,9 +13310,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             ? h(
                 'div',
                 { className: 'dshgn_empty' },
-                h(Icon, { name: 'check', size: 24 }),
-                h('div', { className: 'dshgn_emptyTitle' }, t('broken.empty')),
-                h('div', { className: 'dshgn_emptyDesc' }, t('broken.emptyHint')),
+                h(Icon, { name: needle === '' ? 'check' : 'search', size: 24 }),
+                // 筛着的时候不能说「库里每一条双链都指得到东西」——那是在说另一件事
+                h('div', { className: 'dshgn_emptyTitle' }, needle === '' ? t('broken.empty') : t('broken.filterNone')),
+                h('div', { className: 'dshgn_emptyDesc' }, needle === '' ? t('broken.emptyHint') : t('broken.filterNoneHint')),
               )
             : h(
                 'div',

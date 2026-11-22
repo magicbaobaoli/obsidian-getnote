@@ -14382,3 +14382,116 @@ test('断链那一组能改指到已有的那一篇，全库一起改过去而�
   await clickTab('笔记')
 })
 
+
+test('断链页能按名字或篇名筛一处，清掉这个筛就回全量', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const post = async (path, payload) => {
+    const res = await fetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(payload),
+    })
+    return res
+  }
+  const wrongA = '断链筛选-没写的那一'
+  const wrongB = '断链筛选-没写的另一'
+  await post('/getnote/create', {
+    dir: '断链筛选验收',
+    title: '断链筛选-甲',
+    content: ['# 断链筛选-甲', '', '坏的 [[' + wrongA + ']]。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-broken-filter-a',
+  })
+  await post('/getnote/create', {
+    dir: '断链筛选验收',
+    title: '断链筛选-乙',
+    content: ['# 断链筛选-乙', '', '也是坏的 [[' + wrongB + ']]。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-broken-filter-b',
+  })
+
+  // 前面的用例留着搜索词和目录筛选，先退回「全部笔记」再刷新，新种的两篇才在列表里。
+  const back = rootNode().querySelector('.dshgn_noteBack')
+  if (back !== null) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(400)
+  }
+  const search = rootNode().querySelector('.dshgn_search')
+  if (search !== null && String(search.value || '') !== '') {
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(search, '')
+    search.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(400)
+  }
+  const allRow = Array.from(rootNode().querySelectorAll('.dshgn_treeRow')).find((el) => {
+    const name = el.querySelector('.dshgn_treeName')
+    return name !== null && (name.textContent || '').trim() === '全部笔记'
+  })
+  if (allRow) allRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+  const refreshBtn = Array.from(rootNode().querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(800)
+
+  await clickTab('断链')
+  const groupNames = () =>
+    Array.from(rootNode().querySelectorAll('.dshgn_brokenGroupName')).map((el) => String(el.textContent || ''))
+  await waitFor(() => groupNames().includes(wrongA) && groupNames().includes(wrongB), 10000, '断链页里该有这两个错名字')
+  const totalGroups = groupNames().length
+  assert.ok(totalGroups >= 2, '至少该有这两组：' + JSON.stringify(groupNames()))
+
+  const input = await waitFor(() => rootNode().querySelector('.dshgn_brokenFilter'), 4000, '断链页该有自己的筛')
+  assert.equal(input.getAttribute('placeholder'), '按名字或篇名找一处')
+  const typeFilter = async (text) => {
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(input, text)
+    input.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(220)
+  }
+
+  // ① 筛半个名字：只剩那一组
+  await typeFilter('没写的那一')
+  await waitFor(() => groupNames().length === 1, 5000, '筛完该只剩一组')
+  assert.equal(groupNames()[0], wrongA, '筛出来该是写着半个名字的那一组：' + JSON.stringify(groupNames()))
+  const countLine = await waitFor(
+    () => rootNode().querySelector('.dshgn_brokenFiltered'),
+    4000,
+    '筛着的时候该报一句筛出几处',
+  )
+  assert.ok(
+    /筛出 1 处，一共 \d+ 处/.test(String(countLine.textContent || '')),
+    '该写清筛出几处、一共几处：' + countLine.textContent,
+  )
+  // 抄清单抄的是眼下这一份，不是筛之前那份
+  const written = []
+  clipboard.writeText = async (text) => { written.push(String(text)) }
+  const copyBtn = Array.from(rootNode().querySelectorAll('.dshgn_btn')).find(
+    (el) => (el.textContent || '').trim() === '复制这份清单',
+  )
+  copyBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => written.length > 0, 5000, '抄到剪贴板')
+  assert.ok(written[0].includes(wrongA), '抄出来的该有筛中的那个名字：' + written[0])
+  assert.ok(!written[0].includes(wrongB), '没筛中的那组不该被抄进去：' + written[0])
+
+  // ② 按篇名也能筛：出处那一篇的名字
+  await typeFilter('断链筛选-乙')
+  await waitFor(() => groupNames().length === 1 && groupNames()[0] === wrongB, 5000, '按篇名也该筛得出来')
+
+  // ③ 对不上任何一处：说「没有对得上的断链」，不能说「库里每一条都指得到」
+  await typeFilter('这一串谁也对不上')
+  const emptyTitle = await waitFor(() => rootNode().querySelector('.dshgn_emptyTitle'), 5000, '筛空时该有说明')
+  assert.equal(String(emptyTitle.textContent || ''), '没有对得上的断链')
+  const emptyDesc = rootNode().querySelector('.dshgn_emptyDesc')
+  assert.ok(
+    String(emptyDesc.textContent || '').includes('清掉上面那个筛'),
+    '筛空时该说清怎么回去：' + emptyDesc.textContent,
+  )
+  assert.equal(rootNode().querySelector('.dshgn_brokenFiltered'), null, '一处都没有时不必再报筛出几处')
+
+  // ④ Esc 清掉这个筛，回到全量
+  input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  await waitFor(() => groupNames().length === totalGroups, 5000, '清掉筛该回全量')
+  assert.equal(String(input.value || ''), '', '清掉之后输入框该是空的')
+  assert.equal(rootNode().querySelector('.dshgn_brokenFiltered'), null, '不筛的时候不摆那一行')
+
+  await clickTab('笔记')
+})
