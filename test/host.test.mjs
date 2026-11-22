@@ -19,6 +19,7 @@ process.env.DSH_HOME = fakeHome
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 
 const settings = await import('../src/core/settings.js')
+const { historyKeyFor } = await import('../src/core/history.js')
 const { createRouter } = await import('../src/core/service.js')
 const { configureCardScripts } = await import('../src/core/card.js')
 
@@ -823,6 +824,39 @@ try {
     const restored = await jpost('/history/restore', { path: '随手记/大纲测试.md', name: entry.name, keepCurrent: true })
     check('C2 恢复历史成功', restored.ok === true, JSON.stringify(restored))
   }
+
+  // C2 历史列表按「现在留几版」走：原来写死 50，用户把上限调到 200 之后
+  // 第 51 版起在界面上根本看不到，那等于这个设置没生效。
+  const capRel = '随手记/版数上限测试.md'
+  await writeFile(join(vault, capRel), '# 版数上限测试\n\n正文。\n', 'utf8')
+  const capDir = join(vault, '.history', historyKeyFor(capRel))
+  await mkdir(capDir, { recursive: true })
+  const capNames = []
+  for (let i = 1; i <= 5; i += 1) {
+    const name = `2026-11-20T01-00-00-00${i}Z.md`
+    await writeFile(join(capDir, name), `# 第 ${i} 版\n`, 'utf8')
+    capNames.push(name)
+  }
+  // 上限比盘上的条数大：5 条都要给出来（写死 50 的时候这一条也过，
+  // 所以真正的验收在下面那一条）
+  await jpost('/settings', { historyLimit: 10 })
+  const capAll = await jget('/history/list?path=' + encodeURIComponent(capRel))
+  check(
+    'C2 上限之内历史列表全给出来',
+    Array.isArray(capAll.items) && capAll.items.length === 5,
+    String(capAll.items && capAll.items.length),
+  )
+  // 再把上限压到 3：列表只该给 3 条（盘上躺着 5 条，写死 50 的话会全给出来）。
+  // 注意调小会顺手裁掉多余的快照，所以顺序必须是先看全量、后压上限。
+  await jpost('/settings', { historyLimit: 3 })
+  const cap3 = await jget('/history/list?path=' + encodeURIComponent(capRel))
+  check(
+    'C2 历史列表按设置的上限截断（设 3 版只给 3 条）',
+    Array.isArray(cap3.items) && cap3.items.length === 3,
+    String(cap3.items && cap3.items.length),
+  )
+  // 收尾：把上限改回默认，别把设置留给后面的用例
+  await jpost('/settings', { historyLimit: 10 })
 
   // C1 归档信息
   const exportInfo = await jget('/archive/info')

@@ -937,6 +937,9 @@ async function saveFile(url, filename) {
         // 想核对空格、缩进、frontmatter 时得看原文。
         'history.modeRendered': '渲染',
         'history.modeRaw': '原文',
+        // 列表按「现在留几版」截断，被截住时说清为什么只有这几条——
+        // 不然用户会以为旧版丢了。
+        'history.capped': '最多留 {n} 版，可在设置里调',
         'archive.title': '整库备份',
         'archive.desc': '导出成一个 zip（含附件），换电脑或重装时导回来。导入逐篇合并，不覆盖你已有的笔记。',
         'archive.export': '导出 zip',
@@ -1569,6 +1572,7 @@ async function saveFile(url, filename) {
         'history.diffSame': 'Same as now',
         'history.modeRendered': 'Rendered',
         'history.modeRaw': 'Raw',
+        'history.capped': 'Keeping at most {n} versions; change it in settings',
         'archive.title': 'Whole-vault backup',
         'archive.desc': 'Exports one zip (attachments included) so you can restore on another machine. Import merges note by note and never overwrites what you already have.',
         'archive.export': 'Export zip',
@@ -2192,6 +2196,7 @@ async function saveFile(url, filename) {
         'history.diffSame': 'Hetzelfde als nu',
         'history.modeRendered': 'Weergegeven',
         'history.modeRaw': 'Ruw',
+        'history.capped': 'Bewaard hooguit {n} versies; aan te passen in de instellingen',
         'archive.title': 'Volledige back-up van de map',
         'archive.desc': 'Exporteert één zip (bijlagen inbegrepen) zodat je op een andere machine kunt herstellen. Importeren voegt notitie voor notitie samen en overschrijft nooit wat je al hebt.',
         'archive.export': 'Zip exporteren',
@@ -5549,6 +5554,8 @@ async function saveFile(url, filename) {
 .dshgn_historyHead{flex:none;display:flex;align-items:center;gap:6px;padding:8px 12px;
   font-size:12px;color:var(--dsw-alias-label-secondary);
   border-bottom:0.5px solid var(--dsw-alias-border-l1)}
+/* 撞到「留几版」上限时的一句解释：细一档，跟在条数后面，不跟标题抢。 */
+.dshgn_historyCap{flex:none;font-size:10px;color:var(--dsw-alias-label-dimmed)}
 .dshgn_historyList{flex:1;min-height:0;overflow-y:auto;padding:8px 12px}
 .dshgn_historyItem{appearance:none;display:flex;align-items:center;gap:10px;width:100%;
   padding:8px 10px;margin-bottom:4px;border:0;border-radius:7px;
@@ -16415,6 +16422,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 这一版怎么看：渲染（默认，和阅读区同一套排版）还是原文（想核对空格、
       // 缩进、frontmatter 时用）。和冲突比对页的两档是同一个意思。
       const [historyMode, setHistoryMode] = React.useState('rendered')
+      // 列表最多列几版，跟着设置里的「留几版」走（默认 10）。撞到上限时头部
+      // 要说一句，不然用户会以为更早的版本被删了。
+      const historyCap = status !== null && status !== undefined && status.historyLimit ? Number(status.historyLimit) : 10
       // 插入附件的文件选择器：按钮只是把它点开，真正干活的是 onAttach
       const attachRef = React.useRef(null)
       // 图片放大查看：{ src, name } 或 null。面板里正文的图只有 200px 高，
@@ -17945,6 +17955,11 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                   h(Icon, { name: 'clock', size: 13 }),
                   h('span', null, t('history.title')),
                   h('span', { className: 'dshgn_outlineCount' }, historyItems === null ? '…' : String(historyItems.length)),
+                  // 列表是按设置里的版数截断的：撞到上限时说清「不是旧版丢了，
+                  // 是现在只留这么多」，改哪里也一并指出来。
+                  historyCap !== null && historyItems !== null && historyItems.length >= historyCap
+                    ? h('span', { className: 'dshgn_fieldHint dshgn_historyCap' }, t('history.capped').replace('{n}', String(historyCap)))
+                    : null,
                   h(
                     'button',
                     { type: 'button', className: 'dshgn_btn', style: { marginLeft: 'auto' }, onClick: () => { setHistoryOpen(false); setHistoryPreview(null) } },

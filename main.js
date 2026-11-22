@@ -6125,7 +6125,7 @@ function createHandler(config) {
     const { root, missing } = await currentRoot();
     const path = url.searchParams.get("path") || "";
     if (missing || path === "") return send(res, 200, { path, items: [], count: 0 });
-    const items = await listHistory(root, path);
+    const items = await listHistory(root, path, { limit: await historyLimitNow() });
     send(res, 200, { path, items, count: items.length });
   }
   async function handleHistoryRead(res, url) {
@@ -9299,6 +9299,9 @@ var LEX = {
     // 想核对空格、缩进、frontmatter 时得看原文。
     "history.modeRendered": "\u6E32\u67D3",
     "history.modeRaw": "\u539F\u6587",
+    // 列表按「现在留几版」截断，被截住时说清为什么只有这几条——
+    // 不然用户会以为旧版丢了。
+    "history.capped": "\u6700\u591A\u7559 {n} \u7248\uFF0C\u53EF\u5728\u8BBE\u7F6E\u91CC\u8C03",
     "archive.title": "\u6574\u5E93\u5907\u4EFD",
     "archive.desc": "\u5BFC\u51FA\u6210\u4E00\u4E2A zip\uFF08\u542B\u9644\u4EF6\uFF09\uFF0C\u6362\u7535\u8111\u6216\u91CD\u88C5\u65F6\u5BFC\u56DE\u6765\u3002\u5BFC\u5165\u9010\u7BC7\u5408\u5E76\uFF0C\u4E0D\u8986\u76D6\u4F60\u5DF2\u6709\u7684\u7B14\u8BB0\u3002",
     "archive.export": "\u5BFC\u51FA zip",
@@ -9926,6 +9929,7 @@ var LEX = {
     "history.diffSame": "Same as now",
     "history.modeRendered": "Rendered",
     "history.modeRaw": "Raw",
+    "history.capped": "Keeping at most {n} versions; change it in settings",
     "archive.title": "Whole-vault backup",
     "archive.desc": "Exports one zip (attachments included) so you can restore on another machine. Import merges note by note and never overwrites what you already have.",
     "archive.export": "Export zip",
@@ -10545,6 +10549,7 @@ var LEX = {
     "history.diffSame": "Hetzelfde als nu",
     "history.modeRendered": "Weergegeven",
     "history.modeRaw": "Ruw",
+    "history.capped": "Bewaard hooguit {n} versies; aan te passen in de instellingen",
     "archive.title": "Volledige back-up van de map",
     "archive.desc": "Exporteert \xE9\xE9n zip (bijlagen inbegrepen) zodat je op een andere machine kunt herstellen. Importeren voegt notitie voor notitie samen en overschrijft nooit wat je al hebt.",
     "archive.export": "Zip exporteren",
@@ -13085,6 +13090,8 @@ var CSS = `
 .dshgn_historyHead{flex:none;display:flex;align-items:center;gap:6px;padding:8px 12px;
   font-size:12px;color:var(--dsw-alias-label-secondary);
   border-bottom:0.5px solid var(--dsw-alias-border-l1)}
+/* \u649E\u5230\u300C\u7559\u51E0\u7248\u300D\u4E0A\u9650\u65F6\u7684\u4E00\u53E5\u89E3\u91CA\uFF1A\u7EC6\u4E00\u6863\uFF0C\u8DDF\u5728\u6761\u6570\u540E\u9762\uFF0C\u4E0D\u8DDF\u6807\u9898\u62A2\u3002 */
+.dshgn_historyCap{flex:none;font-size:10px;color:var(--dsw-alias-label-dimmed)}
 .dshgn_historyList{flex:1;min-height:0;overflow-y:auto;padding:8px 12px}
 .dshgn_historyItem{appearance:none;display:flex;align-items:center;gap:10px;width:100%;
   padding:8px 10px;margin-bottom:4px;border:0;border-radius:7px;
@@ -22237,6 +22244,7 @@ function NotePane(props) {
   const [historyPreview, setHistoryPreview] = h2(null);
   const [historyBusy, setHistoryBusy] = h2(false);
   const [historyMode, setHistoryMode] = h2("rendered");
+  const historyCap = status !== null && status !== void 0 && status.historyLimit ? Number(status.historyLimit) : 10;
   const attachRef = A2(null);
   const [zoom, setZoom] = h2(null);
   const zoomRef = A2(null);
@@ -23460,6 +23468,9 @@ ${t4("tree.menuReveal")}` : absolute,
         h4(Icon, { name: "clock", size: 13 }),
         h4("span", null, t4("history.title")),
         h4("span", { className: "dshgn_outlineCount" }, historyItems === null ? "\u2026" : String(historyItems.length)),
+        // 列表是按设置里的版数截断的：撞到上限时说清「不是旧版丢了，
+        // 是现在只留这么多」，改哪里也一并指出来。
+        historyCap !== null && historyItems !== null && historyItems.length >= historyCap ? h4("span", { className: "dshgn_fieldHint dshgn_historyCap" }, t4("history.capped").replace("{n}", String(historyCap))) : null,
         h4(
           "button",
           { type: "button", className: "dshgn_btn", style: { marginLeft: "auto" }, onClick: () => {

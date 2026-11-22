@@ -1081,7 +1081,9 @@ export function createHandler(config) {
     const { root, missing } = await currentRoot()
     const path = url.searchParams.get('path') || ''
     if (missing || path === '') return send(res, 200, { path, items: [], count: 0 })
-    const items = await listHistory(root, path)
+    // 列表按「现在留几版」走，不写死 50：用户把上限从 10 调到 200 之后，
+    // 第 51 版起在界面上根本看不到，那等于这个设置没生效。
+    const items = await listHistory(root, path, { limit: await historyLimitNow() })
     send(res, 200, { path, items, count: items.length })
   }
 

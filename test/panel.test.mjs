@@ -14325,6 +14325,8 @@ test('断链那一组能改指到已有的那一篇，全库一起改过去而�
   }
   const wrong = '断链改名-写错的名字'
   const right = '断链改名-对的那一篇'
+  const cardTitles = () =>
+    Array.from(rootNode().querySelectorAll('.dshgn_cardTitle')).map((el) => String(el.textContent || '').trim())
   await post('/getnote/create', {
     dir: '断链改名验收',
     title: '断链改名-引用它的那一篇',
@@ -14361,7 +14363,13 @@ test('断链那一组能改指到已有的那一篇，全库一起改过去而�
   await sleep(300)
   const refreshBtn = Array.from(rootNode().querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
   refreshBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
-  await sleep(800)
+  // 候选名单来自面板手上那份 entries（/tree 的结果）：刷新点下去到列表真的换过来
+  // 中间有时间差，直接去断链页会拿到旧名单。等新种的那两篇真出现在中栏再说。
+  await waitFor(
+    () => cardTitles().includes('断链改名-引用它的那一篇') && cardTitles().includes(right),
+    10000,
+    '刷新之后中栏该有刚种下的两篇：' + cardTitles().join('|'),
+  )
 
   await clickTab('断链')
   const groupOf = () =>
@@ -14376,7 +14384,12 @@ test('断链那一组能改指到已有的那一篇，全库一起改过去而�
   retargetBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
   const input = await waitFor(() => rootNode().querySelector('.dshgn_brokenRetargetInput'), 4000, '点开该摊出一行输入框')
   // 候选名单来自库里已有的文件名：改错字时多半是改成另一篇的名字，不该逼人凭记忆敲。
-  const options = Array.from(rootNode().querySelectorAll('#dshgn_brokenNames option')).map((el) => el.value)
+  // 名单跟着面板手上那份 /tree 结果走，刷新点下去到列表换过来中间有时间差，
+  // 所以等它真的出现，而不是点完刷新就断言。
+  const optionsOf = () =>
+    Array.from(rootNode().querySelectorAll('#dshgn_brokenNames option')).map((el) => String(el.value || ''))
+  await waitFor(() => optionsOf().includes(right), 10000, '候选里该有库里那一篇：' + optionsOf().slice(0, 8).join('|'))
+  const options = optionsOf()
   assert.ok(options.includes(right), '候选里该有库里那一篇：' + options.slice(0, 8).join('|'))
 
   const asked = []
@@ -15093,3 +15106,148 @@ test('版本历史里那一版能在「渲染」和「原文」之间切，渲�
     await sleep(300)
   }
 })
+
+/**
+ * 历史列表原来是写死 50 条，而「留几版」能调到 200——第 51 版起界面上根本看不到，
+ * 用户会以为旧版丢了。现在列表按设置的上限走，撞到上限时头部还要说一句。
+ */
+test('历史列表按设置里的「留几版」截断，撞到上限时头部说清为什么只有这几条', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = window.document.querySelector('.dshgn_noteBack')
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(200)
+    }
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox) {
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(400)
+  }
+
+  // 先确认上限够大：存四版留出三个快照，头部不该有那句解释
+  await post('/getnote/settings', { historyLimit: 10 })
+  const made = await post('/getnote/create', {
+    dir: '历史上限验收',
+    title: '历史上限-四版',
+    // 卡片的标题取的是正文里那行 H1，所以它得和 title 一致，不然按标题找不到卡片
+    content: ['# 历史上限-四版', '', '第一版', ''].join(String.fromCharCode(10)),
+    withDatePrefix: false,
+    requestId: 'seed-history-cap-a',
+  })
+  const notePath = made.path
+  assert.ok(typeof notePath === 'string' && notePath !== '', '那一篇建好了')
+  for (const line of ['第二版', '第三版', '第四版']) {
+    await post('/getnote/save', { path: notePath, content: ['# 历史上限-四版', '', line, ''].join(String.fromCharCode(10)) })
+  }
+
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  const openHistory = async () => {
+    const historyBtn = () =>
+      Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '版本历史')
+    await waitFor(() => historyBtn() !== undefined, 5000, '笔记头上有版本历史那颗按钮')
+    historyBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => window.document.querySelector('.dshgn_historyItem') !== null, 8000, '历史列表出来了')
+  }
+  const closeHistory = async () => {
+    const closeBtn = Array.from(window.document.querySelectorAll('.dshgn_historyHead .dshgn_btn')).find(
+      (el) => (el.textContent || '').trim() === '关闭',
+    )
+    if (closeBtn) {
+      closeBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(250)
+    }
+  }
+
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(700)
+  const treeRow = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find(
+      (el) => (el.querySelector('.dshgn_treeName') || {}).textContent === '历史上限验收',
+    )
+  await waitFor(() => treeRow() !== undefined, 8000, '左栏出现这个目录')
+  treeRow().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+  const cardOf = () => {
+    const cards = Array.from(window.document.querySelectorAll('.dshgn_card'))
+    return cards.find((el) => {
+      const node = el.querySelector('.dshgn_cardTitle')
+      return node !== null && (node.textContent || '').trim() === '历史上限-四版'
+    })
+  }
+  await waitFor(
+    () => cardOf() !== undefined,
+    8000,
+    '列表里出现这一篇：' +
+      JSON.stringify({
+        cards: Array.from(window.document.querySelectorAll('.dshgn_cardTitle')).map((el) => (el.textContent || '').trim()),
+        tree: Array.from(window.document.querySelectorAll('.dshgn_treeName')).map((el) => (el.textContent || '').trim()),
+        hasNote: rootNode().getAttribute('data-has-note'),
+      }),
+  )
+  cardOf().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 8000, '这一篇打开')
+
+  await openHistory()
+  const itemsNow = () => Array.from(window.document.querySelectorAll('.dshgn_historyItem'))
+  assert.equal(itemsNow().length, 3, '四版留了三个快照，列表要全给出来：' + itemsNow().length)
+  assert.equal(
+    window.document.querySelector('.dshgn_historyCap'),
+    null,
+    '没撞到上限时不摆那句解释',
+  )
+  await closeHistory()
+
+  // 把上限压到 2：盘上超出的会被当场裁掉，列表只该剩 2 条，头部要解释
+  await post('/getnote/settings', { historyLimit: 2 })
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(700)
+  await openHistory()
+  // 面板手上的 status 还是旧的，列表要等这次请求回来；一次打开可能先看到上一次
+  // 那三条，所以轮询到真的只剩两条为止，别拿旧 DOM 当结果。
+  await waitFor(() => itemsNow().length === 2, 8000, '上限压到 2 版之后列表只剩两条：' + itemsNow().length)
+  assert.equal(itemsNow().length, 2, '上限是 2 版，列表只该给 2 条：' + itemsNow().length)
+  const cap = window.document.querySelector('.dshgn_historyCap')
+  assert.ok(cap !== null, '撞到上限时头部要说一句')
+  assert.ok(
+    String(cap.textContent || '').includes('最多留 2 版'),
+    '要说清现在只留几版：' + String(cap.textContent || ''),
+  )
+  await closeHistory()
+
+  // 收尾：上限改回默认，退回列表，别把设置和面板状态留给下一条用例
+  await post('/getnote/settings', { historyLimit: 10 })
+  const back = window.document.querySelector('.dshgn_noteBack')
+  if (back) {
+    back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+  const allBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find(
+      (el) => (el.querySelector('.dshgn_treeName') || {}).textContent === '全部笔记',
+    )
+  if (allBtn() !== undefined) {
+    allBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+})
+
