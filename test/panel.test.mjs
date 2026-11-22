@@ -10174,7 +10174,11 @@ test('断链页按「指不到的那个名字」分组，一处名字一行头�
   assert.ok(String(count.textContent || '').includes('2'), '组头该写着 2 处：' + count.textContent)
   assert.equal(rowsOf().length, 2, '两处都还在这一组里')
 
-  const writeBtn = head.querySelector('.dshgn_brokenGroupAll')
+  // 组头现在有两颗按钮（「写一篇」和「改指到已有的那篇」），按悬停文案认那一颗，不按位置。
+  const writeBtn =
+    Array.from(head.querySelectorAll('.dshgn_brokenGroupAll')).find((el) =>
+      String(el.getAttribute('title') || '').includes('空笔记')
+    ) || null
   assert.ok(writeBtn !== null, '组头右边该有一颗「写一篇」')
   assert.equal(String(writeBtn.getAttribute('title') || '').includes('空笔记'), true, '悬停说清会建出什么')
   writeBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
@@ -14264,3 +14268,112 @@ test('回收站里能勾几个一起恢复，也能一起永久删掉——放�
 
   await clickTab('笔记')
 })
+
+test('断链那一组能改指到已有的那一篇，全库一起改过去而不是补一篇同名的空笔记', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const post = async (path, body) => {
+    const res = await fetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res
+  }
+  const wrong = '断链改名-写错的名字'
+  const right = '断链改名-对的那一篇'
+  await post('/getnote/create', {
+    dir: '断链改名验收',
+    title: '断链改名-引用它的那一篇',
+    content: ['# 断链改名-引用它的那一篇', '', '见 [[' + wrong + ']] 与 [[' + wrong + '#小节]]。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-link-retarget-a',
+  })
+  await post('/getnote/create', {
+    dir: '断链改名验收',
+    title: right,
+    content: ['# ' + right, '', '这一篇才是本来想指的那篇。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-link-retarget-b',
+  })
+
+  // 前面的用例留着搜索词和目录筛选，先退回「全部笔记」再刷新，新种的两篇才在列表里。
+  const back = rootNode().querySelector('.dshgn_noteBack')
+  if (back !== null) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(400)
+  }
+  const search = rootNode().querySelector('.dshgn_search')
+  if (search !== null && String(search.value || '') !== '') {
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(search, '')
+    search.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(400)
+  }
+  const allRow = Array.from(rootNode().querySelectorAll('.dshgn_treeRow')).find((el) => {
+    const name = el.querySelector('.dshgn_treeName')
+    return name !== null && (name.textContent || '').trim() === '全部笔记'
+  })
+  if (allRow) allRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+  const refreshBtn = Array.from(rootNode().querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(800)
+
+  await clickTab('断链')
+  const groupOf = () =>
+    Array.from(rootNode().querySelectorAll('.dshgn_brokenGroup')).find((el) => {
+      const name = el.querySelector('.dshgn_brokenGroupName')
+      return name !== null && String(name.textContent || '') === wrong
+    }) || null
+  const head = await waitFor(groupOf, 10000, '断链页里该有写错的那个名字一组')
+  const btns = Array.from(head.querySelectorAll('.dshgn_brokenGroupAll'))
+  const retargetBtn = btns.find((el) => String(el.textContent || '').includes('改指到已有的那篇'))
+  assert.ok(retargetBtn !== undefined, '组头该有一颗「改指到已有的那篇」：' + btns.map((b) => b.textContent).join('|'))
+  retargetBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const input = await waitFor(() => rootNode().querySelector('.dshgn_brokenRetargetInput'), 4000, '点开该摊出一行输入框')
+  // 候选名单来自库里已有的文件名：改错字时多半是改成另一篇的名字，不该逼人凭记忆敲。
+  const options = Array.from(rootNode().querySelectorAll('#dshgn_brokenNames option')).map((el) => el.value)
+  assert.ok(options.includes(right), '候选里该有库里那一篇：' + options.slice(0, 8).join('|'))
+
+  const asked = []
+  panel.setConfirmDialog(async (message, options2) => {
+    asked.push({ message: String(message), options: options2 })
+    return true
+  })
+  try {
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(input, right)
+    input.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(120)
+    const go = head.parentElement.querySelector('.dshgn_brokenRetargetGo')
+    assert.ok(go !== null, '输入框旁边该有提交那颗')
+    go.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => asked.length > 0, 8000, '改全库之前该问一句')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  assert.ok(asked[0].message.includes(wrong), '问的话要说清改的是哪个名字：' + asked[0].message)
+  assert.ok(asked[0].message.includes(right), '问的话要说清改成哪一个：' + asked[0].message)
+  assert.ok(asked[0].message.includes('2'), '问的话要报清这一组有几处：' + asked[0].message)
+
+  // 改完这一组该整组从清单上消失
+  await waitFor(() => groupOf() === null, 10000, '改对之后这一组不该还挂着')
+
+  const read = async (rel) => {
+    const res = await fetch(server.origin + '/getnote/read?path=' + encodeURIComponent(rel), {
+      headers: { 'x-getnote-token': server.token },
+    })
+    return { status: res.status, json: res.ok ? await res.json() : null }
+  }
+  const hit = await read('断链改名验收/断链改名-引用它的那一篇.md')
+  assert.equal(hit.status, 200, '引用它的那一篇该还在')
+  const body = String((hit.json && hit.json.body) || '')
+  assert.ok(body.includes('[[' + right + ']]'), '不带小节的链接该改成对的名字：' + body)
+  assert.ok(body.includes('[[' + right + '#小节]]'), '带小节的链接也要改，小节要留着：' + body)
+  assert.ok(!body.includes(wrong), '写错的那个名字该一处都不剩：' + body)
+  // 补空笔记那条路没有被顺手走一遍：库里不该多出一篇叫错名的
+  const wrongNote = await read('断链改名验收/' + wrong + '.md')
+  assert.notEqual(wrongNote.status, 200, '不该顺手补出一篇叫错名的空笔记')
+
+  await clickTab('笔记')
+})
+

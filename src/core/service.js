@@ -80,6 +80,7 @@ import {
   removeTag,
   renameDir,
   renameTag,
+  rewriteLinkTarget,
   createDir,
   resolveConflict,
   unresolveConflict,
@@ -789,6 +790,32 @@ export function createHandler(config) {
     const { root, missing } = await currentRoot()
     if (missing) return send(res, 200, { hits: [], scanned: 0, truncated: false })
     const result = await findBrokenLinks(root)
+    send(res, 200, result)
+  }
+
+  /**
+   * 把全库里指向某个错名的双链，一起改成指向对的那一篇。
+   *
+   * 断链清单上那一组「指不到的名字」多半是库里另一篇的错写。补一篇同名的空笔记
+   * 只会让库里多出两篇讲同一件事的；把它改对才是用户真正想做的事。
+   *
+   * 和删标签、改标签一样要现扫全库：面板手上的列表可能是过滤后的子集，
+   * 按子集改会漏掉一部分，留下「一半改了、一半还指着错名」的状态。
+   */
+  async function handleLinkRetarget(req, res) {
+    const body = await readJsonBody(req)
+    const from = String(body.from || body.name || '').trim()
+    const to = String(body.to || body.target || '').trim()
+    if (from === '') throw Object.assign(new Error('需要 from（原来指的那个名字）'), { status: 400 })
+    if (to === '') throw Object.assign(new Error('要指到哪一篇不能为空'), { status: 400 })
+    const { root, missing } = await currentRoot()
+    if (missing) throw Object.assign(new Error(`本地库目录不存在：${missing}`), { status: 404 })
+    const { entries } = await scanVault(root)
+    const result = await rewriteLinkTarget(root, from, to, entries, {
+      snapshot: async (rel) => {
+        await snapshotNote(root, rel)
+      },
+    })
     send(res, 200, result)
   }
 
@@ -2551,12 +2578,14 @@ export function createHandler(config) {
         if (action === 'dir' && parts[2] === 'rename') return await handleRenameDir(req, res)
         if (action === 'tag' && parts[2] === 'delete') return await handleDeleteTag(req, res)
         if (action === 'tag' && parts[2] === 'rename') return await handleRenameTag(req, res)
+        // 把断链那一组名字改成指到已有的那一篇（改全库，不是改面板手上这一页）
+        if (action === 'link' && parts[2] === 'retarget') return await handleLinkRetarget(req, res)
         // 待办勾选：只翻正文里那一个方框，其余原样
         if (action === 'todo' && parts[2] === 'toggle') return await handleToggleTodo(req, res)
         // 复数那条必须排在单数之前，否则 parts[2] === 'restore' 会把 'restore/many' 也吃掉
-    if (action === 'trash' && parts[2] === 'restore' && parts[3] === 'many') return await handleTrashRestoreMany(req, res)
-    if (action === 'trash' && parts[2] === 'purge' && parts[3] === 'many') return await handleTrashPurgeMany(req, res)
-    if (action === 'trash' && parts[2] === 'restore') return await handleTrashRestore(req, res)
+        if (action === 'trash' && parts[2] === 'restore' && parts[3] === 'many') return await handleTrashRestoreMany(req, res)
+        if (action === 'trash' && parts[2] === 'purge' && parts[3] === 'many') return await handleTrashPurgeMany(req, res)
+        if (action === 'trash' && parts[2] === 'restore') return await handleTrashRestore(req, res)
         if (action === 'trash' && parts[2] === 'purge') return await handleTrashPurge(req, res)
         if (action === 'settings') return await handleSetSettings(req, res)
         if (action === 'import') return await handleImport(req, res)

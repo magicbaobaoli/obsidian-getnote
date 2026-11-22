@@ -973,6 +973,15 @@ async function saveFile(url, filename) {
         'broken.writeOneHint': '在库根建一篇同名的空笔记，建完当场打开',
         'broken.copyAll': '复制这份清单',
         'broken.copied': '已复制 {n} 处断链',
+        // 断链绝大多数是名字打错一个字。补一篇空笔记只会让库里多出两篇讲同一件事的，
+        // 把库里那几处链接改对才是真该做的——所以每组除了「写一篇」还得能「改指到已有的那篇」。
+        'broken.retarget': '改指到已有的那篇',
+        'broken.retargetHint': '填库里已有那一篇的名字（或路径）',
+        'broken.retargetGo': '全库改过去',
+        'broken.retargetConfirm': '把全库里 {n} 处 [[{from}]] 都改成指向 [[{to}]]？只换链接名字，后面跟的小节和显示文字都原样留着。',
+        'broken.retargetOk': '改过去',
+        'broken.retargetDone': '改了 {n} 篇里的链接',
+        'broken.retargetFailed': '有 {n} 篇没能改',
         'todo.jump': '去这一条',
         'todo.copyAll': '复制这份清单',
         'todo.copied': '已复制 {n} 条待办',
@@ -1563,6 +1572,13 @@ async function saveFile(url, filename) {
         'broken.writeOneHint': 'Creates an empty note with this name at the vault root and opens it',
         'broken.copyAll': 'Copy this list',
         'broken.copied': 'Copied {n} broken links',
+        'broken.retarget': 'Point it at an existing note',
+        'broken.retargetHint': 'Name or path of the note it should point to',
+        'broken.retargetGo': 'Rewrite vault-wide',
+        'broken.retargetConfirm': 'Rewrite all {n} [[{from}]] links in the vault to point at [[{to}]]? Only the link target changes; sections and display text stay as they are.',
+        'broken.retargetOk': 'Rewrite',
+        'broken.retargetDone': 'Rewrote links in {n} notes',
+        'broken.retargetFailed': '{n} notes could not be rewritten',
         'todo.jump': 'Jump to this item',
         'todo.copyAll': 'Copy this list',
         'todo.copied': 'Copied {n} to-dos',
@@ -2151,6 +2167,13 @@ async function saveFile(url, filename) {
         'broken.writeOneHint': 'Maakt een lege notitie met deze naam in de hoofdmap en opent die',
         'broken.copyAll': 'Deze lijst kopiëren',
         'broken.copied': '{n} dode links gekopieerd',
+        'broken.retarget': 'Naar een bestaande notitie laten wijzen',
+        'broken.retargetHint': 'Naam of pad van de notitie waarnaar het moet wijzen',
+        'broken.retargetGo': 'In de hele kluis aanpassen',
+        'broken.retargetConfirm': 'Alle {n} koppelingen [[{from}]] in de kluis naar [[{to}]] laten wijzen? Alleen het doel verandert; secties en weergavetekst blijven zoals ze zijn.',
+        'broken.retargetOk': 'Omzetten',
+        'broken.retargetDone': 'Koppelingen in {n} notities aangepast',
+        'broken.retargetFailed': '{n} notities konden niet worden aangepast',
         'todo.jump': 'Naar dit punt',
         'todo.copyAll': 'Deze lijst kopiëren',
         'todo.copied': '{n} taken gekopieerd',
@@ -5115,6 +5138,11 @@ async function saveFile(url, filename) {
   color:var(--dsw-alias-state-error-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_brokenGroupCount{flex:none;font-size:10px;color:var(--dsw-alias-label-dimmed)}
 .dshgn_brokenGroupAll{flex:none;margin-left:auto;height:22px;padding:0 8px;font-size:11px}
+/* 改指到已有的那一篇：一行输入 + 一颗「全库改过去」。名字多半是从库里挑的，
+   所以挂上候选；回车就提交，Esc 收起。 */
+.dshgn_brokenRetarget{display:flex;align-items:center;gap:6px;padding:4px 2px 2px}
+.dshgn_brokenRetargetInput{flex:1 1 auto;min-width:0;height:24px;font-size:11.5px}
+.dshgn_brokenRetargetGo{flex:none;height:24px;padding:0 8px;font-size:11px}
 /* 待办清单：一行一条。方框复用阅读区那个（同样大小、同样能点），右边是正文与出处。
    方框外面套一层透明按钮，是为了让整块方框连周边的点击热区一起可点——12px 的方框
    直接点很难点中，手机上尤其。 */
@@ -8895,6 +8923,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         body = h(BrokenPane, {
           t,
           status,
+          noteNames: entries.map((entry) => entry.path),
           onError: (message) => setError(message),
           onOpen: (path) => {
             setTab('notes')
@@ -8910,6 +8939,18 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           // 断链清单里最省事的一条路：这个名字本来就该有一篇，只是还没写。
           // 建在库根（不猜目录——断链里没有「它本该在哪」的信息），建完当场打开，
           // 用户接着写正文就好；写完之后这一组自然就不在清单里了。
+          // 名字打错一个字时，补一篇同名空笔记只会让库里多出两篇讲同一件事的。
+          // 把全库那几处链接一起改对才是该做的事——端点现扫全库，不按面板这一页改，
+          // 否则过滤状态下会留下一半改了、一半还指着错名。
+          onRetarget: async (from, to) => {
+            const result = await api('/link/retarget', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ from, to }),
+            })
+            await refresh()
+            return result
+          },
           onCreate: async (name) => {
             const title = String(name || '').trim().replace(/^\/+|\/+$/g, '')
             if (title === '') return
@@ -13020,13 +13061,33 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
      * 所以把它当路标写在旁边）。
      */
     function BrokenPane(props) {
-      const { t, status, onError, onOpen, onOpenLine, onCreate, showToast } = props
+      const { t, status, onError, onOpen, onOpenLine, onCreate, onRetarget, showToast } = props
       const [hits, setHits] = React.useState(null)
       const [scanned, setScanned] = React.useState(0)
       const [truncated, setTruncated] = React.useState(false)
       const [loading, setLoading] = React.useState(false)
       // 正在替哪个名字建那一篇（建完/失败都清回空串）。
       const [creating, setCreating] = React.useState('')
+      // 正在给哪一组填「改指到哪一篇」。一次只摊一个：这一页上同时开七八个输入框
+      // 只会让人分不清自己在改哪一组。`to` 是输入框里的字。
+      const [retarget, setRetarget] = React.useState(null)
+      const [retargetBusy, setRetargetBusy] = React.useState(false)
+      // 库里已有的名字，给输入框当候选：改错字时多半是改成库里另一篇的名字，
+      // 让人凭记忆敲一遍不如直接挑。只用文件名（双链最常这么写），去重。
+      const nameList = React.useMemo(() => {
+        const raw = Array.isArray(props.noteNames) ? props.noteNames : []
+        const seen = new Set()
+        const out = []
+        for (const one of raw) {
+          const base = String(one || '').split('/').pop().replace(/\.md$/i, '')
+          if (base === '' || seen.has(base)) continue
+          seen.add(base)
+          out.push(base)
+          if (out.length >= 300) break
+        }
+        out.sort((a, b) => a.localeCompare(b, 'zh'))
+        return out
+      }, [props.noteNames])
 
       const load = React.useCallback(async () => {
         setLoading(true)
@@ -13064,6 +13125,39 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         }
         return order.map((name) => byName.get(name))
       }, [list])
+
+      // 把一组错名全库改成指向对的那一篇。改之前先问一句——这一步动的是全库，
+      // 而且改完清单上那一组就整组消失了，用户得先知道要改多少处。
+      const runRetarget = React.useCallback(async () => {
+        if (retarget === null) return
+        const from = retarget.target
+        const to = String(retarget.to || '').trim().replace(/^\[\[|\]\]$/g, '')
+        if (to === '') return
+        const count = (hits === null ? [] : hits).filter((hit) => String(hit.target || '') === from).length
+        const ok = await confirmDialog(
+          t('broken.retargetConfirm').replace('{n}', String(count)).replace('{from}', from).replace('{to}', to),
+          { confirmText: t('broken.retargetOk'), cancelText: t('action.cancel') },
+        )
+        if (!ok) return
+        setRetargetBusy(true)
+        try {
+          if (typeof onRetarget === 'function') {
+            const result = await onRetarget(from, to)
+            const changed = result && typeof result.changed === 'number' ? result.changed : 0
+            const failed = result && Array.isArray(result.failed) ? result.failed.length : 0
+            if (typeof showToast === 'function') {
+              const head = t('broken.retargetDone').replace('{n}', String(changed))
+              showToast(failed === 0 ? head : head + ' · ' + t('broken.retargetFailed').replace('{n}', String(failed)))
+            }
+          }
+          setRetarget(null)
+          await load()
+        } catch (err) {
+          onError(err && err.message ? err.message : String(err))
+        } finally {
+          setRetargetBusy(false)
+        }
+      }, [retarget, hits, onRetarget, load, onError, showToast, t])
 
       // 把整份断链清单抄成一段 Markdown：想一次修完、或者发给别人一起看时，
       // 一屏截图远不如一段能搜索的文本。按「指不到的那个名字」分组，和屏幕上一致；
@@ -13146,6 +13240,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                 { className: 'dshgn_cardBox' },
                 groups.map((group) => {
                   const busyOne = creating === group.target
+                  const editing = retarget !== null && retarget.target === group.target
                   return h(
                     React.Fragment,
                     { key: `group:${group.target}` },
@@ -13154,6 +13249,23 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                       { className: 'dshgn_brokenGroup', title: group.target },
                       h('span', { className: 'dshgn_brokenGroupName' }, group.target),
                       h('span', { className: 'dshgn_brokenGroupCount' }, t('broken.times').replace('{n}', String(group.items.length))),
+                      typeof onRetarget === 'function'
+                        ? h(
+                            'button',
+                            {
+                              type: 'button',
+                              className: 'dshgn_btn dshgn_brokenGroupAll',
+                              title: t('broken.retarget'),
+                              'aria-expanded': editing ? 'true' : 'false',
+                              disabled: retargetBusy,
+                              onClick: () => {
+                                setRetarget(editing ? null : { target: group.target, to: '' })
+                              },
+                            },
+                            h(Icon, { name: 'link', size: 12 }),
+                            t('broken.retarget'),
+                          )
+                        : null,
                       typeof onCreate === 'function'
                         ? h(
                             'button',
@@ -13175,6 +13287,45 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                           )
                         : null,
                     ),
+                    // 摊开的那一行：填对的名字，回车就全库改过去。候选来自库里已有的
+                    // 文件名，改错字时多半直接挑一个——比凭记忆再敲一遍少一次打错的机会。
+                    editing
+                      ? h(
+                          'div',
+                          { className: 'dshgn_brokenRetarget' },
+                          h('input', {
+                            className: 'dshgn_input dshgn_brokenRetargetInput',
+                            list: 'dshgn_brokenNames',
+                            value: retarget.to,
+                            placeholder: t('broken.retargetHint'),
+                            'aria-label': t('broken.retargetHint'),
+                            disabled: retargetBusy,
+                            autoFocus: true,
+                            onInput: (event) => setRetarget({ target: group.target, to: event.target.value }),
+                            onKeyDown: (event) => {
+                              if (event.key === 'Escape') {
+                                event.preventDefault()
+                                event.stopPropagation()
+                                setRetarget(null)
+                              } else if (event.key === 'Enter') {
+                                event.preventDefault()
+                                void runRetarget()
+                              }
+                            },
+                          }),
+                          h(
+                            'button',
+                            {
+                              type: 'button',
+                              className: 'dshgn_btn dshgn_btnPri dshgn_brokenRetargetGo',
+                              disabled: retargetBusy || String(retarget.to || '').trim() === '',
+                              onClick: () => void runRetarget(),
+                            },
+                            retargetBusy ? h('span', { className: 'dshgn_spin' }) : h(Icon, { name: 'check', size: 12 }),
+                            t('broken.retargetGo'),
+                          ),
+                        )
+                      : null,
                     group.items.map((hit) =>
                       h(
                         'div',
@@ -13210,6 +13361,14 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                   )
                 }),
               ),
+        // 候选名单只写一次：七八组各自摊开时共用同一份，不用每组都挂一遍。
+        nameList.length === 0
+          ? null
+          : h(
+              'datalist',
+              { id: 'dshgn_brokenNames' },
+              nameList.map((name) => h('option', { key: name, value: name })),
+            ),
       )
     }
 

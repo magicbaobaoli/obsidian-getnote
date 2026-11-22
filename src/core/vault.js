@@ -2267,6 +2267,85 @@ export async function renameTag(root, fromInput, toInput, entries, options = {})
 }
 
 /**
+ * 把全库里指向 `from` 的双链，一起改成指向 `to`。
+ *
+ * 为什么需要：断链绝大多数是名字打错一个字。清单上那一组「指不到的名字」往往就是
+ * 库里另一篇的错写，正确的做法是把那几处链接改对，而不是补一篇同名的空笔记——
+ * 补出来之后库里就有两篇讲同一件事的了，而原来那篇还是没人引。
+ *
+ * 只改双链的**目标段**：`[[错名#小节]]` 里的小节、`[[错名|显示文字]]` 里的显示
+ * 文字都原样留着，用户写下的那一句读起来不变。围栏代码里的 `[[...]]` 不动——
+ * 断链体检本来就不把它们算进来，改了清单上也看不出来，只是白改。
+ */
+export async function rewriteLinkTarget(root, fromInput, toInput, entries, options = {}) {
+  const from = String(fromInput || '').trim()
+  const to = String(toInput || '').trim()
+  if (from === '') throw Object.assign(new Error('要改的链接名不能为空'), { status: 400 })
+  if (to === '') throw Object.assign(new Error('要指到哪一篇不能为空'), { status: 400 })
+  const list = Array.isArray(entries) ? entries : (await scanVault(root)).entries
+  if (from === to) return { ok: true, changed: 0, failed: [], total: list.length, from, to, files: [] }
+  const want = from.toLowerCase()
+  const snapshot = typeof options.snapshot === 'function' ? options.snapshot : null
+  let changed = 0
+  const files = []
+  const failed = []
+  for (const entry of list) {
+    let parsed
+    try {
+      parsed = await linkLinesOf(root, entry)
+    } catch {
+      continue
+    }
+    // 先拿缓存的行数据筛一遍：这一篇里根本没有这个名字就整篇跳过，不用读盘。
+    const hasIt = parsed.lines.some((line) => {
+      if (line.fenced) return false
+      return line.links.some((raw) => {
+        const hash = raw.indexOf('#')
+        return (hash === -1 ? raw : raw.slice(0, hash)).trim().toLowerCase() === want
+      })
+    })
+    if (!hasIt) continue
+    try {
+      const note = await readNote(root, entry.path)
+      const fenced = new Set()
+      for (const line of parsed.lines) if (line.fenced) fenced.add(line.no)
+      // 换行风格跟着原文件走：整篇重写时把 CRLF 统一成 LF，会让这篇在 git 里
+      // 显示成「全篇都改了」，而用户只改了一个名字。
+      const sep = note.content.includes('\r\n') ? '\r\n' : '\n'
+      const lines = note.content.split(/\r?\n/)
+      let touched = false
+      const next = lines.map((line, i) => {
+        if (fenced.has(i + 1)) return line
+        return line.replace(/\[\[([^\]\n|]*?)(\|[^\]\n]*)?\]\]/g, (all, rawTarget, label) => {
+          const hash = rawTarget.indexOf('#')
+          const head = (hash === -1 ? rawTarget : rawTarget.slice(0, hash)).trim()
+          if (head.toLowerCase() !== want) return all
+          touched = true
+          const section = hash === -1 ? '' : rawTarget.slice(hash)
+          return '[[' + to + section + (label === undefined ? '' : label) + ']]'
+        })
+      })
+      if (!touched) continue
+      const updated = next.join(sep)
+      if (updated === note.content) continue
+      if (snapshot) {
+        try {
+          await snapshot(entry.path)
+        } catch {
+          /* 历史存不下不该阻塞改写本身 */
+        }
+      }
+      await writeNote(root, entry.path, updated, { backup: snapshot === null })
+      changed += 1
+      files.push(entry.path)
+    } catch (error) {
+      failed.push({ path: entry.path, error: error && error.message ? error.message : String(error) })
+    }
+  }
+  return { ok: true, changed, failed, total: list.length, from, to, files }
+}
+
+/**
  * 按天统计笔记数量，用来画写作热力图。
  *
  * 移动端首页有一张热力图，它靠云端接口 `/notes/heatmap/day_notes` 算。本地库

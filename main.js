@@ -531,6 +531,7 @@ __export(vault_exports, {
   resolveInside: () => resolveInside,
   restoreNote: () => restoreNote,
   restoreNotes: () => restoreNotes,
+  rewriteLinkTarget: () => rewriteLinkTarget,
   rewriteTags: () => rewriteTags,
   safeFilename: () => safeFilename,
   saveAsset: () => saveAsset,
@@ -2108,6 +2109,69 @@ async function renameTag(root, fromInput, toInput, entries, options = {}) {
     }
   }
   return { ok: true, changed, failed, total: entries.length, from, to };
+}
+async function rewriteLinkTarget(root, fromInput, toInput, entries, options = {}) {
+  const from = String(fromInput || "").trim();
+  const to = String(toInput || "").trim();
+  if (from === "") throw Object.assign(new Error("\u8981\u6539\u7684\u94FE\u63A5\u540D\u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+  if (to === "") throw Object.assign(new Error("\u8981\u6307\u5230\u54EA\u4E00\u7BC7\u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+  const list = Array.isArray(entries) ? entries : (await scanVault(root)).entries;
+  if (from === to) return { ok: true, changed: 0, failed: [], total: list.length, from, to, files: [] };
+  const want = from.toLowerCase();
+  const snapshot = typeof options.snapshot === "function" ? options.snapshot : null;
+  let changed = 0;
+  const files = [];
+  const failed = [];
+  for (const entry of list) {
+    let parsed;
+    try {
+      parsed = await linkLinesOf(root, entry);
+    } catch {
+      continue;
+    }
+    const hasIt = parsed.lines.some((line) => {
+      if (line.fenced) return false;
+      return line.links.some((raw) => {
+        const hash = raw.indexOf("#");
+        return (hash === -1 ? raw : raw.slice(0, hash)).trim().toLowerCase() === want;
+      });
+    });
+    if (!hasIt) continue;
+    try {
+      const note = await readNote(root, entry.path);
+      const fenced = /* @__PURE__ */ new Set();
+      for (const line of parsed.lines) if (line.fenced) fenced.add(line.no);
+      const sep4 = note.content.includes("\r\n") ? "\r\n" : "\n";
+      const lines = note.content.split(/\r?\n/);
+      let touched = false;
+      const next = lines.map((line, i3) => {
+        if (fenced.has(i3 + 1)) return line;
+        return line.replace(/\[\[([^\]\n|]*?)(\|[^\]\n]*)?\]\]/g, (all, rawTarget, label) => {
+          const hash = rawTarget.indexOf("#");
+          const head = (hash === -1 ? rawTarget : rawTarget.slice(0, hash)).trim();
+          if (head.toLowerCase() !== want) return all;
+          touched = true;
+          const section = hash === -1 ? "" : rawTarget.slice(hash);
+          return "[[" + to + section + (label === void 0 ? "" : label) + "]]";
+        });
+      });
+      if (!touched) continue;
+      const updated = next.join(sep4);
+      if (updated === note.content) continue;
+      if (snapshot) {
+        try {
+          await snapshot(entry.path);
+        } catch {
+        }
+      }
+      await writeNote(root, entry.path, updated, { backup: snapshot === null });
+      changed += 1;
+      files.push(entry.path);
+    } catch (error2) {
+      failed.push({ path: entry.path, error: error2 && error2.message ? error2.message : String(error2) });
+    }
+  }
+  return { ok: true, changed, failed, total: list.length, from, to, files };
 }
 function heatmapOf(entries, { weeks = 26, today = null } = {}) {
   const span = Math.max(4, Math.min(104, Number(weeks) || 26));
@@ -5774,6 +5838,22 @@ function createHandler(config) {
     const result = await findBrokenLinks(root);
     send(res, 200, result);
   }
+  async function handleLinkRetarget(req, res) {
+    const body = await readJsonBody(req);
+    const from = String(body.from || body.name || "").trim();
+    const to = String(body.to || body.target || "").trim();
+    if (from === "") throw Object.assign(new Error("\u9700\u8981 from\uFF08\u539F\u6765\u6307\u7684\u90A3\u4E2A\u540D\u5B57\uFF09"), { status: 400 });
+    if (to === "") throw Object.assign(new Error("\u8981\u6307\u5230\u54EA\u4E00\u7BC7\u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+    const { root, missing } = await currentRoot();
+    if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
+    const { entries } = await scanVault(root);
+    const result = await rewriteLinkTarget(root, from, to, entries, {
+      snapshot: async (rel) => {
+        await snapshotNote(root, rel);
+      }
+    });
+    send(res, 200, result);
+  }
   async function handleOpenTodos(res) {
     const { root, missing } = await currentRoot();
     if (missing) return send(res, 200, { items: [], scanned: 0, truncated: false });
@@ -7050,6 +7130,7 @@ function createHandler(config) {
         if (action === "dir" && parts[2] === "rename") return await handleRenameDir(req, res);
         if (action === "tag" && parts[2] === "delete") return await handleDeleteTag(req, res);
         if (action === "tag" && parts[2] === "rename") return await handleRenameTag(req, res);
+        if (action === "link" && parts[2] === "retarget") return await handleLinkRetarget(req, res);
         if (action === "todo" && parts[2] === "toggle") return await handleToggleTodo(req, res);
         if (action === "trash" && parts[2] === "restore" && parts[3] === "many") return await handleTrashRestoreMany(req, res);
         if (action === "trash" && parts[2] === "purge" && parts[3] === "many") return await handleTrashPurgeMany(req, res);
@@ -9124,6 +9205,15 @@ var LEX = {
     "broken.writeOneHint": "\u5728\u5E93\u6839\u5EFA\u4E00\u7BC7\u540C\u540D\u7684\u7A7A\u7B14\u8BB0\uFF0C\u5EFA\u5B8C\u5F53\u573A\u6253\u5F00",
     "broken.copyAll": "\u590D\u5236\u8FD9\u4EFD\u6E05\u5355",
     "broken.copied": "\u5DF2\u590D\u5236 {n} \u5904\u65AD\u94FE",
+    // 断链绝大多数是名字打错一个字。补一篇空笔记只会让库里多出两篇讲同一件事的，
+    // 把库里那几处链接改对才是真该做的——所以每组除了「写一篇」还得能「改指到已有的那篇」。
+    "broken.retarget": "\u6539\u6307\u5230\u5DF2\u6709\u7684\u90A3\u7BC7",
+    "broken.retargetHint": "\u586B\u5E93\u91CC\u5DF2\u6709\u90A3\u4E00\u7BC7\u7684\u540D\u5B57\uFF08\u6216\u8DEF\u5F84\uFF09",
+    "broken.retargetGo": "\u5168\u5E93\u6539\u8FC7\u53BB",
+    "broken.retargetConfirm": "\u628A\u5168\u5E93\u91CC {n} \u5904 [[{from}]] \u90FD\u6539\u6210\u6307\u5411 [[{to}]]\uFF1F\u53EA\u6362\u94FE\u63A5\u540D\u5B57\uFF0C\u540E\u9762\u8DDF\u7684\u5C0F\u8282\u548C\u663E\u793A\u6587\u5B57\u90FD\u539F\u6837\u7559\u7740\u3002",
+    "broken.retargetOk": "\u6539\u8FC7\u53BB",
+    "broken.retargetDone": "\u6539\u4E86 {n} \u7BC7\u91CC\u7684\u94FE\u63A5",
+    "broken.retargetFailed": "\u6709 {n} \u7BC7\u6CA1\u80FD\u6539",
     "todo.jump": "\u53BB\u8FD9\u4E00\u6761",
     "todo.copyAll": "\u590D\u5236\u8FD9\u4EFD\u6E05\u5355",
     "todo.copied": "\u5DF2\u590D\u5236 {n} \u6761\u5F85\u529E",
@@ -9709,6 +9799,13 @@ var LEX = {
     "broken.writeOneHint": "Creates an empty note with this name at the vault root and opens it",
     "broken.copyAll": "Copy this list",
     "broken.copied": "Copied {n} broken links",
+    "broken.retarget": "Point it at an existing note",
+    "broken.retargetHint": "Name or path of the note it should point to",
+    "broken.retargetGo": "Rewrite vault-wide",
+    "broken.retargetConfirm": "Rewrite all {n} [[{from}]] links in the vault to point at [[{to}]]? Only the link target changes; sections and display text stay as they are.",
+    "broken.retargetOk": "Rewrite",
+    "broken.retargetDone": "Rewrote links in {n} notes",
+    "broken.retargetFailed": "{n} notes could not be rewritten",
     "todo.jump": "Jump to this item",
     "todo.copyAll": "Copy this list",
     "todo.copied": "Copied {n} to-dos",
@@ -10293,6 +10390,13 @@ var LEX = {
     "broken.writeOneHint": "Maakt een lege notitie met deze naam in de hoofdmap en opent die",
     "broken.copyAll": "Deze lijst kopi\xEBren",
     "broken.copied": "{n} dode links gekopieerd",
+    "broken.retarget": "Naar een bestaande notitie laten wijzen",
+    "broken.retargetHint": "Naam of pad van de notitie waarnaar het moet wijzen",
+    "broken.retargetGo": "In de hele kluis aanpassen",
+    "broken.retargetConfirm": "Alle {n} koppelingen [[{from}]] in de kluis naar [[{to}]] laten wijzen? Alleen het doel verandert; secties en weergavetekst blijven zoals ze zijn.",
+    "broken.retargetOk": "Omzetten",
+    "broken.retargetDone": "Koppelingen in {n} notities aangepast",
+    "broken.retargetFailed": "{n} notities konden niet worden aangepast",
     "todo.jump": "Naar dit punt",
     "todo.copyAll": "Deze lijst kopi\xEBren",
     "todo.copied": "{n} taken gekopieerd",
@@ -12449,6 +12553,11 @@ var CSS = `
   color:var(--dsw-alias-state-error-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_brokenGroupCount{flex:none;font-size:10px;color:var(--dsw-alias-label-dimmed)}
 .dshgn_brokenGroupAll{flex:none;margin-left:auto;height:22px;padding:0 8px;font-size:11px}
+/* \u6539\u6307\u5230\u5DF2\u6709\u7684\u90A3\u4E00\u7BC7\uFF1A\u4E00\u884C\u8F93\u5165 + \u4E00\u9897\u300C\u5168\u5E93\u6539\u8FC7\u53BB\u300D\u3002\u540D\u5B57\u591A\u534A\u662F\u4ECE\u5E93\u91CC\u6311\u7684\uFF0C
+   \u6240\u4EE5\u6302\u4E0A\u5019\u9009\uFF1B\u56DE\u8F66\u5C31\u63D0\u4EA4\uFF0CEsc \u6536\u8D77\u3002 */
+.dshgn_brokenRetarget{display:flex;align-items:center;gap:6px;padding:4px 2px 2px}
+.dshgn_brokenRetargetInput{flex:1 1 auto;min-width:0;height:24px;font-size:11.5px}
+.dshgn_brokenRetargetGo{flex:none;height:24px;padding:0 8px;font-size:11px}
 /* \u5F85\u529E\u6E05\u5355\uFF1A\u4E00\u884C\u4E00\u6761\u3002\u65B9\u6846\u590D\u7528\u9605\u8BFB\u533A\u90A3\u4E2A\uFF08\u540C\u6837\u5927\u5C0F\u3001\u540C\u6837\u80FD\u70B9\uFF09\uFF0C\u53F3\u8FB9\u662F\u6B63\u6587\u4E0E\u51FA\u5904\u3002
    \u65B9\u6846\u5916\u9762\u5957\u4E00\u5C42\u900F\u660E\u6309\u94AE\uFF0C\u662F\u4E3A\u4E86\u8BA9\u6574\u5757\u65B9\u6846\u8FDE\u5468\u8FB9\u7684\u70B9\u51FB\u70ED\u533A\u4E00\u8D77\u53EF\u70B9\u2014\u201412px \u7684\u65B9\u6846
    \u76F4\u63A5\u70B9\u5F88\u96BE\u70B9\u4E2D\uFF0C\u624B\u673A\u4E0A\u5C24\u5176\u3002 */
@@ -15619,6 +15728,7 @@ ${insert}
     body = h4(BrokenPane, {
       t: t4,
       status,
+      noteNames: entries.map((entry) => entry.path),
       onError: (message) => setError(message),
       onOpen: (path) => {
         setTab("notes");
@@ -15634,6 +15744,18 @@ ${insert}
       // 断链清单里最省事的一条路：这个名字本来就该有一篇，只是还没写。
       // 建在库根（不猜目录——断链里没有「它本该在哪」的信息），建完当场打开，
       // 用户接着写正文就好；写完之后这一组自然就不在清单里了。
+      // 名字打错一个字时，补一篇同名空笔记只会让库里多出两篇讲同一件事的。
+      // 把全库那几处链接一起改对才是该做的事——端点现扫全库，不按面板这一页改，
+      // 否则过滤状态下会留下一半改了、一半还指着错名。
+      onRetarget: async (from, to) => {
+        const result = await api("/link/retarget", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ from, to })
+        });
+        await refresh();
+        return result;
+      },
       onCreate: async (name) => {
         const title = String(name || "").trim().replace(/^\/+|\/+$/g, "");
         if (title === "") return;
@@ -19184,12 +19306,28 @@ function ConflictPane(props) {
   );
 }
 function BrokenPane(props) {
-  const { t: t4, status, onError, onOpen, onOpenLine, onCreate, showToast } = props;
+  const { t: t4, status, onError, onOpen, onOpenLine, onCreate, onRetarget, showToast } = props;
   const [hits, setHits] = h2(null);
   const [scanned, setScanned] = h2(0);
   const [truncated, setTruncated] = h2(false);
   const [loading, setLoading] = h2(false);
   const [creating, setCreating] = h2("");
+  const [retarget, setRetarget] = h2(null);
+  const [retargetBusy, setRetargetBusy] = h2(false);
+  const nameList = T2(() => {
+    const raw = Array.isArray(props.noteNames) ? props.noteNames : [];
+    const seen = /* @__PURE__ */ new Set();
+    const out = [];
+    for (const one of raw) {
+      const base = String(one || "").split("/").pop().replace(/\.md$/i, "");
+      if (base === "" || seen.has(base)) continue;
+      seen.add(base);
+      out.push(base);
+      if (out.length >= 300) break;
+    }
+    out.sort((a3, b3) => a3.localeCompare(b3, "zh"));
+    return out;
+  }, [props.noteNames]);
   const load = q2(async () => {
     setLoading(true);
     try {
@@ -19221,6 +19359,36 @@ function BrokenPane(props) {
     }
     return order.map((name) => byName.get(name));
   }, [list]);
+  const runRetarget = q2(async () => {
+    if (retarget === null) return;
+    const from = retarget.target;
+    const to = String(retarget.to || "").trim().replace(/^\[\[|\]\]$/g, "");
+    if (to === "") return;
+    const count = (hits === null ? [] : hits).filter((hit) => String(hit.target || "") === from).length;
+    const ok = await confirmDialog(
+      t4("broken.retargetConfirm").replace("{n}", String(count)).replace("{from}", from).replace("{to}", to),
+      { confirmText: t4("broken.retargetOk"), cancelText: t4("action.cancel") }
+    );
+    if (!ok) return;
+    setRetargetBusy(true);
+    try {
+      if (typeof onRetarget === "function") {
+        const result = await onRetarget(from, to);
+        const changed = result && typeof result.changed === "number" ? result.changed : 0;
+        const failed = result && Array.isArray(result.failed) ? result.failed.length : 0;
+        if (typeof showToast === "function") {
+          const head = t4("broken.retargetDone").replace("{n}", String(changed));
+          showToast(failed === 0 ? head : head + " \xB7 " + t4("broken.retargetFailed").replace("{n}", String(failed)));
+        }
+      }
+      setRetarget(null);
+      await load();
+    } catch (err) {
+      onError(err && err.message ? err.message : String(err));
+    } finally {
+      setRetargetBusy(false);
+    }
+  }, [retarget, hits, onRetarget, load, onError, showToast, t4]);
   const copyAll = q2(async () => {
     const rows = hits === null ? [] : hits;
     if (rows.length === 0) return;
@@ -19291,6 +19459,7 @@ function BrokenPane(props) {
       { className: "dshgn_cardBox" },
       groups.map((group) => {
         const busyOne = creating === group.target;
+        const editing = retarget !== null && retarget.target === group.target;
         return h4(
           b,
           { key: `group:${group.target}` },
@@ -19299,6 +19468,21 @@ function BrokenPane(props) {
             { className: "dshgn_brokenGroup", title: group.target },
             h4("span", { className: "dshgn_brokenGroupName" }, group.target),
             h4("span", { className: "dshgn_brokenGroupCount" }, t4("broken.times").replace("{n}", String(group.items.length))),
+            typeof onRetarget === "function" ? h4(
+              "button",
+              {
+                type: "button",
+                className: "dshgn_btn dshgn_brokenGroupAll",
+                title: t4("broken.retarget"),
+                "aria-expanded": editing ? "true" : "false",
+                disabled: retargetBusy,
+                onClick: () => {
+                  setRetarget(editing ? null : { target: group.target, to: "" });
+                }
+              },
+              h4(Icon, { name: "link", size: 12 }),
+              t4("broken.retarget")
+            ) : null,
             typeof onCreate === "function" ? h4(
               "button",
               {
@@ -19318,6 +19502,43 @@ function BrokenPane(props) {
               t4("broken.writeOne")
             ) : null
           ),
+          // 摊开的那一行：填对的名字，回车就全库改过去。候选来自库里已有的
+          // 文件名，改错字时多半直接挑一个——比凭记忆再敲一遍少一次打错的机会。
+          editing ? h4(
+            "div",
+            { className: "dshgn_brokenRetarget" },
+            h4("input", {
+              className: "dshgn_input dshgn_brokenRetargetInput",
+              list: "dshgn_brokenNames",
+              value: retarget.to,
+              placeholder: t4("broken.retargetHint"),
+              "aria-label": t4("broken.retargetHint"),
+              disabled: retargetBusy,
+              autoFocus: true,
+              onInput: (event) => setRetarget({ target: group.target, to: event.target.value }),
+              onKeyDown: (event) => {
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setRetarget(null);
+                } else if (event.key === "Enter") {
+                  event.preventDefault();
+                  void runRetarget();
+                }
+              }
+            }),
+            h4(
+              "button",
+              {
+                type: "button",
+                className: "dshgn_btn dshgn_btnPri dshgn_brokenRetargetGo",
+                disabled: retargetBusy || String(retarget.to || "").trim() === "",
+                onClick: () => void runRetarget()
+              },
+              retargetBusy ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "check", size: 12 }),
+              t4("broken.retargetGo")
+            )
+          ) : null,
           group.items.map(
             (hit) => h4(
               "div",
@@ -19350,6 +19571,12 @@ function BrokenPane(props) {
           )
         );
       })
+    ),
+    // 候选名单只写一次：七八组各自摊开时共用同一份，不用每组都挂一遍。
+    nameList.length === 0 ? null : h4(
+      "datalist",
+      { id: "dshgn_brokenNames" },
+      nameList.map((name) => h4("option", { key: name, value: name }))
     )
   );
 }

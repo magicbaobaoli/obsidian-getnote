@@ -34,6 +34,7 @@ import {
   findBacklinks,
   findBrokenLinks,
   renameTag,
+  rewriteLinkTarget,
   createDir,
   removeDir,
   heatmapOf,
@@ -584,6 +585,71 @@ note_url: https://www.biji.com/note/1200000000000000001
     renErr2 = error
   }
   check('改名: 空的新标签名报 400', renErr2 !== null && renErr2.status === 400, renErr2 && renErr2.message)
+
+  // ── 双链改名（断链那一组的「改指到已有的那篇」）────────────────────────────
+  // 断链绝大多数是名字打错一个字。补一篇同名空笔记只会让库里多出两篇讲同一件事的，
+  // 把全库那几处链接改对才是该做的事——而改的时候，后面跟的小节和 |显示文字都得留着。
+  const linkDir = '双链改名测试'
+  await mkdir(join(root, linkDir), { recursive: true })
+  await writeFile(
+    join(root, linkDir, '甲.md'),
+    ['# 甲', '', '见 [[错名]] 与 [[错名#小节]] 和 [[错名|显示的字]]。'].join('\n'),
+    'utf8',
+  )
+  await writeFile(join(root, linkDir, '乙.md'), ['\`\`\`', '[[错名]]', '\`\`\`', '', '正文里没有链接'].join('\n'), 'utf8')
+  await writeFile(join(root, linkDir, '丙.md'), ['无关的一篇'].join('\n'), 'utf8')
+  const linkEntries = [
+    { path: `${linkDir}/甲.md`, title: '甲' },
+    { path: `${linkDir}/乙.md`, title: '乙' },
+    { path: `${linkDir}/丙.md`, title: '丙' },
+  ]
+  const linkSnaps = []
+  const retargeted = await rewriteLinkTarget(root, '错名', '对名', linkEntries, {
+    snapshot: async (rel) => {
+      linkSnaps.push(rel)
+    },
+  })
+  check('双链改名: 只改真正提到它的那一篇', retargeted.changed === 1, JSON.stringify(retargeted))
+  check('双链改名: 改之前留了历史快照', linkSnaps.length === 1 && linkSnaps[0] === `${linkDir}/甲.md`, JSON.stringify(linkSnaps))
+  const linkA = await readFile(join(root, linkDir, '甲.md'), 'utf8')
+  check('双链改名: 三处都改了', !/错名/.test(linkA), linkA)
+  check('双链改名: 小节跟着留着', /\[\[对名#小节\]\]/.test(linkA), linkA)
+  check('双链改名: 显示文字跟着留着', /\[\[对名\|显示的字\]\]/.test(linkA), linkA)
+  const linkB = await readFile(join(root, linkDir, '乙.md'), 'utf8')
+  check('双链改名: 围栏代码里的链接不动', /\[\[错名\]\]/.test(linkB), linkB)
+  const linkC = await readFile(join(root, linkDir, '丙.md'), 'utf8')
+  check('双链改名: 没提到它的那篇原样', /无关的一篇/.test(linkC))
+
+  // 大小写不敏感：[[Note]] 与 [[note]] 指的是同一篇
+  await writeFile(join(root, linkDir, '丁.md'), ['见 [[NOTE]] 与 [[Note#节]]'].join('\n'), 'utf8')
+  const caseRun = await rewriteLinkTarget(root, 'note', '目标', [{ path: `${linkDir}/丁.md` }])
+  const linkD = await readFile(join(root, linkDir, '丁.md'), 'utf8')
+  check('双链改名: 大小写不敏感', caseRun.changed === 1 && !/\[\[NOTE\]\]/.test(linkD) && /\[\[目标#节\]\]/.test(linkD), linkD)
+
+  // 换行风格跟着原文件：整篇重写把 CRLF 统一成 LF，会让这篇在 git 里显示成「全篇都改了」
+  await writeFile(join(root, linkDir, '戊.md'), '第一行\r\n见 [[错名]]\r\n第三行\r\n', 'utf8')
+  await rewriteLinkTarget(root, '错名', '对名', [{ path: `${linkDir}/戊.md` }])
+  const linkE = await readFile(join(root, linkDir, '戊.md'), 'utf8')
+  check('双链改名: CRLF 原样留着', linkE.includes('\r\n') && !/[^\r]\n/.test(linkE), JSON.stringify(linkE))
+  check('双链改名: CRLF 那篇也改对了', /\[\[对名\]\]/.test(linkE), linkE)
+
+  // 同名是空操作；空参数必须报 400（不能把全库的链接名字抹成空字符串）
+  const linkNoop = await rewriteLinkTarget(root, '对名', '对名', linkEntries)
+  check('双链改名: 新旧同名是空操作', linkNoop.changed === 0, JSON.stringify(linkNoop))
+  let linkErr = null
+  try {
+    await rewriteLinkTarget(root, '  ', '对名', [])
+  } catch (error) {
+    linkErr = error
+  }
+  check('双链改名: 空的原名字报 400', linkErr !== null && linkErr.status === 400, linkErr && linkErr.message)
+  let linkErr2 = null
+  try {
+    await rewriteLinkTarget(root, '对名', '  ', [])
+  } catch (error) {
+    linkErr2 = error
+  }
+  check('双链改名: 空的新名字报 400', linkErr2 !== null && linkErr2.status === 400, linkErr2 && linkErr2.message)
 
   // ── 反链上下文 ──────────────────────────────────────────────────────────
   // 一篇笔记里可能三处都提到同一篇。只给「它引用了我」和路径的话，用户还得
