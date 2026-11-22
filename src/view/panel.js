@@ -599,6 +599,12 @@ async function saveFile(url, filename) {
         'batch.move': '移动',
         'batch.delete': '移到回收站',
         'batch.confirmDelete': '确定把这 篇移到回收站？',
+        // 批量删之前也要看一眼「这几篇里有没有被人引用」。单篇删早就会查，
+        // 批量删却只问一句「确定吗」——被删的那几篇在别人正文里的链接
+        // 会变成点不动的死链，删的人事先完全看不见。
+        'batch.confirmLinked': '这 {n} 篇里有 {m} 篇被人提到过（{names}），删掉之后那些链接会断。还是删吗？',
+        'batch.confirmLinkedOk': '还是要删',
+        'batch.confirmLinkedCancel': '先不删',
         'drop.pickDirFirst': '先在左边选一个目录，再往里拖',
         'drop.moved': '已经挪进这个目录',
         'batch.done': '已处理',
@@ -1190,6 +1196,9 @@ async function saveFile(url, filename) {
         'batch.move': 'Move',
         'batch.delete': 'Move to trash',
         'batch.confirmDelete': 'Move these notes to trash?',
+        'batch.confirmLinked': '{m} of these {n} notes are linked from elsewhere ({names}). Those links will break if you delete them. Delete anyway?',
+        'batch.confirmLinkedOk': 'Delete anyway',
+        'batch.confirmLinkedCancel': 'Keep them',
         'drop.pickDirFirst': 'Pick a folder on the left first, then drop',
         'drop.moved': 'Moved into this folder',
         'batch.done': 'Processed',
@@ -1758,6 +1767,9 @@ async function saveFile(url, filename) {
         'batch.move': 'Verplaatsen',
         'batch.delete': 'Naar prullenbak',
         'batch.confirmDelete': 'Deze notities naar de prullenbak verplaatsen?',
+        'batch.confirmLinked': '{m} van deze {n} notities worden elders gelinkt ({names}). Die links breken als je ze verwijdert. Toch verwijderen?',
+        'batch.confirmLinkedOk': 'Toch verwijderen',
+        'batch.confirmLinkedCancel': 'Bewaren',
         'drop.pickDirFirst': 'Kies eerst links een map en sleep dan hierheen',
         'drop.moved': 'Naar deze map verplaatst',
         'batch.done': 'Verwerkt',
@@ -8205,6 +8217,52 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         [batchDir, batchTag, clearPicked, current, picked, refresh, reportBatchFails, setBusy, setError, showToast, t],
       )
 
+      // 批量删除前的两问：先问「这几篇里有没有被人引用」，没人引用才只问一句
+      // 「确定把这 N 篇移到回收站」。
+      //
+      // 单篇删除早就会反查（断链长在别人正文里，删的人看不见），批量删除却
+      // 只问一句「确定吗」——勾了十篇里有三篇在别人正文里被引用，删完那三处
+      // 就变成点不动的死链，而删的人事先一点提示都没有。
+      const deletePicked = React.useCallback(async () => {
+        if (picked.size === 0) return
+        const paths = Array.from(picked)
+        // 反查要读全库，慢一点可以接受（删本来就要等）。查不到就当没提过——
+        // 诊断失败不该拦住用户删自己的笔记。
+        let hits = {}
+        try {
+          const query = paths.map((one) => 'path=' + encodeURIComponent(one)).join('&')
+          const back = await api('/backlinks/many?' + query)
+          hits = back && back.hits !== null && typeof back.hits === 'object' ? back.hits : {}
+        } catch {
+          hits = {}
+        }
+        const linked = paths.filter((one) => Array.isArray(hits[one]) && hits[one].length > 0)
+        if (linked.length > 0) {
+          // 点的是「被删的那几篇」的名字，不是「提到它的那几篇」——用户手上
+          // 勾的就是这几篇，说清是哪一篇被引用才有用；引用者的名字在正文里
+          // 早就能看见，这里再列一遍只是噪音。
+          const names = []
+          for (const one of linked) {
+            const base = String(one).split('/').pop().replace(/\.md$/i, '')
+            if (base !== '' && !names.includes(base)) names.push(base)
+          }
+          const shown = names.slice(0, 3).join('、') + (names.length > 3 ? ' 等' : '')
+          const ok = await confirmDialog(
+            t('batch.confirmLinked')
+              .replace('{n}', String(paths.length))
+              .replace('{m}', String(linked.length))
+              .replace('{names}', shown),
+            { confirmText: t('batch.confirmLinkedOk'), cancelText: t('batch.confirmLinkedCancel') },
+          )
+          if (!ok) return
+        } else {
+          const ok = await confirmDialog(`${t('batch.confirmDelete')} ${pickedCount}`)
+          if (!ok) return
+        }
+        await runBatch('delete')
+      }, [picked, pickedCount, runBatch, t])
+
+
       // 从宿主的文件树里拖一篇笔记到列表上 = 挪进当前筛的这个目录。
       //
       // 拖进来的是宿主自己的路径口径（库内相对路径，带笔记子目录前缀），而
@@ -9588,10 +9646,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                             className: 'dshgn_btn dshgn_btnDanger',
                             disabled: busy,
                             onClick: () => {
-                              // 批量删除不可撤销地进回收站，必须先确认一次
-                              void confirmDialog(`${t('batch.confirmDelete')} ${pickedCount}`).then((ok) => {
-                                if (ok) void runBatch('delete')
-                              })
+                              // 批量删除不可撤销地进回收站，必须先确认一次；
+                              // 这几篇里有人引用过的，还要把「链接会断」说出来。
+                              void deletePicked()
                             },
                           },
                           t('batch.delete'),

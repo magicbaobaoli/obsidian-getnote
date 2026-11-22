@@ -499,6 +499,7 @@ __export(vault_exports, {
   extractInlineTags: () => extractInlineTags,
   extractWikiLinks: () => extractWikiLinks,
   findBacklinks: () => findBacklinks,
+  findBacklinksMany: () => findBacklinksMany,
   findBrokenLinks: () => findBrokenLinks,
   heatmapOf: () => heatmapOf,
   invalidateScan: () => invalidateScan,
@@ -1351,6 +1352,119 @@ function linkHitsInText(text, wantedLower) {
   for (const times of counts.values()) count += times;
   return { links: [...counts.keys()], count, snippets };
 }
+async function hitsInEntry(root, entry, wantedLower) {
+  let parsed;
+  try {
+    parsed = await linkLinesOf(root, entry);
+  } catch {
+    return null;
+  }
+  const counts = /* @__PURE__ */ new Map();
+  const snippets = [];
+  for (const line of parsed.lines) {
+    if (line.links.length === 0) continue;
+    let hitHere = false;
+    for (const target of line.links) {
+      const noExt = target.replace(/\.md$/i, "");
+      const base = noExt.split("/").pop() || noExt;
+      if (!wantedLower.has(target.toLowerCase()) && !wantedLower.has(noExt.toLowerCase()) && !wantedLower.has(base.toLowerCase())) continue;
+      counts.set(target, (counts.get(target) || 0) + 1);
+      hitHere = true;
+    }
+    if (!hitHere) continue;
+    const text = snippetOfLine(line.text);
+    if (text !== "") snippets.push(text);
+  }
+  if (counts.size === 0) return null;
+  let count = 0;
+  for (const times of counts.values()) count += times;
+  return {
+    path: entry.path,
+    title: entry.title,
+    date: entry.date,
+    links: [...counts.keys()],
+    // 这一篇里一共提了几次。反复提到同一篇的，通常比只提一次的更值得先看。
+    count,
+    // 每一处引用各自带上它所在的上下文：一篇笔记里可能三处都提到这一篇，
+    // 只给「它引用了我」和路径的话，用户还得自己点进去、再在正文里搜一遍。
+    // 最多三条，再多就成了把对方正文抄过来。
+    snippets: snippets.slice(0, 3)
+  };
+}
+async function findBacklinksMany(root, targets, entries) {
+  const rawTargets = (Array.isArray(targets) ? targets : []).map((t4) => String(t4 === null || t4 === void 0 ? "" : t4).trim().replace(/\\/g, "/")).filter((t4) => t4 !== "");
+  const out = /* @__PURE__ */ new Map();
+  for (const raw of rawTargets) out.set(raw, []);
+  if (rawTargets.length === 0) return out;
+  const list = Array.isArray(entries) ? entries : (await scanVault(root)).entries;
+  const stripExt = (p3) => p3.replace(/\.md$/i, "");
+  const wantedByRaw = /* @__PURE__ */ new Map();
+  for (const raw of rawTargets) {
+    const rawNoExt = stripExt(raw);
+    const rawBase = stripExt(raw.split("/").pop() || raw);
+    const rawLower = raw.toLowerCase();
+    const baseLower = rawBase.toLowerCase();
+    const wantedPaths = /* @__PURE__ */ new Set();
+    for (const entry of list) {
+      const noExt = stripExt(entry.path);
+      const base = stripExt(entry.path.split("/").pop() || entry.path);
+      const title = String(entry.title || "").toLowerCase();
+      if (noExt.toLowerCase() === rawNoExt.toLowerCase() || base.toLowerCase() === baseLower || title === rawLower || title === baseLower) {
+        wantedPaths.add(entry.path);
+        wantedPaths.add(noExt);
+        wantedPaths.add(base);
+      }
+    }
+    wantedPaths.add(raw);
+    wantedPaths.add(rawNoExt);
+    wantedPaths.add(rawBase);
+    wantedByRaw.set(raw, new Set([...wantedPaths].map((p3) => p3.toLowerCase())));
+  }
+  for (const entry of list) {
+    let parsed;
+    try {
+      parsed = await linkLinesOf(root, entry);
+    } catch {
+      continue;
+    }
+    const seen = /* @__PURE__ */ new Map();
+    for (const line of parsed.lines) {
+      for (const target of line.links) {
+        const noExt = target.replace(/\.md$/i, "");
+        const base = noExt.split("/").pop() || noExt;
+        seen.set(target, { noExt, base, line });
+      }
+    }
+    if (seen.size === 0) continue;
+    for (const raw of rawTargets) {
+      if (entry.path === raw) continue;
+      const wantedLower = wantedByRaw.get(raw);
+      const counts = /* @__PURE__ */ new Map();
+      const snippets = [];
+      for (const [target, info] of seen) {
+        if (!wantedLower.has(target.toLowerCase()) && !wantedLower.has(info.noExt.toLowerCase()) && !wantedLower.has(info.base.toLowerCase())) continue;
+        counts.set(target, (counts.get(target) || 0) + 1);
+        const text = snippetOfLine(info.line.text);
+        if (text !== "" && !snippets.includes(text)) snippets.push(text);
+      }
+      if (counts.size === 0) continue;
+      let count = 0;
+      for (const times of counts.values()) count += times;
+      out.get(raw).push({
+        path: entry.path,
+        title: entry.title,
+        date: entry.date,
+        links: [...counts.keys()],
+        count,
+        snippets: snippets.slice(0, 3)
+      });
+    }
+  }
+  for (const raw of rawTargets) {
+    out.get(raw).sort((a3, b3) => (Number(b3.count) || 1) - (Number(a3.count) || 1) || a3.title.localeCompare(b3.title, "zh"));
+  }
+  return out;
+}
 async function findBacklinks(root, target, entries) {
   const raw = String(target || "").trim().replace(/\\/g, "/");
   if (raw === "") return { target: raw, hits: [] };
@@ -1378,30 +1492,47 @@ async function findBacklinks(root, target, entries) {
   const hits = [];
   for (const entry of list) {
     if (entry.path === raw) continue;
-    let text;
-    try {
-      text = await readFile2(resolveInside(root, entry.path).abs, "utf8");
-    } catch {
-      continue;
-    }
-    const found = linkHitsInText(text, wantedLower);
-    if (found.links.length === 0) continue;
-    hits.push({
-      path: entry.path,
-      title: entry.title,
-      date: entry.date,
-      links: found.links,
-      // 这一篇里一共提了几次。反复提到同一篇的，通常比只提一次的更值得先看。
-      count: found.count,
-      // 每一处引用各自带上它所在的上下文：一篇笔记里可能三处都提到这一篇，
-      // 只给「它引用了我」和路径的话，用户还得自己点进去、再在正文里搜一遍。
-      // 这一行不用额外读盘——正文本来就已经读进来了。最多三条，再多就成了
-      // 把对方正文抄过来。
-      snippets: found.snippets.slice(0, 3)
-    });
+    const found = await hitsInEntry(root, entry, wantedLower);
+    if (found === null) continue;
+    hits.push(found);
   }
   hits.sort((a3, b3) => (Number(b3.count) || 1) - (Number(a3.count) || 1) || a3.title.localeCompare(b3.title, "zh"));
   return { target: raw, hits };
+}
+async function linkLinesOf(root, entry) {
+  const abs = resolveInside(root, entry.path).abs;
+  const key = `${abs}\0${entry.mtimeMs}\0${entry.bytes}`;
+  const hit = linkMemo.get(key);
+  if (hit !== void 0) return hit;
+  const text = await readFile2(abs, "utf8");
+  const src = maskComments(text);
+  const rawLines = src.split(/\r?\n/);
+  const lines = [];
+  let inFence = false;
+  for (let i3 = 0; i3 < rawLines.length; i3 += 1) {
+    const line = rawLines[i3];
+    const fence = /^\s*(```|~~~)/.test(line);
+    if (fence) {
+      inFence = !inFence;
+      lines.push({ no: i3 + 1, text: line, links: [], fenced: true });
+      continue;
+    }
+    const links = [];
+    const re = /\[\[([^\]\n|]+)(?:\|[^\]\n]*)?\]\]/g;
+    let m3;
+    while ((m3 = re.exec(line)) !== null) {
+      const target = m3[1].trim();
+      if (target !== "") links.push(target);
+    }
+    lines.push({ no: i3 + 1, text: line, links, fenced: inFence });
+  }
+  const value = { lines };
+  linkMemo.set(key, value);
+  if (linkMemo.size > LINK_MEMO_MAX) {
+    const oldest = linkMemo.keys().next();
+    if (!oldest.done) linkMemo.delete(oldest.value);
+  }
+  return value;
 }
 function backlinkSnippets(text, names, limit = 3) {
   const wanted = /* @__PURE__ */ new Set();
@@ -1448,26 +1579,15 @@ async function findBrokenLinks(root, entries) {
   const hits = [];
   const MAX_HITS = 500;
   for (const entry of list) {
-    let text;
+    let parsed;
     try {
-      text = await readFile2(resolveInside(root, entry.path).abs, "utf8");
+      parsed = await linkLinesOf(root, entry);
     } catch {
       continue;
     }
-    const lines = maskComments(text).split(/\r?\n/);
-    let inFence = false;
-    for (let i3 = 0; i3 < lines.length; i3 += 1) {
-      const line = lines[i3];
-      if (/^\s*(```|~~~)/.test(line)) {
-        inFence = !inFence;
-        continue;
-      }
-      if (inFence) continue;
-      const re = /\[\[([^\]\n|]+)(?:\|[^\]\n]*)?\]\]/g;
-      let m3;
-      while ((m3 = re.exec(line)) !== null) {
-        const rawTarget = m3[1].trim();
-        if (rawTarget === "") continue;
+    for (const line of parsed.lines) {
+      if (line.fenced || line.links.length === 0) continue;
+      for (const rawTarget of line.links) {
         const hash = rawTarget.indexOf("#");
         const target = (hash === -1 ? rawTarget : rawTarget.slice(0, hash)).trim();
         if (target === "") continue;
@@ -1476,9 +1596,9 @@ async function findBrokenLinks(root, entries) {
         hits.push({
           path: entry.path,
           title: entry.title,
-          line: i3 + 1,
+          line: line.no,
           target,
-          text: lineContext(line)
+          text: lineContext(line.text)
         });
         if (hits.length >= MAX_HITS) break;
       }
@@ -2168,7 +2288,7 @@ function listDirs(entries, emptyDirs = []) {
   }
   return [...dirs].sort((a3, b3) => a3.localeCompare(b3, "zh"));
 }
-var import_node_crypto3, import_node_path4, NOTE_EXT, MAX_READ, MAX_WRITE, MAX_SCAN, MAX_DEPTH, IGNORED_DIRS, scanCache, SCAN_CACHE_MAX, entryMemo, ENTRY_MEMO_MAX, TRASH_DIR, TRASH_NAME_RE, CONFLICT_DIR, CONFLICT_NAME_RE, CONFLICT_STATE_FILE, TAG_TOKEN_RE;
+var import_node_crypto3, import_node_path4, NOTE_EXT, MAX_READ, MAX_WRITE, MAX_SCAN, MAX_DEPTH, IGNORED_DIRS, scanCache, SCAN_CACHE_MAX, entryMemo, ENTRY_MEMO_MAX, TRASH_DIR, TRASH_NAME_RE, linkMemo, LINK_MEMO_MAX, CONFLICT_DIR, CONFLICT_NAME_RE, CONFLICT_STATE_FILE, TAG_TOKEN_RE;
 var init_vault = __esm({
   "src/core/vault.js"() {
     init_vfs();
@@ -2200,6 +2320,8 @@ var init_vault = __esm({
     ENTRY_MEMO_MAX = 2e4;
     TRASH_DIR = ".trash";
     TRASH_NAME_RE = /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z__(.+)$/;
+    linkMemo = /* @__PURE__ */ new Map();
+    LINK_MEMO_MAX = 2e4;
     CONFLICT_DIR = ".conflicts";
     CONFLICT_NAME_RE = /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})(?:-(\d{3}))?Z?__(?:([0-9a-f]{6})__)?(?:cloud-)?(.+)$/;
     CONFLICT_STATE_FILE = ".resolved.json";
@@ -5541,6 +5663,16 @@ function createHandler(config) {
     const result = await findBacklinks(root, target);
     send(res, 200, result);
   }
+  async function handleBacklinksMany(res, url) {
+    const { root, missing } = await currentRoot();
+    const paths = (url.searchParams.getAll("path") || []).map((p3) => String(p3 || "").trim()).filter((p3) => p3 !== "");
+    if (missing) return send(res, 200, { hits: {} });
+    if (paths.length === 0) return send(res, 200, { hits: {} });
+    const map = await findBacklinksMany(root, paths);
+    const hits = {};
+    for (const path of paths) hits[path] = map.get(path) || [];
+    send(res, 200, { hits });
+  }
   async function handleBrokenLinks(res) {
     const { root, missing } = await currentRoot();
     if (missing) return send(res, 200, { hits: [], scanned: 0, truncated: false });
@@ -6751,6 +6883,7 @@ function createHandler(config) {
         if (action === "trash" && parts[2] === "list") return await handleTrashList(res);
         if (action === "read") return await handleRead(res, url);
         if (action === "search") return await handleSearch(res, url);
+        if (action === "backlinks" && parts[2] === "many") return await handleBacklinksMany(res, url);
         if (action === "backlinks") return await handleBacklinks(res, url);
         if (action === "broken") return await handleBrokenLinks(res);
         if (action === "todos") return await handleOpenTodos(res);
@@ -8486,6 +8619,12 @@ var LEX = {
     "batch.move": "\u79FB\u52A8",
     "batch.delete": "\u79FB\u5230\u56DE\u6536\u7AD9",
     "batch.confirmDelete": "\u786E\u5B9A\u628A\u8FD9 \u7BC7\u79FB\u5230\u56DE\u6536\u7AD9\uFF1F",
+    // 批量删之前也要看一眼「这几篇里有没有被人引用」。单篇删早就会查，
+    // 批量删却只问一句「确定吗」——被删的那几篇在别人正文里的链接
+    // 会变成点不动的死链，删的人事先完全看不见。
+    "batch.confirmLinked": "\u8FD9 {n} \u7BC7\u91CC\u6709 {m} \u7BC7\u88AB\u4EBA\u63D0\u5230\u8FC7\uFF08{names}\uFF09\uFF0C\u5220\u6389\u4E4B\u540E\u90A3\u4E9B\u94FE\u63A5\u4F1A\u65AD\u3002\u8FD8\u662F\u5220\u5417\uFF1F",
+    "batch.confirmLinkedOk": "\u8FD8\u662F\u8981\u5220",
+    "batch.confirmLinkedCancel": "\u5148\u4E0D\u5220",
     "drop.pickDirFirst": "\u5148\u5728\u5DE6\u8FB9\u9009\u4E00\u4E2A\u76EE\u5F55\uFF0C\u518D\u5F80\u91CC\u62D6",
     "drop.moved": "\u5DF2\u7ECF\u632A\u8FDB\u8FD9\u4E2A\u76EE\u5F55",
     "batch.done": "\u5DF2\u5904\u7406",
@@ -9072,6 +9211,9 @@ var LEX = {
     "batch.move": "Move",
     "batch.delete": "Move to trash",
     "batch.confirmDelete": "Move these notes to trash?",
+    "batch.confirmLinked": "{m} of these {n} notes are linked from elsewhere ({names}). Those links will break if you delete them. Delete anyway?",
+    "batch.confirmLinkedOk": "Delete anyway",
+    "batch.confirmLinkedCancel": "Keep them",
     "drop.pickDirFirst": "Pick a folder on the left first, then drop",
     "drop.moved": "Moved into this folder",
     "batch.done": "Processed",
@@ -9635,6 +9777,9 @@ var LEX = {
     "batch.move": "Verplaatsen",
     "batch.delete": "Naar prullenbak",
     "batch.confirmDelete": "Deze notities naar de prullenbak verplaatsen?",
+    "batch.confirmLinked": "{m} van deze {n} notities worden elders gelinkt ({names}). Die links breken als je ze verwijdert. Toch verwijderen?",
+    "batch.confirmLinkedOk": "Toch verwijderen",
+    "batch.confirmLinkedCancel": "Bewaren",
     "drop.pickDirFirst": "Kies eerst links een map en sleep dan hierheen",
     "drop.moved": "Naar deze map verplaatst",
     "batch.done": "Verwerkt",
@@ -14775,6 +14920,36 @@ ${insert}
     },
     [batchDir, batchTag, clearPicked, current, picked, refresh, reportBatchFails, setBusy, setError, showToast, t4]
   );
+  const deletePicked = q2(async () => {
+    if (picked.size === 0) return;
+    const paths = Array.from(picked);
+    let hits2 = {};
+    try {
+      const query2 = paths.map((one) => "path=" + encodeURIComponent(one)).join("&");
+      const back = await api("/backlinks/many?" + query2);
+      hits2 = back && back.hits !== null && typeof back.hits === "object" ? back.hits : {};
+    } catch {
+      hits2 = {};
+    }
+    const linked = paths.filter((one) => Array.isArray(hits2[one]) && hits2[one].length > 0);
+    if (linked.length > 0) {
+      const names = [];
+      for (const one of linked) {
+        const base = String(one).split("/").pop().replace(/\.md$/i, "");
+        if (base !== "" && !names.includes(base)) names.push(base);
+      }
+      const shown2 = names.slice(0, 3).join("\u3001") + (names.length > 3 ? " \u7B49" : "");
+      const ok = await confirmDialog(
+        t4("batch.confirmLinked").replace("{n}", String(paths.length)).replace("{m}", String(linked.length)).replace("{names}", shown2),
+        { confirmText: t4("batch.confirmLinkedOk"), cancelText: t4("batch.confirmLinkedCancel") }
+      );
+      if (!ok) return;
+    } else {
+      const ok = await confirmDialog(`${t4("batch.confirmDelete")} ${pickedCount}`);
+      if (!ok) return;
+    }
+    await runBatch("delete");
+  }, [picked, pickedCount, runBatch, t4]);
   const dropIntoDir = q2(
     async (rawPaths) => {
       const target = activeDir;
@@ -16004,9 +16179,7 @@ ${insert}
                 className: "dshgn_btn dshgn_btnDanger",
                 disabled: busy,
                 onClick: () => {
-                  void confirmDialog(`${t4("batch.confirmDelete")} ${pickedCount}`).then((ok) => {
-                    if (ok) void runBatch("delete");
-                  });
+                  void deletePicked();
                 }
               },
               t4("batch.delete")

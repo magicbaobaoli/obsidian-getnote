@@ -56,6 +56,7 @@ import {
   excerptOf,
   extractWikiLinks,
   findBacklinks,
+  findBacklinksMany,
   findBrokenLinks,
   heatmapOf,
   listAssets,
@@ -756,6 +757,24 @@ export function createHandler(config) {
     if (missing) return send(res, 200, { target, hits: [] })
     const result = await findBacklinks(root, target)
     send(res, 200, result)
+  }
+
+/**
+   * 一次问「这一批笔记各自被谁提到」。
+   *
+   * 批量删除要在这几篇里挑出「被人引用过」的那几篇，逐篇调 /backlinks 的话
+   * 选了十篇就是十遍全库读盘。这里一遍全库算完，返回 路径 → 命中列表；
+   * 没有命中（或读不到）的那几篇在结果里是空数组，前端按空处理即可。
+   */
+  async function handleBacklinksMany(res, url) {
+    const { root, missing } = await currentRoot()
+    const paths = (url.searchParams.getAll('path') || []).map((p) => String(p || '').trim()).filter((p) => p !== '')
+    if (missing) return send(res, 200, { hits: {} })
+    if (paths.length === 0) return send(res, 200, { hits: {} })
+    const map = await findBacklinksMany(root, paths)
+    const hits = {}
+    for (const path of paths) hits[path] = map.get(path) || []
+    send(res, 200, { hits })
   }
 
   /**
@@ -2424,6 +2443,9 @@ export function createHandler(config) {
         if (action === 'trash' && parts[2] === 'list') return await handleTrashList(res)
         if (action === 'read') return await handleRead(res, url)
         if (action === 'search') return await handleSearch(res, url)
+        // 批量反查：一次问一批「这几篇各自被谁提到」，只读一遍全库。
+        // 必须排在单篇那条前面，否则 /backlinks/many 会被当成单篇处理。
+        if (action === 'backlinks' && parts[2] === 'many') return await handleBacklinksMany(res, url)
         if (action === 'backlinks') return await handleBacklinks(res, url)
         if (action === 'broken') return await handleBrokenLinks(res)
         if (action === 'todos') return await handleOpenTodos(res)

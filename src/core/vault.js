@@ -1148,6 +1148,146 @@ function linkHitsInText(text, wantedLower) {
 }
 
 /**
+ * 一篇笔记对某个目标的反链命中（没有命中就返回 null）。
+ *
+ * 判定口径与 linkHitsInText 完全一致：完整目标 / 去扩展名 / 文件名三级宽松匹配，
+ * 同一行只留一条上下文。区别只是它读的是缓存好的行，不再每换一个目标就把全库
+ * 正文重新读一遍、重新切一次行。
+ */
+async function hitsInEntry(root, entry, wantedLower) {
+  let parsed
+  try {
+    parsed = await linkLinesOf(root, entry)
+  } catch {
+    return null
+  }
+  const counts = new Map()
+  const snippets = []
+  for (const line of parsed.lines) {
+    if (line.links.length === 0) continue
+    let hitHere = false
+    for (const target of line.links) {
+      const noExt = target.replace(/\.md$/i, '')
+      const base = noExt.split('/').pop() || noExt
+      if (!wantedLower.has(target.toLowerCase()) && !wantedLower.has(noExt.toLowerCase()) && !wantedLower.has(base.toLowerCase())) continue
+      counts.set(target, (counts.get(target) || 0) + 1)
+      hitHere = true
+    }
+    if (!hitHere) continue
+    // 同一行只留一条上下文——一行里写两遍同一个链接，收两条一样的只是噪音。
+    const text = snippetOfLine(line.text)
+    if (text !== '') snippets.push(text)
+  }
+  if (counts.size === 0) return null
+  let count = 0
+  for (const times of counts.values()) count += times
+  return {
+    path: entry.path,
+    title: entry.title,
+    date: entry.date,
+    links: [...counts.keys()],
+    // 这一篇里一共提了几次。反复提到同一篇的，通常比只提一次的更值得先看。
+    count,
+    // 每一处引用各自带上它所在的上下文：一篇笔记里可能三处都提到这一篇，
+    // 只给「它引用了我」和路径的话，用户还得自己点进去、再在正文里搜一遍。
+    // 最多三条，再多就成了把对方正文抄过来。
+    snippets: snippets.slice(0, 3),
+  }
+}
+
+/**
+ * 一次算出「一批目标各自被谁提到」。
+ *
+ * 批量删除要问「这几篇里有没有被人引用」，一篇一篇调 findBacklinks 的话，
+ * 选了十篇就是十遍全库读盘——而它们读的是同一批文件。这里只走一遍全库，
+ * 把每一行的双链同时对十个目标比对，返回 目标 → 命中列表。
+ *
+ * 目标之间互不影响，所以结果与逐篇调用完全等价（排序口径也一样）。
+ */
+export async function findBacklinksMany(root, targets, entries) {
+  const rawTargets = (Array.isArray(targets) ? targets : [])
+    .map((t) => String(t === null || t === undefined ? '' : t).trim().replace(/\\/g, '/'))
+    .filter((t) => t !== '')
+  const out = new Map()
+  for (const raw of rawTargets) out.set(raw, [])
+  if (rawTargets.length === 0) return out
+  const list = Array.isArray(entries) ? entries : (await scanVault(root)).entries
+
+  const stripExt = (p) => p.replace(/\.md$/i, '')
+  // 每个目标先算出「所有可能指向它的路径」，再展开成一个扁平集合——匹配时
+  // 只要命中集合里任意一条就算，和 findBacklinks 的 wantedPaths 一个口径。
+  const wantedByRaw = new Map()
+  for (const raw of rawTargets) {
+    const rawNoExt = stripExt(raw)
+    const rawBase = stripExt(raw.split('/').pop() || raw)
+    const rawLower = raw.toLowerCase()
+    const baseLower = rawBase.toLowerCase()
+    const wantedPaths = new Set()
+    for (const entry of list) {
+      const noExt = stripExt(entry.path)
+      const base = stripExt(entry.path.split('/').pop() || entry.path)
+      const title = String(entry.title || '').toLowerCase()
+      if (noExt.toLowerCase() === rawNoExt.toLowerCase() || base.toLowerCase() === baseLower || title === rawLower || title === baseLower) {
+        wantedPaths.add(entry.path)
+        wantedPaths.add(noExt)
+        wantedPaths.add(base)
+      }
+    }
+    wantedPaths.add(raw)
+    wantedPaths.add(rawNoExt)
+    wantedPaths.add(rawBase)
+    wantedByRaw.set(raw, new Set([...wantedPaths].map((p) => p.toLowerCase())))
+  }
+
+  for (const entry of list) {
+    let parsed
+    try {
+      parsed = await linkLinesOf(root, entry)
+    } catch {
+      continue
+    }
+    // 这一篇里出现过的双链目标先收一遍：一篇正文通常只有几个链接，
+    // 拿这几个去和 N 个目标比，比拿 N 个目标去扫每一行便宜得多。
+    const seen = new Map()
+    for (const line of parsed.lines) {
+      for (const target of line.links) {
+        const noExt = target.replace(/\.md$/i, '')
+        const base = noExt.split('/').pop() || noExt
+        seen.set(target, { noExt, base, line })
+      }
+    }
+    if (seen.size === 0) continue
+    for (const raw of rawTargets) {
+      if (entry.path === raw) continue
+      const wantedLower = wantedByRaw.get(raw)
+      const counts = new Map()
+      const snippets = []
+      for (const [target, info] of seen) {
+        if (!wantedLower.has(target.toLowerCase()) && !wantedLower.has(info.noExt.toLowerCase()) && !wantedLower.has(info.base.toLowerCase())) continue
+        counts.set(target, (counts.get(target) || 0) + 1)
+        const text = snippetOfLine(info.line.text)
+        if (text !== '' && !snippets.includes(text)) snippets.push(text)
+      }
+      if (counts.size === 0) continue
+      let count = 0
+      for (const times of counts.values()) count += times
+      out.get(raw).push({
+        path: entry.path,
+        title: entry.title,
+        date: entry.date,
+        links: [...counts.keys()],
+        count,
+        snippets: snippets.slice(0, 3),
+      })
+    }
+  }
+  for (const raw of rawTargets) {
+    out.get(raw).sort((a, b) => (Number(b.count) || 1) - (Number(a.count) || 1) || a.title.localeCompare(b.title, 'zh'))
+  }
+  return out
+}
+
+/**
  * 反查：哪些笔记引用了 `target`。
  *
  * 匹配刻意做得宽松——双链不像文件路径那样严格，Obsidian 里 `[[我的笔记]]`
@@ -1192,32 +1332,69 @@ export async function findBacklinks(root, target, entries) {
   const hits = []
   for (const entry of list) {
     if (entry.path === raw) continue
-    let text
-    try {
-      text = await readFile(resolveInside(root, entry.path).abs, 'utf8')
-    } catch {
-      continue
-    }
-    const found = linkHitsInText(text, wantedLower)
-    if (found.links.length === 0) continue
-    hits.push({
-      path: entry.path,
-      title: entry.title,
-      date: entry.date,
-      links: found.links,
-      // 这一篇里一共提了几次。反复提到同一篇的，通常比只提一次的更值得先看。
-      count: found.count,
-      // 每一处引用各自带上它所在的上下文：一篇笔记里可能三处都提到这一篇，
-      // 只给「它引用了我」和路径的话，用户还得自己点进去、再在正文里搜一遍。
-      // 这一行不用额外读盘——正文本来就已经读进来了。最多三条，再多就成了
-      // 把对方正文抄过来。
-      snippets: found.snippets.slice(0, 3),
-    })
+    const found = await hitsInEntry(root, entry, wantedLower)
+    if (found === null) continue
+    hits.push(found)
   }
   // 提得多的排前面，次数相同再按标题。宿主那边（metadataCache）给的次数是同一
   // 个含义，两边排序口径必须一样，否则同一篇笔记接不接宿主会换个顺序。
   hits.sort((a, b) => (Number(b.count) || 1) - (Number(a.count) || 1) || a.title.localeCompare(b.title, 'zh'))
   return { target: raw, hits }
+}
+
+// 逐篇记忆「这篇正文里有哪些双链、各在哪些行」。
+//
+// 反查（谁提到我）、断链体检、待办清单都是同一件事的不同投影：都要把全库正文
+// 读一遍、按行找 \[\[...\]\]。8000 篇的库上，点开一篇笔记的反链要把全库读一次；
+// 换个目标再看，又整库读一次——同一批文件被反复读、反复切行。
+//
+// 键里带 mtimeMs 和 size，和 entryMemo 一个口径：文件真变了才换键，没变的
+// 那几篇一直留着这份解析结果。缓存的是「每行原文 + 这一行里的双链目标」，
+// 不含任何和目标有关的东西——所以同一份结果能喂给任意目标的匹配。
+const linkMemo = new Map()
+const LINK_MEMO_MAX = 20000
+
+/**
+ * 读一篇正文，取出「每个非空行 + 这一行里的双链目标」。
+ *
+ * 顺带把围栏代码块标出来：断链体检要跳过围栏里的 \[\[...\]\]（示例、粘贴的
+ * 日志），而反查不跳（围栏里的引用也是引用）。同一份行数据带个 fenced 标记，
+ * 两个用途各取所需，不必各自再切一遍行。
+ */
+async function linkLinesOf(root, entry) {
+  const abs = resolveInside(root, entry.path).abs
+  const key = `${abs}\u0000${entry.mtimeMs}\u0000${entry.bytes}`
+  const hit = linkMemo.get(key)
+  if (hit !== undefined) return hit
+  const text = await readFile(abs, 'utf8')
+  const src = maskComments(text)
+  const rawLines = src.split(/\r?\n/)
+  const lines = []
+  let inFence = false
+  for (let i = 0; i < rawLines.length; i += 1) {
+    const line = rawLines[i]
+    const fence = /^\s*(```|~~~)/.test(line)
+    if (fence) {
+      inFence = !inFence
+      lines.push({ no: i + 1, text: line, links: [], fenced: true })
+      continue
+    }
+    const links = []
+    const re = /\[\[([^\]\n|]+)(?:\|[^\]\n]*)?\]\]/g
+    let m
+    while ((m = re.exec(line)) !== null) {
+      const target = m[1].trim()
+      if (target !== '') links.push(target)
+    }
+    lines.push({ no: i + 1, text: line, links, fenced: inFence })
+  }
+  const value = { lines }
+  linkMemo.set(key, value)
+  if (linkMemo.size > LINK_MEMO_MAX) {
+    const oldest = linkMemo.keys().next()
+    if (!oldest.done) linkMemo.delete(oldest.value)
+  }
+  return value
 }
 
 /**
@@ -1302,26 +1479,18 @@ export async function findBrokenLinks(root, entries) {
   const hits = []
   const MAX_HITS = 500
   for (const entry of list) {
-    let text
+    // 行数据走 linkLinesOf 那份逐篇记忆：断链体检和反查读的是同一批文件，
+    // 换一个入口再看一遍全库时不该重新读盘、重新切行。围栏里的行它已经
+    // 标成 fenced、双链也收成空的，这里跳过即可。
+    let parsed
     try {
-      text = await readFile(resolveInside(root, entry.path).abs, 'utf8')
+      parsed = await linkLinesOf(root, entry)
     } catch {
       continue
     }
-    const lines = maskComments(text).split(/\r?\n/)
-    let inFence = false
-    for (let i = 0; i < lines.length; i += 1) {
-      const line = lines[i]
-      if (/^\s*(```|~~~)/.test(line)) {
-        inFence = !inFence
-        continue
-      }
-      if (inFence) continue
-      const re = /\[\[([^\]\n|]+)(?:\|[^\]\n]*)?\]\]/g
-      let m
-      while ((m = re.exec(line)) !== null) {
-        const rawTarget = m[1].trim()
-        if (rawTarget === '') continue
+    for (const line of parsed.lines) {
+      if (line.fenced || line.links.length === 0) continue
+      for (const rawTarget of line.links) {
         const hash = rawTarget.indexOf('#')
         const target = (hash === -1 ? rawTarget : rawTarget.slice(0, hash)).trim()
         if (target === '') continue
@@ -1331,9 +1500,9 @@ export async function findBrokenLinks(root, entries) {
         hits.push({
           path: entry.path,
           title: entry.title,
-          line: i + 1,
+          line: line.no,
           target,
-          text: lineContext(line),
+          text: lineContext(line.text),
         })
         if (hits.length >= MAX_HITS) break
       }

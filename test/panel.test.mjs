@@ -13647,3 +13647,175 @@ test('删一篇之前先问一句「还有谁提到它」，断链长在别人�
 
   await clickTab('笔记')
 })
+
+test('批量删之前也先反查一句「这几篇里谁被人提到过」，别把别人的链接删成死链', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const backBtn = () => window.document.querySelector('.dshgn_noteBack')
+
+  panel.setConfirmDialog(async () => true)
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = backBtn()
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(220)
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox !== null) {
+    setValue.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(260)
+  }
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res
+  }
+  const pathA = '批量删反查验收/批量删反查-被提到的那一篇.md'
+  const pathC = '批量删反查验收/批量删反查-没人提的那一篇.md'
+  await post('/getnote/create', {
+    dir: '批量删反查验收',
+    title: '批量删反查-被提到的那一篇',
+    content: ['# 批量删反查-被提到的那一篇', '', '这一篇在别人正文里被引用了。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-batch-del-link-a',
+  })
+  await post('/getnote/create', {
+    dir: '批量删反查验收',
+    title: '批量删反查-没人提的那一篇',
+    content: ['# 批量删反查-没人提的那一篇', '', '这一篇没人引用。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-batch-del-link-c',
+  })
+  await post('/getnote/create', {
+    dir: '批量删反查验收',
+    title: '批量删反查-提到它的那一篇',
+    content: ['# 批量删反查-提到它的那一篇', '', '这里提了一句 [[批量删反查-被提到的那一篇]]。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-batch-del-link-b',
+  })
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(600)
+
+  const rowOf = (name) =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+      const label = el.querySelector('.dshgn_treeName')
+      return label !== null && (label.textContent || '').trim() === name
+    })
+  const dirRow = await waitFor(() => rowOf('批量删反查验收'), 8000, '左栏里出现这个目录')
+  dirRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+
+  const cardOf = (path) =>
+    Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === path) || null
+  const cardA = await waitFor(() => cardOf(pathA), 8000, '被提到的那一篇')
+  cardA.querySelector('.dshgn_pickBox').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(200)
+  const cardC = await waitFor(() => cardOf(pathC), 8000, '没人提的那一篇')
+  cardC.querySelector('.dshgn_pickBox').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_batchBar') !== null, 3000, '批量栏出现')
+
+  // 「移到回收站」那颗在「批量操作」摊开的那个小面板里，得先把它摊开。
+  const moreBtn = Array.from(window.document.querySelectorAll('.dshgn_batchBtn')).find(
+    (el) => (el.textContent || '').trim() === '批量操作',
+  )
+  assert.ok(moreBtn, '批量条上应该有「批量操作」')
+  moreBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  const deleteBtn = () => {
+    const bar = window.document.querySelector('.dshgn_batchBar')
+    if (bar === null) return undefined
+    return Array.from(bar.querySelectorAll('.dshgn_btn')).find(
+      (el) => (el.textContent || '').trim() === '移到回收站' && el.classList.contains('dshgn_btnDanger'),
+    )
+  }
+  assert.ok(deleteBtn() !== undefined, '批量操作里该有「移到回收站」')
+
+  const asked = []
+  panel.setConfirmDialog((message, options) => {
+    asked.push({ message, options })
+    // 先选「先不删」：这时候两篇都该原样留着
+    return Promise.resolve(false)
+  })
+  try {
+    deleteBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => asked.length > 0, 12000, '批量删之前应该先问一句「谁被人提到过」')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  const first = asked[0]
+  assert.ok(
+    String(first.message).includes('被人提到过'),
+    '问的话要说清这几篇里有人被引用：' + first.message,
+  )
+  assert.ok(
+    String(first.message).includes('批量删反查-被提到的那一篇'),
+    '要把被引用的那篇点出来：' + first.message,
+  )
+  assert.ok(
+    String(first.message).includes('1 篇被人提到过'),
+    '两篇里只有一篇被引用，别把没人提的那篇也算进去：' + first.message,
+  )
+  assert.equal(first.options && first.options.confirmText, '还是要删', '确认那颗写「还是要删」')
+  assert.equal(first.options && first.options.cancelText, '先不删', '取消那颗写「先不删」')
+
+  // 选了「先不删」：两篇都还在
+  await sleep(600)
+  for (const path of [pathA, pathC]) {
+    const still = await realFetch(
+      server.origin + '/getnote/read?path=' + encodeURIComponent(path),
+      { headers: { 'x-getnote-token': server.token } },
+    )
+    assert.equal(still.status, 200, '选了「先不删」，这一篇该原样留着：' + path)
+  }
+
+  // 再选「还是要删」：这次真删
+  panel.setConfirmDialog(async () => true)
+  try {
+    const btn = deleteBtn()
+    assert.ok(btn !== undefined, '批量条还该在（没删成就没清勾选）')
+    btn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(
+      async () => {
+        const res = await realFetch(
+          server.origin + '/getnote/read?path=' + encodeURIComponent(pathA),
+          { headers: { 'x-getnote-token': server.token } },
+        )
+        return res.status !== 200
+      },
+      12000,
+      '选了「还是要删」之后这一篇才真的没了',
+    )
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  // 逐篇删是串行的，前一篇还没删完时后一篇当然还在——轮询等它，别抢跑。
+  await waitFor(
+    async () => {
+      const gone = await realFetch(
+        server.origin + '/getnote/read?path=' + encodeURIComponent(pathC),
+        { headers: { 'x-getnote-token': server.token } },
+      )
+      return gone.status !== 200
+    },
+    12000,
+    '没人提的那一篇也该一起删掉',
+  )
+  await clickTab('笔记')
+})
