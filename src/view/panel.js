@@ -771,6 +771,10 @@ async function saveFile(url, filename) {
         'note.created': '已新建',
         'note.saved': '已保存',
         'note.deleted': '已移入回收站',
+        // 删之前先说清「还有谁提到了它」：断链在别处，删的人看不见。
+        'note.deleteLinked': '有 {n} 篇提到了这一篇（{names}）。删掉之后那几处的链接会断掉，还是删吗？',
+        'note.deleteLinkedOk': '还是要删',
+        'note.deleteLinkedCancel': '先不删',
         'note.unsaved': '有未保存的修改',
         // 保存撞车：别处已经改过同一篇。{when} 换成那边改动的时间。
         'note.conflict': '这一篇在别处被改过了（{when}），你手上这一版还没存',
@@ -1342,6 +1346,9 @@ async function saveFile(url, filename) {
         'note.created': 'Created',
         'note.saved': 'Saved',
         'note.deleted': 'Moved to trash',
+        'note.deleteLinked': '{n} notes mention this one ({names}). Those links will break if you delete it. Delete anyway?',
+        'note.deleteLinkedOk': 'Delete anyway',
+        'note.deleteLinkedCancel': 'Keep it',
         'note.unsaved': 'Unsaved changes',
         'note.conflict': 'This note was changed elsewhere ({when}); your version is not saved yet',
         'note.conflictKeep': 'Keep my version',
@@ -1906,6 +1913,9 @@ async function saveFile(url, filename) {
         'note.created': 'Aangemaakt',
         'note.saved': 'Opgeslagen',
         'note.deleted': 'Naar prullenbak',
+        'note.deleteLinked': '{n} notities verwijzen hiernaar ({names}). Die links breken als je dit verwijdert. Toch verwijderen?',
+        'note.deleteLinkedOk': 'Toch verwijderen',
+        'note.deleteLinkedCancel': 'Bewaren',
         'note.unsaved': 'Niet-opgeslagen wijzigingen',
         'note.conflict': 'Deze notitie is elders gewijzigd ({when}); jouw versie is nog niet opgeslagen',
         'note.conflictKeep': 'Mijn versie bewaren',
@@ -7697,6 +7707,40 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         if (current === null) return
         setBusy(true)
         try {
+          // 删之前先问一句「还有谁提到它」：断链长在别人的正文里，删的人看不见。
+          // 反查要读全库，慢一点可以接受（这一步本来就要等），查不到就当没提过——
+          // 诊断失败不该拦住用户删自己的笔记。
+          // api() 会把同一组（同路径）还没回来的读请求 abort 掉——打开笔记本身也查一次反查，
+          // 两次撞在一起时先发的那次会被抢掉。被抢掉不等于「没人提到它」，
+          // 所以这里重试几次；真查不出来才当没提过，不拦着用户删。
+          let linked = []
+          for (let attempt = 0; attempt < 3; attempt += 1) {
+            try {
+              const back = await api('/backlinks?path=' + encodeURIComponent(current.path))
+              linked = back && Array.isArray(back.hits) ? back.hits : []
+              break
+            } catch {
+              linked = []
+              if (attempt === 2) break
+              await new Promise((resolve) => window.setTimeout(resolve, 250))
+            }
+          }
+          if (linked.length > 0) {
+            const names = linked
+              .slice(0, 3)
+              .map((hit) => String(hit.title || hit.path || ''))
+              .filter((name) => name !== '')
+              .join('、')
+            const more = linked.length > 3 ? ' 等' : ''
+            const ok = await confirmDialog(
+              t('note.deleteLinked')
+                .replace('{n}', String(linked.length))
+                .replace('{names}', names + more),
+              { confirmText: t('note.deleteLinkedOk'), cancelText: t('note.deleteLinkedCancel') },
+            )
+            // 不删就原样退回来（finally 会收掉忙碌态）
+            if (!ok) return
+          }
           await api('/delete', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },

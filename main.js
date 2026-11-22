@@ -8657,6 +8657,10 @@ var LEX = {
     "note.created": "\u5DF2\u65B0\u5EFA",
     "note.saved": "\u5DF2\u4FDD\u5B58",
     "note.deleted": "\u5DF2\u79FB\u5165\u56DE\u6536\u7AD9",
+    // 删之前先说清「还有谁提到了它」：断链在别处，删的人看不见。
+    "note.deleteLinked": "\u6709 {n} \u7BC7\u63D0\u5230\u4E86\u8FD9\u4E00\u7BC7\uFF08{names}\uFF09\u3002\u5220\u6389\u4E4B\u540E\u90A3\u51E0\u5904\u7684\u94FE\u63A5\u4F1A\u65AD\u6389\uFF0C\u8FD8\u662F\u5220\u5417\uFF1F",
+    "note.deleteLinkedOk": "\u8FD8\u662F\u8981\u5220",
+    "note.deleteLinkedCancel": "\u5148\u4E0D\u5220",
     "note.unsaved": "\u6709\u672A\u4FDD\u5B58\u7684\u4FEE\u6539",
     // 保存撞车：别处已经改过同一篇。{when} 换成那边改动的时间。
     "note.conflict": "\u8FD9\u4E00\u7BC7\u5728\u522B\u5904\u88AB\u6539\u8FC7\u4E86\uFF08{when}\uFF09\uFF0C\u4F60\u624B\u4E0A\u8FD9\u4E00\u7248\u8FD8\u6CA1\u5B58",
@@ -9223,6 +9227,9 @@ var LEX = {
     "note.created": "Created",
     "note.saved": "Saved",
     "note.deleted": "Moved to trash",
+    "note.deleteLinked": "{n} notes mention this one ({names}). Those links will break if you delete it. Delete anyway?",
+    "note.deleteLinkedOk": "Delete anyway",
+    "note.deleteLinkedCancel": "Keep it",
     "note.unsaved": "Unsaved changes",
     "note.conflict": "This note was changed elsewhere ({when}); your version is not saved yet",
     "note.conflictKeep": "Keep my version",
@@ -9783,6 +9790,9 @@ var LEX = {
     "note.created": "Aangemaakt",
     "note.saved": "Opgeslagen",
     "note.deleted": "Naar prullenbak",
+    "note.deleteLinked": "{n} notities verwijzen hiernaar ({names}). Die links breken als je dit verwijdert. Toch verwijderen?",
+    "note.deleteLinkedOk": "Toch verwijderen",
+    "note.deleteLinkedCancel": "Bewaren",
     "note.unsaved": "Niet-opgeslagen wijzigingen",
     "note.conflict": "Deze notitie is elders gewijzigd ({when}); jouw versie is nog niet opgeslagen",
     "note.conflictKeep": "Mijn versie bewaren",
@@ -14387,6 +14397,27 @@ ${insert}
     if (current === null) return;
     setBusy(true);
     try {
+      let linked = [];
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const back = await api("/backlinks?path=" + encodeURIComponent(current.path));
+          linked = back && Array.isArray(back.hits) ? back.hits : [];
+          break;
+        } catch {
+          linked = [];
+          if (attempt === 2) break;
+          await new Promise((resolve5) => window.setTimeout(resolve5, 250));
+        }
+      }
+      if (linked.length > 0) {
+        const names = linked.slice(0, 3).map((hit) => String(hit.title || hit.path || "")).filter((name) => name !== "").join("\u3001");
+        const more = linked.length > 3 ? " \u7B49" : "";
+        const ok = await confirmDialog(
+          t4("note.deleteLinked").replace("{n}", String(linked.length)).replace("{names}", names + more),
+          { confirmText: t4("note.deleteLinkedOk"), cancelText: t4("note.deleteLinkedCancel") }
+        );
+        if (!ok) return;
+      }
       await api("/delete", {
         method: "POST",
         headers: { "content-type": "application/json" },

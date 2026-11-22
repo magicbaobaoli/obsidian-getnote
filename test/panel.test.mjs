@@ -13465,3 +13465,185 @@ test('搜的时候把这次按什么在筛摆出来，点掉一颗就少一个�
 
   await clickTab('笔记')
 })
+
+
+test('删一篇之前先问一句「还有谁提到它」，断链长在别人正文里看不见', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+  await clickTab('笔记')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+  const targetPath = '删除反查验收/删除反查-被提到的那一篇.md'
+  const referrerPath = '删除反查验收/删除反查-提到它的那一篇.md'
+  await post('/getnote/create', {
+    dir: '删除反查验收',
+    title: '删除反查-被提到的那一篇',
+    content: ['# 删除反查-被提到的那一篇', '', '这一篇被别人引用了。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-del-link-a',
+  })
+  await post('/getnote/create', {
+    dir: '删除反查验收',
+    title: '删除反查-提到它的那一篇',
+    content: ['# 删除反查-提到它的那一篇', '', '这里提了一句 [[删除反查-被提到的那一篇]]。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-del-link-b',
+  })
+
+  // 退回空态，免得带着上一篇的阅读态进来
+  const backBtn = () => window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(async () => true)
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = backBtn()
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(220)
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  const searchBox = () => window.document.querySelector('.dshgn_search')
+  const clearSearch = async () => {
+    const box = searchBox()
+    if (box && String(box.value || '') !== '') {
+      box.value = ''
+      box.dispatchEvent(new window.Event('input', { bubbles: true }))
+      await sleep(400)
+    }
+  }
+  await clearSearch()
+  const allRow = Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+    const name = el.querySelector('.dshgn_treeName')
+    return name !== null && (name.textContent || '').trim() === '全部笔记'
+  })
+  if (allRow) allRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(700)
+
+  // 打开「被提到的那一篇」，再按笔记头那颗删除
+  const cardOf = (title) =>
+    Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => {
+      const label = el.querySelector('.dshgn_cardTitle')
+      return label !== null && (label.textContent || '').trim() === title
+    })
+  await waitFor(() => cardOf('删除反查-被提到的那一篇') !== undefined, 8000, '列表里出现被提到的那一篇')
+  cardOf('删除反查-被提到的那一篇').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(
+    () => {
+      const box = window.document.querySelector('.dshgn_note')
+      return box !== null && (box.textContent || '').includes('这一篇被别人引用了')
+    },
+    8000,
+    '打开被提到的那一篇',
+  )
+
+  // 只在笔记头里找：左栏、别的地方也可能有同名的按钮，全局找会抓错一颗。
+  const deleteBtn = () => {
+    const head = window.document.querySelector('.dshgn_noteHead')
+    if (head === null) return undefined
+    return Array.from(head.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '删除')
+  }
+  assert.ok(deleteBtn() !== undefined, '笔记头上该有删除那颗按钮')
+
+  const asked = []
+  panel.setConfirmDialog((message, options) => {
+    asked.push({ message, options })
+    // 先选「先不删」：这时候一篇都不该少
+    return Promise.resolve(false)
+  })
+  try {
+    // 刚打开那一篇时 busy 还是 true，删除那颗按钮是 disabled 的，点下去什么都不发生。
+    // 等它可点了再按，并且连按几次——反查要读全库，慢的时候一次点击可能还没轮到。
+    await waitFor(
+      () => {
+        const btn = deleteBtn()
+        return btn !== undefined && btn.disabled !== true
+      },
+      8000,
+      '删除那颗按钮可点',
+    )
+    // 只按一次：连按会让后一次把前一次的反查 abort 掉，反而问不出来。
+    deleteBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => asked.length > 0, 10000, '删除前应该先问一句「还有谁提到它」')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  const first = asked[0]
+  assert.ok(
+    String(first.message).includes('篇提到了这一篇'),
+    '问的话要说清有谁提到了它：' + first.message,
+  )
+  assert.ok(
+    String(first.message).includes('删除反查-提到它的那一篇'),
+    '要把提到它的篇名点出来：' + first.message,
+  )
+  assert.equal(first.options && first.options.confirmText, '还是要删', '确认那颗写「还是要删」')
+  assert.equal(first.options && first.options.cancelText, '先不删', '取消那颗写「先不删」')
+
+  // 选了「先不删」：这一篇还在，正文读得回来
+  await sleep(600)
+  const stillThere = await realFetch(
+    server.origin + '/getnote/read?path=' + encodeURIComponent(targetPath),
+    { headers: { 'x-getnote-token': server.token } },
+  )
+  assert.equal(stillThere.status, 200, '选了「先不删」之后这一篇不该被删掉')
+
+  // 再来一次，这回选「还是要删」
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    deleteBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(
+      () => rootNode().getAttribute('data-has-note') === 'false',
+      8000,
+      '确认之后这一篇该被删进回收站',
+    )
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  // 删除是异步落盘的（先快照再挪进 .trash），读到 404 之前多等一会儿。
+  const readStatus = async () => {
+    const res = await realFetch(
+      server.origin + '/getnote/read?path=' + encodeURIComponent(targetPath),
+      { headers: { 'x-getnote-token': server.token } },
+    )
+    return res.status
+  }
+  let goneStatus = 200
+  for (let i = 0; i < 20; i += 1) {
+    goneStatus = await readStatus()
+    if (goneStatus !== 200) break
+    await sleep(300)
+  }
+  assert.notEqual(goneStatus, 200, '确认删除之后这一篇就读不回来了（实际 ' + goneStatus + '）')
+  // 读不到还不够：要确认它确实进了回收站，而不是被弄丢了。
+  const trashRes = await realFetch(server.origin + '/getnote/trash/list', {
+    headers: { 'x-getnote-token': server.token },
+  })
+  const trash = await trashRes.json()
+  const inTrash = (trash.items || []).some(
+    (item) => String(item.originalName || '') === '删除反查-被提到的那一篇.md',
+  )
+  assert.ok(inTrash, '删掉的那一篇应该在回收站里：' + JSON.stringify((trash.items || []).map((one) => one.originalName)))
+  // 提到它的那一篇原样留着——删的是被提到的那一篇
+  const referrer = await realFetch(
+    server.origin + '/getnote/read?path=' + encodeURIComponent(referrerPath),
+    { headers: { 'x-getnote-token': server.token } },
+  )
+  assert.equal(referrer.status, 200, '提到它的那一篇不该被牵连')
+
+  await clickTab('笔记')
+})
