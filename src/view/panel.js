@@ -933,6 +933,10 @@ async function saveFile(url, filename) {
         'history.diffAdded': '恢复后多 {n} 行',
         'history.diffRemoved': '恢复后少 {n} 行',
         'history.diffSame': '和现在一样',
+        // 版本预览也能在「渲染」和「原文」之间切：快照存的是整份文件，
+        // 想核对空格、缩进、frontmatter 时得看原文。
+        'history.modeRendered': '渲染',
+        'history.modeRaw': '原文',
         'archive.title': '整库备份',
         'archive.desc': '导出成一个 zip（含附件），换电脑或重装时导回来。导入逐篇合并，不覆盖你已有的笔记。',
         'archive.export': '导出 zip',
@@ -1563,6 +1567,8 @@ async function saveFile(url, filename) {
         'history.diffAdded': '{n} lines more if restored',
         'history.diffRemoved': '{n} lines fewer if restored',
         'history.diffSame': 'Same as now',
+        'history.modeRendered': 'Rendered',
+        'history.modeRaw': 'Raw',
         'archive.title': 'Whole-vault backup',
         'archive.desc': 'Exports one zip (attachments included) so you can restore on another machine. Import merges note by note and never overwrites what you already have.',
         'archive.export': 'Export zip',
@@ -2184,6 +2190,8 @@ async function saveFile(url, filename) {
         'history.diffAdded': '{n} regels meer als je herstelt',
         'history.diffRemoved': '{n} regels minder als je herstelt',
         'history.diffSame': 'Hetzelfde als nu',
+        'history.modeRendered': 'Weergegeven',
+        'history.modeRaw': 'Ruw',
         'archive.title': 'Volledige back-up van de map',
         'archive.desc': 'Exporteert één zip (bijlagen inbegrepen) zodat je op een andere machine kunt herstellen. Importeren voegt notitie voor notitie samen en overschrijft nooit wat je al hebt.',
         'archive.export': 'Zip exporteren',
@@ -3359,6 +3367,24 @@ async function saveFile(url, filename) {
         }
       }
       return String(value).trim()
+    }
+
+    /**
+     * 快照全文 → 只留正文。
+     *
+     * 快照存的是整份文件，开头带 YAML frontmatter。渲染模式直接铺出去的话，
+     * `title: xxx` / `note_id: "..."` 会变成正文里的几行字——阅读区早就不这么干了
+     * （那边用的是 readNote 切好的 body），版本预览没理由不一样。
+     * 原文模式仍然给整份文件：想核对 frontmatter 有没有被改过，就得看得到它。
+     */
+    function bodyOfSnapshot(text) {
+      const src = String(text === null || text === undefined ? '' : text)
+      if (!/^---\r?\n/.test(src)) return src
+      const end = src.indexOf('\n---', 4)
+      if (end === -1) return src
+      const close = src.indexOf('\n', end + 1)
+      if (close === -1) return ''
+      return src.slice(close + 1)
     }
 
     /**
@@ -16386,6 +16412,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       const [historyItems, setHistoryItems] = React.useState(null)
       const [historyPreview, setHistoryPreview] = React.useState(null)
       const [historyBusy, setHistoryBusy] = React.useState(false)
+      // 这一版怎么看：渲染（默认，和阅读区同一套排版）还是原文（想核对空格、
+      // 缩进、frontmatter 时用）。和冲突比对页的两档是同一个意思。
+      const [historyMode, setHistoryMode] = React.useState('rendered')
       // 插入附件的文件选择器：按钮只是把它点开，真正干活的是 onAttach
       const attachRef = React.useRef(null)
       // 图片放大查看：{ src, name } 或 null。面板里正文的图只有 200px 高，
@@ -17941,14 +17970,46 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                             t,
                           ),
                         ),
+                        // 这一版怎么看：和冲突比对页同两档。渲染看得清结构，
+                        // 原文核对得了空格与 frontmatter。
+                        h(
+                          'div',
+                          { className: 'dshgn_rowLine', style: { gap: 4, marginLeft: 'auto' } },
+                          h(
+                            'button',
+                            {
+                              type: 'button',
+                              className: 'dshgn_chip' + (historyMode === 'rendered' ? ' dshgn_chipOn' : ''),
+                              onClick: () => setHistoryMode('rendered'),
+                            },
+                            t('history.modeRendered'),
+                          ),
+                          h(
+                            'button',
+                            {
+                              type: 'button',
+                              className: 'dshgn_chip' + (historyMode === 'raw' ? ' dshgn_chipOn' : ''),
+                              onClick: () => setHistoryMode('raw'),
+                            },
+                            t('history.modeRaw'),
+                          ),
+                        ),
                         h(
                           'button',
-                          { type: 'button', className: 'dshgn_btn dshgn_btnPri', style: { marginLeft: 'auto' }, onClick: () => void restoreHistory(historyPreview.name), disabled: historyBusy },
+                          { type: 'button', className: 'dshgn_btn dshgn_btnPri', onClick: () => void restoreHistory(historyPreview.name), disabled: historyBusy },
                           t('history.restore'),
                         ),
                         h('button', { type: 'button', className: 'dshgn_btn', onClick: () => setHistoryPreview(null), disabled: historyBusy }, t('action.back')),
                       ),
-                      h('pre', { className: 'dshgn_diffBody', style: { flex: 1, minHeight: 0 } }, historyPreview.content),
+                      // 快照是整份文件：渲染模式只铺正文（frontmatter 交给阅读区
+                      // 那套规则处理），原文模式一字不改地铺出来。
+                      historyMode === 'raw'
+                        ? h('pre', { className: 'dshgn_diffBody', style: { flex: 1, minHeight: 0 } }, historyPreview.content)
+                        : h(
+                            'div',
+                            { className: 'dshgn_diffBody dshgn_diffMd', style: { flex: 1, minHeight: 0 } },
+                            renderMarkdown(bodyOfSnapshot(historyPreview.content), { assets: [], t }),
+                          ),
                     )
                   : historyItems === null
                     ? h('div', { className: 'dshgn_emptyState' }, h('span', { className: 'dshgn_spin' }))
@@ -19150,7 +19211,7 @@ export const __internals = {
   TrashPane, TodoPane, renderEmbed, assetLabel, ThemeCard, readSession, writeSession, SESSION_KEY,
   themeVars, parseHex, rgbToHsl, hslToHex, ConflictPane, ArchiveCard, CardPane,
   TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale, HistoryCard,
-  reportSync, dailyTemplateOf, frontmatterText, isTagKey, FollowCard, parseTable, countWords, readingMinutes, diffLineCounts,
+  reportSync, dailyTemplateOf, frontmatterText, bodyOfSnapshot, isTagKey, FollowCard, parseTable, countWords, readingMinutes, diffLineCounts,
   isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote, scrollToFootnoteRef, parseImageSize, renderParagraph, blockTextOf, markdownLinkTarget,
   tagBodyOf, ZoomOverlay, continueListLine, indentLines, wrapInline, linkPaste, wikilinkQueryAt, wikilinkMatches, tagQueryAt, tagMatches, findInBody, findAllBodyMatches, countTextMatches, findInBodyMatch, findInText, textHasParts,
       readScrollMarks, writeScrollMark, scrollMarkOf, SCROLL_KEY,

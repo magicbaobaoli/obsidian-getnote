@@ -2735,6 +2735,14 @@ test('笔记头部的属性摊在正文上方，标签点一下就去筛', async
   assert.equal(isTagKey('tags'), true)
   assert.equal(isTagKey('Tags'), true, '大小写不该影响判断')
   assert.equal(isTagKey('来源'), false)
+
+  // ⑤ 版本预览只铺正文：快照是整份文件，frontmatter 不该混进渲染结果
+  const { bodyOfSnapshot } = panel.__internals
+  assert.equal(bodyOfSnapshot('---\ntitle: 甲\n---\n\n正文一行\n'), '\n正文一行\n', '头部切掉，正文原样留着')
+  assert.equal(bodyOfSnapshot('# 没有头部\n正文\n'), '# 没有头部\n正文\n', '没有头部就整份都是正文')
+  assert.equal(bodyOfSnapshot('---\r\ntitle: 甲\r\n---\r\n\r\n正文\r\n'), '\r\n正文\r\n', 'CRLF 的头部也切得掉')
+  assert.equal(bodyOfSnapshot('---\ntitle: 甲\n'), '---\ntitle: 甲\n', '没闭合的头部不算头部，原样给回去')
+  assert.equal(bodyOfSnapshot(null), '', '空值给空串，别给 null')
 })
 
 /**
@@ -14943,4 +14951,145 @@ test('版本历史留几版是设置项：改小当场裁、乱填先拦住', as
   assert.equal(await limitBecomes(10), true, '收尾要改回 10')
 
   await clickTab('笔记')
+})
+
+/**
+ * 版本历史预览的两档看法。
+ *
+ * 快照存的是整份文件（带 YAML frontmatter）。原来预览只有裸文本一种看法，
+ * 一篇带表格、标题的稿子翻回旧版时得像看配置文件一样读。冲突比对页早就有
+ * 「渲染 / 原文」两档，这里补齐同一套。
+ */
+test('版本历史里那一版能在「渲染」和「原文」之间切，渲染时不把 frontmatter 铺成正文', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = window.document.querySelector('.dshgn_noteBack')
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(200)
+    }
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox) {
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(400)
+  }
+
+  // 第一版带 frontmatter；再存一版，第一版就留成了快照
+  const head = ['---', 'title: 历史预览-带头部', 'note_id: "seed-history-mode"', '---', ''].join('\n')
+  const made = await post('/getnote/create', {
+    dir: '历史预览验收',
+    title: '历史预览-带头部',
+    content: head + ['# 历史预览-带头部', '', '粗体一行', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-history-mode-a',
+  })
+  const notePath = made.path
+  assert.ok(typeof notePath === 'string' && notePath !== '', '那一篇建好了')
+  await post('/getnote/save', {
+    path: notePath,
+    content: head + ['# 历史预览-带头部', '', '粗体一行', '后来改过的一行', ''].join('\n'),
+  })
+
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(700)
+
+  const treeRow = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find(
+      (el) => (el.querySelector('.dshgn_treeName') || {}).textContent === '历史预览验收',
+    )
+  await waitFor(() => treeRow() !== undefined, 8000, '左栏出现这个目录')
+  treeRow().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+
+  const cardOf = () => {
+    const cards = Array.from(window.document.querySelectorAll('.dshgn_card'))
+    return cards.find((el) => {
+      const node = el.querySelector('.dshgn_cardTitle')
+      return node !== null && (node.textContent || '').trim() === '历史预览-带头部'
+    })
+  }
+  await waitFor(() => cardOf() !== undefined, 8000, '列表里出现这一篇')
+  cardOf().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 8000, '这一篇打开')
+
+  const historyBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '版本历史')
+  await waitFor(() => historyBtn() !== undefined, 5000, '笔记头上有版本历史那颗按钮')
+  historyBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_historyItem') !== null, 8000, '历史列表出来了')
+  window.document.querySelector('.dshgn_historyItem').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_historyDiff') !== null, 8000, '点开一版')
+
+  const chips = () => Array.from(window.document.querySelectorAll('.dshgn_historyPane .dshgn_chip'))
+  await waitFor(() => chips().length === 2, 5000, '预览上有「渲染 / 原文」两颗')
+  assert.equal((chips()[0].textContent || '').trim(), '渲染', '第一颗是渲染')
+  assert.equal((chips()[1].textContent || '').trim(), '原文', '第二颗是原文')
+  assert.ok(chips()[0].className.includes('dshgn_chipOn'), '默认停在渲染这一档')
+
+  // ① 渲染：只铺正文，frontmatter 那几行不该变成正文里的字
+  const bodyNow = () => window.document.querySelector('.dshgn_diffBody')
+  const rendered = bodyNow()
+  assert.ok(rendered !== null, '渲染模式下也该有正文区')
+  assert.ok(rendered.className.includes('dshgn_diffMd'), '渲染模式挂的是排版那一套样式：' + rendered.className)
+  const renderedText = String(rendered.textContent || '')
+  assert.ok(renderedText.includes('粗体一行'), '正文要渲染出来')
+  assert.ok(!renderedText.includes('note_id'), 'frontmatter 不该铺进正文：' + renderedText.slice(0, 120))
+  assert.ok(!renderedText.includes('title: 历史预览-带头部'), '头部那行 title 也不该铺进来')
+
+  // ② 原文：整份文件一字不改，想核对头部有没有被动过就看这一档
+  chips()[1].dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(200)
+  const raw = bodyNow()
+  assert.equal(raw.tagName, 'PRE', '原文模式是等宽的 pre')
+  const rawText = String(raw.textContent || '')
+  assert.ok(rawText.includes('note_id: "seed-history-mode"'), '原文要看得见 frontmatter：' + rawText.slice(0, 120))
+  assert.ok(rawText.includes('# 历史预览-带头部'), '原文里标题还是带井号的那一行')
+  assert.ok(chips()[1].className.includes('dshgn_chipOn'), '切过去之后亮的是原文这一档')
+
+  // ③ 切回渲染：状态跟着回来，不是单向的
+  chips()[0].dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(200)
+  assert.ok(bodyNow().className.includes('dshgn_diffMd'), '切回渲染还是排版那一套')
+
+  // 收尾：关掉历史、退回列表，别把状态留给下一条用例
+  const closeBtn = Array.from(window.document.querySelectorAll('.dshgn_historyHead .dshgn_btn')).find(
+    (el) => (el.textContent || '').trim() === '关闭',
+  )
+  if (closeBtn) {
+    closeBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(250)
+  }
+  const back = window.document.querySelector('.dshgn_noteBack')
+  if (back) {
+    back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+  const allBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find(
+      (el) => (el.querySelector('.dshgn_treeName') || {}).textContent === '全部笔记',
+    )
+  if (allBtn() !== undefined) {
+    allBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
 })

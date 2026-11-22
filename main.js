@@ -9295,6 +9295,10 @@ var LEX = {
     "history.diffAdded": "\u6062\u590D\u540E\u591A {n} \u884C",
     "history.diffRemoved": "\u6062\u590D\u540E\u5C11 {n} \u884C",
     "history.diffSame": "\u548C\u73B0\u5728\u4E00\u6837",
+    // 版本预览也能在「渲染」和「原文」之间切：快照存的是整份文件，
+    // 想核对空格、缩进、frontmatter 时得看原文。
+    "history.modeRendered": "\u6E32\u67D3",
+    "history.modeRaw": "\u539F\u6587",
     "archive.title": "\u6574\u5E93\u5907\u4EFD",
     "archive.desc": "\u5BFC\u51FA\u6210\u4E00\u4E2A zip\uFF08\u542B\u9644\u4EF6\uFF09\uFF0C\u6362\u7535\u8111\u6216\u91CD\u88C5\u65F6\u5BFC\u56DE\u6765\u3002\u5BFC\u5165\u9010\u7BC7\u5408\u5E76\uFF0C\u4E0D\u8986\u76D6\u4F60\u5DF2\u6709\u7684\u7B14\u8BB0\u3002",
     "archive.export": "\u5BFC\u51FA zip",
@@ -9920,6 +9924,8 @@ var LEX = {
     "history.diffAdded": "{n} lines more if restored",
     "history.diffRemoved": "{n} lines fewer if restored",
     "history.diffSame": "Same as now",
+    "history.modeRendered": "Rendered",
+    "history.modeRaw": "Raw",
     "archive.title": "Whole-vault backup",
     "archive.desc": "Exports one zip (attachments included) so you can restore on another machine. Import merges note by note and never overwrites what you already have.",
     "archive.export": "Export zip",
@@ -10537,6 +10543,8 @@ var LEX = {
     "history.diffAdded": "{n} regels meer als je herstelt",
     "history.diffRemoved": "{n} regels minder als je herstelt",
     "history.diffSame": "Hetzelfde als nu",
+    "history.modeRendered": "Weergegeven",
+    "history.modeRaw": "Ruw",
     "archive.title": "Volledige back-up van de map",
     "archive.desc": "Exporteert \xE9\xE9n zip (bijlagen inbegrepen) zodat je op een andere machine kunt herstellen. Importeren voegt notitie voor notitie samen en overschrijft nooit wat je al hebt.",
     "archive.export": "Zip exporteren",
@@ -11420,6 +11428,15 @@ function frontmatterText(value) {
     }
   }
   return String(value).trim();
+}
+function bodyOfSnapshot(text) {
+  const src = String(text === null || text === void 0 ? "" : text);
+  if (!/^---\r?\n/.test(src)) return src;
+  const end = src.indexOf("\n---", 4);
+  if (end === -1) return src;
+  const close = src.indexOf("\n", end + 1);
+  if (close === -1) return "";
+  return src.slice(close + 1);
 }
 function aliasesOf(entry) {
   const data = entry !== null && entry !== void 0 && typeof entry === "object" ? entry.aliases : null;
@@ -22219,6 +22236,7 @@ function NotePane(props) {
   const [historyItems, setHistoryItems] = h2(null);
   const [historyPreview, setHistoryPreview] = h2(null);
   const [historyBusy, setHistoryBusy] = h2(false);
+  const [historyMode, setHistoryMode] = h2("rendered");
   const attachRef = A2(null);
   const [zoom, setZoom] = h2(null);
   const zoomRef = A2(null);
@@ -23469,14 +23487,44 @@ ${t4("tree.menuReveal")}` : absolute,
               t4
             )
           ),
+          // 这一版怎么看：和冲突比对页同两档。渲染看得清结构，
+          // 原文核对得了空格与 frontmatter。
+          h4(
+            "div",
+            { className: "dshgn_rowLine", style: { gap: 4, marginLeft: "auto" } },
+            h4(
+              "button",
+              {
+                type: "button",
+                className: "dshgn_chip" + (historyMode === "rendered" ? " dshgn_chipOn" : ""),
+                onClick: () => setHistoryMode("rendered")
+              },
+              t4("history.modeRendered")
+            ),
+            h4(
+              "button",
+              {
+                type: "button",
+                className: "dshgn_chip" + (historyMode === "raw" ? " dshgn_chipOn" : ""),
+                onClick: () => setHistoryMode("raw")
+              },
+              t4("history.modeRaw")
+            )
+          ),
           h4(
             "button",
-            { type: "button", className: "dshgn_btn dshgn_btnPri", style: { marginLeft: "auto" }, onClick: () => void restoreHistory(historyPreview.name), disabled: historyBusy },
+            { type: "button", className: "dshgn_btn dshgn_btnPri", onClick: () => void restoreHistory(historyPreview.name), disabled: historyBusy },
             t4("history.restore")
           ),
           h4("button", { type: "button", className: "dshgn_btn", onClick: () => setHistoryPreview(null), disabled: historyBusy }, t4("action.back"))
         ),
-        h4("pre", { className: "dshgn_diffBody", style: { flex: 1, minHeight: 0 } }, historyPreview.content)
+        // 快照是整份文件：渲染模式只铺正文（frontmatter 交给阅读区
+        // 那套规则处理），原文模式一字不改地铺出来。
+        historyMode === "raw" ? h4("pre", { className: "dshgn_diffBody", style: { flex: 1, minHeight: 0 } }, historyPreview.content) : h4(
+          "div",
+          { className: "dshgn_diffBody dshgn_diffMd", style: { flex: 1, minHeight: 0 } },
+          renderMarkdown(bodyOfSnapshot(historyPreview.content), { assets: [], t: t4 })
+        )
       ) : historyItems === null ? h4("div", { className: "dshgn_emptyState" }, h4("span", { className: "dshgn_spin" })) : historyItems.length === 0 ? h4(
         "div",
         { className: "dshgn_empty" },
