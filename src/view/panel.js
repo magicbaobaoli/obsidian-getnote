@@ -604,6 +604,11 @@ async function saveFile(url, filename) {
         'batch.partial': '有 {n} 篇没成',
         'batch.failTitle': '这几篇没处理成',
         'batch.failClose': '知道了',
+        // 一次要勾十几篇时，一张一张点勾选框是纯体力活；连着勾一段才是人
+        // 在文件管理器里习惯的那套（Shift 点第二下）。提示挂在勾选框上，
+        // 没勾过的时候也不占地方。
+        'batch.pickHint': '按住 Shift 再点一张，连着把这一摊都勾上',
+        'batch.shiftHint': '按住 Shift 点另一张，连着勾一段',
         'search.searching': '搜索中…',
         'search.clear': '清空',
         'search.copy': '复制这次搜到的 {n} 篇（名字和位置）',
@@ -1181,6 +1186,8 @@ async function saveFile(url, filename) {
         'batch.partial': '{n} did not go through',
         'batch.failTitle': 'These did not go through',
         'batch.failClose': 'Got it',
+        'batch.pickHint': 'Hold Shift and click another card to select the whole stretch',
+        'batch.shiftHint': 'Hold Shift and click another card to select a stretch',
         'search.searching': 'Searching…',
         'search.clear': 'Clear',
         'search.copy': 'Copy the {n} notes found (names and places)',
@@ -1741,6 +1748,8 @@ async function saveFile(url, filename) {
         'batch.partial': '{n} is niet gelukt',
         'batch.failTitle': 'Deze zijn niet gelukt',
         'batch.failClose': 'Begrepen',
+        'batch.pickHint': 'Houd Shift ingedrukt en klik nog een kaart om het hele stuk te selecteren',
+        'batch.shiftHint': 'Houd Shift ingedrukt en klik nog een kaart voor een heel stuk',
         'search.searching': 'Zoeken…',
         'search.clear': 'Wissen',
         'search.copy': 'Kopieer de {n} gevonden notities (namen en plaatsen)',
@@ -7853,6 +7862,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 批量里没成的那几篇。/batch 一直有回 failed，只是以前没人读：选十篇加标签、
       // 其中两篇被别的程序占着，界面上只写「已处理 8」，剩下两篇去哪了没人说。
       const [batchFails, setBatchFails] = React.useState([])
+      // Shift 连着勾一段要有个起点：上一次点的那一张。它和 picked 分开记，
+      // 因为「起点」不一定是勾着的（再 Shift 点一下就是整段取消）。
+      const [pickAnchor, setPickAnchor] = React.useState('')
       const pickedCount = picked.size
 
       // 把服务端回的 failed 收成「哪几篇、为什么」。只留前 8 条：一次批量里
@@ -7869,14 +7881,45 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         return list.length
       }, [])
 
-      const togglePick = React.useCallback((path) => {
-        setPicked((prev) => {
-          const next = new Set(prev)
-          if (next.has(path)) next.delete(path)
-          else next.add(path)
-          return next
-        })
-      }, [])
+      // 把「起点」到「这一张」之间的一段一起勾上（或一起取消）。
+      // 只按当前这次筛出来的顺序算，跳过的那些卡片不该被顺手勾进来。
+      const pickRange = React.useCallback(
+        (fromPath, toPath) => {
+          const paths = shown.map((entry) => entry.path)
+          const a = paths.indexOf(fromPath)
+          const b = paths.indexOf(toPath)
+          if (a === -1 || b === -1) return
+          const slice = a <= b ? paths.slice(a, b + 1) : paths.slice(b, a + 1)
+          setPicked((prev) => {
+            const next = new Set(prev)
+            // 这一段本来就全勾着，那这一下就是整段取消——再点一次不该什么都不变。
+            const allOn = slice.every((path) => prev.has(path))
+            for (const path of slice) {
+              if (allOn) next.delete(path)
+              else next.add(path)
+            }
+            return next
+          })
+        },
+        [shown],
+      )
+
+      const togglePick = React.useCallback(
+        (path, extend = false) => {
+          if (extend && pickAnchor !== '' && pickAnchor !== path) {
+            pickRange(pickAnchor, path)
+            return
+          }
+          setPickAnchor(path)
+          setPicked((prev) => {
+            const next = new Set(prev)
+            if (next.has(path)) next.delete(path)
+            else next.add(path)
+            return next
+          })
+        },
+        [pickAnchor, pickRange],
+      )
 
       const clearPicked = React.useCallback(() => {
         setPicked(new Set())
@@ -9634,16 +9677,18 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                           role: 'checkbox',
                           'aria-checked': picked.has(entry.path) ? 'true' : 'false',
                           'aria-label': t('batch.pick'),
+                          // 勾过一张之后提示改口：这时 Shift 点第二下才有意义。
+                          title: pickedCount > 0 ? t('batch.shiftHint') : t('batch.pickHint'),
                           onClick: (event) => {
                             // 勾选不该顺带把笔记打开
                             event.stopPropagation()
-                            togglePick(entry.path)
+                            togglePick(entry.path, event.shiftKey === true)
                           },
                           onKeyDown: (event) => {
                             if (event.key === 'Enter' || event.key === ' ') {
                               event.preventDefault()
                               event.stopPropagation()
-                              togglePick(entry.path)
+                              togglePick(entry.path, event.shiftKey === true)
                             }
                           },
                           tabIndex: 0,

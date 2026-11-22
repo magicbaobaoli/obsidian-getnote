@@ -13262,3 +13262,117 @@ test('批量里有几篇没成时，把那几篇和原因摊出来，而不是�
     await clickTab('笔记')
   }
 })
+test('勾了一张之后按住 Shift 再点一张，就把这一摊连着勾上，再点一次整段取消', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const backBtn = () => window.document.querySelector('.dshgn_noteBack')
+
+  panel.setConfirmDialog(async () => true)
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = backBtn()
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(220)
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox !== null) {
+    setValue.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(260)
+  }
+
+  // 四篇：够验「中间那几张一起勾上」，又不会让列表滚动出视口。
+  for (let i = 1; i <= 4; i += 1) {
+    const res = await realFetch(server.origin + '/getnote/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({
+        dir: '连选验收',
+        title: '连选-' + String(i),
+        content: '正文',
+        withDatePrefix: false,
+        requestId: 'seed-shift-pick-' + String(i),
+      }),
+    })
+    assert.equal(res.status, 200, '建笔记要成功')
+  }
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+
+  const rowOf = (name) =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+      const label = el.querySelector('.dshgn_treeName')
+      return label !== null && (label.textContent || '').trim() === name
+    })
+  const dirRow = await waitFor(() => rowOf('连选验收'), 8000, '左栏里出现这个目录')
+  dirRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+
+  const cards = () => Array.from(window.document.querySelectorAll('.dshgn_card'))
+  await waitFor(() => cards().length === 4, 8000, '这一摊正好四张卡片')
+  // 顺序按修改时间倒序，四篇同一秒建出来谁前谁后不可预测——所以不押名字，
+  // 只按屏幕上真实的顺序取第 1 / 3 / 4 张来验。
+  const list = cards()
+  const pickedOf = (card) => {
+    const box = card.querySelector('.dshgn_pickBox')
+    return box !== null && box.getAttribute('aria-checked') === 'true'
+  }
+  const pickedCount = () => list.filter((card) => pickedOf(card)).length
+  const clickBox = (card, shift) =>
+    card
+      .querySelector('.dshgn_pickBox')
+      .dispatchEvent(new window.MouseEvent('click', { bubbles: true, shiftKey: shift === true }))
+
+  // 提示先说明怎么连选，勾过之后改口成「按住 Shift 点另一张」。
+  assert.equal(
+    list[0].querySelector('.dshgn_pickBox').getAttribute('title'),
+    '按住 Shift 再点一张，连着把这一摊都勾上',
+    '还没勾过时要教一次怎么连选',
+  )
+
+  clickBox(list[0], false)
+  await sleep(200)
+  assert.equal(pickedCount(), 1, '普通点一下只勾这一张')
+  assert.equal(
+    list[1].querySelector('.dshgn_pickBox').getAttribute('title'),
+    '按住 Shift 点另一张，连着勾一段',
+    '勾过之后提示要改口',
+  )
+
+  clickBox(list[2], true)
+  await sleep(250)
+  assert.equal(pickedCount(), 3, 'Shift 点第三张要把前两张一起带上')
+  assert.ok(pickedOf(list[0]) && pickedOf(list[1]) && pickedOf(list[2]), '这一段三张都该是勾着的')
+  assert.ok(!pickedOf(list[3]), '这一段之外的那张不该被顺手勾进来')
+
+  // 再 Shift 点同一张：整段本来就全勾着，那这一下就是整段取消。
+  clickBox(list[2], true)
+  await sleep(250)
+  assert.equal(pickedCount(), 0, '再点一次要把整段一起取消')
+
+  // 普通点一张会重新定起点：先点第四张，再 Shift 点第二张，中间的都要勾上。
+  clickBox(list[3], false)
+  await sleep(200)
+  assert.equal(pickedCount(), 1, '重新点一下只勾这一张')
+  clickBox(list[1], true)
+  await sleep(250)
+  assert.equal(pickedCount(), 3, '反着连选也要把中间那段勾上')
+  assert.ok(pickedOf(list[1]) && pickedOf(list[2]) && pickedOf(list[3]), '反着选的这一段三张都该勾着')
+  assert.ok(!pickedOf(list[0]), '反着选时第四张之外的那张不该被勾上')
+
+  const clearBtn = Array.from(window.document.querySelectorAll('.dshgn_batchBtn')).find(
+    (el) => (el.textContent || '').trim() === '取消选择',
+  )
+  if (clearBtn) clearBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await clickTab('笔记')
+})

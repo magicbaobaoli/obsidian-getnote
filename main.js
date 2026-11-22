@@ -8491,6 +8491,11 @@ var LEX = {
     "batch.partial": "\u6709 {n} \u7BC7\u6CA1\u6210",
     "batch.failTitle": "\u8FD9\u51E0\u7BC7\u6CA1\u5904\u7406\u6210",
     "batch.failClose": "\u77E5\u9053\u4E86",
+    // 一次要勾十几篇时，一张一张点勾选框是纯体力活；连着勾一段才是人
+    // 在文件管理器里习惯的那套（Shift 点第二下）。提示挂在勾选框上，
+    // 没勾过的时候也不占地方。
+    "batch.pickHint": "\u6309\u4F4F Shift \u518D\u70B9\u4E00\u5F20\uFF0C\u8FDE\u7740\u628A\u8FD9\u4E00\u644A\u90FD\u52FE\u4E0A",
+    "batch.shiftHint": "\u6309\u4F4F Shift \u70B9\u53E6\u4E00\u5F20\uFF0C\u8FDE\u7740\u52FE\u4E00\u6BB5",
     "search.searching": "\u641C\u7D22\u4E2D\u2026",
     "search.clear": "\u6E05\u7A7A",
     "search.copy": "\u590D\u5236\u8FD9\u6B21\u641C\u5230\u7684 {n} \u7BC7\uFF08\u540D\u5B57\u548C\u4F4D\u7F6E\uFF09",
@@ -9063,6 +9068,8 @@ var LEX = {
     "batch.partial": "{n} did not go through",
     "batch.failTitle": "These did not go through",
     "batch.failClose": "Got it",
+    "batch.pickHint": "Hold Shift and click another card to select the whole stretch",
+    "batch.shiftHint": "Hold Shift and click another card to select a stretch",
     "search.searching": "Searching\u2026",
     "search.clear": "Clear",
     "search.copy": "Copy the {n} notes found (names and places)",
@@ -9618,6 +9625,8 @@ var LEX = {
     "batch.partial": "{n} is niet gelukt",
     "batch.failTitle": "Deze zijn niet gelukt",
     "batch.failClose": "Begrepen",
+    "batch.pickHint": "Houd Shift ingedrukt en klik nog een kaart om het hele stuk te selecteren",
+    "batch.shiftHint": "Houd Shift ingedrukt en klik nog een kaart voor een heel stuk",
     "search.searching": "Zoeken\u2026",
     "search.clear": "Wissen",
     "search.copy": "Kopieer de {n} gevonden notities (namen en plaatsen)",
@@ -14507,6 +14516,7 @@ ${insert}
   const [batchTagIndex, setBatchTagIndex] = h2(null);
   const [batchOpen, setBatchOpen] = h2(false);
   const [batchFails, setBatchFails] = h2([]);
+  const [pickAnchor, setPickAnchor] = h2("");
   const pickedCount = picked.size;
   const reportBatchFails = q2((json) => {
     const rows = json !== null && json !== void 0 && Array.isArray(json.failed) ? json.failed : [];
@@ -14517,14 +14527,41 @@ ${insert}
     setBatchFails(list.slice(0, 8));
     return list.length;
   }, []);
-  const togglePick = q2((path) => {
-    setPicked((prev) => {
-      const next = new Set(prev);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
-      return next;
-    });
-  }, []);
+  const pickRange = q2(
+    (fromPath, toPath) => {
+      const paths = shown.map((entry) => entry.path);
+      const a3 = paths.indexOf(fromPath);
+      const b3 = paths.indexOf(toPath);
+      if (a3 === -1 || b3 === -1) return;
+      const slice = a3 <= b3 ? paths.slice(a3, b3 + 1) : paths.slice(b3, a3 + 1);
+      setPicked((prev) => {
+        const next = new Set(prev);
+        const allOn = slice.every((path) => prev.has(path));
+        for (const path of slice) {
+          if (allOn) next.delete(path);
+          else next.add(path);
+        }
+        return next;
+      });
+    },
+    [shown]
+  );
+  const togglePick = q2(
+    (path, extend = false) => {
+      if (extend && pickAnchor !== "" && pickAnchor !== path) {
+        pickRange(pickAnchor, path);
+        return;
+      }
+      setPickAnchor(path);
+      setPicked((prev) => {
+        const next = new Set(prev);
+        if (next.has(path)) next.delete(path);
+        else next.add(path);
+        return next;
+      });
+    },
+    [pickAnchor, pickRange]
+  );
   const clearPicked = q2(() => {
     setPicked(/* @__PURE__ */ new Set());
     setBatchOpen(false);
@@ -16057,15 +16094,17 @@ ${insert}
                       role: "checkbox",
                       "aria-checked": picked.has(entry.path) ? "true" : "false",
                       "aria-label": t4("batch.pick"),
+                      // 勾过一张之后提示改口：这时 Shift 点第二下才有意义。
+                      title: pickedCount > 0 ? t4("batch.shiftHint") : t4("batch.pickHint"),
                       onClick: (event) => {
                         event.stopPropagation();
-                        togglePick(entry.path);
+                        togglePick(entry.path, event.shiftKey === true);
                       },
                       onKeyDown: (event) => {
                         if (event.key === "Enter" || event.key === " ") {
                           event.preventDefault();
                           event.stopPropagation();
-                          togglePick(entry.path);
+                          togglePick(entry.path, event.shiftKey === true);
                         }
                       },
                       tabIndex: 0
