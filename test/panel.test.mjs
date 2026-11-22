@@ -10097,6 +10097,17 @@ test('待办按篇分组：一篇一组写着还剩几条，一颗按钮把这�
   const allBtn = headA.querySelector('.dshgn_todoGroupAll')
   assert.ok(allBtn !== null, '组头右边该有一颗一起勾掉的按钮')
   assert.ok(String(allBtn.getAttribute('title') || '').includes('2'), '按钮上说清要勾几条')
+  // 提示条只活 2400ms，而后面那两步（等整组消失、再读一遍磁盘）可能更久。
+  // 所以从点下去那一刻就开始盯，而不是等做完别的事再去找——不然它早散了，
+  // 断言会莫名其妙地超时（CI 上就挂过这一条）。
+  const toastSeen = (async () => {
+    for (let i = 0; i < 200; i += 1) {
+      const node = window.document.querySelector('.dshgn_toast')
+      if (node !== null) return String(node.textContent || '')
+      await sleep(50)
+    }
+    return ''
+  })()
   allBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
   await waitFor(() => groupOf('分组验收甲') === null, 8000, '这一篇的待办都勾掉之后整组该消失')
   assert.ok(rowOf('乙的那一条') !== null, '别的篇不受影响')
@@ -10110,10 +10121,7 @@ test('待办按篇分组：一篇一组写着还剩几条，一颗按钮把这�
   assert.ok(note.content.includes('- [x] 甲的第二条'), '甲的第二条也要真的被勾上：' + note.content)
   assert.ok(!note.content.includes('- [ ] 甲的第一条'), '不该还留着没勾的那份')
 
-  const toastText = await waitFor(() => {
-    const node = window.document.querySelector('.dshgn_toast')
-    return node === null ? null : String(node.textContent || '')
-  })
+  const toastText = await toastSeen
   assert.ok(toastText.includes('2'), '勾完说一句勾了几条：' + toastText)
   await backToList()
 })
