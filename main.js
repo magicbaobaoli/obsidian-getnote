@@ -8886,6 +8886,7 @@ var LEX = {
     "list.sort": "\u6392\u5E8F",
     "list.sortTime": "\u6700\u8FD1\u6539\u7684\u5728\u524D",
     "list.sortName": "\u6309\u540D\u79F0",
+    "list.sortRelevance": "\u6309\u76F8\u5173\u5EA6",
     // 筛选条：左栏点了目录或标签之后，中栏得说清「现在筛的是什么」
     "filter.clear": "\u53BB\u6389\u8FD9\u4E2A\u7B5B\u9009",
     // 快捷键速查表：面板里能按的键散在编辑区提示、按钮 title 里，
@@ -9503,6 +9504,7 @@ var LEX = {
     "list.sort": "Sort",
     "list.sortTime": "Recently edited first",
     "list.sortName": "By name",
+    "list.sortRelevance": "By relevance",
     "filter.clear": "Remove this filter",
     "help.open": "Keyboard shortcuts",
     "help.title": "Keyboard shortcuts",
@@ -10099,6 +10101,7 @@ var LEX = {
     "list.sort": "Sorteren",
     "list.sortTime": "Recentst gewijzigd eerst",
     "list.sortName": "Op naam",
+    "list.sortRelevance": "Op relevantie",
     "filter.clear": "Deze filter weghalen",
     "help.open": "Sneltoetsen",
     "help.title": "Sneltoetsen",
@@ -13974,6 +13977,7 @@ function GetnotePage() {
   const [dirSort, setDirSort] = h2(() => makeSortPref("dshgn.sortDir").read());
   const [tagSort, setTagSort] = h2(() => makeSortPref("dshgn.sortTag").read());
   const [listSort, setListSort] = h2(() => makeSortPref("dshgn.listSort").read());
+  const [searchSort, setSearchSort] = h2(() => makeSortPref("dshgn.searchSort").read());
   const [colWidths, setColWidths] = h2(() => readColWidths());
   const [treeOpen, setTreeOpen] = h2(false);
   const [listLimit, setListLimit] = h2(LIST_PAGE_SIZE);
@@ -14208,7 +14212,13 @@ function GetnotePage() {
     },
     [query]
   );
-  const shown = searchMode ? hits : visible;
+  const hitsSorted = T2(() => {
+    if (hits === null || searchSort !== "name") return hits;
+    return [...hits].sort(
+      (a3, b3) => String(a3.title || "").localeCompare(String(b3.title || ""), "zh") || String(a3.path || "").localeCompare(String(b3.path || ""), "zh")
+    );
+  }, [hits, searchSort]);
+  const shown = searchMode ? hitsSorted : visible;
   const filterKey = `${query}\0${activeDir}\0${activeTag}`;
   const [lastFilterKey, setLastFilterKey] = h2(filterKey);
   if (lastFilterKey !== filterKey) {
@@ -16108,22 +16118,30 @@ ${insert}
             },
             h4(Icon, { name: "close", size: 11 })
           ),
-          // 排序开关。搜索态不显示：那边的顺序是相关度排的，换成本地排序
-          // 反而把最该看的那篇挤下去。
-          searchMode ? null : h4(
+          // 排序开关。搜索态也有：那边的默认顺序是相关度（服务端排的，最该看的
+          // 排前面），可「按名字找那一篇」一样是搜索时要做的动作——以前只能
+          // 清空搜索再找，等于把刚敲的词白敲一遍。两档各自记各自的选择。
+          h4(
             "button",
             {
               type: "button",
               className: "dshgn_listSort",
-              title: `${t4("list.sort")}\uFF1A${t4(listSort === "name" ? "list.sortName" : "list.sortTime")}`,
-              "aria-label": t4(listSort === "name" ? "list.sortName" : "list.sortTime"),
+              "data-mode": searchMode ? "search" : "list",
+              title: searchMode ? `${t4("list.sort")}\uFF1A${t4(searchSort === "name" ? "list.sortName" : "list.sortRelevance")}` : `${t4("list.sort")}\uFF1A${t4(listSort === "name" ? "list.sortName" : "list.sortTime")}`,
+              "aria-label": searchMode ? t4(searchSort === "name" ? "list.sortName" : "list.sortRelevance") : t4(listSort === "name" ? "list.sortName" : "list.sortTime"),
               onClick: () => {
+                if (searchMode) {
+                  const next2 = searchSort === "name" ? "time" : "name";
+                  setSearchSort(next2);
+                  makeSortPref("dshgn.searchSort").write(next2);
+                  return;
+                }
                 const next = listSort === "name" ? "time" : "name";
                 setListSort(next);
                 makeSortPref("dshgn.listSort").write(next);
               }
             },
-            listSort === "name" ? "A\u2192Z" : "\u23F1"
+            searchMode ? searchSort === "name" ? "A\u2192Z" : "\u2605" : listSort === "name" ? "A\u2192Z" : "\u23F1"
           ),
           // 搜完之后常常要把「这次找到的这几篇」抄给别人或者贴进别处。
           // 一篇篇去右键「复制引用」太慢，这里一次抄成一段清单：

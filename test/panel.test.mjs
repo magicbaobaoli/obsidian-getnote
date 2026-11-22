@@ -5220,15 +5220,46 @@ test('列表能在「最近改的」和「按名称」之间切，切完记着�
   assert.deepEqual(orderOf(), ['A', 'B'], '按名称时 A 在前')
   assert.equal(window.localStorage.getItem('dshgn.listSort'), 'name', '选择要记下来')
 
-  // 搜索态不给这个开关：那边的顺序是相关度排的，换成本地排序反而把最该看的挤下去
+  // 搜索态这个开关还在，只是换成另一档：默认按相关度（服务端排的），
+  // 点一下变「按名称」。两档各记各的，互不改写。
   setValue.call(searchBox, '排序验收')
   searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
   // 要等 /search 真的回来（那边有 220ms 防抖 + 一次请求），搜索态才成立
   await waitFor(
-    () => window.document.querySelector('.dshgn_listSort') === null,
+    () => {
+      const btn = window.document.querySelector('.dshgn_listSort')
+      return btn !== null && btn.getAttribute('data-mode') === 'search'
+    },
     5000,
-    '搜索时收起排序开关',
+    '搜索态仍摆着排序开关，只是换了一档',
   )
+  const searchSortBtn = window.document.querySelector('.dshgn_listSort')
+  assert.equal(searchSortBtn.textContent, '★', '搜索态默认按相关度')
+  assert.ok(
+    String(searchSortBtn.getAttribute('title') || '').includes('按相关度'),
+    '悬停要说清这会儿按什么排：' + searchSortBtn.getAttribute('title'),
+  )
+  searchSortBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(220)
+  assert.equal(searchSortBtn.textContent, 'A→Z', '点一下搜索态切到按名称')
+  assert.equal(window.localStorage.getItem('dshgn.searchSort'), 'name', '搜索态的排序也要记下来')
+  assert.equal(
+    window.localStorage.getItem('dshgn.listSort'),
+    'name',
+    '搜索态切排序不该顺手改掉列表那一档',
+  )
+  // 按名称时命中是按名字排的
+  const searchOrder = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_card'))
+      .map((el) => el.textContent || '')
+      .filter((text) => text.includes('排序验收'))
+      .map((text) => (text.includes('排序验收A') ? 'A' : 'B'))
+  assert.deepEqual(searchOrder(), ['A', 'B'], '搜索态按名称时 A 在前')
+  // 切回相关度，把这一档也还原
+  searchSortBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(220)
+  assert.equal(window.localStorage.getItem('dshgn.searchSort'), 'time')
+  window.localStorage.removeItem('dshgn.searchSort')
 
   setValue.call(searchBox, '')
   searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))

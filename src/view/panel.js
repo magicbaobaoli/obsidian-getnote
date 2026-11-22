@@ -652,6 +652,7 @@ async function saveFile(url, filename) {
         'list.sort': '排序',
         'list.sortTime': '最近改的在前',
         'list.sortName': '按名称',
+        'list.sortRelevance': '按相关度',
         // 筛选条：左栏点了目录或标签之后，中栏得说清「现在筛的是什么」
         'filter.clear': '去掉这个筛选',
         // 快捷键速查表：面板里能按的键散在编辑区提示、按钮 title 里，
@@ -1274,6 +1275,7 @@ async function saveFile(url, filename) {
         'list.sort': 'Sort',
         'list.sortTime': 'Recently edited first',
         'list.sortName': 'By name',
+        'list.sortRelevance': 'By relevance',
         'filter.clear': 'Remove this filter',
         'help.open': 'Keyboard shortcuts',
         'help.title': 'Keyboard shortcuts',
@@ -1875,6 +1877,7 @@ async function saveFile(url, filename) {
         'list.sort': 'Sorteren',
         'list.sortTime': 'Recentst gewijzigd eerst',
         'list.sortName': 'Op naam',
+        'list.sortRelevance': 'Op relevantie',
         'filter.clear': 'Deze filter weghalen',
         'help.open': 'Sneltoetsen',
         'help.title': 'Sneltoetsen',
@@ -6609,6 +6612,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 就只能靠搜索框。它跟左栏那两个开关分开存：列表要的是「最近改的」
       // 和「名字好找」，没有「按条数」这一档。
       const [listSort, setListSort] = React.useState(() => makeSortPref('dshgn.listSort').read())
+      // 搜索结果的顺序默认按相关度（服务端排好的）。可搜索态一样需要「按名字找
+      // 那一篇」这个动作，所以另存一档：它不重新问服务端，只把手上这批命中重排。
+      const [searchSort, setSearchSort] = React.useState(() => makeSortPref('dshgn.searchSort').read())
       // 三栏宽度。拖动过程中只改内存状态（每帧都写 localStorage 会卡），
       // 松手后由下面那个 effect 落盘。
       const [colWidths, setColWidths] = React.useState(() => readColWidths())
@@ -6954,7 +6960,17 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         },
         [query],
       )
-      const shown = searchMode ? hits : visible
+      // 切成「按名称」时只重排这一屏的命中：结果本来就在手上，不必再打一次
+      // /search——那边按相关度排是为了「最该看的排前面」，重排是另一件事。
+      const hitsSorted = React.useMemo(() => {
+        if (hits === null || searchSort !== 'name') return hits
+        return [...hits].sort(
+          (a, b) =>
+            String(a.title || '').localeCompare(String(b.title || ''), 'zh') ||
+            String(a.path || '').localeCompare(String(b.path || ''), 'zh'),
+        )
+      }, [hits, searchSort])
+      const shown = searchMode ? hitsSorted : visible
       // 只渲染前 listLimit 条。切查询/目录/标签时回到初始窗口，否则在新目录里
       // 还留着一个巨大的窗口，等于没省。
       //
@@ -9328,25 +9344,41 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                     },
                     h(Icon, { name: 'close', size: 11 }),
                   ),
-              // 排序开关。搜索态不显示：那边的顺序是相关度排的，换成本地排序
-              // 反而把最该看的那篇挤下去。
-              searchMode
-                ? null
-                : h(
-                    'button',
-                    {
-                      type: 'button',
-                      className: 'dshgn_listSort',
-                      title: `${t('list.sort')}：${t(listSort === 'name' ? 'list.sortName' : 'list.sortTime')}`,
-                      'aria-label': t(listSort === 'name' ? 'list.sortName' : 'list.sortTime'),
-                      onClick: () => {
-                        const next = listSort === 'name' ? 'time' : 'name'
-                        setListSort(next)
-                        makeSortPref('dshgn.listSort').write(next)
-                      },
-                    },
-                    listSort === 'name' ? 'A→Z' : '⏱',
-                  ),
+              // 排序开关。搜索态也有：那边的默认顺序是相关度（服务端排的，最该看的
+              // 排前面），可「按名字找那一篇」一样是搜索时要做的动作——以前只能
+              // 清空搜索再找，等于把刚敲的词白敲一遍。两档各自记各自的选择。
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dshgn_listSort',
+                  'data-mode': searchMode ? 'search' : 'list',
+                  title: searchMode
+                    ? `${t('list.sort')}：${t(searchSort === 'name' ? 'list.sortName' : 'list.sortRelevance')}`
+                    : `${t('list.sort')}：${t(listSort === 'name' ? 'list.sortName' : 'list.sortTime')}`,
+                  'aria-label': searchMode
+                    ? t(searchSort === 'name' ? 'list.sortName' : 'list.sortRelevance')
+                    : t(listSort === 'name' ? 'list.sortName' : 'list.sortTime'),
+                  onClick: () => {
+                    if (searchMode) {
+                      const next = searchSort === 'name' ? 'time' : 'name'
+                      setSearchSort(next)
+                      makeSortPref('dshgn.searchSort').write(next)
+                      return
+                    }
+                    const next = listSort === 'name' ? 'time' : 'name'
+                    setListSort(next)
+                    makeSortPref('dshgn.listSort').write(next)
+                  },
+                },
+                searchMode
+                  ? searchSort === 'name'
+                    ? 'A→Z'
+                    : '★'
+                  : listSort === 'name'
+                    ? 'A→Z'
+                    : '⏱',
+              ),
               // 搜完之后常常要把「这次找到的这几篇」抄给别人或者贴进别处。
               // 一篇篇去右键「复制引用」太慢，这里一次抄成一段清单：
               // 一行一篇，写名字和位置。只在搜索态摆，且一条都没搜到时收起来
