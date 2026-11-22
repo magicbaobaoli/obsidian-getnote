@@ -18,7 +18,13 @@ export class GetnoteView extends ItemView {
     super(leaf)
     this.plugin = plugin
     this.root = null
-    this.containerEl = null
+    // 面板挂载的那个容器（= contentEl）。
+    //
+    // 千万不能叫 containerEl：那是 Obsidian 自己的字段，宿主就是靠它把视图
+    // 挂进叶子的。以前这里写 this.containerEl = null / = contentEl，等于把宿主
+    // 挂视图用的那个节点换掉/清空——视图确实画了，画在一个没人挂到屏幕上的
+    // 元素里，用户看到的永远是整片黑。这是「全黑」真正的根因。
+    this.panelEl = null
     this.heartbeat = null
     // onOpen 只会生效一次：宿主偶尔会把视图挂上却不调 onOpen，插件这边会自己补一次，
     // 之后宿主再调一次时这个标记把第二次挡掉，免得同一棵树被画两遍。
@@ -202,7 +208,7 @@ export class GetnoteView extends ItemView {
     // 这里自己接管滚动与内边距，让面板贴满整个叶子。
     container.empty()
     container.addClass('dshgn_view')
-    this.containerEl = container
+    this.panelEl = container
 
     const mount = container.createDiv({ cls: 'dshgn_mount' })
     // 先铺一层纯内联样式的占位字。它不依赖任何 CSS、不依赖 React、也不等数据：
@@ -212,7 +218,9 @@ export class GetnoteView extends ItemView {
     this.note('容器已就绪，开始首帧渲染')
     this.root = createRoot(mount)
     this.root.render(React.createElement(PanelRoot, { plugin: this.plugin }))
-    this.note('首帧渲染调用已返回')
+    // 「画了」和「画在屏幕上」是两件事：容器要是没被宿主挂进文档，
+    // 渲染照样成功、DOM 里节点齐全，用户看到的却是一片黑。这一行就是分界。
+    this.note('首帧渲染调用已返回' + (container.isConnected === false ? '（容器不在文档里）' : ''))
     // 渲染进程里的未捕获异常/未处理拒绝：Obsidian 的控制台用户不会去看，
     // 但这两类错误正是「界面一片空白且什么都没抛到我们手里」的常见来源。
     // 挂一次，把消息写进 boot.txt，重开面板时就能看到上一次死在哪。
@@ -222,7 +230,7 @@ export class GetnoteView extends ItemView {
     // Obsidian 不会调 onResize 之类的事件，所以用一个便宜的定时器，
     // 每 20 秒补一次；面板自己也会在交互时上报。
     const beat = () => {
-      if (!this.containerEl || !this.containerEl.isShown()) return
+      if (!this.panelEl || !this.panelEl.isShown()) return
       this.plugin.markPanelVisible()
     }
     beat()
@@ -230,32 +238,47 @@ export class GetnoteView extends ItemView {
     this.registerInterval(this.heartbeat)
 
     // 看门狗：渲染调用不抛错，不等于面板真的画出来了。
-    // 首帧如果被某个异步分支吞掉（比如状态初始化里 await 了一个永远不 resolve
-    // 的 Promise），用户看到的还是一片黑，而控制台干干净净。这里在 2 秒后回头
-    // 确认一下根节点在不在，不在就把「没画出来」这件事本身报出来。
-    window.setTimeout(() => {
-      if (this.containerEl !== container) return
-      if (!container.isConnected) return
+    //
+    // 要分清的三种「全黑」：
+    //   ① 容器根本没被挂进文档 —— 渲染全对、DOM 齐全，画在屏幕外；
+    //   ② 根节点没出现 —— 首帧被某个异步分支吞掉；
+    //   ③ 根节点在、高度 0 —— 渲染成功，是布局把它压扁了。
+    // 三件事在屏幕上长得一模一样，修法完全不同，所以报错要分开写。
+    //
+    // 每 400ms 回看一次、最多 5 秒：容器的 isConnected 会晚于 onOpen 成立
+    // （宿主先把视图摆上去，再把节点挂进叶子），一上来就判定「屏幕外」
+    // 会把正常挂载误报成故障。等到真的画出来就停。
+    let tries = 0
+    const watchdog = () => {
+      if (this.panelEl !== container) return
+      tries += 1
       const root = container.querySelector('.dshgn_root')
-      this.note(`看门狗：根节点${root === null ? '没出现' : '在'}，高度 ${root === null ? '-' : root.clientHeight}`)
-      if (root === null) {
-        this.renderFatal(container, new Error('面板根节点没有出现（首帧没有渲染完成）'))
+      const live = container.isConnected !== false
+      if (root !== null && live) {
+        this.note(`看门狗：根节点在，高度 ${root.clientHeight}`)
+        const boot = container.querySelector('.dshgn_boot')
+        if (boot && boot.parentNode) boot.parentNode.removeChild(boot)
+        if (root.clientHeight === 0) {
+          this.renderFatal(
+            container,
+            new Error(`面板根节点高度为 0（容器高度 ${container.clientHeight}px）—— 布局没有撑开`),
+          )
+        }
         return
       }
-      // 根节点在、但高度是 0：渲染其实成功了，是布局把它压扁了。
-      // 这和「什么都没画」在屏幕上长得一模一样，报错信息必须分开写，
-      // 否则排查会朝着完全错误的方向走。
-      // 到这里根节点在、也有高度：占位那行字可以撤了，不然它会压在面板底下。
-      const boot = container.querySelector('.dshgn_boot')
-      if (boot && boot.parentNode) boot.parentNode.removeChild(boot)
-      if (root.clientHeight === 0) {
-        const h = container.clientHeight
-        this.renderFatal(
-          container,
-          new Error(`面板根节点高度为 0（容器高度 ${h}px）—— 布局没有撑开`),
-        )
+      if (tries < 12) {
+        window.setTimeout(watchdog, 400)
+        return
       }
-    }, 2000)
+      if (!live) {
+        this.note('看门狗：容器没被挂进文档，面板画在屏幕外')
+        this.renderFatal(container, new Error('面板容器没有挂进宿主窗口（画在屏幕外了）'))
+        return
+      }
+      this.note('看门狗：根节点没出现')
+      this.renderFatal(container, new Error('面板根节点没有出现（首帧没有渲染完成）'))
+    }
+    window.setTimeout(watchdog, 400)
   }
 
   async onClose() {
@@ -265,7 +288,7 @@ export class GetnoteView extends ItemView {
     // 占位那行字是 onOpen 自己摆的，不属于 React 树：视图关掉时它得跟着走，
     // 否则叶子被复用时上一次的「正在打开…」会留在新面板底下。
     try {
-      const boot = this.containerEl ? this.containerEl.querySelector('.dshgn_boot') : null
+      const boot = this.panelEl ? this.panelEl.querySelector('.dshgn_boot') : null
       if (boot && boot.parentNode) boot.parentNode.removeChild(boot)
     } catch {
       // 容器已经没了，占位字跟着一起没

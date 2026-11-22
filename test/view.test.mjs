@@ -330,7 +330,9 @@ test('首帧没画出来时看门狗自己报出来，而不是让用户对着�
     // 模拟「渲染调用没抛错、但根节点不见了」：看门狗 2 秒后应该发现
     const root = view.contentEl.querySelector('.dshgn_root')
     root.parentNode.removeChild(root)
-    await new Promise((resolve) => window.setTimeout(resolve, 2300))
+    // 看门狗改成每 400ms 回看、最多 5 秒（容器的 isConnected 会晚于 onOpen
+    // 成立，一上来就判定「屏幕外」会把正常挂载误报成故障），所以这里要等满。
+    await new Promise((resolve) => window.setTimeout(resolve, 6200))
     const fatal = view.contentEl.querySelector('.dshgn_fatal')
     assert.ok(fatal, '根节点不见了就该画出兜底报错')
     assert.ok(
@@ -400,6 +402,22 @@ test('宿主把视图挂上却不调 onOpen 时，插件自己补一次，面板
     plugin.server = realServer
     await view.onClose()
   }
+})
+
+test('视图不去动宿主的 containerEl —— 动了就是把面板画在屏幕外', async () => {
+  // 这条是「全黑」的真根因：Obsidian 的 ItemView 用 this.containerEl 记住
+  // 「宿主把我挂在哪儿了」，插件把同一个字段改写成自己的挂载点，宿主就再也
+  // 找不到那个节点——视图照常渲染、boot.txt 里每一步都对，屏幕上一片黑。
+  const { factory } = calls.views[0]
+  const view = factory({})
+  const hostEl = view.containerEl
+  assert.ok(hostEl, '宿主给的 containerEl 应该在')
+  await view.onOpen()
+  await new Promise((resolve) => window.setTimeout(resolve, 400))
+  assert.equal(view.containerEl, hostEl, 'containerEl 必须还是宿主原来那个节点')
+  assert.equal(view.panelEl, view.contentEl, '面板自己的挂载点是 contentEl，记在 panelEl 上')
+  assert.ok(view.contentEl.querySelector('.dshgn_root') !== null, '面板照样要真的画出来')
+  await view.onClose()
 })
 
 test('收尾：卸载插件，别把临时目录和监听留着', async () => {

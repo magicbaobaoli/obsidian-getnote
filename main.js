@@ -23167,7 +23167,7 @@ var GetnoteView = class extends import_obsidian.ItemView {
     super(leaf);
     this.plugin = plugin;
     this.root = null;
-    this.containerEl = null;
+    this.panelEl = null;
     this.heartbeat = null;
     this.opened = false;
     try {
@@ -23315,46 +23315,58 @@ var GetnoteView = class extends import_obsidian.ItemView {
     setMarkdownHost({ app: this.app, component: this.plugin, MarkdownRenderer: import_obsidian.MarkdownRenderer });
     container.empty();
     container.addClass("dshgn_view");
-    this.containerEl = container;
+    this.panelEl = container;
     const mount = container.createDiv({ cls: "dshgn_mount" });
     const placeholder = this.placeholder(container);
     this.note("\u5BB9\u5668\u5DF2\u5C31\u7EEA\uFF0C\u5F00\u59CB\u9996\u5E27\u6E32\u67D3");
     this.root = createRoot(mount);
     this.root.render(_(PanelRoot, { plugin: this.plugin }));
-    this.note("\u9996\u5E27\u6E32\u67D3\u8C03\u7528\u5DF2\u8FD4\u56DE");
+    this.note("\u9996\u5E27\u6E32\u67D3\u8C03\u7528\u5DF2\u8FD4\u56DE" + (container.isConnected === false ? "\uFF08\u5BB9\u5668\u4E0D\u5728\u6587\u6863\u91CC\uFF09" : ""));
     this.watchWindowErrors(container);
     const beat = () => {
-      if (!this.containerEl || !this.containerEl.isShown()) return;
+      if (!this.panelEl || !this.panelEl.isShown()) return;
       this.plugin.markPanelVisible();
     };
     beat();
     this.heartbeat = window.setInterval(beat, 2e4);
     this.registerInterval(this.heartbeat);
-    window.setTimeout(() => {
-      if (this.containerEl !== container) return;
-      if (!container.isConnected) return;
+    let tries = 0;
+    const watchdog = () => {
+      if (this.panelEl !== container) return;
+      tries += 1;
       const root = container.querySelector(".dshgn_root");
-      this.note(`\u770B\u95E8\u72D7\uFF1A\u6839\u8282\u70B9${root === null ? "\u6CA1\u51FA\u73B0" : "\u5728"}\uFF0C\u9AD8\u5EA6 ${root === null ? "-" : root.clientHeight}`);
-      if (root === null) {
-        this.renderFatal(container, new Error("\u9762\u677F\u6839\u8282\u70B9\u6CA1\u6709\u51FA\u73B0\uFF08\u9996\u5E27\u6CA1\u6709\u6E32\u67D3\u5B8C\u6210\uFF09"));
+      const live = container.isConnected !== false;
+      if (root !== null && live) {
+        this.note(`\u770B\u95E8\u72D7\uFF1A\u6839\u8282\u70B9\u5728\uFF0C\u9AD8\u5EA6 ${root.clientHeight}`);
+        const boot = container.querySelector(".dshgn_boot");
+        if (boot && boot.parentNode) boot.parentNode.removeChild(boot);
+        if (root.clientHeight === 0) {
+          this.renderFatal(
+            container,
+            new Error(`\u9762\u677F\u6839\u8282\u70B9\u9AD8\u5EA6\u4E3A 0\uFF08\u5BB9\u5668\u9AD8\u5EA6 ${container.clientHeight}px\uFF09\u2014\u2014 \u5E03\u5C40\u6CA1\u6709\u6491\u5F00`)
+          );
+        }
         return;
       }
-      const boot = container.querySelector(".dshgn_boot");
-      if (boot && boot.parentNode) boot.parentNode.removeChild(boot);
-      if (root.clientHeight === 0) {
-        const h5 = container.clientHeight;
-        this.renderFatal(
-          container,
-          new Error(`\u9762\u677F\u6839\u8282\u70B9\u9AD8\u5EA6\u4E3A 0\uFF08\u5BB9\u5668\u9AD8\u5EA6 ${h5}px\uFF09\u2014\u2014 \u5E03\u5C40\u6CA1\u6709\u6491\u5F00`)
-        );
+      if (tries < 12) {
+        window.setTimeout(watchdog, 400);
+        return;
       }
-    }, 2e3);
+      if (!live) {
+        this.note("\u770B\u95E8\u72D7\uFF1A\u5BB9\u5668\u6CA1\u88AB\u6302\u8FDB\u6587\u6863\uFF0C\u9762\u677F\u753B\u5728\u5C4F\u5E55\u5916");
+        this.renderFatal(container, new Error("\u9762\u677F\u5BB9\u5668\u6CA1\u6709\u6302\u8FDB\u5BBF\u4E3B\u7A97\u53E3\uFF08\u753B\u5728\u5C4F\u5E55\u5916\u4E86\uFF09"));
+        return;
+      }
+      this.note("\u770B\u95E8\u72D7\uFF1A\u6839\u8282\u70B9\u6CA1\u51FA\u73B0");
+      this.renderFatal(container, new Error("\u9762\u677F\u6839\u8282\u70B9\u6CA1\u6709\u51FA\u73B0\uFF08\u9996\u5E27\u6CA1\u6709\u6E32\u67D3\u5B8C\u6210\uFF09"));
+    };
+    window.setTimeout(watchdog, 400);
   }
   async onClose() {
     this.opened = false;
     clearMarkdownHost();
     try {
-      const boot = this.containerEl ? this.containerEl.querySelector(".dshgn_boot") : null;
+      const boot = this.panelEl ? this.panelEl.querySelector(".dshgn_boot") : null;
       if (boot && boot.parentNode) boot.parentNode.removeChild(boot);
     } catch {
     }
