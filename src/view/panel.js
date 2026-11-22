@@ -620,6 +620,18 @@ async function saveFile(url, filename) {
         // 没勾过的时候也不占地方。
         'batch.pickHint': '按住 Shift 再点一张，连着把这一摊都勾上',
         'batch.shiftHint': '按住 Shift 点另一张，连着勾一段',
+        // 回收站里也要能挑几个一起动：一行行点「恢复」太慢，而「放回哪」这件事
+        // 本来就得一次说清，分开点等于把同一个目录敲十遍。
+        'trash.pick': '选择这一个',
+        'trash.pickAll': '全选',
+        'trash.pickNone': '取消选择',
+        'trash.picked': '已选',
+        'trash.restorePicked': '恢复这几个',
+        'trash.purgePicked': '永久删除这几个',
+        'trash.purgePickedConfirm': '永久删除选中的 {n} 个文件，无法撤销。继续？',
+        'trash.purgePickedDone': '已永久删除 {n} 个',
+        'trash.restorePickedDone': '已恢复 {n} 个',
+        'trash.restorePickedFailed': '有 {n} 个没能恢复',
         'search.searching': '搜索中…',
         'search.clear': '清空',
         'search.copy': '复制这次搜到的 {n} 篇（名字和位置）',
@@ -1219,6 +1231,16 @@ async function saveFile(url, filename) {
         'batch.failClose': 'Got it',
         'batch.pickHint': 'Hold Shift and click another card to select the whole stretch',
         'batch.shiftHint': 'Hold Shift and click another card to select a stretch',
+        'trash.pick': 'Select this one',
+        'trash.pickAll': 'Select all',
+        'trash.pickNone': 'Clear selection',
+        'trash.picked': 'selected',
+        'trash.restorePicked': 'Restore these',
+        'trash.purgePicked': 'Delete these forever',
+        'trash.purgePickedConfirm': 'Delete the {n} selected files forever. Continue?',
+        'trash.purgePickedDone': 'Deleted {n} for good',
+        'trash.restorePickedDone': 'Restored {n}',
+        'trash.restorePickedFailed': '{n} could not be restored',
         'search.searching': 'Searching…',
         'search.clear': 'Clear',
         'search.copy': 'Copy the {n} notes found (names and places)',
@@ -1798,6 +1820,16 @@ async function saveFile(url, filename) {
         'batch.failClose': 'Begrepen',
         'batch.pickHint': 'Houd Shift ingedrukt en klik nog een kaart om het hele stuk te selecteren',
         'batch.shiftHint': 'Houd Shift ingedrukt en klik nog een kaart voor een heel stuk',
+        'trash.pick': 'Deze selecteren',
+        'trash.pickAll': 'Alles selecteren',
+        'trash.pickNone': 'Selectie wissen',
+        'trash.picked': 'geselecteerd',
+        'trash.restorePicked': 'Deze herstellen',
+        'trash.purgePicked': 'Deze voorgoed verwijderen',
+        'trash.purgePickedConfirm': 'De {n} geselecteerde bestanden voorgoed verwijderen. Doorgaan?',
+        'trash.purgePickedDone': '{n} voorgoed verwijderd',
+        'trash.restorePickedDone': '{n} hersteld',
+        'trash.restorePickedFailed': '{n} konden niet worden hersteld',
         'search.searching': 'Zoeken…',
         'search.clear': 'Wissen',
         'search.copy': 'Kopieer de {n} gevonden notities (namen en plaatsen)',
@@ -5779,6 +5811,9 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 .dshgn_emptyBtn:hover{background:var(--dsw-alias-interactive-bg-hover)}
 .dshgn_emptyActions{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px;margin-top:4px}
 /* 回收站的「恢复到哪个目录」：一行输入 + 候选，和批量条那套同宽同高 */
+/* 回收站里的勾选框一开始就摆着：这一页的用处就是挑东西，
+   不像笔记卡片那样要等悬停才显形。 */
+.dshgn_trashPick{opacity:1;margin-top:1px}
 .dshgn_trashTarget{display:flex;flex-direction:column;gap:4px;margin:8px 0 2px;min-width:0}
 .dshgn_trashPreview{display:flex;flex-direction:column;gap:4px;margin:0 0 8px;padding:8px 10px;border-radius:7px;background:var(--dsw-alias-interactive-bg-hover);min-width:0}
 .dshgn_trashPreviewBody{font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary);white-space:pre-wrap;word-break:break-word;max-height:160px;overflow:hidden}
@@ -13548,6 +13583,11 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 再看，看错了还得再删一次。这里就地读一眼，读的是 .trash 里那份原文。
       const [peekPath, setPeekPath] = React.useState('')
       const [peek, setPeek] = React.useState(null)
+      // 回收站里攒够十几个文件之后，一行行点「恢复」是纯体力活，而「放回哪个
+      // 目录」这件事本来就得一次说清——分开点等于把同一个目录名敲十遍。
+      // 选中的用路径记，恢复/清空之后按新列表对一遍，不认识的自动落掉。
+      const [picked, setPicked] = React.useState(() => new Set())
+      const pickedCount = picked.size
       const togglePeek = React.useCallback(
         async (item) => {
           if (peekPath === item.path) {
@@ -13650,7 +13690,86 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         }
       }, [load, onChanged, onError, showToast, t])
 
+      const togglePick = React.useCallback((path) => {
+        setPicked((prev) => {
+          const next = new Set(prev)
+          if (next.has(path)) next.delete(path)
+          else next.add(path)
+          return next
+        })
+      }, [])
+
+      const clearPicked = React.useCallback(() => setPicked(new Set()), [])
+
+      const restorePicked = React.useCallback(async () => {
+        const paths = [...picked]
+        if (paths.length === 0) return
+        setBusy(true)
+        try {
+          const wanted = target.trim().replace(/^\/+|\/+$/g, '')
+          const result = await api('/trash/restore/many', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ paths, target: wanted }),
+          })
+          const done = Array.isArray(result.restored) ? result.restored.length : 0
+          const lost = Array.isArray(result.failed) ? result.failed.length : 0
+          // 部分失败要说清是哪一半成了：只报「已恢复 3 个」会让人以为全成了。
+          showToast(
+            lost === 0
+              ? t('trash.restorePickedDone').replace('{n}', String(done))
+              : `${t('trash.restorePickedDone').replace('{n}', String(done))} · ${t('trash.restorePickedFailed').replace('{n}', String(lost))}`,
+          )
+          setPicked(new Set())
+          await load()
+          if (typeof onChanged === 'function') await onChanged()
+        } catch (err) {
+          onError(err && err.message ? err.message : String(err))
+        } finally {
+          setBusy(false)
+        }
+      }, [load, onChanged, onError, picked, showToast, t, target])
+
+      const purgePicked = React.useCallback(async () => {
+        const paths = [...picked]
+        if (paths.length === 0) return
+        if (!(await confirmDialog(t('trash.purgePickedConfirm').replace('{n}', String(paths.length))))) return
+        setBusy(true)
+        try {
+          const result = await api('/trash/purge/many', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ paths }),
+          })
+          const done = Array.isArray(result.purged) ? result.purged.length : 0
+          showToast(t('trash.purgePickedDone').replace('{n}', String(done)))
+          setPicked(new Set())
+          await load()
+          if (typeof onChanged === 'function') await onChanged()
+        } catch (err) {
+          onError(err && err.message ? err.message : String(err))
+        } finally {
+          setBusy(false)
+        }
+      }, [load, onChanged, onError, picked, showToast, t])
+
       const list = items === null ? [] : items
+
+      // 恢复/清空之后列表变了，勾过的那些路径可能已经不在了：不认识的当场落掉，
+      // 免得「已选 3 个」里混着两个已经恢复出去的文件。
+      React.useEffect(() => {
+        setPicked((prev) => {
+          if (prev.size === 0) return prev
+          const alive = new Set(list.map((item) => item.path))
+          let dropped = false
+          const next = new Set()
+          for (const one of prev) {
+            if (alive.has(one)) next.add(one)
+            else dropped = true
+          }
+          return dropped ? next : prev
+        })
+      }, [list])
 
       return h(
         'div',
@@ -13781,6 +13900,36 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                     ),
               ),
         ),
+        // 攒够几个再动：一次说清「放回哪个目录」，比一行行敲十遍目录名省事。
+        pickedCount === 0
+          ? null
+          : h(
+              'div',
+              { className: 'dshgn_batchBar', role: 'status' },
+              h('span', { className: 'dshgn_batchCount' }, `${pickedCount} ${t('trash.picked')}`),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dshgn_btn',
+                  disabled: busy,
+                  onClick: () => setPicked(new Set(list.map((item) => item.path))),
+                },
+                t('trash.pickAll'),
+              ),
+              h('button', { type: 'button', className: 'dshgn_btn', disabled: busy, onClick: clearPicked }, t('trash.pickNone')),
+              h(
+                'button',
+                { type: 'button', className: 'dshgn_btn dshgn_btnPri', disabled: busy, onClick: () => void restorePicked() },
+                h(Icon, { name: 'up', size: 12 }),
+                t('trash.restorePicked'),
+              ),
+              h(
+                'button',
+                { type: 'button', className: 'dshgn_btn dshgn_btnDanger', disabled: busy, onClick: () => void purgePicked() },
+                t('trash.purgePicked'),
+              ),
+            ),
         loading && list.length === 0
           ? h('div', { className: 'dshgn_emptyState' }, h('span', { className: 'dshgn_spin' }))
           : list.length === 0
@@ -13801,9 +13950,26 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                     h(
                     'div',
                     { className: 'dshgn_rowLine', style: { justifyContent: 'space-between', padding: '7px 0', borderBottom: '0.5px solid var(--dsw-alias-border-l1)' } },
+                    // 勾选框和笔记卡片那套同一个观感，但回收站里没有「悬停才显形」
+                    // 的理由——这一页就是要挑东西的，一开始就摆着。
+                    h('span', {
+                      className: 'dshgn_pickBox dshgn_trashPick' + (picked.has(item.path) ? ' dshgn_pickBoxOn' : ''),
+                      role: 'checkbox',
+                      'aria-checked': picked.has(item.path) ? 'true' : 'false',
+                      'aria-label': t('trash.pick'),
+                      title: t('trash.pick'),
+                      onClick: () => togglePick(item.path),
+                      onKeyDown: (event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault()
+                          togglePick(item.path)
+                        }
+                      },
+                      tabIndex: 0,
+                    }, picked.has(item.path) ? h(Icon, { name: 'check', size: 11 }) : null),
                     h(
                       'div',
-                      { style: { minWidth: 0 } },
+                      { style: { minWidth: 0, flex: '1 1 auto' } },
                       h('div', { className: 'dshgn_cardTitle', style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, item.title || item.originalName),
                       h(
                         'div',

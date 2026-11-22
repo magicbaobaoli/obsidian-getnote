@@ -66,6 +66,8 @@ import {
   outlineOf,
   parseFrontmatter,
   purgeTrash,
+  purgeTrashMany,
+  restoreNotes,
   readConflict,
   readNote,
   normalizeTags,
@@ -1487,6 +1489,31 @@ export function createHandler(config) {
     send(res, 200, { ok: true, ...result })
   }
 
+  /**
+   * 一次恢复/永久删掉回收站里的几个文件。
+   *
+   * 面板里「恢复这几个」走这一条：逐个恢复时同名冲突各加一个后缀，
+   * 用户看不出哪两个原本是同名的两篇——结果和一篇篇手动恢复完全一致。
+   */
+  async function handleTrashRestoreMany(req, res) {
+    const body = await readJsonBody(req)
+    const { root } = await currentRoot()
+    const paths = Array.isArray(body.paths) ? body.paths.filter((one) => typeof one === 'string' && one.trim() !== '') : []
+    if (paths.length === 0) throw Object.assign(new Error('paths 不能为空'), { status: 400 })
+    const target = typeof body.target === 'string' ? body.target : ''
+    const result = await restoreNotes(root, paths, target)
+    send(res, 200, { ok: true, ...result })
+  }
+
+  async function handleTrashPurgeMany(req, res) {
+    const body = await readJsonBody(req)
+    const { root } = await currentRoot()
+    const paths = Array.isArray(body.paths) ? body.paths.filter((one) => typeof one === 'string' && one.trim() !== '') : []
+    if (paths.length === 0) throw Object.assign(new Error('paths 不能为空'), { status: 400 })
+    const result = await purgeTrashMany(root, paths)
+    send(res, 200, { ok: true, ...result })
+  }
+
   async function handleTrashPurge(req, res) {
     const body = await readJsonBody(req)
     const { root } = await currentRoot()
@@ -2526,7 +2553,10 @@ export function createHandler(config) {
         if (action === 'tag' && parts[2] === 'rename') return await handleRenameTag(req, res)
         // 待办勾选：只翻正文里那一个方框，其余原样
         if (action === 'todo' && parts[2] === 'toggle') return await handleToggleTodo(req, res)
-        if (action === 'trash' && parts[2] === 'restore') return await handleTrashRestore(req, res)
+        // 复数那条必须排在单数之前，否则 parts[2] === 'restore' 会把 'restore/many' 也吃掉
+    if (action === 'trash' && parts[2] === 'restore' && parts[3] === 'many') return await handleTrashRestoreMany(req, res)
+    if (action === 'trash' && parts[2] === 'purge' && parts[3] === 'many') return await handleTrashPurgeMany(req, res)
+    if (action === 'trash' && parts[2] === 'restore') return await handleTrashRestore(req, res)
         if (action === 'trash' && parts[2] === 'purge') return await handleTrashPurge(req, res)
         if (action === 'settings') return await handleSetSettings(req, res)
         if (action === 'import') return await handleImport(req, res)

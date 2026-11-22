@@ -851,6 +851,54 @@ export async function restoreNote(root, trashPath, targetRel) {
   return { path: candidate, restoredFrom: trashRel, title: meta.originalName }
 }
 
+/**
+ * 一次把几个回收站文件放回库里。
+ *
+ * 为什么不复用 restoreNote 的循环、也不在面板里逐个打请求：一行一行恢复时，
+ * 同名冲突会被各自加 `-2` 后缀（文件其实还在原地），用户看不出「这两个
+ * 原本是两篇不同的笔记」。这里先让第一个拿到原名，后面的才加后缀，
+ * 结果和一篇篇手动恢复一致。
+ *
+ * 单个失败不连累其余：已经搬回去的照旧算恢复成功，失败的原样留在回收站。
+ */
+export async function restoreNotes(root, trashPaths, targetRel) {
+  const wanted = Array.isArray(trashPaths) ? trashPaths : []
+  const restored = []
+  const failed = []
+  const target = typeof targetRel === 'string' ? targetRel.trim() : ''
+  for (const one of wanted) {
+    const path = typeof one === 'string' ? one.trim() : ''
+    if (path === '') continue
+    try {
+      // 串行恢复：restoreNote 每搬一个都会先 stat 目标、自己挑不冲突的名字，
+      // 所以并行跑反而会让两篇抢同一个名字。慢一点，但结果确定。
+      const result = await restoreNote(root, path, target)
+      restored.push(result)
+    } catch (error) {
+      failed.push({ path, error: error && error.message ? error.message : String(error) })
+    }
+  }
+  return { restored, failed, total: wanted.length }
+}
+
+/** 一次性永久删掉回收站里的几个文件（逐个真删，不是清空整个回收站）。 */
+export async function purgeTrashMany(root, trashPaths) {
+  const wanted = Array.isArray(trashPaths) ? trashPaths : []
+  const purged = []
+  const failed = []
+  for (const one of wanted) {
+    const path = typeof one === 'string' ? one.trim() : ''
+    if (path === '') continue
+    try {
+      const result = await purgeTrash(root, path)
+      purged.push(...(Array.isArray(result.purged) ? result.purged : []))
+    } catch (error) {
+      failed.push({ path, error: error && error.message ? error.message : String(error) })
+    }
+  }
+  return { purged, failed, total: wanted.length }
+}
+
 /** 清空回收站（真删）。默认只在用户明确要求时调用。 */
 export async function purgeTrash(root, trashPath) {
   const trashDir = join(root, TRASH_DIR)

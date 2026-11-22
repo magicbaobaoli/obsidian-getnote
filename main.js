@@ -518,6 +518,7 @@ __export(vault_exports, {
   parseSearchQuery: () => parseSearchQuery,
   parseTrashName: () => parseTrashName,
   purgeTrash: () => purgeTrash,
+  purgeTrashMany: () => purgeTrashMany,
   readConflict: () => readConflict,
   readNote: () => readNote,
   readTags: () => readTags,
@@ -529,6 +530,7 @@ __export(vault_exports, {
   resolveConflict: () => resolveConflict,
   resolveInside: () => resolveInside,
   restoreNote: () => restoreNote,
+  restoreNotes: () => restoreNotes,
   rewriteTags: () => rewriteTags,
   safeFilename: () => safeFilename,
   saveAsset: () => saveAsset,
@@ -1126,6 +1128,39 @@ async function restoreNote(root, trashPath, targetRel) {
   await rename2(absTrash, absFinal);
   invalidateScan(root);
   return { path: candidate, restoredFrom: trashRel, title: meta.originalName };
+}
+async function restoreNotes(root, trashPaths, targetRel) {
+  const wanted = Array.isArray(trashPaths) ? trashPaths : [];
+  const restored = [];
+  const failed = [];
+  const target = typeof targetRel === "string" ? targetRel.trim() : "";
+  for (const one of wanted) {
+    const path = typeof one === "string" ? one.trim() : "";
+    if (path === "") continue;
+    try {
+      const result = await restoreNote(root, path, target);
+      restored.push(result);
+    } catch (error2) {
+      failed.push({ path, error: error2 && error2.message ? error2.message : String(error2) });
+    }
+  }
+  return { restored, failed, total: wanted.length };
+}
+async function purgeTrashMany(root, trashPaths) {
+  const wanted = Array.isArray(trashPaths) ? trashPaths : [];
+  const purged = [];
+  const failed = [];
+  for (const one of wanted) {
+    const path = typeof one === "string" ? one.trim() : "";
+    if (path === "") continue;
+    try {
+      const result = await purgeTrash(root, path);
+      purged.push(...Array.isArray(result.purged) ? result.purged : []);
+    } catch (error2) {
+      failed.push({ path, error: error2 && error2.message ? error2.message : String(error2) });
+    }
+  }
+  return { purged, failed, total: wanted.length };
 }
 async function purgeTrash(root, trashPath) {
   const trashDir = (0, import_node_path4.join)(root, TRASH_DIR);
@@ -6231,6 +6266,23 @@ function createHandler(config) {
     const result = await restoreNote(root, path, target);
     send(res, 200, { ok: true, ...result });
   }
+  async function handleTrashRestoreMany(req, res) {
+    const body = await readJsonBody(req);
+    const { root } = await currentRoot();
+    const paths = Array.isArray(body.paths) ? body.paths.filter((one) => typeof one === "string" && one.trim() !== "") : [];
+    if (paths.length === 0) throw Object.assign(new Error("paths \u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+    const target = typeof body.target === "string" ? body.target : "";
+    const result = await restoreNotes(root, paths, target);
+    send(res, 200, { ok: true, ...result });
+  }
+  async function handleTrashPurgeMany(req, res) {
+    const body = await readJsonBody(req);
+    const { root } = await currentRoot();
+    const paths = Array.isArray(body.paths) ? body.paths.filter((one) => typeof one === "string" && one.trim() !== "") : [];
+    if (paths.length === 0) throw Object.assign(new Error("paths \u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+    const result = await purgeTrashMany(root, paths);
+    send(res, 200, { ok: true, ...result });
+  }
   async function handleTrashPurge(req, res) {
     const body = await readJsonBody(req);
     const { root } = await currentRoot();
@@ -6999,6 +7051,8 @@ function createHandler(config) {
         if (action === "tag" && parts[2] === "delete") return await handleDeleteTag(req, res);
         if (action === "tag" && parts[2] === "rename") return await handleRenameTag(req, res);
         if (action === "todo" && parts[2] === "toggle") return await handleToggleTodo(req, res);
+        if (action === "trash" && parts[2] === "restore" && parts[3] === "many") return await handleTrashRestoreMany(req, res);
+        if (action === "trash" && parts[2] === "purge" && parts[3] === "many") return await handleTrashPurgeMany(req, res);
         if (action === "trash" && parts[2] === "restore") return await handleTrashRestore(req, res);
         if (action === "trash" && parts[2] === "purge") return await handleTrashPurge(req, res);
         if (action === "settings") return await handleSetSettings(req, res);
@@ -8719,6 +8773,18 @@ var LEX = {
     // 没勾过的时候也不占地方。
     "batch.pickHint": "\u6309\u4F4F Shift \u518D\u70B9\u4E00\u5F20\uFF0C\u8FDE\u7740\u628A\u8FD9\u4E00\u644A\u90FD\u52FE\u4E0A",
     "batch.shiftHint": "\u6309\u4F4F Shift \u70B9\u53E6\u4E00\u5F20\uFF0C\u8FDE\u7740\u52FE\u4E00\u6BB5",
+    // 回收站里也要能挑几个一起动：一行行点「恢复」太慢，而「放回哪」这件事
+    // 本来就得一次说清，分开点等于把同一个目录敲十遍。
+    "trash.pick": "\u9009\u62E9\u8FD9\u4E00\u4E2A",
+    "trash.pickAll": "\u5168\u9009",
+    "trash.pickNone": "\u53D6\u6D88\u9009\u62E9",
+    "trash.picked": "\u5DF2\u9009",
+    "trash.restorePicked": "\u6062\u590D\u8FD9\u51E0\u4E2A",
+    "trash.purgePicked": "\u6C38\u4E45\u5220\u9664\u8FD9\u51E0\u4E2A",
+    "trash.purgePickedConfirm": "\u6C38\u4E45\u5220\u9664\u9009\u4E2D\u7684 {n} \u4E2A\u6587\u4EF6\uFF0C\u65E0\u6CD5\u64A4\u9500\u3002\u7EE7\u7EED\uFF1F",
+    "trash.purgePickedDone": "\u5DF2\u6C38\u4E45\u5220\u9664 {n} \u4E2A",
+    "trash.restorePickedDone": "\u5DF2\u6062\u590D {n} \u4E2A",
+    "trash.restorePickedFailed": "\u6709 {n} \u4E2A\u6CA1\u80FD\u6062\u590D",
     "search.searching": "\u641C\u7D22\u4E2D\u2026",
     "search.clear": "\u6E05\u7A7A",
     "search.copy": "\u590D\u5236\u8FD9\u6B21\u641C\u5230\u7684 {n} \u7BC7\uFF08\u540D\u5B57\u548C\u4F4D\u7F6E\uFF09",
@@ -9313,6 +9379,16 @@ var LEX = {
     "batch.failClose": "Got it",
     "batch.pickHint": "Hold Shift and click another card to select the whole stretch",
     "batch.shiftHint": "Hold Shift and click another card to select a stretch",
+    "trash.pick": "Select this one",
+    "trash.pickAll": "Select all",
+    "trash.pickNone": "Clear selection",
+    "trash.picked": "selected",
+    "trash.restorePicked": "Restore these",
+    "trash.purgePicked": "Delete these forever",
+    "trash.purgePickedConfirm": "Delete the {n} selected files forever. Continue?",
+    "trash.purgePickedDone": "Deleted {n} for good",
+    "trash.restorePickedDone": "Restored {n}",
+    "trash.restorePickedFailed": "{n} could not be restored",
     "search.searching": "Searching\u2026",
     "search.clear": "Clear",
     "search.copy": "Copy the {n} notes found (names and places)",
@@ -9887,6 +9963,16 @@ var LEX = {
     "batch.failClose": "Begrepen",
     "batch.pickHint": "Houd Shift ingedrukt en klik nog een kaart om het hele stuk te selecteren",
     "batch.shiftHint": "Houd Shift ingedrukt en klik nog een kaart voor een heel stuk",
+    "trash.pick": "Deze selecteren",
+    "trash.pickAll": "Alles selecteren",
+    "trash.pickNone": "Selectie wissen",
+    "trash.picked": "geselecteerd",
+    "trash.restorePicked": "Deze herstellen",
+    "trash.purgePicked": "Deze voorgoed verwijderen",
+    "trash.purgePickedConfirm": "De {n} geselecteerde bestanden voorgoed verwijderen. Doorgaan?",
+    "trash.purgePickedDone": "{n} voorgoed verwijderd",
+    "trash.restorePickedDone": "{n} hersteld",
+    "trash.restorePickedFailed": "{n} konden niet worden hersteld",
     "search.searching": "Zoeken\u2026",
     "search.clear": "Wissen",
     "search.copy": "Kopieer de {n} gevonden notities (namen en plaatsen)",
@@ -13059,6 +13145,9 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 .dshgn_emptyBtn:hover{background:var(--dsw-alias-interactive-bg-hover)}
 .dshgn_emptyActions{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px;margin-top:4px}
 /* \u56DE\u6536\u7AD9\u7684\u300C\u6062\u590D\u5230\u54EA\u4E2A\u76EE\u5F55\u300D\uFF1A\u4E00\u884C\u8F93\u5165 + \u5019\u9009\uFF0C\u548C\u6279\u91CF\u6761\u90A3\u5957\u540C\u5BBD\u540C\u9AD8 */
+/* \u56DE\u6536\u7AD9\u91CC\u7684\u52FE\u9009\u6846\u4E00\u5F00\u59CB\u5C31\u6446\u7740\uFF1A\u8FD9\u4E00\u9875\u7684\u7528\u5904\u5C31\u662F\u6311\u4E1C\u897F\uFF0C
+   \u4E0D\u50CF\u7B14\u8BB0\u5361\u7247\u90A3\u6837\u8981\u7B49\u60AC\u505C\u624D\u663E\u5F62\u3002 */
+.dshgn_trashPick{opacity:1;margin-top:1px}
 .dshgn_trashTarget{display:flex;flex-direction:column;gap:4px;margin:8px 0 2px;min-width:0}
 .dshgn_trashPreview{display:flex;flex-direction:column;gap:4px;margin:0 0 8px;padding:8px 10px;border-radius:7px;background:var(--dsw-alias-interactive-bg-hover);min-width:0}
 .dshgn_trashPreviewBody{font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary);white-space:pre-wrap;word-break:break-word;max-height:160px;overflow:hidden}
@@ -19581,6 +19670,8 @@ function TrashPane(props) {
   }, []);
   const [peekPath, setPeekPath] = h2("");
   const [peek, setPeek] = h2(null);
+  const [picked, setPicked] = h2(() => /* @__PURE__ */ new Set());
+  const pickedCount = picked.size;
   const togglePeek = q2(
     async (item) => {
       if (peekPath === item.path) {
@@ -19675,7 +19766,76 @@ function TrashPane(props) {
       setBusy(false);
     }
   }, [load, onChanged, onError, showToast, t4]);
+  const togglePick = q2((path) => {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
+  const clearPicked = q2(() => setPicked(/* @__PURE__ */ new Set()), []);
+  const restorePicked = q2(async () => {
+    const paths = [...picked];
+    if (paths.length === 0) return;
+    setBusy(true);
+    try {
+      const wanted = target.trim().replace(/^\/+|\/+$/g, "");
+      const result = await api("/trash/restore/many", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ paths, target: wanted })
+      });
+      const done = Array.isArray(result.restored) ? result.restored.length : 0;
+      const lost = Array.isArray(result.failed) ? result.failed.length : 0;
+      showToast(
+        lost === 0 ? t4("trash.restorePickedDone").replace("{n}", String(done)) : `${t4("trash.restorePickedDone").replace("{n}", String(done))} \xB7 ${t4("trash.restorePickedFailed").replace("{n}", String(lost))}`
+      );
+      setPicked(/* @__PURE__ */ new Set());
+      await load();
+      if (typeof onChanged === "function") await onChanged();
+    } catch (err) {
+      onError(err && err.message ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }, [load, onChanged, onError, picked, showToast, t4, target]);
+  const purgePicked = q2(async () => {
+    const paths = [...picked];
+    if (paths.length === 0) return;
+    if (!await confirmDialog(t4("trash.purgePickedConfirm").replace("{n}", String(paths.length)))) return;
+    setBusy(true);
+    try {
+      const result = await api("/trash/purge/many", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ paths })
+      });
+      const done = Array.isArray(result.purged) ? result.purged.length : 0;
+      showToast(t4("trash.purgePickedDone").replace("{n}", String(done)));
+      setPicked(/* @__PURE__ */ new Set());
+      await load();
+      if (typeof onChanged === "function") await onChanged();
+    } catch (err) {
+      onError(err && err.message ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }, [load, onChanged, onError, picked, showToast, t4]);
   const list = items === null ? [] : items;
+  y2(() => {
+    setPicked((prev) => {
+      if (prev.size === 0) return prev;
+      const alive = new Set(list.map((item) => item.path));
+      let dropped = false;
+      const next = /* @__PURE__ */ new Set();
+      for (const one of prev) {
+        if (alive.has(one)) next.add(one);
+        else dropped = true;
+      }
+      return dropped ? next : prev;
+    });
+  }, [list]);
   return h4(
     "div",
     { className: "dshgn_pane" },
@@ -19798,6 +19958,34 @@ function TrashPane(props) {
         )
       )
     ),
+    // 攒够几个再动：一次说清「放回哪个目录」，比一行行敲十遍目录名省事。
+    pickedCount === 0 ? null : h4(
+      "div",
+      { className: "dshgn_batchBar", role: "status" },
+      h4("span", { className: "dshgn_batchCount" }, `${pickedCount} ${t4("trash.picked")}`),
+      h4(
+        "button",
+        {
+          type: "button",
+          className: "dshgn_btn",
+          disabled: busy,
+          onClick: () => setPicked(new Set(list.map((item) => item.path)))
+        },
+        t4("trash.pickAll")
+      ),
+      h4("button", { type: "button", className: "dshgn_btn", disabled: busy, onClick: clearPicked }, t4("trash.pickNone")),
+      h4(
+        "button",
+        { type: "button", className: "dshgn_btn dshgn_btnPri", disabled: busy, onClick: () => void restorePicked() },
+        h4(Icon, { name: "up", size: 12 }),
+        t4("trash.restorePicked")
+      ),
+      h4(
+        "button",
+        { type: "button", className: "dshgn_btn dshgn_btnDanger", disabled: busy, onClick: () => void purgePicked() },
+        t4("trash.purgePicked")
+      )
+    ),
     loading && list.length === 0 ? h4("div", { className: "dshgn_emptyState" }, h4("span", { className: "dshgn_spin" })) : list.length === 0 ? h4(
       "div",
       { className: "dshgn_empty" },
@@ -19814,9 +20002,26 @@ function TrashPane(props) {
           h4(
             "div",
             { className: "dshgn_rowLine", style: { justifyContent: "space-between", padding: "7px 0", borderBottom: "0.5px solid var(--dsw-alias-border-l1)" } },
+            // 勾选框和笔记卡片那套同一个观感，但回收站里没有「悬停才显形」
+            // 的理由——这一页就是要挑东西的，一开始就摆着。
+            h4("span", {
+              className: "dshgn_pickBox dshgn_trashPick" + (picked.has(item.path) ? " dshgn_pickBoxOn" : ""),
+              role: "checkbox",
+              "aria-checked": picked.has(item.path) ? "true" : "false",
+              "aria-label": t4("trash.pick"),
+              title: t4("trash.pick"),
+              onClick: () => togglePick(item.path),
+              onKeyDown: (event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  togglePick(item.path);
+                }
+              },
+              tabIndex: 0
+            }, picked.has(item.path) ? h4(Icon, { name: "check", size: 11 }) : null),
             h4(
               "div",
-              { style: { minWidth: 0 } },
+              { style: { minWidth: 0, flex: "1 1 auto" } },
               h4("div", { className: "dshgn_cardTitle", style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, item.title || item.originalName),
               h4(
                 "div",

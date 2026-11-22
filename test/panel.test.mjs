@@ -14096,3 +14096,171 @@ test('目录里有笔记时，删目录那颗能连笔记一起删——笔记�
   assert.notEqual(still.status, 200, '删完原路径不该还能读到')
   assert.ok(b !== '', '乙的路径不该为空（占位，避免未使用变量）')
 })
+
+test('回收站里能勾几个一起恢复，也能一起永久删掉——放回哪个目录只说一次', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const backToList = async () => {
+    const back = rootNode().querySelector('.dshgn_noteBack')
+    if (back !== null) {
+      panel.setConfirmDialog(() => Promise.resolve(true))
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回列表')
+  }
+  await backToList()
+  await clickTab('笔记')
+  await waitFor(() => rootNode().querySelector('.dshgn_search') !== null, 4000, '笔记页签里有搜索框')
+  const search = rootNode().querySelector('.dshgn_search')
+  Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(search, '')
+  search.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(400)
+
+  const make = async (dir, title, content, requestId) => {
+    const res = await realFetch(`${server.origin}/getnote/create`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({ dir, title, content, withDatePrefix: false, requestId }),
+    })
+    const json = await res.json()
+    return json.path
+  }
+  const dir = '回收站批量验收'
+  const paths = []
+  paths.push(await make(dir, '回收站批量-甲', '# 回收站批量-甲\n\n正文。\n', 'seed-trash-pick-a'))
+  paths.push(await make(dir, '回收站批量-乙', '# 回收站批量-乙\n\n正文。\n', 'seed-trash-pick-b'))
+  paths.push(await make(dir, '回收站批量-丙', '# 回收站批量-丙\n\n正文。\n', 'seed-trash-pick-c'))
+
+  // 先把三篇都删进回收站：走真接口，不走界面，免得再依赖一遍删除流程
+  for (const one of paths) {
+    await realFetch(`${server.origin}/getnote/delete`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({ path: one }),
+    })
+  }
+
+  await clickTab('回收站')
+  // 回收站里还留着别的用例删进去的东西，一律按标题认自己那三行。
+  const pickOfTitle = (want) => {
+    const rows = Array.from(rootNode().querySelectorAll('.dshgn_rowLine'))
+    for (const row of rows) {
+      const title = row.querySelector('.dshgn_cardTitle')
+      if (title === null) continue
+      if ((title.textContent || '').trim() !== want) continue
+      return row.querySelector('.dshgn_trashPick')
+    }
+    return null
+  }
+  await waitFor(() => pickOfTitle('回收站批量-甲') !== null && pickOfTitle('回收站批量-丙') !== null, 8000, '回收站里该摆出我们那几行的勾选框')
+  // 一开始一颗都不该勾着，批量条也不该出现
+  assert.equal(
+    ['回收站批量-甲', '回收站批量-乙', '回收站批量-丙']
+      .map((name) => pickOfTitle(name))
+      .filter((one) => one !== null && one.getAttribute('aria-checked') === 'true').length,
+    0,
+    '刚进来时不该有勾着的',
+  )
+  assert.equal(
+    rootNode().querySelector('.dshgn_batchBar'),
+    null,
+    '一个都没勾时不摆批量条',
+  )
+
+  // 勾前两个，然后「恢复这几个」——目录只填一次
+  pickOfTitle('回收站批量-甲').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  pickOfTitle('回收站批量-乙').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const bar = await waitFor(() => rootNode().querySelector('.dshgn_batchBar'), 4000, '勾了两个之后该出现批量条')
+  const countText = String((bar.querySelector('.dshgn_batchCount') || {}).textContent || '')
+  assert.ok(countText.includes('2'), '批量条上要报出勾了几个：' + countText)
+
+  const targetInput = rootNode().querySelector('.dshgn_trashTarget input')
+  assert.ok(targetInput !== null, '回收站里该有「恢复到哪个目录」那一行')
+  Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(targetInput, dir)
+  targetInput.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(300)
+
+  const restoreBtn = Array.from(bar.querySelectorAll('.dshgn_btn')).find(
+    (btn) => (btn.textContent || '').includes('恢复这几个'),
+  )
+  assert.ok(restoreBtn !== undefined, '批量条上该有「恢复这几个」')
+  restoreBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+
+  // 两篇回到库里：原路径读得回来
+  const readStatus = async (rel) => {
+    const res = await realFetch(
+      server.origin + '/getnote/read?path=' + encodeURIComponent(rel),
+      { headers: { 'x-getnote-token': server.token } },
+    )
+    return res.status
+  }
+  const backBoth = async () => {
+    const a = await readStatus(paths[0])
+    const b = await readStatus(paths[1])
+    return a === 200 && b === 200
+  }
+  await waitFor(backBoth, 10000, '勾着的那两篇该被恢复到原来那个目录')
+  // 回收站里还留着别的用例删进去的东西，所以只按名字查我们自己这三篇。
+  const trashNamesOf = async () => {
+    const res = await realFetch(server.origin + '/getnote/trash/list', {
+      headers: { 'x-getnote-token': server.token },
+    })
+    const items = (await res.json()).items || []
+    return items.map((one) => String(one.originalName || ''))
+  }
+  let names = await trashNamesOf()
+  for (let i = 0; i < 40; i += 1) {
+    names = await trashNamesOf()
+    if (!names.includes('回收站批量-甲.md') && !names.includes('回收站批量-乙.md')) break
+    await sleep(250)
+  }
+  assert.ok(!names.includes('回收站批量-甲.md'), '勾着的甲该已经离开回收站：' + JSON.stringify(names))
+  assert.ok(!names.includes('回收站批量-乙.md'), '勾着的乙该已经离开回收站：' + JSON.stringify(names))
+  assert.ok(names.includes('回收站批量-丙.md'), '没勾的丙该还在回收站里：' + JSON.stringify(names))
+  // 恢复完之后勾选清空、批量条收起来
+  await waitFor(() => rootNode().querySelector('.dshgn_batchBar') === null, 5000, '恢复完批量条该收起来')
+
+  // 再把剩下的那篇勾上，一起永久删掉：要问一句，问完真没了
+  const asked = []
+  panel.setConfirmDialog(async (message) => {
+    asked.push(String(message))
+    return true
+  })
+  try {
+    const pickC = await waitFor(() => pickOfTitle('回收站批量-丙'), 8000, '回收站里该还有丙那一行')
+    pickC.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    const bar2 = await waitFor(() => rootNode().querySelector('.dshgn_batchBar'), 4000, '勾一个也该出现批量条')
+    const purgeBtn = Array.from(bar2.querySelectorAll('.dshgn_btn')).find(
+      (btn) => (btn.textContent || '').includes('永久删除这几个'),
+    )
+    assert.ok(purgeBtn !== undefined, '批量条上该有「永久删除这几个」')
+    purgeBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => asked.length > 0, 8000, '永久删之前该问一句')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  assert.ok(
+    asked[0].includes('无法撤销'),
+    '问的话要说清这是不可撤销的：' + asked[0],
+  )
+  // waitFor 只认同步条件，这里自己轮询：回收站里还留着别的用例删进去的东西，
+  // 所以不能断言「空了」，只能断言「我们这几篇没了」。
+  const trashNames = async () => {
+    const res = await realFetch(server.origin + '/getnote/trash/list', {
+      headers: { 'x-getnote-token': server.token },
+    })
+    const items = (await res.json()).items || []
+    return items.map((one) => String(one.originalName || ''))
+  }
+  let leftNames = await trashNames()
+  for (let i = 0; i < 40; i += 1) {
+    leftNames = await trashNames()
+    if (!leftNames.includes('回收站批量-丙.md')) break
+    await sleep(250)
+  }
+  assert.ok(
+    !leftNames.includes('回收站批量-丙.md'),
+    '永久删掉之后这一篇不该还在回收站里：' + JSON.stringify(leftNames),
+  )
+
+  await clickTab('笔记')
+})
