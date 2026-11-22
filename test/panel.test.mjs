@@ -14626,3 +14626,106 @@ test('回收站里那一行说清「原来在」哪个目录，不说放哪就�
 
   await clickTab('笔记')
 })
+
+test('待办页能按待办文字或篇名筛一条，清掉这个筛就回全量', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const backToList = async () => {
+    const back = rootNode().querySelector('.dshgn_noteBack')
+    if (back !== null) {
+      panel.setConfirmDialog(() => Promise.resolve(true))
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false')
+  }
+  await backToList()
+  const search = rootNode().querySelector('.dshgn_search')
+  if (search !== null && String(search.value || '') !== '') {
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(search, '')
+    search.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(400)
+  }
+  const allRow = Array.from(rootNode().querySelectorAll('.dshgn_treeRow')).find((el) => {
+    const name = el.querySelector('.dshgn_treeName')
+    return name !== null && (name.textContent || '').trim() === '全部笔记'
+  })
+  if (allRow) allRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+  const refreshBtn = Array.from(rootNode().querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(800)
+
+  const make = async (title, content, requestId) => {
+    const res = await realFetch(server.origin + '/getnote/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({ dir: '待办筛选验收', title, content, withDatePrefix: false, requestId }),
+    })
+    return (await res.json()).path
+  }
+  await make('待办筛选甲', ['# 待办筛选甲', '', '- [ ] 待办筛选里要查的接口', '- [ ] 待办筛选里另一件杂事', ''].join('\n'), 'seed-todo-filter-a')
+  await make('待办筛选乙', ['# 待办筛选乙', '', '- [ ] 待办筛选里那份周报', ''].join('\n'), 'seed-todo-filter-b')
+
+  await clickTab('待办')
+  const rowOf = (text) => {
+    const rows = Array.from(rootNode().querySelectorAll('.dshgn_todoRow'))
+    return rows.find((el) => String(el.textContent || '').includes(text)) || null
+  }
+  const rowsNow = () => Array.from(rootNode().querySelectorAll('.dshgn_todoRow'))
+  await waitFor(() => rowOf('待办筛选里要查的接口') !== null, 10000, '待办页该列出刚写的这一条')
+  assert.ok(rowOf('待办筛选里那份周报') !== null, '乙那一篇的待办也该在')
+  const totalRows = rowsNow().length
+
+  const input = await waitFor(() => rootNode().querySelector('.dshgn_brokenFilter'), 4000, '待办页该有自己的筛')
+  assert.equal(input.getAttribute('placeholder'), '按待办或篇名找一条')
+  const typeFilter = async (text) => {
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(input, text)
+    input.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(220)
+  }
+
+  await typeFilter('要查的接口')
+  await waitFor(() => rowsNow().length === 1, 5000, '筛完该只剩一条')
+  assert.ok(String(rowsNow()[0].textContent || '').includes('待办筛选里要查的接口'), '筛出来的该是这一条')
+  const countLine = await waitFor(() => rootNode().querySelector('.dshgn_todosFiltered'), 4000, '筛着的时候该报一句筛出几条')
+  assert.ok(/筛出 1 条，一共 \d+ 条/.test(String(countLine.textContent || '')), '计数行要报清筛出几条、一共几条：' + countLine.textContent)
+
+  await typeFilter('待办筛选乙')
+  await waitFor(() => rowsNow().length === 1, 5000, '按篇名也该筛得出来')
+  assert.ok(String(rowsNow()[0].textContent || '').includes('待办筛选里那份周报'), '按篇名筛出来的该是乙那一篇的那条')
+
+  const written = []
+  clipboard.writeText = async (text) => { written.push(String(text)) }
+  const copyBtn = Array.from(rootNode().querySelectorAll('.dshgn_btn')).find(
+    (el) => (el.textContent || '').trim() === '复制这份清单',
+  )
+  assert.ok(copyBtn !== undefined, '筛着的时候也该能抄')
+  copyBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+  const copied = written.length === 0 ? '' : written[written.length - 1]
+  assert.ok(copied.includes('待办筛选里那份周报'), '抄走该含筛出来的那一条：' + copied)
+  assert.ok(!copied.includes('待办筛选里要查的接口'), '抄走不该带上被筛掉的那些：' + copied)
+
+  await typeFilter('这一串谁也对不上')
+  await waitFor(() => rowsNow().length === 0, 5000, '对不上时该一条都不剩')
+  // 空态要在待办这一页里找：左栏和中栏也有各自的 .dshgn_emptyTitle
+  const pane = input.closest('.dshgn_pane')
+  assert.ok(pane !== null, '筛那一行该在待办这一页里')
+  const emptyTitle = await waitFor(
+    () => {
+      const el = pane.querySelector('.dshgn_emptyTitle')
+      return el !== null && String(el.textContent || '').trim() !== '' ? el : null
+    },
+    5000,
+    '筛空时该摆一屏「没有对得上的待办」：' + String(pane.innerHTML || '').slice(0, 400),
+  )
+  assert.equal(String(emptyTitle.textContent || ''), '没有对得上的待办')
+  assert.ok(String((pane.querySelector('.dshgn_emptyDesc') || {}).textContent || '').includes('清掉上面那个筛'))
+  assert.equal(rootNode().querySelector('.dshgn_todosFiltered'), null, '一条都没筛出来时不必再报筛出几条')
+
+  input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  await waitFor(() => rowsNow().length === totalRows, 5000, 'Esc 之后该回到全量')
+  assert.equal(input.value, '', 'Esc 之后框里该是空的')
+  assert.equal(rootNode().querySelector('.dshgn_todosFiltered'), null, '没筛的时候不摆计数行')
+
+  await clickTab('笔记')
+})

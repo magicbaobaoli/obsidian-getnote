@@ -9312,6 +9312,11 @@ var LEX = {
     "todos.folded": "\u8FD9\u4E00\u7BC7\u7684 {n} \u6761\u6536\u8D77\u6765\u4E86",
     "todos.foldAll": "\u5168\u90E8\u6536\u8D77",
     "todos.unfoldAll": "\u5168\u90E8\u5C55\u5F00",
+    "todos.filter": "\u6309\u5F85\u529E\u6216\u7BC7\u540D\u627E\u4E00\u6761",
+    "todos.filterClear": "\u6E05\u6389\u8FD9\u4E2A\u7B5B",
+    "todos.filtered": "\u7B5B\u51FA {n} \u6761\uFF0C\u4E00\u5171 {total} \u6761",
+    "todos.filterNone": "\u6CA1\u6709\u5BF9\u5F97\u4E0A\u7684\u5F85\u529E",
+    "todos.filterNoneHint": "\u6E05\u6389\u4E0A\u9762\u90A3\u4E2A\u7B5B\u5C31\u80FD\u770B\u5230\u5168\u90E8\u5F85\u529E\u3002",
     "trash.desc": "\u5220\u6389\u7684\u7B14\u8BB0\u5148\u653E\u8FD9\u91CC\uFF0C\u968F\u65F6\u53EF\u4EE5\u6062\u590D\u3002\u6062\u590D\u53EA\u662F\u628A\u6587\u4EF6\u642C\u56DE\u5E93\u91CC\uFF0C\u4E0D\u78B0\u5185\u5BB9\u3002",
     "trash.empty": "\u56DE\u6536\u7AD9\u662F\u7A7A\u7684",
     "trash.emptyHint": "\u5728\u7B14\u8BB0\u5217\u8868\u91CC\u70B9\u5220\u9664\uFF0C\u6587\u4EF6\u4F1A\u5148\u5230\u8FD9\u91CC\u3002\u6E05\u7A7A\u624D\u4F1A\u771F\u7684\u5220\u3002",
@@ -9913,6 +9918,11 @@ var LEX = {
     "todos.folded": "{n} in this note collapsed",
     "todos.foldAll": "Collapse all",
     "todos.unfoldAll": "Expand all",
+    "todos.filter": "Find one by text or note",
+    "todos.filterClear": "Clear this filter",
+    "todos.filtered": "{n} of {total} shown",
+    "todos.filterNone": "No to-do matches",
+    "todos.filterNoneHint": "Clear the filter above to see them all.",
     "trash.desc": "Deleted notes wait here and can be restored. Restoring just moves the file back.",
     "trash.empty": "Trash is empty",
     "trash.emptyHint": "Deleting a note moves it here first. Only purging really deletes it.",
@@ -10512,6 +10522,11 @@ var LEX = {
     "todos.folded": "{n} in deze notitie ingeklapt",
     "todos.foldAll": "Alles inklappen",
     "todos.unfoldAll": "Alles uitklappen",
+    "todos.filter": "Zoek er een op tekst of notitie",
+    "todos.filterClear": "Dit filter wissen",
+    "todos.filtered": "{n} van {total} getoond",
+    "todos.filterNone": "Geen taak gevonden",
+    "todos.filterNoneHint": "Wis het filter hierboven om ze allemaal te zien.",
     "trash.desc": "Verwijderde notities wachten hier en kunnen worden hersteld. Herstellen zet het bestand gewoon terug.",
     "trash.empty": "De prullenbak is leeg",
     "trash.emptyHint": "Een notitie verwijderen verplaatst hem eerst hierheen. Pas leegmaken verwijdert echt.",
@@ -12664,6 +12679,7 @@ var CSS = `
   color:var(--dsw-alias-label-dimmed)}
 .dshgn_brokenFilter{flex:1 1 auto;min-width:0;height:24px;font-size:11.5px}
 .dshgn_brokenFilterClear{flex:none;height:24px;padding:0 6px;font-size:11px}
+/* \u5F85\u529E\u9875\u90A3\u4E00\u884C\u7B5B\u590D\u7528\u4E0A\u9762\u8FD9\u4E09\u6761\uFF08\u540C\u4E00\u526F\u6837\u5B50\uFF1A\u4E00\u4E2A\u653E\u5927\u955C\u3001\u4E00\u884C\u8F93\u5165\u3001\u4E00\u9897\u6E05\u6389\uFF09\u3002 */
 /* \u5F85\u529E\u6E05\u5355\uFF1A\u4E00\u884C\u4E00\u6761\u3002\u65B9\u6846\u590D\u7528\u9605\u8BFB\u533A\u90A3\u4E2A\uFF08\u540C\u6837\u5927\u5C0F\u3001\u540C\u6837\u80FD\u70B9\uFF09\uFF0C\u53F3\u8FB9\u662F\u6B63\u6587\u4E0E\u51FA\u5904\u3002
    \u65B9\u6846\u5916\u9762\u5957\u4E00\u5C42\u900F\u660E\u6309\u94AE\uFF0C\u662F\u4E3A\u4E86\u8BA9\u6574\u5757\u65B9\u6846\u8FDE\u5468\u8FB9\u7684\u70B9\u51FB\u70ED\u533A\u4E00\u8D77\u53EF\u70B9\u2014\u201412px \u7684\u65B9\u6846
    \u76F4\u63A5\u70B9\u5F88\u96BE\u70B9\u4E2D\uFF0C\u624B\u673A\u4E0A\u5C24\u5176\u3002 */
@@ -19755,6 +19771,8 @@ function TodoPane(props) {
   const [loading, setLoading] = h2(false);
   const [busy, setBusy] = h2("");
   const [foldedGroups, setFoldedGroups] = h2(() => /* @__PURE__ */ new Set());
+  const [filter, setFilter] = h2("");
+  const needle = filter.trim().toLowerCase();
   const load = q2(async () => {
     setLoading(true);
     try {
@@ -19792,9 +19810,8 @@ function TodoPane(props) {
     },
     [onChanged, onError, showToast, t4]
   );
-  const copyAll = q2(async () => {
-    const rows = items === null ? [] : items;
-    if (rows.length === 0) return;
+  const copyAll = q2(async (rows) => {
+    if (!Array.isArray(rows) || rows.length === 0) return;
     const byNote = /* @__PURE__ */ new Map();
     for (const item of rows) {
       const key = item.path;
@@ -19815,7 +19832,7 @@ function TodoPane(props) {
     } catch {
       if (typeof showToast === "function") showToast(text);
     }
-  }, [items, showToast, t4]);
+  }, [showToast, t4]);
   const untickAll = q2(
     async (group) => {
       if (group === null || group === void 0 || group.items.length === 0) return;
@@ -19850,7 +19867,15 @@ function TodoPane(props) {
       return next;
     });
   }, []);
-  const list = items === null ? [] : items;
+  const allItems = T2(() => items === null ? [] : items, [items]);
+  const list = T2(
+    () => needle === "" ? allItems : allItems.filter((item) => {
+      const text = String(item.text || "").toLowerCase();
+      const where = String(item.title || item.path || "").toLowerCase();
+      return text.includes(needle) || where.includes(needle);
+    }),
+    [allItems, needle]
+  );
   const groups = T2(() => {
     const out = [];
     const at = /* @__PURE__ */ new Map();
@@ -19875,7 +19900,7 @@ function TodoPane(props) {
       return next;
     });
   }, [allFolded, groups]);
-  const summary = t4("todos.found").replace("{n}", String(list.length)).replace("{scanned}", String(scanned));
+  const summary = t4("todos.found").replace("{n}", String(allItems.length)).replace("{scanned}", String(scanned));
   return h4(
     "div",
     { className: "dshgn_pane" },
@@ -19890,7 +19915,9 @@ function TodoPane(props) {
         // 一条条复制等于重新抄一遍，这里按屏幕上这个顺序整份抄走。
         list.length === 0 ? null : h4(
           "button",
-          { type: "button", className: "dshgn_btn", title: t4("todo.copyAll"), onClick: () => void copyAll() },
+          // 抄的是屏幕上这一份：筛着的时候只抄筛出来的那几条，
+          // 不然「抄走清单」会把看不见的几百条一起塞进去。
+          { type: "button", className: "dshgn_btn", title: t4("todo.copyAll"), onClick: () => void copyAll(list) },
           h4(Icon, { name: "copy", size: 12 }),
           t4("todo.copyAll")
         ),
@@ -19915,15 +19942,51 @@ function TodoPane(props) {
         )
       ),
       h4("div", { className: "dshgn_sectionDesc" }, t4("todos.desc")),
-      items !== null && list.length > 0 ? h4("div", { className: "dshgn_sectionDesc" }, summary) : null,
+      allItems.length === 0 ? null : h4(
+        "div",
+        { className: "dshgn_brokenFilterRow" },
+        h4(Icon, { name: "search", size: 12 }),
+        h4("input", {
+          type: "text",
+          className: "dshgn_input dshgn_brokenFilter",
+          value: filter,
+          placeholder: t4("todos.filter"),
+          "aria-label": t4("todos.filter"),
+          onInput: (event) => setFilter(String(event.target.value || "")),
+          onKeyDown: (event) => {
+            if (event.key !== "Escape") return;
+            event.preventDefault();
+            event.stopPropagation();
+            setFilter("");
+          }
+        }),
+        filter.trim() === "" ? null : h4(
+          "button",
+          {
+            type: "button",
+            className: "dshgn_btn dshgn_brokenFilterClear",
+            title: t4("todos.filterClear"),
+            onClick: () => setFilter("")
+          },
+          h4(Icon, { name: "close", size: 12 })
+        )
+      ),
+      items !== null && allItems.length > 0 ? h4("div", { className: "dshgn_sectionDesc" }, summary) : null,
+      // 一条都没筛出来时不报「筛出 0 条」——下面那一屏已经说清没有对得上的了
+      needle === "" || list.length === 0 ? null : h4(
+        "div",
+        { className: "dshgn_sectionDesc dshgn_todosFiltered" },
+        t4("todos.filtered").replace("{n}", String(list.length)).replace("{total}", String(allItems.length))
+      ),
       truncated ? h4("div", { className: "dshgn_sectionDesc" }, t4("todos.truncated")) : null
     ),
     loading && list.length === 0 ? h4("div", { className: "dshgn_emptyState" }, h4("span", { className: "dshgn_spin" })) : list.length === 0 ? h4(
       "div",
       { className: "dshgn_empty" },
-      h4(Icon, { name: "check", size: 24 }),
-      h4("div", { className: "dshgn_emptyTitle" }, t4("todos.empty")),
-      h4("div", { className: "dshgn_emptyDesc" }, t4("todos.emptyHint"))
+      h4(Icon, { name: needle === "" ? "check" : "search", size: 24 }),
+      // 筛着的时候不能说「库里每一条待办都做完了」——那是在说另一件事
+      h4("div", { className: "dshgn_emptyTitle" }, needle === "" ? t4("todos.empty") : t4("todos.filterNone")),
+      h4("div", { className: "dshgn_emptyDesc" }, needle === "" ? t4("todos.emptyHint") : t4("todos.filterNoneHint"))
     ) : h4(
       "div",
       { className: "dshgn_cardBox" },

@@ -1007,6 +1007,11 @@ async function saveFile(url, filename) {
         'todos.folded': '这一篇的 {n} 条收起来了',
         'todos.foldAll': '全部收起',
         'todos.unfoldAll': '全部展开',
+        'todos.filter': '按待办或篇名找一条',
+        'todos.filterClear': '清掉这个筛',
+        'todos.filtered': '筛出 {n} 条，一共 {total} 条',
+        'todos.filterNone': '没有对得上的待办',
+        'todos.filterNoneHint': '清掉上面那个筛就能看到全部待办。',
         'trash.desc': '删掉的笔记先放这里，随时可以恢复。恢复只是把文件搬回库里，不碰内容。',
         'trash.empty': '回收站是空的',
         'trash.emptyHint': '在笔记列表里点删除，文件会先到这里。清空才会真的删。',
@@ -1613,6 +1618,11 @@ async function saveFile(url, filename) {
       'todos.folded': '{n} in this note collapsed',
       'todos.foldAll': 'Collapse all',
       'todos.unfoldAll': 'Expand all',
+      'todos.filter': 'Find one by text or note',
+      'todos.filterClear': 'Clear this filter',
+      'todos.filtered': '{n} of {total} shown',
+      'todos.filterNone': 'No to-do matches',
+      'todos.filterNoneHint': 'Clear the filter above to see them all.',
         'trash.desc': 'Deleted notes wait here and can be restored. Restoring just moves the file back.',
         'trash.empty': 'Trash is empty',
         'trash.emptyHint': 'Deleting a note moves it here first. Only purging really deletes it.',
@@ -2216,6 +2226,11 @@ async function saveFile(url, filename) {
       'todos.folded': '{n} in deze notitie ingeklapt',
       'todos.foldAll': 'Alles inklappen',
       'todos.unfoldAll': 'Alles uitklappen',
+      'todos.filter': 'Zoek er een op tekst of notitie',
+      'todos.filterClear': 'Dit filter wissen',
+      'todos.filtered': '{n} van {total} getoond',
+      'todos.filterNone': 'Geen taak gevonden',
+      'todos.filterNoneHint': 'Wis het filter hierboven om ze allemaal te zien.',
         'trash.desc': 'Verwijderde notities wachten hier en kunnen worden hersteld. Herstellen zet het bestand gewoon terug.',
         'trash.empty': 'De prullenbak is leeg',
         'trash.emptyHint': 'Een notitie verwijderen verplaatst hem eerst hierheen. Pas leegmaken verwijdert echt.',
@@ -5176,6 +5191,7 @@ async function saveFile(url, filename) {
   color:var(--dsw-alias-label-dimmed)}
 .dshgn_brokenFilter{flex:1 1 auto;min-width:0;height:24px;font-size:11.5px}
 .dshgn_brokenFilterClear{flex:none;height:24px;padding:0 6px;font-size:11px}
+/* 待办页那一行筛复用上面这三条（同一副样子：一个放大镜、一行输入、一颗清掉）。 */
 /* 待办清单：一行一条。方框复用阅读区那个（同样大小、同样能点），右边是正文与出处。
    方框外面套一层透明按钮，是为了让整块方框连周边的点击热区一起可点——12px 的方框
    直接点很难点中，手机上尤其。 */
@@ -13511,6 +13527,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 全被顶到屏幕外面去；组头还留着，所以收起来不等于「这篇没待办了」。
       // 和左栏目录/标签的折叠同一套：只活在这次会话里，不落盘。
       const [foldedGroups, setFoldedGroups] = React.useState(() => new Set())
+      // 待办攒到几百条、散在几十篇里时，找「上次那个接口有没有改」只能一篇篇收起
+      // 再翻。这个筛只筛这一页的清单，不碰文件、也不碰别处的搜索框。
+      const [filter, setFilter] = React.useState('')
+      const needle = filter.trim().toLowerCase()
 
       const load = React.useCallback(async () => {
         setLoading(true)
@@ -13557,9 +13577,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 把整份清单抄成一段 Markdown：周报、群里同步、贴进另一个工具都要它。
       // 按篇分组、按行号排，顺序跟屏幕上一致；抄走的是「- [ ] 正文」加一行出处，
       // 而不是屏幕上那几段被 CSS 截断的省略号。
-      const copyAll = React.useCallback(async () => {
-        const rows = items === null ? [] : items
-        if (rows.length === 0) return
+      const copyAll = React.useCallback(async (rows) => {
+        if (!Array.isArray(rows) || rows.length === 0) return
         const byNote = new Map()
         for (const item of rows) {
           const key = item.path
@@ -13581,7 +13600,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           // 没有剪贴板权限时把正文摊出来让用户自己选，总比点了没反应强
           if (typeof showToast === 'function') showToast(text)
         }
-      }, [items, showToast, t])
+      }, [showToast, t])
 
       // 一整篇的待办都做完了：一条条点方框等于点十几次，每点一次还各存一遍盘。
       // 仍然一条一条走 /todo/toggle（那边按序号定位、只认一条），但这一篇的
@@ -13624,7 +13643,20 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         })
       }, [])
 
-      const list = items === null ? [] : items
+      const allItems = React.useMemo(() => (items === null ? [] : items), [items])
+      // 筛的是「正文或者篇名里有没有这几个字」。篇名也算，因为「那一篇里的待办」
+      // 本身就是常用来找东西的线索，跟断链那一页同一个口径。
+      const list = React.useMemo(
+        () =>
+          needle === ''
+            ? allItems
+            : allItems.filter((item) => {
+                const text = String(item.text || '').toLowerCase()
+                const where = String(item.title || item.path || '').toLowerCase()
+                return text.includes(needle) || where.includes(needle)
+              }),
+        [allItems, needle],
+      )
       // 按篇分组：几十条待办散在七八篇里时，光看每行「第几行」不知道还剩几篇没弄，
       // 也不知道哪几篇其实已经清空了。顺序沿用后端给的（先按路径、再按行号）。
       const groups = React.useMemo(() => {
@@ -13655,7 +13687,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         })
       }, [allFolded, groups])
 
-      const summary = t('todos.found').replace('{n}', String(list.length)).replace('{scanned}', String(scanned))
+      const summary = t('todos.found').replace('{n}', String(allItems.length)).replace('{scanned}', String(scanned))
 
       return h(
         'div',
@@ -13673,7 +13705,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
               ? null
               : h(
                   'button',
-                  { type: 'button', className: 'dshgn_btn', title: t('todo.copyAll'), onClick: () => void copyAll() },
+                  // 抄的是屏幕上这一份：筛着的时候只抄筛出来的那几条，
+                  // 不然「抄走清单」会把看不见的几百条一起塞进去。
+                  { type: 'button', className: 'dshgn_btn', title: t('todo.copyAll'), onClick: () => void copyAll(list) },
                   h(Icon, { name: 'copy', size: 12 }),
                   t('todo.copyAll'),
                 ),
@@ -13700,7 +13734,49 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             ),
           ),
           h('div', { className: 'dshgn_sectionDesc' }, t('todos.desc')),
-          items !== null && list.length > 0 ? h('div', { className: 'dshgn_sectionDesc' }, summary) : null,
+          allItems.length === 0
+            ? null
+            : h(
+                'div',
+                { className: 'dshgn_brokenFilterRow' },
+                h(Icon, { name: 'search', size: 12 }),
+                h('input', {
+                  type: 'text',
+                  className: 'dshgn_input dshgn_brokenFilter',
+                  value: filter,
+                  placeholder: t('todos.filter'),
+                  'aria-label': t('todos.filter'),
+                  onInput: (event) => setFilter(String(event.target.value || '')),
+                  onKeyDown: (event) => {
+                    if (event.key !== 'Escape') return
+                    // Esc 只清这一页的筛，别顺手把别处的输入也一起收了
+                    event.preventDefault()
+                    event.stopPropagation()
+                    setFilter('')
+                  },
+                }),
+                filter.trim() === ''
+                  ? null
+                  : h(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'dshgn_btn dshgn_brokenFilterClear',
+                        title: t('todos.filterClear'),
+                        onClick: () => setFilter(''),
+                      },
+                      h(Icon, { name: 'close', size: 12 }),
+                    ),
+              ),
+          items !== null && allItems.length > 0 ? h('div', { className: 'dshgn_sectionDesc' }, summary) : null,
+          // 一条都没筛出来时不报「筛出 0 条」——下面那一屏已经说清没有对得上的了
+          needle === '' || list.length === 0
+            ? null
+            : h(
+                'div',
+                { className: 'dshgn_sectionDesc dshgn_todosFiltered' },
+                t('todos.filtered').replace('{n}', String(list.length)).replace('{total}', String(allItems.length)),
+              ),
           truncated ? h('div', { className: 'dshgn_sectionDesc' }, t('todos.truncated')) : null,
         ),
         loading && list.length === 0
@@ -13709,9 +13785,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             ? h(
                 'div',
                 { className: 'dshgn_empty' },
-                h(Icon, { name: 'check', size: 24 }),
-                h('div', { className: 'dshgn_emptyTitle' }, t('todos.empty')),
-                h('div', { className: 'dshgn_emptyDesc' }, t('todos.emptyHint')),
+                h(Icon, { name: needle === '' ? 'check' : 'search', size: 24 }),
+                // 筛着的时候不能说「库里每一条待办都做完了」——那是在说另一件事
+                h('div', { className: 'dshgn_emptyTitle' }, needle === '' ? t('todos.empty') : t('todos.filterNone')),
+                h('div', { className: 'dshgn_emptyDesc' }, needle === '' ? t('todos.emptyHint') : t('todos.filterNoneHint')),
               )
             : h(
                 'div',
