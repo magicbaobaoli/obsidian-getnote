@@ -1038,8 +1038,11 @@ async function trashNote(root, rel) {
   const target = (0, import_node_path4.join)(trashDir, `${stamp}__${(0, import_node_path4.basename)(abs)}`);
   await mkdir2(trashDir, { recursive: true });
   await rename2(abs, target);
+  const fromDir = import_node_path4.posix.dirname(normalized);
+  const originalDir = fromDir === "." ? "" : fromDir;
+  await rememberTrashOrigin(root, (0, import_node_path4.basename)(target), originalDir);
   invalidateScan(root);
-  return { path: normalized, trashedTo: toPosix((0, import_node_path4.relative)(root, target)) };
+  return { path: normalized, trashedTo: toPosix((0, import_node_path4.relative)(root, target)), originalDir };
 }
 function parseTrashName(name) {
   const m3 = TRASH_NAME_RE.exec(String(name || ""));
@@ -1051,6 +1054,54 @@ function parseTrashName(name) {
     originalName: m3[6]
   };
 }
+function queueTrashIndex(task) {
+  const next = trashIndexQueue.then(task, task);
+  trashIndexQueue = next.then(() => void 0, () => void 0);
+  return next;
+}
+async function readTrashOrigins(root) {
+  try {
+    const text = await readFile2((0, import_node_path4.join)(root, TRASH_DIR, TRASH_INDEX), "utf8");
+    const parsed = JSON.parse(text);
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return parsed;
+  } catch {
+    return {};
+  }
+}
+async function writeTrashOrigins(root, map) {
+  const dir = (0, import_node_path4.join)(root, TRASH_DIR);
+  await mkdir2(dir, { recursive: true });
+  const keys = Object.keys(map).slice(-TRASH_INDEX_MAX);
+  const trimmed = {};
+  for (const key of keys) trimmed[key] = map[key];
+  await writeFile2((0, import_node_path4.join)(dir, TRASH_INDEX), JSON.stringify(trimmed), "utf8");
+}
+async function rememberTrashOrigin(root, trashName, dir) {
+  const key = String(trashName || "");
+  if (key === "") return;
+  try {
+    await queueTrashIndex(async () => {
+      const map = await readTrashOrigins(root);
+      map[key] = { dir: String(dir || ""), at: (/* @__PURE__ */ new Date()).toISOString() };
+      await writeTrashOrigins(root, map);
+    });
+  } catch {
+  }
+}
+async function forgetTrashOrigin(root, trashName) {
+  const key = String(trashName || "");
+  if (key === "") return;
+  try {
+    await queueTrashIndex(async () => {
+      const map = await readTrashOrigins(root);
+      if (map[key] === void 0) return;
+      delete map[key];
+      await writeTrashOrigins(root, map);
+    });
+  } catch {
+  }
+}
 async function listTrash(root) {
   const trashDir = (0, import_node_path4.join)(root, TRASH_DIR);
   let dirents;
@@ -1059,6 +1110,7 @@ async function listTrash(root) {
   } catch {
     return [];
   }
+  const origins = await readTrashOrigins(root);
   const items = [];
   for (const dirent2 of dirents) {
     if (!dirent2.isFile()) continue;
@@ -1071,6 +1123,8 @@ async function listTrash(root) {
       continue;
     }
     const meta = parseTrashName(dirent2.name);
+    const remembered = origins[dirent2.name];
+    const originalDir = remembered !== null && typeof remembered === "object" && typeof remembered.dir === "string" ? remembered.dir : "";
     items.push({
       name: dirent2.name,
       path: toPosix((0, import_node_path4.join)(TRASH_DIR, dirent2.name)),
@@ -1078,7 +1132,8 @@ async function listTrash(root) {
       title: meta.originalName.replace(/\.md$/i, "").replace(/^\d{4}-\d{2}-\d{2}-/, ""),
       trashedAt: meta.trashedAt,
       bytes: st.size,
-      mtimeMs: st.mtimeMs
+      mtimeMs: st.mtimeMs,
+      originalDir
     });
   }
   items.sort((a3, b3) => {
@@ -1102,7 +1157,13 @@ async function restoreNote(root, trashPath, targetRel) {
   if (!st.isFile()) throw Object.assign(new Error("\u4E0D\u662F\u6587\u4EF6"), { status: 400 });
   const meta = parseTrashName((0, import_node_path4.basename)(absTrash));
   const wanted = typeof targetRel === "string" && targetRel.trim() !== "" ? normalizeRel(targetRel.trim()) : "";
-  const rel = wanted === "" ? meta.originalName : wanted;
+  let rel = wanted;
+  if (rel === "") {
+    const origins = await readTrashOrigins(root);
+    const remembered = origins[(0, import_node_path4.basename)(absTrash)];
+    const dir = remembered !== null && typeof remembered === "object" && typeof remembered.dir === "string" ? normalizeRel(remembered.dir) : "";
+    rel = dir === "" ? meta.originalName : `${dir}/${meta.originalName}`;
+  }
   if (rel === "" || rel.endsWith("/")) {
     throw Object.assign(new Error("\u76EE\u6807\u8DEF\u5F84\u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
   }
@@ -1127,6 +1188,7 @@ async function restoreNote(root, trashPath, targetRel) {
   const { abs: absFinal } = resolveInside(root, candidate, { create: true });
   await mkdir2((0, import_node_path4.dirname)(absFinal), { recursive: true });
   await rename2(absTrash, absFinal);
+  await forgetTrashOrigin(root, (0, import_node_path4.basename)(absTrash));
   invalidateScan(root);
   return { path: candidate, restoredFrom: trashRel, title: meta.originalName };
 }
@@ -1171,6 +1233,7 @@ async function purgeTrash(root, trashPath) {
       throw Object.assign(new Error("\u53EA\u80FD\u6E05\u7A7A .trash \u91CC\u7684\u6587\u4EF6"), { status: 400 });
     }
     await rm2(abs, { force: true });
+    await forgetTrashOrigin(root, (0, import_node_path4.basename)(abs));
     return { purged: [rel] };
   }
   let dirents;
@@ -1182,10 +1245,17 @@ async function purgeTrash(root, trashPath) {
   const purged = [];
   for (const dirent2 of dirents) {
     if (!dirent2.isFile()) continue;
+    if (dirent2.name === TRASH_INDEX) continue;
     await rm2((0, import_node_path4.join)(trashDir, dirent2.name), { force: true });
     purged.push(toPosix((0, import_node_path4.join)(TRASH_DIR, dirent2.name)));
   }
-  if (purged.length > 0) invalidateScan(root);
+  if (purged.length > 0) {
+    try {
+      await rm2((0, import_node_path4.join)(trashDir, TRASH_INDEX), { force: true });
+    } catch {
+    }
+    invalidateScan(root);
+  }
   return { purged };
 }
 function parseSearchQuery(input) {
@@ -2447,7 +2517,7 @@ function listDirs(entries, emptyDirs = []) {
   }
   return [...dirs].sort((a3, b3) => a3.localeCompare(b3, "zh"));
 }
-var import_node_crypto3, import_node_path4, NOTE_EXT, MAX_READ, MAX_WRITE, MAX_SCAN, MAX_DEPTH, IGNORED_DIRS, scanCache, SCAN_CACHE_MAX, entryMemo, ENTRY_MEMO_MAX, TRASH_DIR, TRASH_NAME_RE, linkMemo, LINK_MEMO_MAX, CONFLICT_DIR, CONFLICT_NAME_RE, CONFLICT_STATE_FILE, TAG_TOKEN_RE;
+var import_node_crypto3, import_node_path4, NOTE_EXT, MAX_READ, MAX_WRITE, MAX_SCAN, MAX_DEPTH, IGNORED_DIRS, scanCache, SCAN_CACHE_MAX, entryMemo, ENTRY_MEMO_MAX, TRASH_DIR, TRASH_NAME_RE, TRASH_INDEX, TRASH_INDEX_MAX, trashIndexQueue, linkMemo, LINK_MEMO_MAX, CONFLICT_DIR, CONFLICT_NAME_RE, CONFLICT_STATE_FILE, TAG_TOKEN_RE;
 var init_vault = __esm({
   "src/core/vault.js"() {
     init_vfs();
@@ -2479,6 +2549,9 @@ var init_vault = __esm({
     ENTRY_MEMO_MAX = 2e4;
     TRASH_DIR = ".trash";
     TRASH_NAME_RE = /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z__(.+)$/;
+    TRASH_INDEX = ".origins.json";
+    TRASH_INDEX_MAX = 5e3;
+    trashIndexQueue = Promise.resolve();
     linkMemo = /* @__PURE__ */ new Map();
     LINK_MEMO_MAX = 2e4;
     CONFLICT_DIR = ".conflicts";
@@ -9251,8 +9324,11 @@ var LEX = {
     "trash.purgeOneConfirm": "\u6C38\u4E45\u5220\u9664\u8FD9\u4E2A\u6587\u4EF6\uFF0C\u65E0\u6CD5\u64A4\u9500\u3002\u7EE7\u7EED\uFF1F",
     "trash.purged": "\u5DF2\u6E05\u7406",
     "trash.originalName": "\u539F\u6587\u4EF6",
-    "trash.restoreTo": "\u6062\u590D\u5230\u54EA\u4E2A\u76EE\u5F55\uFF08\u7559\u7A7A\u5C31\u653E\u5E93\u6839\uFF09",
+    "trash.restoreTo": "\u6062\u590D\u5230\u54EA\u4E2A\u76EE\u5F55\uFF08\u7559\u7A7A\u5C31\u653E\u56DE\u539F\u6765\u90A3\u4E2A\u76EE\u5F55\uFF09",
     "trash.restoreToClear": "\u6062\u590D\u5230\u5E93\u6839",
+    // 删的时候在哪个目录，恢复时默认就回哪：以前一律丢回库根，一篇篇再挪回去
+    "trash.originalDir": "\u539F\u6765\u5728",
+    "trash.vaultRoot": "\u5E93\u6839",
     // 回收站里只剩名字，删之前想确认是哪一篇，不该先恢复出来再看
     "trash.preview": "\u770B\u4E00\u773C",
     "trash.previewClose": "\u6536\u8D77",
@@ -9849,8 +9925,10 @@ var LEX = {
     "trash.purgeOneConfirm": "Delete this file forever. Continue?",
     "trash.purged": "Purged",
     "trash.originalName": "Original file",
-    "trash.restoreTo": "Restore into which folder (empty = vault root)",
+    "trash.restoreTo": "Restore into which folder (empty = back where it was)",
     "trash.restoreToClear": "Restore to vault root",
+    "trash.originalDir": "Was in",
+    "trash.vaultRoot": "vault root",
     "trash.preview": "Take a look",
     "trash.previewClose": "Collapse",
     "trash.previewLoading": "Reading...",
@@ -10446,8 +10524,10 @@ var LEX = {
     "trash.purgeOneConfirm": "Dit bestand voorgoed verwijderen. Doorgaan?",
     "trash.purged": "Verwijderd",
     "trash.originalName": "Oorspronkelijk bestand",
-    "trash.restoreTo": "Naar welke map herstellen (leeg = hoofdmap)",
+    "trash.restoreTo": "Naar welke map herstellen (leeg = terug waar het stond)",
     "trash.restoreToClear": "Herstellen naar de hoofdmap",
+    "trash.originalDir": "Stond in",
+    "trash.vaultRoot": "hoofdmap",
     "trash.preview": "Even kijken",
     "trash.previewClose": "Inklappen",
     "trash.previewLoading": "Lezen...",
@@ -13283,6 +13363,8 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 /* \u56DE\u6536\u7AD9\u91CC\u7684\u52FE\u9009\u6846\u4E00\u5F00\u59CB\u5C31\u6446\u7740\uFF1A\u8FD9\u4E00\u9875\u7684\u7528\u5904\u5C31\u662F\u6311\u4E1C\u897F\uFF0C
    \u4E0D\u50CF\u7B14\u8BB0\u5361\u7247\u90A3\u6837\u8981\u7B49\u60AC\u505C\u624D\u663E\u5F62\u3002 */
 .dshgn_trashPick{opacity:1;margin-top:1px}
+/* \u300C\u539F\u6765\u5728\u300D\u90A3\u4E00\u884C\uFF1A\u6BD4\u65F6\u95F4\u90A3\u884C\u518D\u6DE1\u4E00\u70B9\uFF0C\u5B83\u662F\u63D0\u793A\u4E0D\u662F\u4E3B\u4FE1\u606F\u3002 */
+.dshgn_trashOrigin{margin-top:1px;font-size:10px;color:var(--dsw-alias-label-dimmed);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_trashTarget{display:flex;flex-direction:column;gap:4px;margin:8px 0 2px;min-width:0}
 .dshgn_trashPreview{display:flex;flex-direction:column;gap:4px;margin:0 0 8px;padding:8px 10px;border-radius:7px;background:var(--dsw-alias-interactive-bg-hover);min-width:0}
 .dshgn_trashPreviewBody{font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary);white-space:pre-wrap;word-break:break-word;max-height:160px;overflow:hidden}
@@ -20339,6 +20421,12 @@ function TrashPane(props) {
                 "div",
                 { className: "dshgn_cardMeta" },
                 `${t4("trash.deletedAt")} ${formatTime(item.trashedAt)} \xB7 ${formatBytes2(item.bytes)}`
+              ),
+              // 恢复默认放回原处，可原处是哪得说一声——不然用户以为还是丢库根。
+              h4(
+                "div",
+                { className: "dshgn_cardMeta dshgn_trashOrigin" },
+                `${t4("trash.originalDir")} ${String(item.originalDir || "") === "" ? t4("trash.vaultRoot") : String(item.originalDir)}`
               )
             ),
             h4(

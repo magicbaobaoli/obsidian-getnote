@@ -373,6 +373,26 @@ note_url: https://www.biji.com/note/1200000000000000001
   check('回收站: purgeTrash 清空全部', Array.isArray(purgeAllResult.purged) && purgeAllResult.purged.length === trashListBefore.length - 1, JSON.stringify(purgeAllResult))
   check('回收站: 清空后为空', (await listTrash(root)).length === 0)
 
+  // ── 恢复回原处 ────────────────────────────────────────────────────────────
+  // 以前恢复一律丢回库根：一篇原本在「做过的项目/」的笔记，救回来之后得自己
+  // 再挪一次。现在删的时候把原目录记在 .trash/.origins.json，恢复默认回原处。
+  const originNote = await createNote(root, { dir: '做过的项目', title: '记着原处的笔记', content: '# 记着原处的笔记\n\n回原处\n' })
+  const originTrashed = await trashNote(root, originNote.path)
+  check('恢复回原处: 删除时报出原目录', originTrashed.originalDir === '做过的项目', String(originTrashed.originalDir))
+  // createNote 默认带日期前缀，文件名是 2026-…-记着原处的笔记.md，所以按原目录认。
+  const originItem = (await listTrash(root)).find((i) => i.originalDir === '做过的项目')
+  check('恢复回原处: 列表里带着原目录', originItem !== undefined && originItem.originalDir === '做过的项目', JSON.stringify(originItem && originItem.originalDir))
+  const originBack = await restoreNote(root, originItem.path, '')
+  check('恢复回原处: 不说放哪就回原目录', originBack.path === '做过的项目/' + originItem.originalName, originBack.path)
+  check('恢复回原处: 索引里那条跟着抹掉',
+    !(await listTrash(root)).some((i) => i.originalName === '记着原处的笔记.md'))
+
+  // 索引丢了、或者用户自己把文件拖进 .trash 时，恢复照旧能用，只是回库根。
+  const orphanName = '2026-11-15T03-04-05-678Z__没有索引的那一篇.md'
+  await writeFile(join(root, '.trash', orphanName), '# 没有索引的那一篇\n\n正文\n', 'utf8')
+  const orphanBack = await restoreNote(root, '.trash/' + orphanName, '')
+  check('恢复回原处: 索引里没有就回库根', orphanBack.path === '没有索引的那一篇.md', orphanBack.path)
+
   // 标签改写：块列表写法必须整段换掉，不能留悬空 `- 甲` 残渣
   // （这是真 bug：只替换 `tags:` 那一行的话，下面的列表项会原地留下，
   //  文件变成「新标签 + 一堆孤儿列表项」，下次解析把它们当垃圾）

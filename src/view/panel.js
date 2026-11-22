@@ -1019,8 +1019,11 @@ async function saveFile(url, filename) {
         'trash.purgeOneConfirm': '永久删除这个文件，无法撤销。继续？',
         'trash.purged': '已清理',
         'trash.originalName': '原文件',
-        'trash.restoreTo': '恢复到哪个目录（留空就放库根）',
+        'trash.restoreTo': '恢复到哪个目录（留空就放回原来那个目录）',
         'trash.restoreToClear': '恢复到库根',
+        // 删的时候在哪个目录，恢复时默认就回哪：以前一律丢回库根，一篇篇再挪回去
+        'trash.originalDir': '原来在',
+        'trash.vaultRoot': '库根',
         // 回收站里只剩名字，删之前想确认是哪一篇，不该先恢复出来再看
         'trash.preview': '看一眼',
         'trash.previewClose': '收起',
@@ -1622,8 +1625,10 @@ async function saveFile(url, filename) {
         'trash.purgeOneConfirm': 'Delete this file forever. Continue?',
         'trash.purged': 'Purged',
         'trash.originalName': 'Original file',
-        'trash.restoreTo': 'Restore into which folder (empty = vault root)',
+        'trash.restoreTo': 'Restore into which folder (empty = back where it was)',
         'trash.restoreToClear': 'Restore to vault root',
+        'trash.originalDir': 'Was in',
+        'trash.vaultRoot': 'vault root',
         'trash.preview': 'Take a look',
         'trash.previewClose': 'Collapse',
         'trash.previewLoading': 'Reading...',
@@ -2223,8 +2228,10 @@ async function saveFile(url, filename) {
         'trash.purgeOneConfirm': 'Dit bestand voorgoed verwijderen. Doorgaan?',
         'trash.purged': 'Verwijderd',
         'trash.originalName': 'Oorspronkelijk bestand',
-        'trash.restoreTo': 'Naar welke map herstellen (leeg = hoofdmap)',
+        'trash.restoreTo': 'Naar welke map herstellen (leeg = terug waar het stond)',
         'trash.restoreToClear': 'Herstellen naar de hoofdmap',
+        'trash.originalDir': 'Stond in',
+        'trash.vaultRoot': 'hoofdmap',
         'trash.preview': 'Even kijken',
         'trash.previewClose': 'Inklappen',
         'trash.previewLoading': 'Lezen...',
@@ -5868,6 +5875,8 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 /* 回收站里的勾选框一开始就摆着：这一页的用处就是挑东西，
    不像笔记卡片那样要等悬停才显形。 */
 .dshgn_trashPick{opacity:1;margin-top:1px}
+/* 「原来在」那一行：比时间那行再淡一点，它是提示不是主信息。 */
+.dshgn_trashOrigin{margin-top:1px;font-size:10px;color:var(--dsw-alias-label-dimmed);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_trashTarget{display:flex;flex-direction:column;gap:4px;margin:8px 0 2px;min-width:0}
 .dshgn_trashPreview{display:flex;flex-direction:column;gap:4px;margin:0 0 8px;padding:8px 10px;border-radius:7px;background:var(--dsw-alias-interactive-bg-hover);min-width:0}
 .dshgn_trashPreviewBody{font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary);white-space:pre-wrap;word-break:break-word;max-height:160px;overflow:hidden}
@@ -14246,6 +14255,12 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                         'div',
                         { className: 'dshgn_cardMeta' },
                         `${t('trash.deletedAt')} ${formatTime(item.trashedAt)} · ${formatBytes(item.bytes)}`,
+                      ),
+                      // 恢复默认放回原处，可原处是哪得说一声——不然用户以为还是丢库根。
+                      h(
+                        'div',
+                        { className: 'dshgn_cardMeta dshgn_trashOrigin' },
+                        `${t('trash.originalDir')} ${String(item.originalDir || '') === '' ? t('trash.vaultRoot') : String(item.originalDir)}`,
                       ),
                     ),
                     h(

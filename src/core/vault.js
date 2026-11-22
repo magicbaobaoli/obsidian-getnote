@@ -723,8 +723,13 @@ export async function trashNote(root, rel) {
   const target = join(trashDir, `${stamp}__${basename(abs)}`)
   await mkdir(trashDir, { recursive: true })
   await rename(abs, target)
+  // 文件名里只留了名字，原来在哪个目录记在旁边的索引里：恢复时能默认放回原处，
+  // 而不是一律丢回库根。索引只是锦上添花——它丢了照样能恢复，只是回到库根。
+  const fromDir = posix.dirname(normalized)
+  const originalDir = fromDir === '.' ? '' : fromDir
+  await rememberTrashOrigin(root, basename(target), originalDir)
   invalidateScan(root)
-  return { path: normalized, trashedTo: toPosix(relative(root, target)) }
+  return { path: normalized, trashedTo: toPosix(relative(root, target)), originalDir }
 }
 
 // ── 回收站 ───────────────────────────────────────────────────────────────────
@@ -750,6 +755,77 @@ export function parseTrashName(name) {
 }
 
 /**
+ * 回收站旁边挂的一份「原目录」索引。
+ *
+ * 为什么不是把目录编进文件名：文件名是用户可能直接拖回库里的东西，编码进去之后
+ * 拖回去得到的是个叫「随手记__某篇.md」的怪名字。所以权威仍是文件名，目录单独记；
+ * 索引读不到、被删了、或者文件是用户自己拖进 .trash 的，都退回「放库根」——
+ * 恢复这个动作不能因为少了一条辅助信息就失败。
+ */
+const TRASH_INDEX = '.origins.json'
+const TRASH_INDEX_MAX = 5000
+
+// 索引是「读-改-写」，两个删除同时进来会互相盖掉对方的条目。串成一条队列，
+// 一次只让一个任务动它；任务自己失败也不堵后面的。
+let trashIndexQueue = Promise.resolve()
+function queueTrashIndex(task) {
+  const next = trashIndexQueue.then(task, task)
+  trashIndexQueue = next.then(() => undefined, () => undefined)
+  return next
+}
+
+async function readTrashOrigins(root) {
+  try {
+    const text = await readFile(join(root, TRASH_DIR, TRASH_INDEX), 'utf8')
+    const parsed = JSON.parse(text)
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    return parsed
+  } catch {
+    return {}
+  }
+}
+
+async function writeTrashOrigins(root, map) {
+  const dir = join(root, TRASH_DIR)
+  await mkdir(dir, { recursive: true })
+  const keys = Object.keys(map).slice(-TRASH_INDEX_MAX)
+  const trimmed = {}
+  for (const key of keys) trimmed[key] = map[key]
+  await writeFile(join(dir, TRASH_INDEX), JSON.stringify(trimmed), 'utf8')
+}
+
+/** 记一条「这个回收站文件原来在哪个目录」。失败不影响删除本身。 */
+async function rememberTrashOrigin(root, trashName, dir) {
+  const key = String(trashName || '')
+  if (key === '') return
+  try {
+    await queueTrashIndex(async () => {
+      const map = await readTrashOrigins(root)
+      map[key] = { dir: String(dir || ''), at: new Date().toISOString() }
+      await writeTrashOrigins(root, map)
+    })
+  } catch {
+    // 索引写不进去只是少一条提示，删除已经成功了，不该因此报错
+  }
+}
+
+/** 恢复/永久删掉之后把这一条抹掉，免得索引越攒越长。 */
+async function forgetTrashOrigin(root, trashName) {
+  const key = String(trashName || '')
+  if (key === '') return
+  try {
+    await queueTrashIndex(async () => {
+      const map = await readTrashOrigins(root)
+      if (map[key] === undefined) return
+      delete map[key]
+      await writeTrashOrigins(root, map)
+    })
+  } catch {
+    // 同上：抹不掉只是留一条过期记录，下次真没了会自动对不上
+  }
+}
+
+/**
  * 列出回收站里的笔记（按删除时间倒序，最新的在最前）。
  *
  * 只收 `.md`：回收站里也可能有用户自己丢进去的图片或附件，那些不是「可恢复的笔记」，
@@ -763,6 +839,7 @@ export async function listTrash(root) {
   } catch {
     return []
   }
+  const origins = await readTrashOrigins(root)
   const items = []
   for (const dirent of dirents) {
     if (!dirent.isFile()) continue
@@ -775,6 +852,11 @@ export async function listTrash(root) {
       continue
     }
     const meta = parseTrashName(dirent.name)
+    // 原来在哪个目录：索引里有就用它，没有就是空串（= 放库根，和以前一样）。
+    const remembered = origins[dirent.name]
+    const originalDir = remembered !== null && typeof remembered === 'object' && typeof remembered.dir === 'string'
+      ? remembered.dir
+      : ''
     items.push({
       name: dirent.name,
       path: toPosix(join(TRASH_DIR, dirent.name)),
@@ -783,6 +865,7 @@ export async function listTrash(root) {
       trashedAt: meta.trashedAt,
       bytes: st.size,
       mtimeMs: st.mtimeMs,
+      originalDir,
     })
   }
   items.sort((a, b) => {
@@ -819,7 +902,17 @@ export async function restoreNote(root, trashPath, targetRel) {
   const wanted = typeof targetRel === 'string' && targetRel.trim() !== ''
     ? normalizeRel(targetRel.trim())
     : ''
-  const rel = wanted === '' ? meta.originalName : wanted
+  // 调用方没说放回哪时，先看索引里记的原目录：删之前在哪，恢复就回哪。
+  // 索引里没有（老版本删的、用户自己拖进来的）就退回库根，和以前一样。
+  let rel = wanted
+  if (rel === '') {
+    const origins = await readTrashOrigins(root)
+    const remembered = origins[basename(absTrash)]
+    const dir = remembered !== null && typeof remembered === 'object' && typeof remembered.dir === 'string'
+      ? normalizeRel(remembered.dir)
+      : ''
+    rel = dir === '' ? meta.originalName : `${dir}/${meta.originalName}`
+  }
   if (rel === '' || rel.endsWith('/')) {
     throw Object.assign(new Error('目标路径不能为空'), { status: 400 })
   }
@@ -847,6 +940,7 @@ export async function restoreNote(root, trashPath, targetRel) {
   const { abs: absFinal } = resolveInside(root, candidate, { create: true })
   await mkdir(dirname(absFinal), { recursive: true })
   await rename(absTrash, absFinal)
+  await forgetTrashOrigin(root, basename(absTrash))
   invalidateScan(root)
   return { path: candidate, restoredFrom: trashRel, title: meta.originalName }
 }
@@ -908,6 +1002,7 @@ export async function purgeTrash(root, trashPath) {
       throw Object.assign(new Error('只能清空 .trash 里的文件'), { status: 400 })
     }
     await rm(abs, { force: true })
+    await forgetTrashOrigin(root, basename(abs))
     return { purged: [rel] }
   }
   let dirents
@@ -919,10 +1014,20 @@ export async function purgeTrash(root, trashPath) {
   const purged = []
   for (const dirent of dirents) {
     if (!dirent.isFile()) continue
+    // 索引文件不是回收站里的「东西」：清空时跟着一起清掉，但不能算进 purged，
+    // 否则面板会报「已清理 N+1 个」。
+    if (dirent.name === TRASH_INDEX) continue
     await rm(join(trashDir, dirent.name), { force: true })
     purged.push(toPosix(join(TRASH_DIR, dirent.name)))
   }
-  if (purged.length > 0) invalidateScan(root)
+  if (purged.length > 0) {
+    try {
+      await rm(join(trashDir, TRASH_INDEX), { force: true })
+    } catch {
+      // 索引没了不影响什么
+    }
+    invalidateScan(root)
+  }
   return { purged }
 }
 
