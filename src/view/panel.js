@@ -1013,6 +1013,13 @@ async function saveFile(url, filename) {
         'todos.filterNone': '没有对得上的待办',
         'todos.filterNoneHint': '清掉上面那个筛就能看到全部待办。',
         'trash.desc': '删掉的笔记先放这里，随时可以恢复。恢复只是把文件搬回库里，不碰内容。',
+        // 回收站也会攒到几十个：想找「上周删的那篇周报」只能一行行看过去。
+        // 和断链、待办同一套筛：按文件名或原目录找，只筛这一页。
+        'trash.filter': '按文件名或原目录找',
+        'trash.filterClear': '清掉这个筛',
+        'trash.filtered': '筛出 {n} 个，一共 {total} 个',
+        'trash.filterNone': '没有对得上的文件',
+        'trash.filterNoneHint': '清掉上面那个筛就能看到全部文件。',
         'trash.empty': '回收站是空的',
         'trash.emptyHint': '在笔记列表里点删除，文件会先到这里。清空才会真的删。',
         'trash.deletedAt': '删除于',
@@ -1624,6 +1631,11 @@ async function saveFile(url, filename) {
       'todos.filterNone': 'No to-do matches',
       'todos.filterNoneHint': 'Clear the filter above to see them all.',
         'trash.desc': 'Deleted notes wait here and can be restored. Restoring just moves the file back.',
+        'trash.filter': 'Find one by name or old folder',
+        'trash.filterClear': 'Clear this filter',
+        'trash.filtered': '{n} of {total} shown',
+        'trash.filterNone': 'No file matches',
+        'trash.filterNoneHint': 'Clear the filter above to see them all.',
         'trash.empty': 'Trash is empty',
         'trash.emptyHint': 'Deleting a note moves it here first. Only purging really deletes it.',
         'trash.deletedAt': 'Deleted',
@@ -2232,6 +2244,11 @@ async function saveFile(url, filename) {
       'todos.filterNone': 'Geen taak gevonden',
       'todos.filterNoneHint': 'Wis het filter hierboven om ze allemaal te zien.',
         'trash.desc': 'Verwijderde notities wachten hier en kunnen worden hersteld. Herstellen zet het bestand gewoon terug.',
+        'trash.filter': 'Zoek op naam of oude map',
+        'trash.filterClear': 'Dit filter wissen',
+        'trash.filtered': '{n} van {total} getoond',
+        'trash.filterNone': 'Geen bestand gevonden',
+        'trash.filterNoneHint': 'Wis het filter hierboven om ze allemaal te zien.',
         'trash.empty': 'De prullenbak is leeg',
         'trash.emptyHint': 'Een notitie verwijderen verplaatst hem eerst hierheen. Pas leegmaken verwijdert echt.',
         'trash.deletedAt': 'Verwijderd',
@@ -5191,7 +5208,7 @@ async function saveFile(url, filename) {
   color:var(--dsw-alias-label-dimmed)}
 .dshgn_brokenFilter{flex:1 1 auto;min-width:0;height:24px;font-size:11.5px}
 .dshgn_brokenFilterClear{flex:none;height:24px;padding:0 6px;font-size:11px}
-/* 待办页那一行筛复用上面这三条（同一副样子：一个放大镜、一行输入、一颗清掉）。 */
+/* 待办页和回收站那一行筛也复用上面这三条（同一副样子：一个放大镜、一行输入、一颗清掉）。 */
 /* 待办清单：一行一条。方框复用阅读区那个（同样大小、同样能点），右边是正文与出处。
    方框外面套一层透明按钮，是为了让整块方框连周边的点击热区一起可点——12px 的方框
    直接点很难点中，手机上尤其。 */
@@ -13945,6 +13962,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 选中的用路径记，恢复/清空之后按新列表对一遍，不认识的自动落掉。
       const [picked, setPicked] = React.useState(() => new Set())
       const pickedCount = picked.size
+      // 回收站攒到几十个之后，「上周删的那篇周报」只能一行行看过去。和断链、
+      // 待办同一套筛：按文件名或原目录找，只筛这一页，不碰中栏搜索框。
+      const [filter, setFilter] = React.useState('')
+      const needle = filter.trim().toLowerCase()
       const togglePeek = React.useCallback(
         async (item) => {
           if (peekPath === item.path) {
@@ -14110,14 +14131,29 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         }
       }, [load, onChanged, onError, picked, showToast, t])
 
-      const list = items === null ? [] : items
+      const allItems = items === null ? [] : items
+      // 名字和原目录一起对：只记得「那份周报」的人敲不出目录名，
+      // 只记得目录的人也想一次筛出整个目录里删掉的那些。
+      const list = React.useMemo(
+        () =>
+          needle === ''
+            ? allItems
+            : allItems.filter((item) => {
+                const name = `${item.title || ''} ${item.originalName || ''}`.toLowerCase()
+                const where = String(item.originalDir || '').toLowerCase()
+                return name.includes(needle) || where.includes(needle)
+              }),
+        [allItems, needle],
+      )
 
       // 恢复/清空之后列表变了，勾过的那些路径可能已经不在了：不认识的当场落掉，
       // 免得「已选 3 个」里混着两个已经恢复出去的文件。
+      // 这里必须对**全量**：筛着的时候把筛子外面勾过的那几个一起落掉，等于
+      // 一敲字就把「已选 3 个」清成 1 个。
       React.useEffect(() => {
         setPicked((prev) => {
           if (prev.size === 0) return prev
-          const alive = new Set(list.map((item) => item.path))
+          const alive = new Set(allItems.map((item) => item.path))
           let dropped = false
           const next = new Set()
           for (const one of prev) {
@@ -14126,7 +14162,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           }
           return dropped ? next : prev
         })
-      }, [list])
+      }, [allItems])
 
       return h(
         'div',
@@ -14149,13 +14185,59 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
               ),
               h(
                 'button',
-                { type: 'button', className: 'dshgn_btn dshgn_btnDanger', onClick: purgeAll, disabled: busy || list.length === 0 },
+                // 「清空回收站」清的是整个回收站，不是筛出来的那几个：筛着的时候
+                // 这颗按钮照样该是能按的（否则筛完一个都对不上就再也清不掉了）。
+                { type: 'button', className: 'dshgn_btn dshgn_btnDanger', onClick: purgeAll, disabled: busy || allItems.length === 0 },
                 h(Icon, { name: 'trash', size: 12 }),
                 t('trash.purgeAll'),
               ),
             ),
           ),
           h('div', { className: 'dshgn_sectionDesc' }, t('trash.desc')),
+          // 一个都没删过时不摆筛：空回收站上面再摆一个输入框只会让人以为漏了什么。
+          allItems.length === 0
+            ? null
+            : h(
+                'div',
+                { className: 'dshgn_brokenFilterRow' },
+                h(Icon, { name: 'search', size: 12 }),
+                h('input', {
+                  type: 'text',
+                  className: 'dshgn_input dshgn_brokenFilter',
+                  value: filter,
+                  placeholder: t('trash.filter'),
+                  'aria-label': t('trash.filter'),
+                  onInput: (event) => setFilter(event.target.value),
+                  onKeyDown: (event) => {
+                    if (event.key !== 'Escape') return
+                    // 只清这一页的筛，别连上面的勾选一起清掉
+                    event.preventDefault()
+                    event.stopPropagation()
+                    setFilter('')
+                  },
+                }),
+                filter.trim() === ''
+                  ? null
+                  : h(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'dshgn_btn dshgn_brokenFilterClear',
+                        title: t('trash.filterClear'),
+                        'aria-label': t('trash.filterClear'),
+                        onClick: () => setFilter(''),
+                      },
+                      h(Icon, { name: 'close', size: 12 }),
+                    ),
+              ),
+          // 一处都没筛出来时不报「筛出 0 个」——下面那一屏已经说清没有对得上的了。
+          needle === '' || list.length === 0
+            ? null
+            : h(
+                'div',
+                { className: 'dshgn_sectionDesc dshgn_trashFiltered' },
+                t('trash.filtered').replace('{n}', String(list.length)).replace('{total}', String(allItems.length)),
+              ),
           // 恢复前先说清放回哪：文件被删的那一刻就已经离开原目录，文件名里
           // 只留了名字。留空照老样子放库根，敲一个目录就放回去——先填好再按
           // 下面每行的「恢复」，一行一行挑目录太慢。
@@ -14287,15 +14369,15 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                 t('trash.purgePicked'),
               ),
             ),
-        loading && list.length === 0
+        loading && allItems.length === 0
           ? h('div', { className: 'dshgn_emptyState' }, h('span', { className: 'dshgn_spin' }))
           : list.length === 0
             ? h(
                 'div',
                 { className: 'dshgn_empty' },
-                h(Icon, { name: 'trash', size: 24 }),
-                h('div', { className: 'dshgn_emptyTitle' }, t('trash.empty')),
-                h('div', { className: 'dshgn_emptyDesc' }, t('trash.emptyHint')),
+                h(Icon, { name: needle === '' ? 'trash' : 'search', size: 24 }),
+                h('div', { className: 'dshgn_emptyTitle' }, needle === '' ? t('trash.empty') : t('trash.filterNone')),
+                h('div', { className: 'dshgn_emptyDesc' }, needle === '' ? t('trash.emptyHint') : t('trash.filterNoneHint')),
               )
             : h(
                 'div',

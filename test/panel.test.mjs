@@ -14729,3 +14729,132 @@ test('待办页能按待办文字或篇名筛一条，清掉这个筛就回全�
 
   await clickTab('笔记')
 })
+
+test('回收站攒多了也能按文件名或原目录筛，清掉这个筛就回全量', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const post = async (path, payload) => {
+    const res = await fetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(payload),
+    })
+    return res
+  }
+
+  // 前面的用例留着搜索词和目录筛选，先退回「全部笔记」再刷新。
+  const back = rootNode().querySelector('.dshgn_noteBack')
+  if (back !== null) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(400)
+    panel.setConfirmDialog(null)
+  }
+  const search = rootNode().querySelector('.dshgn_search')
+  if (search !== null && String(search.value || '') !== '') {
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(search, '')
+    search.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(400)
+  }
+  const allRow = Array.from(rootNode().querySelectorAll('.dshgn_treeRow')).find((el) => {
+    const name = el.querySelector('.dshgn_treeName')
+    return name !== null && (name.textContent || '').trim() === '全部笔记'
+  })
+  if (allRow) allRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  // 两篇删在不同目录：筛的时候既要能按名字对，也要能按原目录对。
+  const alphaDir = '回收站筛验收/甲目录'
+  const betaDir = '回收站筛验收/乙目录'
+  const alpha = '回收站筛-那份周报'
+  const beta = '回收站筛-那份月报'
+  await post('/getnote/create', {
+    dir: alphaDir,
+    title: alpha,
+    content: ['# ' + alpha, '', '删之前它在甲目录里。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-trash-filter-a',
+  })
+  await post('/getnote/create', {
+    dir: betaDir,
+    title: beta,
+    content: ['# ' + beta, '', '删之前它在乙目录里。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-trash-filter-b',
+  })
+  const refreshBtn = Array.from(rootNode().querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(700)
+
+  for (const rel of [alphaDir + '/' + alpha + '.md', betaDir + '/' + beta + '.md']) {
+    const deleted = await post('/getnote/delete', { path: rel })
+    assert.equal(deleted.ok, true, '删进回收站失败：' + rel)
+  }
+
+  await clickTab('回收站')
+  const rowsNow = () => Array.from(window.document.querySelectorAll('.dshgn_cardBox .dshgn_rowLine'))
+  const rowOf = (want) =>
+    rowsNow().find((el) => {
+      const label = el.querySelector('.dshgn_cardTitle')
+      return label !== null && (label.textContent || '').trim() === want
+    }) || null
+  await waitFor(() => rowOf(alpha) !== null && rowOf(beta) !== null, 8000, '回收站里该有刚删的那两篇')
+  const totalRows = rowsNow().length
+
+  const input = await waitFor(() => rootNode().querySelector('.dshgn_brokenFilter'), 4000, '回收站该有自己的筛')
+  assert.equal(input.getAttribute('placeholder'), '按文件名或原目录找')
+  const typeFilter = async (text) => {
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(input, text)
+    input.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(220)
+  }
+
+  // ① 按文件名筛
+  await typeFilter('那份周报')
+  await waitFor(() => rowOf(alpha) !== null && rowOf(beta) === null, 5000, '按名字筛完该只剩甲那一篇')
+  const countLine = await waitFor(() => rootNode().querySelector('.dshgn_trashFiltered'), 4000, '筛着的时候该报一句筛出几个')
+  assert.ok(/筛出 1 个，一共 \d+ 个/.test(String(countLine.textContent || '')), '计数行要报清筛出几个、一共几个：' + countLine.textContent)
+
+  // ② 按原目录筛（名字里根本没有目录那两个字）
+  await typeFilter('乙目录')
+  await waitFor(() => rowOf(beta) !== null && rowOf(alpha) === null, 5000, '按原目录也该筛得出来')
+  assert.ok(
+    String((rowOf(beta).querySelector('.dshgn_trashOrigin') || {}).textContent || '').includes(betaDir),
+    '筛出来的这一行照旧要说清原来在哪',
+  )
+
+  // ③ 一个都对不上时明说，并且不再报「筛出 0 个」
+  await typeFilter('这一串谁也对不上')
+  await waitFor(() => rowsNow().length === 0, 5000, '对不上时该一行都不剩')
+  // 空态要在回收站这一页里找：左栏和中栏也有各自的 .dshgn_emptyTitle
+  const pane = input.closest('.dshgn_pane')
+  assert.ok(pane !== null, '筛那一行该在回收站这一页里')
+  const emptyTitle = await waitFor(
+    () => {
+      const el = pane.querySelector('.dshgn_emptyTitle')
+      return el !== null && String(el.textContent || '').trim() !== '' ? el : null
+    },
+    5000,
+    '筛空时该摆一屏「没有对得上的文件」：' + String(pane.innerHTML || '').slice(0, 400),
+  )
+  assert.equal(String(emptyTitle.textContent || ''), '没有对得上的文件')
+  assert.ok(String((pane.querySelector('.dshgn_emptyDesc') || {}).textContent || '').includes('清掉上面那个筛'))
+  assert.equal(rootNode().querySelector('.dshgn_trashFiltered'), null, '一个都没筛出来时不必再报筛出几个')
+
+  // ④ Esc 只清这一页的筛，回到全量
+  input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  await waitFor(() => rowsNow().length === totalRows, 5000, 'Esc 之后该回到全量')
+  assert.equal(input.value, '', 'Esc 之后框里该是空的')
+  assert.equal(rootNode().querySelector('.dshgn_trashFiltered'), null, '不筛的时候不摆计数行')
+
+  // ⑤ 筛着的时候「清空回收站」照旧能按——它清的是整个回收站
+  await typeFilter('那份周报')
+  const purgeAllBtn = Array.from(rootNode().querySelectorAll('.dshgn_btn')).find(
+    (el) => (el.textContent || '').trim() === '清空回收站',
+  )
+  assert.ok(purgeAllBtn !== undefined, '回收站里该有「清空回收站」')
+  assert.equal(purgeAllBtn.disabled, false, '筛着的时候清空回收站也该按得动')
+
+  input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  await sleep(200)
+  await clickTab('笔记')
+})
