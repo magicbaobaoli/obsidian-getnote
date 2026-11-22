@@ -599,6 +599,11 @@ async function saveFile(url, filename) {
         'batch.done': '已处理',
         'batch.copyRefs': '复制引用',
         'batch.copiedRefs': '已复制 {n} 条引用',
+        // 一次批量里总有一两篇成不了（被别的程序占着、路径刚被挪走）。
+        // 只说「已处理 8」等于把剩下两篇的下落藏起来，用户会以为都成了。
+        'batch.partial': '有 {n} 篇没成',
+        'batch.failTitle': '这几篇没处理成',
+        'batch.failClose': '知道了',
         'search.searching': '搜索中…',
         'search.clear': '清空',
         'search.copy': '复制这次搜到的 {n} 篇（名字和位置）',
@@ -1173,6 +1178,9 @@ async function saveFile(url, filename) {
         'batch.done': 'Processed',
         'batch.copyRefs': 'Copy references',
         'batch.copiedRefs': 'Copied {n} references',
+        'batch.partial': '{n} did not go through',
+        'batch.failTitle': 'These did not go through',
+        'batch.failClose': 'Got it',
         'search.searching': 'Searching…',
         'search.clear': 'Clear',
         'search.copy': 'Copy the {n} notes found (names and places)',
@@ -1730,6 +1738,9 @@ async function saveFile(url, filename) {
         'batch.done': 'Verwerkt',
         'batch.copyRefs': 'Referenties kopiëren',
         'batch.copiedRefs': '{n} referenties gekopieerd',
+        'batch.partial': '{n} is niet gelukt',
+        'batch.failTitle': 'Deze zijn niet gelukt',
+        'batch.failClose': 'Begrepen',
         'search.searching': 'Zoeken…',
         'search.clear': 'Wissen',
         'search.copy': 'Kopieer de {n} gevonden notities (namen en plaatsen)',
@@ -5027,6 +5038,15 @@ async function saveFile(url, filename) {
 .dshgn_batchMenu{flex-basis:100%;display:flex;flex-direction:column;gap:6px;
   padding:8px;margin-top:2px;border-radius:8px;background:var(--dshgn-surface);
   box-shadow:0 2px 10px rgba(var(--dshgn-tintRgb),.14)}
+/* 批量没成的清单：整行摊开，路径长的能折行，不挤成一句看不出是哪几篇 */
+.dshgn_batchFails{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;padding:6px 8px;
+  border-bottom:0.5px solid rgba(var(--dshgn-tintRgb),.14);
+  background:var(--dsw-alias-interactive-bg-hover);font-size:11px;line-height:1.5}
+.dshgn_batchFailsTitle{flex:none;font-weight:600;color:var(--dsw-alias-state-error-primary)}
+.dshgn_batchFailItem{display:inline-flex;align-items:baseline;gap:4px;max-width:100%;
+  padding:1px 6px;border-radius:5px;word-break:break-all;
+  color:var(--dsw-alias-label-secondary);box-shadow:inset 0 0 0 0.5px var(--dsw-alias-border-l2)}
+.dshgn_batchFailWhy{color:var(--dsw-alias-label-tertiary);font-size:10px}
 .dshgn_batchRow{display:flex;gap:6px;align-items:center}
 .dshgn_batchInput{flex:1;min-width:0;height:26px;font-size:12px}
 .dshgn_cardTitleRow{display:flex;align-items:center;gap:6px}
@@ -7830,7 +7850,24 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       const [batchTagAt, setBatchTagAt] = React.useState(null)
       const [batchTagIndex, setBatchTagIndex] = React.useState(null)
       const [batchOpen, setBatchOpen] = React.useState(false)
+      // 批量里没成的那几篇。/batch 一直有回 failed，只是以前没人读：选十篇加标签、
+      // 其中两篇被别的程序占着，界面上只写「已处理 8」，剩下两篇去哪了没人说。
+      const [batchFails, setBatchFails] = React.useState([])
       const pickedCount = picked.size
+
+      // 把服务端回的 failed 收成「哪几篇、为什么」。只留前 8 条：一次批量里
+      // 挂掉几十篇时，摊满一屏的清单并不比「还有 N 篇」更有用。
+      const reportBatchFails = React.useCallback((json) => {
+        const rows = json !== null && json !== undefined && Array.isArray(json.failed) ? json.failed : []
+        const list = rows
+          .filter((item) => item !== null && item !== undefined)
+          .map((item) => ({
+            path: String(item.path || ''),
+            error: String(item.error || ''),
+          }))
+        setBatchFails(list.slice(0, 8))
+        return list.length
+      }, [])
 
       const togglePick = React.useCallback((path) => {
         setPicked((prev) => {
@@ -7958,7 +7995,14 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                 dir: kind === 'move' ? batchDir.trim() : undefined,
               }),
             })
-            showToast(`${t('batch.done')} ${json.changed || 0}`)
+            // 全成都别出声，有一篇没成就把清单摊出来——「已处理 8」在
+            // 十篇里少了两篇的时候是一句谎话。
+            const failed = reportBatchFails(json)
+            showToast(
+              failed === 0
+                ? `${t('batch.done')} ${json.changed || 0}`
+                : `${t('batch.done')} ${json.changed || 0} · ${t('batch.partial').replace('{n}', String(failed))}`,
+            )
             clearPicked()
             await refresh()
             if (current !== null && picked.has(current.path)) setCurrent(null)
@@ -7968,7 +8012,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             setBusy(false)
           }
         },
-        [batchDir, batchTag, clearPicked, current, picked, refresh, setBusy, setError, showToast, t],
+        [batchDir, batchTag, clearPicked, current, picked, refresh, reportBatchFails, setBusy, setError, showToast, t],
       )
 
       // 从宿主的文件树里拖一篇笔记到列表上 = 挪进当前筛的这个目录。
@@ -8003,7 +8047,12 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
               headers: { 'content-type': 'application/json' },
               body: JSON.stringify({ action: 'move', paths, dir: target }),
             })
-            showToast(`${t('batch.done')} ${json.changed || 0}`)
+            const failed = reportBatchFails(json)
+            showToast(
+              failed === 0
+                ? `${t('batch.done')} ${json.changed || 0}`
+                : `${t('batch.done')} ${json.changed || 0} · ${t('batch.partial').replace('{n}', String(failed))}`,
+            )
             await refresh()
           } catch (err) {
             setError(err && err.message ? err.message : String(err))
@@ -8011,7 +8060,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             setBusy(false)
           }
         },
-        [activeDir, refresh, setBusy, setError, showToast, status, t],
+        [activeDir, refresh, reportBatchFails, setBusy, setError, showToast, status, t],
       )
 
       // 把一篇笔记挪进某个目录（卡片拖到左栏那一行上）。
@@ -8038,7 +8087,14 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             const changed = Number(json.changed) || 0
             // 挪到哪儿得说出来：拖过去之后列表会跟着刷新，用户得确认这一篇
             // 真的进了那个目录，而不是被弹回了原来的地方。
-            showToast(changed > 0 ? t('tree.movedTo').replace('{dir}', target) : `${t('batch.done')} 0`)
+            const failed = reportBatchFails(json)
+            showToast(
+              changed > 0
+                ? t('tree.movedTo').replace('{dir}', target)
+                : failed > 0
+                  ? `${t('batch.done')} 0 · ${t('batch.partial').replace('{n}', String(failed))}`
+                  : `${t('batch.done')} 0`,
+            )
             const list = Array.isArray(json.moved) ? json.moved : []
             const hit = list.find((item) => item !== null && item !== undefined && item.from === from)
             const landed = hit !== undefined && hit !== null && typeof hit.to === 'string' ? hit.to : ''
@@ -8052,7 +8108,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             setBusy(false)
           }
         },
-        [current, refresh, setBusy, setError, showToast, t],
+        [current, refresh, reportBatchFails, setBusy, setError, showToast, t],
       )
 
       // 把一篇笔记拖到左栏的标签胶囊上 = 给这一篇贴上那个标签。
@@ -8074,7 +8130,14 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
               body: JSON.stringify({ action: 'tag', paths: [from], tag: name }),
             })
             const changed = Number(json.changed) || 0
-            showToast(changed > 0 ? t('note.taggedWith').replace('{tag}', name) : `${t('batch.done')} 0`)
+            const failed = reportBatchFails(json)
+            showToast(
+              changed > 0
+                ? t('note.taggedWith').replace('{tag}', name)
+                : failed > 0
+                  ? `${t('batch.done')} 0 · ${t('batch.partial').replace('{n}', String(failed))}`
+                  : `${t('batch.done')} 0`,
+            )
             await refresh()
             // 正开着被贴标签的那一篇：重新读一遍，头部标签行才会当场长出来。
             // 别处（列表卡片）只显示正文第一行，不受影响。
@@ -8087,7 +8150,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             setBusy(false)
           }
         },
-        [current, openNote, refresh, setBusy, setError, showToast, t],
+        [current, openNote, refresh, reportBatchFails, setBusy, setError, showToast, t],
       )
 
       // vaultMissing 正常时是 null（不是 false）：这里原本写 === false，
@@ -9061,6 +9124,33 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                         h('span', { className: 'dshgn_filterChipX' }, h(Icon, { name: 'close', size: 9 })),
                       )
                     : null,
+                )
+              : null,
+            // 批量里有没成的：清单单独一行，带关闭。批量条会随着 clearPicked 消失，
+            // 但这份清单说的是「刚才那一下哪儿没成」，跟当前选中无关，得留着。
+            batchFails.length > 0
+              ? h(
+                  'div',
+                  { className: 'dshgn_batchFails', role: 'status' },
+                  h('span', { className: 'dshgn_batchFailsTitle' }, t('batch.failTitle')),
+                  batchFails.map((item) =>
+                    h(
+                      'span',
+                      { key: item.path, className: 'dshgn_batchFailItem', title: item.error === '' ? item.path : item.error },
+                      item.path,
+                      item.error === '' ? null : h('span', { className: 'dshgn_batchFailWhy' }, item.error),
+                    ),
+                  ),
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'dshgn_batchBtn',
+                      title: t('batch.failClose'),
+                      onClick: () => setBatchFails([]),
+                    },
+                    t('batch.failClose'),
+                  ),
                 )
               : null,
             // D2 批量工具栏：只在有选中时出现，不占常态空间。

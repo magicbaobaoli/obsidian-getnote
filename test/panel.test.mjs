@@ -13126,3 +13126,139 @@ test('搜完之后说一句扫了多少篇、对上多少篇，被条数上限�
   await typeIn('')
   await clickTab('笔记')
 })
+
+test('批量里有几篇没成时，把那几篇和原因摊出来，而不是只报处理了几篇', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const backBtn = () => window.document.querySelector('.dshgn_noteBack')
+
+  panel.setConfirmDialog(async () => true)
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = backBtn()
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(220)
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox !== null) {
+    setValue.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(260)
+  }
+
+  const pathA = '批量失败验收/批量失败-甲.md'
+  const pathB = '批量失败验收/批量失败-乙.md'
+  for (const [title, requestId] of [
+    ['批量失败-甲', 'seed-batch-fail-a'],
+    ['批量失败-乙', 'seed-batch-fail-b'],
+  ]) {
+    const res = await realFetch(server.origin + '/getnote/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({ dir: '批量失败验收', title, content: '正文', withDatePrefix: false, requestId }),
+    })
+    assert.equal(res.status, 200, '建笔记要成功')
+  }
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+
+  const rowOf = (name) =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+      const label = el.querySelector('.dshgn_treeName')
+      return label !== null && (label.textContent || '').trim() === name
+    })
+  const dirRow = await waitFor(() => rowOf('批量失败验收'), 8000, '左栏里出现这个目录')
+  dirRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+
+  const cardOf = (path) =>
+    Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === path) || null
+  const cardA = await waitFor(() => cardOf(pathA), 8000, '第一篇')
+  cardA.querySelector('.dshgn_pickBox').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(200)
+  const cardB = await waitFor(() => cardOf(pathB), 8000, '第二篇')
+  cardB.querySelector('.dshgn_pickBox').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_batchBar') !== null, 3000, '批量栏出现')
+
+  // 让乙那一条在服务端失败：真去动磁盘太脆（还要赌文件被占用），
+  // 直接在 /batch 的响应里挂一条 failed，考的是面板读不读这个字段。
+  const wrapped = window.fetch
+  window.fetch = globalThis.fetch = async (input, init) => {
+    const url = typeof input === 'string' ? input : String(input && input.url)
+    const res = await wrapped(input, init)
+    if (!url.includes('/getnote/batch')) return res
+    // jsdom 里没有 Response，所以照 /status 那套壳的做法回一个带 json() 的普通对象。
+    const json = await res.json()
+    json.changed = 1
+    json.failed = [{ path: pathB, error: '文件被别的程序占着' }]
+    return { ok: true, status: 200, json: async () => json }
+  }
+
+  const toastText = () => ((window.document.querySelector('.dshgn_toast') || {}).textContent || '')
+  try {
+    const moreBtn = Array.from(window.document.querySelectorAll('.dshgn_batchBtn')).find(
+      (el) => (el.textContent || '').trim() === '批量操作',
+    )
+    assert.ok(moreBtn, '批量条上应该有「批量操作」')
+    moreBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+
+    const tagInput = await waitFor(
+      () => window.document.querySelector('.dshgn_batchInput'),
+      3000,
+      '批量操作里应该有标签框',
+    )
+    setValue.call(tagInput, '批量失败标签')
+    tagInput.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(200)
+
+    const addBtn = Array.from(window.document.querySelectorAll('.dshgn_btn.dshgn_btnPrimary')).find(
+      (el) => (el.textContent || '').trim() === '加标签',
+    )
+    assert.ok(addBtn, '应该有一颗「加标签」')
+    addBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+
+    const fails = await waitFor(
+      () => window.document.querySelector('.dshgn_batchFails'),
+      5000,
+      '没成的那几篇要摊出来',
+    )
+    const failText = fails.textContent || ''
+    assert.ok(failText.includes('这几篇没处理成'), '要说清这是没成的清单，实际 ' + failText)
+    assert.ok(failText.includes(pathB), '要点名是哪一篇没成，实际 ' + failText)
+    assert.ok(failText.includes('文件被别的程序占着'), '要把原因一起写出来，实际 ' + failText)
+    assert.equal(
+      window.document.querySelectorAll('.dshgn_batchFailItem').length,
+      1,
+      '只失败一篇就只列一篇',
+    )
+    assert.ok(
+      !failText.includes(pathA),
+      '成了的那篇不该混进没成的清单，实际 ' + failText,
+    )
+    assert.ok(/有 1 篇没成/.test(toastText()), '提示条也要报出没成了几篇，实际 ' + toastText())
+
+    const closeBtn = Array.from(fails.querySelectorAll('.dshgn_batchBtn')).find(
+      (el) => (el.textContent || '').trim() === '知道了',
+    )
+    assert.ok(closeBtn, '清单旁边要有一颗「知道了」')
+    closeBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(
+      () => window.document.querySelector('.dshgn_batchFails') === null,
+      3000,
+      '点「知道了」之后清单收起来',
+    )
+  } finally {
+    window.fetch = globalThis.fetch = wrapped
+    await clickTab('笔记')
+  }
+})

@@ -8486,6 +8486,11 @@ var LEX = {
     "batch.done": "\u5DF2\u5904\u7406",
     "batch.copyRefs": "\u590D\u5236\u5F15\u7528",
     "batch.copiedRefs": "\u5DF2\u590D\u5236 {n} \u6761\u5F15\u7528",
+    // 一次批量里总有一两篇成不了（被别的程序占着、路径刚被挪走）。
+    // 只说「已处理 8」等于把剩下两篇的下落藏起来，用户会以为都成了。
+    "batch.partial": "\u6709 {n} \u7BC7\u6CA1\u6210",
+    "batch.failTitle": "\u8FD9\u51E0\u7BC7\u6CA1\u5904\u7406\u6210",
+    "batch.failClose": "\u77E5\u9053\u4E86",
     "search.searching": "\u641C\u7D22\u4E2D\u2026",
     "search.clear": "\u6E05\u7A7A",
     "search.copy": "\u590D\u5236\u8FD9\u6B21\u641C\u5230\u7684 {n} \u7BC7\uFF08\u540D\u5B57\u548C\u4F4D\u7F6E\uFF09",
@@ -9055,6 +9060,9 @@ var LEX = {
     "batch.done": "Processed",
     "batch.copyRefs": "Copy references",
     "batch.copiedRefs": "Copied {n} references",
+    "batch.partial": "{n} did not go through",
+    "batch.failTitle": "These did not go through",
+    "batch.failClose": "Got it",
     "search.searching": "Searching\u2026",
     "search.clear": "Clear",
     "search.copy": "Copy the {n} notes found (names and places)",
@@ -9607,6 +9615,9 @@ var LEX = {
     "batch.done": "Verwerkt",
     "batch.copyRefs": "Referenties kopi\xEBren",
     "batch.copiedRefs": "{n} referenties gekopieerd",
+    "batch.partial": "{n} is niet gelukt",
+    "batch.failTitle": "Deze zijn niet gelukt",
+    "batch.failClose": "Begrepen",
     "search.searching": "Zoeken\u2026",
     "search.clear": "Wissen",
     "search.copy": "Kopieer de {n} gevonden notities (namen en plaatsen)",
@@ -12109,6 +12120,15 @@ var CSS = `
 .dshgn_batchMenu{flex-basis:100%;display:flex;flex-direction:column;gap:6px;
   padding:8px;margin-top:2px;border-radius:8px;background:var(--dshgn-surface);
   box-shadow:0 2px 10px rgba(var(--dshgn-tintRgb),.14)}
+/* \u6279\u91CF\u6CA1\u6210\u7684\u6E05\u5355\uFF1A\u6574\u884C\u644A\u5F00\uFF0C\u8DEF\u5F84\u957F\u7684\u80FD\u6298\u884C\uFF0C\u4E0D\u6324\u6210\u4E00\u53E5\u770B\u4E0D\u51FA\u662F\u54EA\u51E0\u7BC7 */
+.dshgn_batchFails{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;padding:6px 8px;
+  border-bottom:0.5px solid rgba(var(--dshgn-tintRgb),.14);
+  background:var(--dsw-alias-interactive-bg-hover);font-size:11px;line-height:1.5}
+.dshgn_batchFailsTitle{flex:none;font-weight:600;color:var(--dsw-alias-state-error-primary)}
+.dshgn_batchFailItem{display:inline-flex;align-items:baseline;gap:4px;max-width:100%;
+  padding:1px 6px;border-radius:5px;word-break:break-all;
+  color:var(--dsw-alias-label-secondary);box-shadow:inset 0 0 0 0.5px var(--dsw-alias-border-l2)}
+.dshgn_batchFailWhy{color:var(--dsw-alias-label-tertiary);font-size:10px}
 .dshgn_batchRow{display:flex;gap:6px;align-items:center}
 .dshgn_batchInput{flex:1;min-width:0;height:26px;font-size:12px}
 .dshgn_cardTitleRow{display:flex;align-items:center;gap:6px}
@@ -14486,7 +14506,17 @@ ${insert}
   const [batchTagAt, setBatchTagAt] = h2(null);
   const [batchTagIndex, setBatchTagIndex] = h2(null);
   const [batchOpen, setBatchOpen] = h2(false);
+  const [batchFails, setBatchFails] = h2([]);
   const pickedCount = picked.size;
+  const reportBatchFails = q2((json) => {
+    const rows = json !== null && json !== void 0 && Array.isArray(json.failed) ? json.failed : [];
+    const list = rows.filter((item) => item !== null && item !== void 0).map((item) => ({
+      path: String(item.path || ""),
+      error: String(item.error || "")
+    }));
+    setBatchFails(list.slice(0, 8));
+    return list.length;
+  }, []);
   const togglePick = q2((path) => {
     setPicked((prev) => {
       const next = new Set(prev);
@@ -14576,7 +14606,10 @@ ${insert}
             dir: kind === "move" ? batchDir.trim() : void 0
           })
         });
-        showToast(`${t4("batch.done")} ${json.changed || 0}`);
+        const failed = reportBatchFails(json);
+        showToast(
+          failed === 0 ? `${t4("batch.done")} ${json.changed || 0}` : `${t4("batch.done")} ${json.changed || 0} \xB7 ${t4("batch.partial").replace("{n}", String(failed))}`
+        );
         clearPicked();
         await refresh();
         if (current !== null && picked.has(current.path)) setCurrent(null);
@@ -14586,7 +14619,7 @@ ${insert}
         setBusy(false);
       }
     },
-    [batchDir, batchTag, clearPicked, current, picked, refresh, setBusy, setError, showToast, t4]
+    [batchDir, batchTag, clearPicked, current, picked, refresh, reportBatchFails, setBusy, setError, showToast, t4]
   );
   const dropIntoDir = q2(
     async (rawPaths) => {
@@ -14613,7 +14646,10 @@ ${insert}
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ action: "move", paths, dir: target })
         });
-        showToast(`${t4("batch.done")} ${json.changed || 0}`);
+        const failed = reportBatchFails(json);
+        showToast(
+          failed === 0 ? `${t4("batch.done")} ${json.changed || 0}` : `${t4("batch.done")} ${json.changed || 0} \xB7 ${t4("batch.partial").replace("{n}", String(failed))}`
+        );
         await refresh();
       } catch (err) {
         setError(err && err.message ? err.message : String(err));
@@ -14621,7 +14657,7 @@ ${insert}
         setBusy(false);
       }
     },
-    [activeDir, refresh, setBusy, setError, showToast, status, t4]
+    [activeDir, refresh, reportBatchFails, setBusy, setError, showToast, status, t4]
   );
   const moveNoteTo = q2(
     async (path, dir) => {
@@ -14639,7 +14675,10 @@ ${insert}
           body: JSON.stringify({ action: "move", paths: [from], dir: target })
         });
         const changed = Number(json.changed) || 0;
-        showToast(changed > 0 ? t4("tree.movedTo").replace("{dir}", target) : `${t4("batch.done")} 0`);
+        const failed = reportBatchFails(json);
+        showToast(
+          changed > 0 ? t4("tree.movedTo").replace("{dir}", target) : failed > 0 ? `${t4("batch.done")} 0 \xB7 ${t4("batch.partial").replace("{n}", String(failed))}` : `${t4("batch.done")} 0`
+        );
         const list = Array.isArray(json.moved) ? json.moved : [];
         const hit = list.find((item) => item !== null && item !== void 0 && item.from === from);
         const landed = hit !== void 0 && hit !== null && typeof hit.to === "string" ? hit.to : "";
@@ -14653,7 +14692,7 @@ ${insert}
         setBusy(false);
       }
     },
-    [current, refresh, setBusy, setError, showToast, t4]
+    [current, refresh, reportBatchFails, setBusy, setError, showToast, t4]
   );
   const addTagTo = q2(
     async (path, tag) => {
@@ -14668,7 +14707,10 @@ ${insert}
           body: JSON.stringify({ action: "tag", paths: [from], tag: name })
         });
         const changed = Number(json.changed) || 0;
-        showToast(changed > 0 ? t4("note.taggedWith").replace("{tag}", name) : `${t4("batch.done")} 0`);
+        const failed = reportBatchFails(json);
+        showToast(
+          changed > 0 ? t4("note.taggedWith").replace("{tag}", name) : failed > 0 ? `${t4("batch.done")} 0 \xB7 ${t4("batch.partial").replace("{n}", String(failed))}` : `${t4("batch.done")} 0`
+        );
         await refresh();
         if (current !== null && current.path === from && typeof openNote === "function") {
           await openNote(from, false, true);
@@ -14679,7 +14721,7 @@ ${insert}
         setBusy(false);
       }
     },
-    [current, openNote, refresh, setBusy, setError, showToast, t4]
+    [current, openNote, refresh, reportBatchFails, setBusy, setError, showToast, t4]
   );
   const vaultReady = status !== null && !status.vaultMissing;
   const vaultMissing = status !== null && Boolean(status.vaultMissing);
@@ -15551,6 +15593,31 @@ ${insert}
             h4("span", { className: "dshgn_filterChipName" }, activeDay),
             h4("span", { className: "dshgn_filterChipX" }, h4(Icon, { name: "close", size: 9 }))
           ) : null
+        ) : null,
+        // 批量里有没成的：清单单独一行，带关闭。批量条会随着 clearPicked 消失，
+        // 但这份清单说的是「刚才那一下哪儿没成」，跟当前选中无关，得留着。
+        batchFails.length > 0 ? h4(
+          "div",
+          { className: "dshgn_batchFails", role: "status" },
+          h4("span", { className: "dshgn_batchFailsTitle" }, t4("batch.failTitle")),
+          batchFails.map(
+            (item) => h4(
+              "span",
+              { key: item.path, className: "dshgn_batchFailItem", title: item.error === "" ? item.path : item.error },
+              item.path,
+              item.error === "" ? null : h4("span", { className: "dshgn_batchFailWhy" }, item.error)
+            )
+          ),
+          h4(
+            "button",
+            {
+              type: "button",
+              className: "dshgn_batchBtn",
+              title: t4("batch.failClose"),
+              onClick: () => setBatchFails([])
+            },
+            t4("batch.failClose")
+          )
         ) : null,
         // D2 批量工具栏：只在有选中时出现，不占常态空间。
         pickedCount > 0 ? h4(
