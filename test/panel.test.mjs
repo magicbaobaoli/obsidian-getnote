@@ -10100,10 +10100,15 @@ test('待办按篇分组：一篇一组写着还剩几条，一颗按钮把这�
   // 提示条只活 2400ms，而后面那两步（等整组消失、再读一遍磁盘）可能更久。
   // 所以从点下去那一刻就开始盯，而不是等做完别的事再去找——不然它早散了，
   // 断言会莫名其妙地超时（CI 上就挂过这一条）。
+  // 屏幕上可能还挂着上一条用例留下的提示条（它要 2400ms 才散），先记下它写的是什么，
+  // 只认点下去之后换过内容的那一条——不然抓到的会是别人那句「目录已删除」。
+  const staleToast = window.document.querySelector('.dshgn_toast')
+  const staleText = staleToast === null ? '' : String(staleToast.textContent || '')
   const toastSeen = (async () => {
     for (let i = 0; i < 200; i += 1) {
       const node = window.document.querySelector('.dshgn_toast')
-      if (node !== null) return String(node.textContent || '')
+      const text = node === null ? '' : String(node.textContent || '')
+      if (text !== '' && text !== staleText) return text
       await sleep(50)
     }
     return ''
