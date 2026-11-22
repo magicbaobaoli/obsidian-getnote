@@ -8735,6 +8735,7 @@ var LEX = {
     "list.unpickAll": "\u53D6\u6D88\u52FE\u9009",
     "empty.select": "\u9009\u4E00\u7BC7\u7B14\u8BB0\u5F00\u59CB\u9605\u8BFB",
     "empty.selectDesc": "\u5DE6\u680F\u662F\u76EE\u5F55\uFF0C\u4E2D\u95F4\u662F\u7B14\u8BB0\u5217\u8868\u3002\u4E5F\u53EF\u4EE5\u70B9\u300C\u65B0\u5EFA\u300D\u5199\u4E00\u7BC7\u3002",
+    "empty.newNote": "\u5199\u4E00\u7BC7\u65B0\u7684",
     "empty.search": "\u6CA1\u6709\u5339\u914D\u7684\u7B14\u8BB0",
     // 空列表那一屏不能只说一句「没有」：筛着的时候要能一键清掉筛选，
     // 搜不到的时候要能一键清空搜索词，否则用户只能自己去翻左栏。
@@ -9311,6 +9312,7 @@ var LEX = {
     "list.unpickAll": "Clear selection",
     "empty.select": "Pick a note to read",
     "empty.selectDesc": "Folders on the left, notes in the middle. Or press New.",
+    "empty.newNote": "Write a new note",
     "empty.search": "No matching notes",
     "empty.filterDesc": "Nothing under this filter yet. Clear it to see everything.",
     "empty.clearFilter": "Clear the filter",
@@ -9877,6 +9879,7 @@ var LEX = {
     "list.unpickAll": "Selectie wissen",
     "empty.select": "Kies een notitie om te lezen",
     "empty.selectDesc": "Mappen links, notities in het midden. Of druk op Nieuw.",
+    "empty.newNote": "Een nieuwe notitie schrijven",
     "empty.search": "Geen passende notities",
     "empty.filterDesc": "Nog niets onder deze filter. Haal hem weg om alles te zien.",
     "empty.clearFilter": "Filter weghalen",
@@ -12948,6 +12951,10 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
   gap:8px;padding:32px;text-align:center;color:var(--dsw-alias-label-tertiary)}
 .dshgn_emptyTitle{font-size:13px;color:var(--dsw-alias-label-secondary)}
 .dshgn_emptyDesc{font-size:12px;line-height:1.7;max-width:340px}
+.dshgn_emptyBtn{appearance:none;display:inline-flex;align-items:center;gap:4px;margin-top:10px;
+  padding:4px 10px;border:0.5px solid var(--dsw-alias-border-l2);border-radius:6px;
+  background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;cursor:pointer}
+.dshgn_emptyBtn:hover{background:var(--dsw-alias-interactive-bg-hover)}
 .dshgn_emptyActions{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px;margin-top:4px}
 /* \u56DE\u6536\u7AD9\u7684\u300C\u6062\u590D\u5230\u54EA\u4E2A\u76EE\u5F55\u300D\uFF1A\u4E00\u884C\u8F93\u5165 + \u5019\u9009\uFF0C\u548C\u6279\u91CF\u6761\u90A3\u5957\u540C\u5BBD\u540C\u9AD8 */
 .dshgn_trashTarget{display:flex;flex-direction:column;gap:4px;margin:8px 0 2px;min-width:0}
@@ -16663,6 +16670,8 @@ ${insert}
         onCopyHeadingLink: copyHeadingLink,
         // 正文里划选一段 → 存成新笔记（摘抄/摘录单独立篇）
         onCreateFromText: createFromText,
+        // 空态里那颗「写一篇新的」：和顶栏「+」走同一条路（模板、目录都照旧）
+        onCreateNew: () => newNote(),
         // 就地查找「到头了 / 没有这个词」要说一声：静默不动的话，
         // 用户会以为是自己敲错了词，接着反复按回车。
         showToast,
@@ -20268,6 +20277,39 @@ function writeScrollMark(path, top) {
   } catch {
   }
 }
+var NOTE_SCALE_KEY = "dshgn.noteScale";
+var NOTE_SCALE_KEEP = 80;
+var SCALES = ["s", "m", "l"];
+function readNoteScales() {
+  try {
+    const raw = window.localStorage.getItem(NOTE_SCALE_KEY);
+    if (raw === null) return {};
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return {};
+    const out = {};
+    for (const item of parsed.slice(0, NOTE_SCALE_KEEP)) {
+      if (item === null || typeof item !== "object") continue;
+      if (typeof item.path !== "string" || SCALES.indexOf(item.scale) === -1) continue;
+      out[item.path] = item.scale;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+function writeNoteScale(path, scale) {
+  const rel = typeof path === "string" ? path : "";
+  if (rel === "") return;
+  try {
+    const rest = readNoteScales();
+    delete rest[rel];
+    const next = SCALES.indexOf(scale) === -1 ? rest : Object.assign({ [rel]: scale }, rest);
+    const list = Object.keys(next).slice(0, NOTE_SCALE_KEEP).map((key) => ({ path: key, scale: next[key] }));
+    if (list.length === 0) window.localStorage.removeItem(NOTE_SCALE_KEY);
+    else window.localStorage.setItem(NOTE_SCALE_KEY, JSON.stringify(list));
+  } catch {
+  }
+}
 var DRAFT_KEY = "dshgn.drafts";
 var DRAFT_KEEP = 5;
 var DRAFT_MAX = 2e5;
@@ -21118,6 +21160,7 @@ function NotePane(props) {
   const listTotal = Number(props.listTotal) > 0 ? Number(props.listTotal) : 0;
   const onJumpToLine = typeof props.onJumpToLine === "function" ? props.onJumpToLine : null;
   const onCreateFromText = typeof props.onCreateFromText === "function" ? props.onCreateFromText : null;
+  const onCreateNew = typeof props.onCreateNew === "function" ? props.onCreateNew : null;
   const onDuplicate = typeof props.onDuplicate === "function" ? props.onDuplicate : null;
   const onCopyHeadingLink = typeof props.onCopyHeadingLink === "function" ? props.onCopyHeadingLink : null;
   const anchorRequest = props.anchor;
@@ -21146,6 +21189,7 @@ function NotePane(props) {
       return "m";
     }
   });
+  const [noteScales, setNoteScales] = h2(() => readNoteScales());
   const [historyOpen, setHistoryOpen] = h2(false);
   const [historyItems, setHistoryItems] = h2(null);
   const [historyPreview, setHistoryPreview] = h2(null);
@@ -21327,6 +21371,7 @@ function NotePane(props) {
     return attachOnPanelWindows("keydown", onKey);
   }, []);
   const currentPathOf = current === null || current === void 0 ? "" : String(current.path || "");
+  const scaleNow = noteScales[currentPathOf] !== void 0 && SCALES.indexOf(noteScales[currentPathOf]) !== -1 ? noteScales[currentPathOf] : textScale;
   zoomRef.current = zoom !== null && zoom.path === currentPathOf ? zoom : null;
   const findPathRef = A2(currentPathOf);
   y2(() => {
@@ -21463,13 +21508,28 @@ function NotePane(props) {
     },
     [current, loadHistory, onError, onRestored]
   );
-  const pickScale = q2((next) => {
-    setTextScale(next);
-    try {
-      window.localStorage.setItem("dshgn.textScale", next);
-    } catch {
-    }
-  }, []);
+  const pickScale = q2(
+    (next) => {
+      const path = currentPathOf;
+      if (path === "") {
+        setTextScale(next);
+        try {
+          window.localStorage.setItem("dshgn.textScale", next);
+        } catch {
+        }
+        return;
+      }
+      const own = next === textScale ? "" : next;
+      setNoteScales((prev) => {
+        const map = Object.assign({}, prev);
+        if (own === "") delete map[path];
+        else map[path] = own;
+        return map;
+      });
+      writeNoteScale(path, own);
+    },
+    [currentPathOf, textScale]
+  );
   y2(() => {
     if (!editing) return void 0;
     const onKey = (event) => {
@@ -21737,7 +21797,17 @@ function NotePane(props) {
         { className: "dshgn_empty" },
         h4(Icon, { name: "brain", size: 26 }),
         h4("div", { className: "dshgn_emptyTitle" }, t4("empty.select")),
-        h4("div", { className: "dshgn_emptyDesc" }, t4("empty.selectDesc"))
+        h4("div", { className: "dshgn_emptyDesc" }, t4("empty.selectDesc")),
+        onCreateNew === null ? null : h4(
+          "button",
+          {
+            type: "button",
+            className: "dshgn_emptyBtn",
+            onClick: () => onCreateNew()
+          },
+          h4(Icon, { name: "plus", size: 12 }),
+          h4("span", null, t4("empty.newNote"))
+        )
       )
     );
   }
@@ -21863,7 +21933,8 @@ ${t4("tree.menuReveal")}` : absolute,
             {
               key: size,
               type: "button",
-              className: "dshgn_scaleBtn" + (textScale === size ? " dshgn_scaleBtnOn" : ""),
+              className: "dshgn_scaleBtn" + (scaleNow === size ? " dshgn_scaleBtnOn" : ""),
+              "aria-pressed": scaleNow === size ? "true" : "false",
               onClick: () => pickScale(size),
               title: t4(`note.fontSize.${size}`)
             },
@@ -22572,7 +22643,7 @@ ${t4("tree.menuReveal")}` : absolute,
       // `content`，这样保存不会把 frontmatter 丢掉。
       h4(
         "div",
-        { className: "dshgn_md" + (textScale === "s" ? " dshgn_mdS" : textScale === "l" ? " dshgn_mdL" : "") },
+        { className: "dshgn_md" + (scaleNow === "s" ? " dshgn_mdS" : scaleNow === "l" ? " dshgn_mdL" : "") },
         renderMarkdown(
           current.body !== void 0 && current.body !== null ? current.body : current.content,
           // 编辑态不给 onToggleTodo：那时显示的是可编辑 textarea，正文里的

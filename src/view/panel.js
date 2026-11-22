@@ -715,6 +715,7 @@ async function saveFile(url, filename) {
         'list.unpickAll': '取消勾选',
         'empty.select': '选一篇笔记开始阅读',
         'empty.selectDesc': '左栏是目录，中间是笔记列表。也可以点「新建」写一篇。',
+        'empty.newNote': '写一篇新的',
         'empty.search': '没有匹配的笔记',
         // 空列表那一屏不能只说一句「没有」：筛着的时候要能一键清掉筛选，
         // 搜不到的时候要能一键清空搜索词，否则用户只能自己去翻左栏。
@@ -1296,6 +1297,7 @@ async function saveFile(url, filename) {
         'list.unpickAll': 'Clear selection',
         'empty.select': 'Pick a note to read',
         'empty.selectDesc': 'Folders on the left, notes in the middle. Or press New.',
+        'empty.newNote': 'Write a new note',
         'empty.search': 'No matching notes',
         'empty.filterDesc': 'Nothing under this filter yet. Clear it to see everything.',
         'empty.clearFilter': 'Clear the filter',
@@ -1867,6 +1869,7 @@ async function saveFile(url, filename) {
         'list.unpickAll': 'Selectie wissen',
         'empty.select': 'Kies een notitie om te lezen',
         'empty.selectDesc': 'Mappen links, notities in het midden. Of druk op Nieuw.',
+        'empty.newNote': 'Een nieuwe notitie schrijven',
         'empty.search': 'Geen passende notities',
         'empty.filterDesc': 'Nog niets onder deze filter. Haal hem weg om alles te zien.',
         'empty.clearFilter': 'Filter weghalen',
@@ -5747,6 +5750,10 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
   gap:8px;padding:32px;text-align:center;color:var(--dsw-alias-label-tertiary)}
 .dshgn_emptyTitle{font-size:13px;color:var(--dsw-alias-label-secondary)}
 .dshgn_emptyDesc{font-size:12px;line-height:1.7;max-width:340px}
+.dshgn_emptyBtn{appearance:none;display:inline-flex;align-items:center;gap:4px;margin-top:10px;
+  padding:4px 10px;border:0.5px solid var(--dsw-alias-border-l2);border-radius:6px;
+  background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;cursor:pointer}
+.dshgn_emptyBtn:hover{background:var(--dsw-alias-interactive-bg-hover)}
 .dshgn_emptyActions{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px;margin-top:4px}
 /* 回收站的「恢复到哪个目录」：一行输入 + 候选，和批量条那套同宽同高 */
 .dshgn_trashTarget{display:flex;flex-direction:column;gap:4px;margin:8px 0 2px;min-width:0}
@@ -10187,6 +10194,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             onCopyHeadingLink: copyHeadingLink,
             // 正文里划选一段 → 存成新笔记（摘抄/摘录单独立篇）
             onCreateFromText: createFromText,
+            // 空态里那颗「写一篇新的」：和顶栏「+」走同一条路（模板、目录都照旧）
+            onCreateNew: () => newNote(),
             // 就地查找「到头了 / 没有这个词」要说一声：静默不动的话，
             // 用户会以为是自己敲错了词，接着反复按回车。
             showToast,
@@ -14450,6 +14459,61 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       }
     }
 
+    // 每篇自己的字号：{ path, scale } 的数组，最近调过的排前面，最多留 80 篇。
+    //
+    // 字号原来是全局一档。可它其实是「这一篇的观感」——一篇小字扫描件调到「大字」
+    // 之后，回头看普通正文就嫌挤；调回标准，那篇扫描件又变小了。跟「读到哪儿」
+    // 「没写完的草稿」一样，按篇记才对。不封顶的话这份表会跟着库一直长下去，
+    // 而真正会反复调的也就是最近读的这几十篇。
+    const NOTE_SCALE_KEY = 'dshgn.noteScale'
+    const NOTE_SCALE_KEEP = 80
+    const SCALES = ['s', 'm', 'l']
+
+    function readNoteScales() {
+      try {
+        const raw = window.localStorage.getItem(NOTE_SCALE_KEY)
+        if (raw === null) return {}
+        const parsed = JSON.parse(raw)
+        if (!Array.isArray(parsed)) return {}
+        const out = {}
+        for (const item of parsed.slice(0, NOTE_SCALE_KEEP)) {
+          if (item === null || typeof item !== 'object') continue
+          if (typeof item.path !== 'string' || SCALES.indexOf(item.scale) === -1) continue
+          out[item.path] = item.scale
+        }
+        return out
+      } catch {
+        // 隐私模式 / 上一版的旧结构：当作一篇都没单独调过
+        return {}
+      }
+    }
+
+    /** 这一篇自己那一档；没单独调过返回空串，表示用全局默认。 */
+    function noteScaleOf(path) {
+      const rel = typeof path === 'string' ? path : ''
+      if (rel === '') return ''
+      const hit = readNoteScales()[rel]
+      return SCALES.indexOf(hit) === -1 ? '' : hit
+    }
+
+    /** 记下这一篇的字号；传空串等于把这笔记录删掉（回到全局默认）。 */
+    function writeNoteScale(path, scale) {
+      const rel = typeof path === 'string' ? path : ''
+      if (rel === '') return
+      try {
+        const rest = readNoteScales()
+        delete rest[rel]
+        const next = SCALES.indexOf(scale) === -1 ? rest : Object.assign({ [rel]: scale }, rest)
+        const list = Object.keys(next)
+          .slice(0, NOTE_SCALE_KEEP)
+          .map((key) => ({ path: key, scale: next[key] }))
+        if (list.length === 0) window.localStorage.removeItem(NOTE_SCALE_KEY)
+        else window.localStorage.setItem(NOTE_SCALE_KEY, JSON.stringify(list))
+      } catch {
+        // 存不了就这次先用着
+      }
+    }
+
     // 没存完的草稿：{ path, content, at } 的数组，最近改过的排前面，最多留 5 篇。
     //
     // 面板的编辑器是草稿式的——关窗口、切页签、宿主重载插件，正文都还在 React
@@ -15460,6 +15524,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       const onJumpToLine = typeof props.onJumpToLine === 'function' ? props.onJumpToLine : null
       // 正文里划选一段 → 存成新笔记；没接上就只给「复制」，不摆一个按了没反应的按钮
       const onCreateFromText = typeof props.onCreateFromText === 'function' ? props.onCreateFromText : null
+      // 空态那句「也可以点「新建」」一直指着顶上那颗「+」，可空态里明明什么都没摆。
+      // 既然话说到这儿了，就地给一颗按钮——不然用户得先抬头找一遍顶栏。
+      const onCreateNew = typeof props.onCreateNew === 'function' ? props.onCreateNew : null
     const onDuplicate = typeof props.onDuplicate === 'function' ? props.onDuplicate : null
       // 大纲里那一节点一下就抄一条链接过去；没接上就不摆那颗按钮
       const onCopyHeadingLink = typeof props.onCopyHeadingLink === 'function' ? props.onCopyHeadingLink : null
@@ -15499,6 +15566,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           return 'm'
         }
       })
+      // 每篇单独调过的字号（{ 路径: 's'|'m'|'l' }）。没记过的篇目就用上面那一档
+      // 全局默认——这样老用户升级上来，观感跟以前一模一样。
+      const [noteScales, setNoteScales] = React.useState(() => readNoteScales())
       // C2 版本历史：保存/删除前 host 会自动留一版快照，这里给用户翻回去。
       // 快照只留最近 10 版——留太多会让 .history 目录无限膨胀，而真要找回
       // 一个月前的内容，用户应该靠整库备份而不是这个。
@@ -15762,6 +15832,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 不用 effect 去清——那个 effect 每次挂载都会跑，点开图之后紧接着的一次
       // 重渲染会把它立刻关掉（面板会随页签/窗口重挂载，路径一变就误判成换笔记）。
       const currentPathOf = current === null || current === undefined ? '' : String(current.path || '')
+      // 这篇实际用哪一档：自己调过就用自己那档，没调过落到全局默认。
+      const scaleNow = noteScales[currentPathOf] !== undefined && SCALES.indexOf(noteScales[currentPathOf]) !== -1 ? noteScales[currentPathOf] : textScale
       // 键处理器要认的是「屏幕上真的有一张放大的图」，不是「state 里还留着上次那张」。
       // 换过笔记之后 zoom 还记着上一张图的路径，遮罩已经不画了；这时候要是还按
       // zoom 非空去接管 Esc 和左右键，用户在正文里按方向键就会被悄悄吞掉。
@@ -15945,14 +16017,33 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         [current, loadHistory, onError, onRestored],
       )
 
-      const pickScale = React.useCallback((next) => {
-        setTextScale(next)
-        try {
-          window.localStorage.setItem('dshgn.textScale', next)
-        } catch {
-          // 隐私模式下 localStorage 会抛，档位不记住而已，不影响阅读
-        }
-      }, [])
+      // 字号是「这一篇的观感」：一篇小字扫描件调到「大字」之后，回头看普通正文
+      // 就嫌挤；调回标准，那篇扫描件又变小了。所以开着哪篇就记在哪篇头上，
+      // 换一篇各自用各自的。选中的正好是全局默认那一档时，把这笔记录抹掉——
+      // 那跟「没单独调过」是一回事，留着只让这份表越攒越长。
+      const pickScale = React.useCallback(
+        (next) => {
+          const path = currentPathOf
+          if (path === '') {
+            setTextScale(next)
+            try {
+              window.localStorage.setItem('dshgn.textScale', next)
+            } catch {
+              // 隐私模式下 localStorage 会抛，档位不记住而已，不影响阅读
+            }
+            return
+          }
+          const own = next === textScale ? '' : next
+          setNoteScales((prev) => {
+            const map = Object.assign({}, prev)
+            if (own === '') delete map[path]
+            else map[path] = own
+            return map
+          })
+          writeNoteScale(path, own)
+        },
+        [currentPathOf, textScale],
+      )
 
       // 编辑态里的两个快捷键，跟宿主编辑器同一个口径：Ctrl/Cmd+S 保存、
       // Esc 退出编辑。挂在 window 上而不是 textarea 上，是因为用户按
@@ -16332,6 +16423,18 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             h(Icon, { name: 'brain', size: 26 }),
             h('div', { className: 'dshgn_emptyTitle' }, t('empty.select')),
             h('div', { className: 'dshgn_emptyDesc' }, t('empty.selectDesc')),
+            onCreateNew === null
+              ? null
+              : h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'dshgn_emptyBtn',
+                    onClick: () => onCreateNew(),
+                  },
+                  h(Icon, { name: 'plus', size: 12 }),
+                  h('span', null, t('empty.newNote')),
+                ),
           ),
         )
       }
@@ -16468,7 +16571,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                 {
                   key: size,
                   type: 'button',
-                  className: 'dshgn_scaleBtn' + (textScale === size ? ' dshgn_scaleBtnOn' : ''),
+                  className: 'dshgn_scaleBtn' + (scaleNow === size ? ' dshgn_scaleBtnOn' : ''),
+                  'aria-pressed': scaleNow === size ? 'true' : 'false',
                   onClick: () => pickScale(size),
                   title: t(`note.fontSize.${size}`),
                 },
@@ -17261,7 +17365,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
               // `content`，这样保存不会把 frontmatter 丢掉。
               h(
                 'div',
-                { className: 'dshgn_md' + (textScale === 's' ? ' dshgn_mdS' : textScale === 'l' ? ' dshgn_mdL' : '') },
+                { className: 'dshgn_md' + (scaleNow === 's' ? ' dshgn_mdS' : scaleNow === 'l' ? ' dshgn_mdL' : '') },
                 renderMarkdown(
                   current.body !== undefined && current.body !== null ? current.body : current.content,
                   // 编辑态不给 onToggleTodo：那时显示的是可编辑 textarea，正文里的
@@ -18230,5 +18334,6 @@ export const __internals = {
   tagBodyOf, ZoomOverlay, continueListLine, indentLines, wrapInline, linkPaste, wikilinkQueryAt, wikilinkMatches, tagQueryAt, tagMatches, findInBody, findAllBodyMatches, countTextMatches, findInBodyMatch, findInText, textHasParts,
       readScrollMarks, writeScrollMark, scrollMarkOf, SCROLL_KEY,
   readDrafts, draftOf, writeDraft, dropDraft, DRAFT_KEY, DRAFT_KEEP, DRAFT_MAX,
+  readNoteScales, noteScaleOf, writeNoteScale, NOTE_SCALE_KEY, NOTE_SCALE_KEEP,
   splitByTerms, highlightTerms, searchTermsOf, searchSuggestAt, searchSuggestions,
 }

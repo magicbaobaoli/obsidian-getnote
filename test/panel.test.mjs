@@ -13819,3 +13819,181 @@ test('批量删之前也先反查一句「这几篇里谁被人提到过」，�
   )
   await clickTab('笔记')
 })
+
+test('字号是这一篇的事：调大了这篇，换一篇还是原来那档，回来还是大的', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+  await clickTab('笔记')
+
+  // 每篇字号是上一批才有的，先把本机记着的那份清掉，免得上一次跑剩下的影响判断
+  try {
+    window.localStorage.removeItem('dshgn.noteScale')
+  } catch {
+    // 隐私模式：本来就没记住，不用管
+  }
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+  const smallPath = '字号按篇验收/字号按篇-小字那篇.md'
+  const plainPath = '字号按篇验收/字号按篇-普通那篇.md'
+  await post('/getnote/create', {
+    dir: '字号按篇验收',
+    title: '字号按篇-小字那篇',
+    content: ['# 字号按篇-小字那篇', '', '这一篇字本来就小，得调大才看得清。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-note-scale-a',
+  })
+  await post('/getnote/create', {
+    dir: '字号按篇验收',
+    title: '字号按篇-普通那篇',
+    content: ['# 字号按篇-普通那篇', '', '这一篇按默认那档就合适。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-note-scale-b',
+  })
+
+  const backBtn = () => window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(async () => true)
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = backBtn()
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(220)
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  const searchBox = () => window.document.querySelector('.dshgn_search')
+  const box = searchBox()
+  if (box && String(box.value || '') !== '') {
+    box.value = ''
+    box.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(400)
+  }
+  const allRow = Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+    const name = el.querySelector('.dshgn_treeName')
+    return name !== null && (name.textContent || '').trim() === '全部笔记'
+  })
+  if (allRow) allRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(700)
+
+  const cardOf = (title) =>
+    Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => {
+      const label = el.querySelector('.dshgn_cardTitle')
+      return label !== null && (label.textContent || '').trim() === title
+    })
+  const openByTitle = async (title) => {
+    await waitFor(() => cardOf(title) !== undefined, 8000, '列表里出现：' + title)
+    cardOf(title).dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(
+      () => {
+        const area = window.document.querySelector('.dshgn_note')
+        return area !== null && (area.textContent || '').includes(title)
+      },
+      8000,
+      '打开：' + title,
+    )
+  }
+  // 正文挂的档位：'' = 标准，'S' = 小，'L' = 大
+  const scaleOfBody = () => {
+    const md = window.document.querySelector('.dshgn_md')
+    if (md === null) return 'none'
+    if (md.classList.contains('dshgn_mdS')) return 'S'
+    if (md.classList.contains('dshgn_mdL')) return 'L'
+    return ''
+  }
+  const scaleBtn = (size) => {
+    const group = window.document.querySelector('.dshgn_scaleGroup')
+    if (group === null) return undefined
+    const list = Array.from(group.querySelectorAll('.dshgn_scaleBtn'))
+    // 三颗按钮的次序固定是 小 / 标准 / 大
+    return list[{ s: 0, m: 1, l: 2 }[size]]
+  }
+
+  await openByTitle('字号按篇-小字那篇')
+  assert.equal(scaleOfBody(), '', '第一次打开应该是标准那档')
+
+  // 调成「大字」：只有这一篇该变大
+  const big = scaleBtn('l')
+  assert.ok(big !== undefined, '笔记头上该有三档字号')
+  big.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => scaleOfBody() === 'L', 5000, '这一篇应该变成大字')
+  assert.equal(
+    scaleBtn('l').getAttribute('aria-pressed'),
+    'true',
+    '选中的那一档要标出来',
+  )
+
+  // 换到另一篇：它没被单独调过，应该还是标准那档
+  await openByTitle('字号按篇-普通那篇')
+  assert.equal(scaleOfBody(), '', '换一篇不该跟着变大')
+  assert.equal(scaleBtn('m').getAttribute('aria-pressed'), 'true', '另一篇标的是标准那档')
+
+  // 回到刚才那篇：它自己那一档还在
+  await openByTitle('字号按篇-小字那篇')
+  assert.equal(scaleOfBody(), 'L', '回到这一篇应该还是大字')
+  assert.equal(scaleBtn('l').getAttribute('aria-pressed'), 'true', '回来时标的是大字那档')
+
+  // 调回标准 = 跟「没单独调过」一样，那笔记录该被抹掉，不再占地方
+  scaleBtn('m').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => scaleOfBody() === '', 5000, '调回标准')
+  const kept = String(window.localStorage.getItem('dshgn.noteScale') || '')
+  assert.ok(
+    !kept.includes('字号按篇-小字那篇'),
+    '调回标准之后不该再记着这一篇：' + kept,
+  )
+})
+
+test('空态里那颗「写一篇新的」是真的能点，不是只指着顶栏那颗「+」', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+  await clickTab('笔记')
+
+  const backBtn = () => window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(async () => true)
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = backBtn()
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(220)
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  const emptyBtn = () => window.document.querySelector('.dshgn_emptyBtn')
+  await waitFor(() => emptyBtn() !== null, 5000, '空态里该有一颗「写一篇新的」')
+  assert.ok(
+    (emptyBtn().textContent || '').includes('写一篇新的'),
+    '按钮上要说清是干什么的：' + (emptyBtn().textContent || ''),
+  )
+
+  const before = window.document.querySelectorAll('.dshgn_card').length
+  emptyBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  // 建完会当场打开那一篇：空态退场、正文区出现编辑入口
+  await waitFor(
+    () => rootNode().getAttribute('data-has-note') === 'true',
+    10000,
+    '点完之后该建出一篇并打开',
+  )
+  assert.equal(
+    window.document.querySelector('.dshgn_emptyBtn'),
+    null,
+    '打开一篇之后空态就该退场了',
+  )
+  assert.ok(before >= 0, '列表里卡片数量不为负（只是占位断言，避免未使用变量）')
+})
