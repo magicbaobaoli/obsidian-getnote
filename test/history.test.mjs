@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import {
   HISTORY_DIR,
   HISTORY_LIMIT,
+  HISTORY_LIMIT_MAX,
   historyKeyFor,
   snapshotNote,
   listHistory,
@@ -233,6 +234,41 @@ try {
   check('pruneHistory: 没有 .history 时返回 0', prunedEmpty.pruned === 0 && prunedEmpty.kept === 0, JSON.stringify(prunedEmpty))
   const meta = await stat(join(root, HISTORY_DIR))
   check('pruneHistory: 不动 .history 以外的目录', meta.isDirectory())
+
+  // ── 版数是设置项，不是写死的 10 ────────────────────────────────────────────
+  // 这个数字以前是常量，用户改不了。改成设置项之后，留快照（snapshotNote）
+  // 和裁旧版（pruneHistory）都得认传进来的 limit，否则设置页写 3、库里躺着 10。
+  const ownRel = '随手记/2026-11-17-版数自定.md'
+  await writeFile(join(root, '随手记', '2026-11-17-版数自定.md'), '# 版数自定\n\n初稿。\n', 'utf8')
+  for (let i = 0; i < 5; i += 1) {
+    await snapshotNote(root, ownRel, { now: Date.parse(`2026-11-17T0${i}:00:00.000Z`), limit: 3 })
+  }
+  const ownList = await listHistory(root, ownRel, { limit: 100 })
+  check('版数自定: limit:3 时只留最近 3 版', ownList.length === 3, String(ownList.length))
+
+  // 不传 limit 时仍按默认 10——老调用点（和升级前存下的库）行为不变。
+  const dfltRel = '随手记/2026-11-18-默认版数.md'
+  await writeFile(join(root, '随手记', '2026-11-18-默认版数.md'), '# 默认版数\n\n初稿。\n', 'utf8')
+  for (let i = 0; i < 12; i += 1) {
+    await snapshotNote(root, dfltRel, { now: Date.parse('2026-11-18T00:00:00.000Z') + i * 1000 })
+  }
+  const dfltList = await listHistory(root, dfltRel, { limit: 100 })
+  check('版数自定: 不传 limit 时还是默认 10 版', dfltList.length === HISTORY_LIMIT, String(dfltList.length))
+
+  // 调小之后用 pruneHistory 扫一遍，之前那批 10 版要被裁到 3 版。
+  const shrunk = await pruneHistory(root, { limit: 3 })
+  const dfltAfter = await listHistory(root, dfltRel, { limit: 100 })
+  check('版数自定: pruneHistory 认 limit，10 版裁到 3 版', dfltAfter.length === 3 && shrunk.pruned > 0, JSON.stringify({ len: dfltAfter.length, pruned: shrunk.pruned }))
+
+  // 上下界：0 与负数当 1 版（至少留一版能恢复），超过上限按 HISTORY_LIMIT_MAX 算。
+  const tinyRel = '随手记/2026-11-19-版数下限.md'
+  await writeFile(join(root, '随手记', '2026-11-19-版数下限.md'), '# 版数下限\n\n初稿。\n', 'utf8')
+  for (let i = 0; i < 4; i += 1) {
+    await snapshotNote(root, tinyRel, { now: Date.parse('2026-11-19T00:00:00.000Z') + i * 1000, limit: 0 })
+  }
+  const tinyList = await listHistory(root, tinyRel, { limit: 100 })
+  check('版数自定: limit:0 当 1 版，至少留一版能恢复', tinyList.length === 1, String(tinyList.length))
+  check('版数自定: 上限常量是 200', HISTORY_LIMIT_MAX === 200, String(HISTORY_LIMIT_MAX))
 } finally {
   await rm(root, { recursive: true, force: true })
 }

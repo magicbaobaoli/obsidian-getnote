@@ -22,6 +22,11 @@ import { createHash, randomBytes } from 'node:crypto'
 export const HISTORY_DIR = '.history'
 /** 每篇笔记默认保留多少版（含刚存进去的那一版）。 */
 export const HISTORY_LIMIT = 10
+/**
+ * 每篇最多能留多少版。上限存在的理由不是性能，是「一屏看得过来」：
+ * 版本列表是给人挑一版回去的，留到几百版反而谁也找不着。
+ */
+export const HISTORY_LIMIT_MAX = 200
 
 /** 单篇快照上限：和 vault.js 的 MAX_READ/MAX_WRITE 保持一致，2MB。 */
 const MAX_SNAPSHOT_BYTES = 2 * 1024 * 1024
@@ -50,11 +55,11 @@ function isMissing(error) {
   return Boolean(error) && (error.code === 'ENOENT' || error.code === 'ENOTDIR')
 }
 
-/** limit 归一化：至少留 1 版，非法值回落到默认值。 */
+/** limit 归一化：至少留 1 版、最多留 HISTORY_LIMIT_MAX 版，非法值回落到默认值。 */
 function clampLimit(limit) {
   const n = Number(limit)
   if (!Number.isFinite(n)) return HISTORY_LIMIT
-  return Math.max(1, Math.floor(n))
+  return Math.min(HISTORY_LIMIT_MAX, Math.max(1, Math.floor(n)))
 }
 
 /**

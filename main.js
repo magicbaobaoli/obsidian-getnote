@@ -219,7 +219,7 @@ var init_vfs = __esm({
 
 // src/core/history.js
 function sha1(text) {
-  return (0, import_node_crypto2.createHash)("sha1").update(String(text), "utf8").digest("hex");
+  return (0, import_node_crypto.createHash)("sha1").update(String(text), "utf8").digest("hex");
 }
 function badInput(message) {
   return Object.assign(new Error(message || "\u975E\u6CD5\u7684\u8DEF\u5F84"), { status: 400 });
@@ -233,7 +233,7 @@ function isMissing(error2) {
 function clampLimit(limit) {
   const n2 = Number(limit);
   if (!Number.isFinite(n2)) return HISTORY_LIMIT;
-  return Math.max(1, Math.floor(n2));
+  return Math.min(HISTORY_LIMIT_MAX, Math.max(1, Math.floor(n2)));
 }
 function splitRel(relPath) {
   if (typeof relPath !== "string" || relPath.trim() === "") throw badInput("\u7B14\u8BB0\u8DEF\u5F84\u4E0D\u80FD\u4E3A\u7A7A");
@@ -291,7 +291,7 @@ async function readSnapshots(dirAbs) {
     if (!name.toLowerCase().endsWith(".md")) continue;
     let st;
     try {
-      st = await stat2((0, import_node_path3.join)(dirAbs, name));
+      st = await stat2((0, import_node_path.join)(dirAbs, name));
     } catch {
       continue;
     }
@@ -315,7 +315,7 @@ async function pruneDir(dirAbs, keep) {
   let pruned = 0;
   for (const item of items.slice(keep)) {
     try {
-      await rm2((0, import_node_path3.join)(dirAbs, item.name), { force: true });
+      await rm2((0, import_node_path.join)(dirAbs, item.name), { force: true });
       pruned += 1;
     } catch {
     }
@@ -324,7 +324,7 @@ async function pruneDir(dirAbs, keep) {
 }
 async function snapshotNote(root, relPath, { now = Date.now(), limit = HISTORY_LIMIT } = {}) {
   const parts = splitRel(relPath);
-  const abs = (0, import_node_path3.resolve)(root, ...parts);
+  const abs = (0, import_node_path.resolve)(root, ...parts);
   let st;
   try {
     st = await stat2(abs);
@@ -337,14 +337,14 @@ async function snapshotNote(root, relPath, { now = Date.now(), limit = HISTORY_L
   const buf = await readFile2(abs);
   if (buf.length > MAX_SNAPSHOT_BYTES) return { saved: false, reason: "too-large" };
   const key = historyKeyFor(parts.join("/"));
-  const dirAbs = (0, import_node_path3.join)(root, HISTORY_DIR, key);
+  const dirAbs = (0, import_node_path.join)(root, HISTORY_DIR, key);
   await mkdir2(dirAbs, { recursive: true });
   const base = stampLabel(now);
   let name = "";
   for (let i3 = 1; i3 <= 999; i3 += 1) {
     const candidate = i3 === 1 ? `${base}.md` : `${base}-${i3}.md`;
     try {
-      await writeFile2((0, import_node_path3.join)(dirAbs, candidate), buf, { flag: "wx" });
+      await writeFile2((0, import_node_path.join)(dirAbs, candidate), buf, { flag: "wx" });
       name = candidate;
       break;
     } catch (error2) {
@@ -359,7 +359,7 @@ async function snapshotNote(root, relPath, { now = Date.now(), limit = HISTORY_L
 async function listHistory(root, relPath, { limit = 50 } = {}) {
   const parts = splitRel(relPath);
   const key = historyKeyFor(parts.join("/"));
-  const dirAbs = (0, import_node_path3.join)(root, HISTORY_DIR, key);
+  const dirAbs = (0, import_node_path.join)(root, HISTORY_DIR, key);
   const items = await readSnapshots(dirAbs);
   const cap = Number.isFinite(Number(limit)) ? Math.max(0, Math.floor(Number(limit))) : 50;
   return items.slice(0, cap).map((item) => ({
@@ -374,7 +374,7 @@ async function moveHistoryEntries(root, fromRel, toRel) {
   const from = splitRel(fromRel).join("/");
   const to = splitRel(toRel).join("/");
   if (from === "" || to === "" || from === to) return 0;
-  const base = (0, import_node_path3.join)(root, HISTORY_DIR);
+  const base = (0, import_node_path.join)(root, HISTORY_DIR);
   let names;
   try {
     names = await readdir2(base);
@@ -393,7 +393,7 @@ async function moveHistoryEntries(root, fromRel, toRel) {
   let moved = 0;
   for (const item of plan) {
     try {
-      await rename2((0, import_node_path3.join)(base, item.from), (0, import_node_path3.join)(base, item.to));
+      await rename2((0, import_node_path.join)(base, item.from), (0, import_node_path.join)(base, item.to));
       moved += 1;
     } catch {
     }
@@ -409,7 +409,7 @@ async function readHistoryEntry(root, relPath, name) {
   }
   const parts = splitRel(relPath);
   const key = historyKeyFor(parts.join("/"));
-  const abs = (0, import_node_path3.join)(root, HISTORY_DIR, key, name);
+  const abs = (0, import_node_path.join)(root, HISTORY_DIR, key, name);
   let st;
   try {
     st = await stat2(abs);
@@ -435,7 +435,7 @@ async function readHistoryEntry(root, relPath, name) {
   };
 }
 async function atomicWrite(abs, content) {
-  const tmp = `${abs}.${process.pid}.${Date.now().toString(36)}.${(0, import_node_crypto2.randomBytes)(3).toString("hex")}.tmp`;
+  const tmp = `${abs}.${process.pid}.${Date.now().toString(36)}.${(0, import_node_crypto.randomBytes)(3).toString("hex")}.tmp`;
   await writeFile2(tmp, content, "utf8");
   try {
     await rename2(tmp, abs);
@@ -455,24 +455,45 @@ async function atomicWrite(abs, content) {
 async function restoreHistoryEntry(root, relPath, name, { keepCurrent = true } = {}) {
   const entry = await readHistoryEntry(root, relPath, name);
   const parts = splitRel(relPath);
-  const abs = (0, import_node_path3.resolve)(root, ...parts);
+  const abs = (0, import_node_path.resolve)(root, ...parts);
   let hadSnapshot = false;
   if (keepCurrent !== false) {
     const snap = await snapshotNote(root, parts.join("/"));
     hadSnapshot = snap.saved === true;
   }
-  await mkdir2((0, import_node_path3.dirname)(abs), { recursive: true });
+  await mkdir2((0, import_node_path.dirname)(abs), { recursive: true });
   await atomicWrite(abs, entry.content);
   return { restored: true, path: parts.join("/"), from: name, hadSnapshot };
 }
-var import_node_path3, import_node_crypto2, HISTORY_DIR, HISTORY_LIMIT, MAX_SNAPSHOT_BYTES, KEY_MAX, KEY_HASH_LEN, ILLEGAL_NAME, STAMP_RE;
+async function pruneHistory(root, { limit = HISTORY_LIMIT } = {}) {
+  const keep = clampLimit(limit);
+  const base = (0, import_node_path.join)(root, HISTORY_DIR);
+  let entries;
+  try {
+    entries = await readdir2(base, { withFileTypes: true });
+  } catch (error2) {
+    if (isMissing(error2)) return { pruned: 0, kept: 0 };
+    throw error2;
+  }
+  let pruned = 0;
+  let kept = 0;
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const result = await pruneDir((0, import_node_path.join)(base, entry.name), keep);
+    pruned += result.pruned;
+    kept += result.kept;
+  }
+  return { pruned, kept };
+}
+var import_node_path, import_node_crypto, HISTORY_DIR, HISTORY_LIMIT, HISTORY_LIMIT_MAX, MAX_SNAPSHOT_BYTES, KEY_MAX, KEY_HASH_LEN, ILLEGAL_NAME, STAMP_RE;
 var init_history = __esm({
   "src/core/history.js"() {
     init_vfs();
-    import_node_path3 = require("node:path");
-    import_node_crypto2 = require("node:crypto");
+    import_node_path = require("node:path");
+    import_node_crypto = require("node:crypto");
     HISTORY_DIR = ".history";
     HISTORY_LIMIT = 10;
+    HISTORY_LIMIT_MAX = 200;
     MAX_SNAPSHOT_BYTES = 2 * 1024 * 1024;
     KEY_MAX = 120;
     KEY_HASH_LEN = 16;
@@ -2963,9 +2984,10 @@ var import_node_path7 = require("node:path");
 // src/core/settings.js
 var import_promises = require("node:fs/promises");
 init_vfs();
-var import_node_crypto = require("node:crypto");
+var import_node_crypto2 = require("node:crypto");
 var import_node_os = require("node:os");
-var import_node_path = require("node:path");
+var import_node_path2 = require("node:path");
+init_history();
 var SETTINGS_FILENAME = "dsh-getnote.json";
 var AUTH_FILENAME = "dsh-getnote/auth.json";
 var CLOUD_FILENAME = "dsh-getnote/cloud.json";
@@ -2987,18 +3009,18 @@ function getRuntime() {
 function dshHome() {
   if (runtime.dataDir !== "") return runtime.dataDir;
   const env = process.env.DSH_HOME;
-  return env && env.trim() !== "" ? env : (0, import_node_path.join)((0, import_node_os.homedir)(), ".dsh");
+  return env && env.trim() !== "" ? env : (0, import_node_path2.join)((0, import_node_os.homedir)(), ".dsh");
 }
 function settingsPath() {
-  return (0, import_node_path.join)(dshHome(), SETTINGS_FILENAME);
+  return (0, import_node_path2.join)(dshHome(), SETTINGS_FILENAME);
 }
 function authPath() {
-  return (0, import_node_path.join)(dshHome(), AUTH_FILENAME);
+  return (0, import_node_path2.join)(dshHome(), AUTH_FILENAME);
 }
 function defaultVaultRoot() {
   const base = runtime.vaultBase;
-  if (base === "") return (0, import_node_path.join)((0, import_node_os.homedir)(), "\u5F97\u5230\u5927\u8111");
-  return (0, import_node_path.join)(base, runtime.subfolder);
+  if (base === "") return (0, import_node_path2.join)((0, import_node_os.homedir)(), "\u5F97\u5230\u5927\u8111");
+  return (0, import_node_path2.join)(base, runtime.subfolder);
 }
 function toSubfolder(input) {
   const raw = String(input == null ? "" : input).replace(/\\/g, "/").trim();
@@ -3013,7 +3035,7 @@ function toSubfolder(input) {
 }
 function knownVaultCandidates() {
   const list = [];
-  if (runtime.vaultBase !== "") list.push((0, import_node_path.join)(runtime.vaultBase, runtime.subfolder));
+  if (runtime.vaultBase !== "") list.push((0, import_node_path2.join)(runtime.vaultBase, runtime.subfolder));
   const fromEnv = process.env.DSH_GETNOTE_VAULT;
   if (typeof fromEnv === "string" && fromEnv.trim() !== "") list.unshift(fromEnv.trim());
   return list;
@@ -3027,8 +3049,8 @@ async function readJson(path) {
   }
 }
 async function writeJsonAtomic(path, value, mode) {
-  await (0, import_promises.mkdir)((0, import_node_path.dirname)(path), { recursive: true });
-  const tmp = `${path}.${process.pid}.${(0, import_node_crypto.randomBytes)(4).toString("hex")}.tmp`;
+  await (0, import_promises.mkdir)((0, import_node_path2.dirname)(path), { recursive: true });
+  const tmp = `${path}.${process.pid}.${(0, import_node_crypto2.randomBytes)(4).toString("hex")}.tmp`;
   await (0, import_promises.writeFile)(tmp, JSON.stringify(value, null, 2) + "\n", "utf8");
   if (mode) {
     try {
@@ -3054,6 +3076,11 @@ function normalizeLocale(input) {
   if (raw === "en" || raw.startsWith("en-")) return "en";
   if (raw === "nl" || raw.startsWith("nl-")) return "nl";
   return null;
+}
+function normalizeHistoryLimit(input) {
+  const n2 = Number(input);
+  if (!Number.isFinite(n2)) return HISTORY_LIMIT;
+  return Math.min(HISTORY_LIMIT_MAX, Math.max(1, Math.floor(n2)));
 }
 async function readSettings() {
   const data = await readJson(settingsPath());
@@ -3086,7 +3113,10 @@ async function readSettings() {
     // 跟着宿主切换笔记：默认关。开着时用户在 Obsidian 里翻到哪一篇，面板就跟着
     // 打开同一篇。默认关是因为「面板自己动」这件事得用户点头——他可能正开着
     // 一篇对照着看，不希望一切换标签页就被顶掉。
-    followActive: data.followActive === true
+    followActive: data.followActive === true,
+    // 版本历史每篇留几版。默认 10 版和以前写死的数字一致，老用户升级观感不变；
+    // 这个值传进 snapshotNote 与 pruneHistory，两处都走同一份口径。
+    historyLimit: normalizeHistoryLimit(data.historyLimit)
   };
 }
 async function updateSettings(patch = {}) {
@@ -3106,7 +3136,8 @@ async function updateSettings(patch = {}) {
     localPort: patch.localPort !== void 0 ? patch.localPort : cur.localPort,
     debugLogging: patch.debugLogging !== void 0 ? patch.debugLogging === true : cur.debugLogging,
     cardAutoImport: patch.cardAutoImport !== void 0 ? patch.cardAutoImport === true : cur.cardAutoImport,
-    followActive: patch.followActive !== void 0 ? patch.followActive === true : cur.followActive
+    followActive: patch.followActive !== void 0 ? patch.followActive === true : cur.followActive,
+    historyLimit: patch.historyLimit !== void 0 ? normalizeHistoryLimit(patch.historyLimit) : cur.historyLimit
   };
   await writeJsonAtomic(settingsPath(), next);
   return readSettings();
@@ -3115,7 +3146,7 @@ function expandHome(input) {
   if (typeof input !== "string") return input;
   const trimmed = input.trim();
   if (trimmed === "~") return (0, import_node_os.homedir)();
-  if (trimmed.startsWith("~/") || trimmed.startsWith("~\\")) return (0, import_node_path.join)((0, import_node_os.homedir)(), trimmed.slice(2));
+  if (trimmed.startsWith("~/") || trimmed.startsWith("~\\")) return (0, import_node_path2.join)((0, import_node_os.homedir)(), trimmed.slice(2));
   return trimmed;
 }
 async function setVaultRoot(input) {
@@ -3123,7 +3154,7 @@ async function setVaultRoot(input) {
   if (typeof expanded !== "string" || expanded.trim() === "") {
     throw Object.assign(new Error("\u76EE\u5F55\u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
   }
-  if ((0, import_node_path.isAbsolute)(expanded) || /^[A-Za-z]:[\\/]/.test(expanded) || /^[\\/]{2}/.test(expanded)) {
+  if ((0, import_node_path2.isAbsolute)(expanded) || /^[A-Za-z]:[\\/]/.test(expanded) || /^[\\/]{2}/.test(expanded)) {
     const base = runtime.vaultBase.replace(/\\/g, "/").toLowerCase();
     const normalized = expanded.replace(/\\/g, "/").toLowerCase();
     const inside = base !== "" && (normalized === base || normalized.startsWith(base + "/"));
@@ -3175,7 +3206,7 @@ async function readClient() {
   return { clientId: data.clientId, redirectUri: typeof data.redirectUri === "string" ? data.redirectUri : null };
 }
 function cloudPath() {
-  return (0, import_node_path.join)(dshHome(), CLOUD_FILENAME);
+  return (0, import_node_path2.join)(dshHome(), CLOUD_FILENAME);
 }
 async function readCloud() {
   const data = await readJson(cloudPath());
@@ -3212,7 +3243,7 @@ function maskSecret(value) {
   return `${value.slice(0, 12)}\u2026${value.slice(-4)}`;
 }
 function syncStatePath() {
-  return (0, import_node_path.join)(dshHome(), SYNC_FILENAME);
+  return (0, import_node_path2.join)(dshHome(), SYNC_FILENAME);
 }
 async function readSyncState() {
   const data = await readJson(syncStatePath());
@@ -3267,13 +3298,13 @@ init_vfs();
 // src/core/card.js
 var import_node_child_process = require("node:child_process");
 init_vfs();
-var import_node_path2 = require("node:path");
+var import_node_path3 = require("node:path");
 var scriptDir = process.cwd();
 function configureCardScripts({ baseDir } = {}) {
   if (typeof baseDir === "string" && baseDir !== "") scriptDir = baseDir;
 }
-var BRIDGE = () => (0, import_node_path2.join)(scriptDir, "card", "getcard_bridge.py");
-var WIFI = () => (0, import_node_path2.join)(scriptDir, "card", "wifi_transfer.py");
+var BRIDGE = () => (0, import_node_path3.join)(scriptDir, "card", "getcard_bridge.py");
+var WIFI = () => (0, import_node_path3.join)(scriptDir, "card", "wifi_transfer.py");
 var PYTHON_CANDIDATES = ["python", "python3", "py"];
 function pythonCandidates() {
   const override = typeof process.env.DSH_GETNOTE_PYTHON === "string" ? process.env.DSH_GETNOTE_PYTHON.trim() : "";
@@ -3449,7 +3480,7 @@ async function importedCardFiles(root) {
     }
     for (const item of items) {
       if (item.name.startsWith(".")) continue;
-      const abs = (0, import_node_path2.join)(dir, item.name);
+      const abs = (0, import_node_path3.join)(dir, item.name);
       if (item.isDirectory()) {
         if (item.name === "asset") {
           let files;
@@ -3462,7 +3493,7 @@ async function importedCardFiles(root) {
             if (!file.isFile()) continue;
             const match = /^(.+?\.ogg)_\d+\.ogg$/i.exec(file.name);
             const key = match === null ? file.name : match[1];
-            if (!seen.has(key)) seen.set(key, (0, import_node_path2.join)(abs, file.name));
+            if (!seen.has(key)) seen.set(key, (0, import_node_path3.join)(abs, file.name));
           }
           continue;
         }
@@ -3481,7 +3512,7 @@ async function importCardRecordings(root, options = {}) {
   } } = options;
   const summary = emptySummary();
   const already = await importedCardFiles(root);
-  const args = ["pull", "--out", (0, import_node_path2.join)(root, ".card-inbox")];
+  const args = ["pull", "--out", (0, import_node_path3.join)(root, ".card-inbox")];
   if (all) args.push("--all");
   else if (names !== "") args.push("--names", names);
   if (deleteAfter) args.push("--delete-after");
@@ -3495,7 +3526,7 @@ async function importCardRecordings(root, options = {}) {
     summary.items.push({ name: item.name, status: "skipped", reason: item.reason });
   }
   const targetDir = dir === "" ? "" : dir;
-  await mkdir2(targetDir === "" ? root : (0, import_node_path2.join)(root, targetDir), { recursive: true }).catch(() => {
+  await mkdir2(targetDir === "" ? root : (0, import_node_path3.join)(root, targetDir), { recursive: true }).catch(() => {
   });
   for (const item of downloaded) {
     const sourceName = String(item.name || "");
@@ -3508,8 +3539,8 @@ async function importCardRecordings(root, options = {}) {
       const stamp = Date.now();
       const assetName = `${sourceName}_${stamp}.ogg`;
       const assetRel = posix(targetDir === "" ? `asset/${assetName}` : `${targetDir}/asset/${assetName}`);
-      const assetAbs = (0, import_node_path2.join)(root, assetRel);
-      await mkdir2((0, import_node_path2.dirname)(assetAbs), { recursive: true });
+      const assetAbs = (0, import_node_path3.join)(root, assetRel);
+      await mkdir2((0, import_node_path3.dirname)(assetAbs), { recursive: true });
       const { rename: rename4 } = await import("node:fs/promises");
       await rename4(item.path, assetAbs);
       const title = titleOfCardFile(sourceName);
@@ -3570,7 +3601,7 @@ async function deleteCardFiles(names) {
   if (list.length === 0) {
     throw Object.assign(new Error("\u6CA1\u6709\u6307\u5B9A\u8981\u5220\u9664\u7684\u6587\u4EF6"), { status: 400 });
   }
-  const payload = await runBridge(["pull", "--out", (0, import_node_path2.join)(process.cwd(), ".card-trash"), "--names", list.join(","), "--all", "--force", "--delete-after"]);
+  const payload = await runBridge(["pull", "--out", (0, import_node_path3.join)(process.cwd(), ".card-trash"), "--names", list.join(","), "--all", "--force", "--delete-after"]);
   return { deleted: (payload.downloaded || []).map((item) => item.name) };
 }
 async function cardPendingCount() {
@@ -5440,6 +5471,14 @@ async function pushNote({ client, root, relPath, noteId } = {}) {
 
 // src/core/service.js
 var ROUTE_PREFIX = "/getnote";
+async function historyLimitNow() {
+  try {
+    const settings = await readSettings();
+    return settings.historyLimit;
+  } catch {
+    return HISTORY_LIMIT;
+  }
+}
 var pendingAuthorizations = /* @__PURE__ */ new Map();
 var importState = {
   running: false,
@@ -5784,6 +5823,9 @@ function createHandler(config) {
       // 跟着宿主切换笔记：面板首屏就要知道这个开关是开是关——设置页那张卡的
       // 勾选状态来自这里，晚一拍拿到会让勾选框先空着再自己勾上。
       followActive: settings.followActive === true,
+      // 版本历史每篇留几版。设置页那张卡的输入框初值来自这里，
+      // 笔记头「版本历史」那句空态文案也要报这个数字。
+      historyLimit: settings.historyLimit,
       // 自定义笔记模板。跟 status 一起发：点「+」时菜单要立刻列出模板，
       // 再多一次请求会让菜单先空着再长出几项。
       templates: settings.templates,
@@ -5920,9 +5962,10 @@ function createHandler(config) {
     const { root, missing } = await currentRoot();
     if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
     const { entries } = await scanVault(root);
+    const limit = await historyLimitNow();
     const result = await rewriteLinkTarget(root, from, to, entries, {
       snapshot: async (rel) => {
-        await snapshotNote(root, rel);
+        await snapshotNote(root, rel, { limit });
       }
     });
     send(res, 200, result);
@@ -5962,9 +6005,10 @@ function createHandler(config) {
     const { root, missing } = await currentRoot();
     if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
     const keepLocal = body.keepLocal === true;
+    const limit = await historyLimitNow();
     const snapshot = keepLocal ? null : async (rel) => {
       try {
-        await snapshotNote(root, rel);
+        await snapshotNote(root, rel, { limit });
       } catch {
       }
     };
@@ -6034,9 +6078,10 @@ function createHandler(config) {
     const { root, missing } = await currentRoot();
     if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
     const { entries } = await scanVault(root);
+    const limit = await historyLimitNow();
     const result = await removeTag(root, tag, entries, {
       snapshot: async (rel) => {
-        await snapshotNote(root, rel);
+        await snapshotNote(root, rel, { limit });
       }
     });
     send(res, 200, result);
@@ -6050,9 +6095,10 @@ function createHandler(config) {
     const { root, missing } = await currentRoot();
     if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
     const { entries } = await scanVault(root);
+    const limit = await historyLimitNow();
     const result = await renameTag(root, from, to, entries, {
       snapshot: async (rel) => {
-        await snapshotNote(root, rel);
+        await snapshotNote(root, rel, { limit });
       }
     });
     send(res, 200, result);
@@ -6067,9 +6113,10 @@ function createHandler(config) {
     }
     const { root, missing } = await currentRoot();
     if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
+    const limit = await historyLimitNow();
     const result = await toggleTodo(root, path, index, {
       snapshot: async (rel) => {
-        await snapshotNote(root, rel);
+        await snapshotNote(root, rel, { limit });
       }
     });
     send(res, 200, result);
@@ -6256,7 +6303,7 @@ function createHandler(config) {
     } catch {
     }
     try {
-      await snapshotNote(root, path);
+      await snapshotNote(root, path, { limit: await historyLimitNow() });
     } catch {
     }
     const expect = typeof body.expectMtimeMs === "number" && Number.isFinite(body.expectMtimeMs) ? body.expectMtimeMs : null;
@@ -6296,12 +6343,13 @@ function createHandler(config) {
     if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
     let changed = 0;
     const failed = [];
+    const limit = await historyLimitNow();
     const moved = [];
     for (const path of paths) {
       try {
         if (action === "delete") {
           try {
-            await snapshotNote(root, path);
+            await snapshotNote(root, path, { limit });
           } catch {
           }
           await trashNote(root, path);
@@ -6320,7 +6368,7 @@ function createHandler(config) {
           }
           const updated = rewriteTags(text, [...current, tag]);
           try {
-            await snapshotNote(root, path);
+            await snapshotNote(root, path, { limit });
           } catch {
           }
           await writeNote(root, path, updated, { backup: false });
@@ -6339,7 +6387,7 @@ function createHandler(config) {
             continue;
           }
           try {
-            await snapshotNote(root, path);
+            await snapshotNote(root, path, { limit });
           } catch {
           }
           await writeNote(root, path, updated, { backup: false });
@@ -6398,7 +6446,7 @@ function createHandler(config) {
     const path = typeof body.path === "string" ? body.path : "";
     if (path === "") throw Object.assign(new Error("path \u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
     try {
-      await snapshotNote(root, path);
+      await snapshotNote(root, path, { limit: await historyLimitNow() });
     } catch {
     }
     const result = await trashNote(root, path);
@@ -6590,10 +6638,19 @@ function createHandler(config) {
     if ("uiLocale" in body) patch.uiLocale = body.uiLocale;
     if ("templates" in body) patch.templates = body.templates;
     if (typeof body.followActive === "boolean") patch.followActive = body.followActive;
+    if (typeof body.historyLimit === "number") patch.historyLimit = body.historyLimit;
     if (Object.keys(patch).length > 0) await updateSettings(patch);
     const settings = await readSettings();
     const { root } = await resolveVaultRoot(settings.vaultRoot || config.vaultPath || null);
-    send(res, 200, { ok: true, ...settings, effectiveRoot: root });
+    let pruned = null;
+    if ("historyLimit" in patch) {
+      try {
+        pruned = await pruneHistory(root, { limit: settings.historyLimit });
+      } catch {
+        pruned = null;
+      }
+    }
+    send(res, 200, { ok: true, ...settings, effectiveRoot: root, pruned });
   }
   function redirectUriFor(origin) {
     return `${origin}${ROUTE_PREFIX}/oauth/callback`;
@@ -9192,6 +9249,16 @@ var LEX = {
     "settings.followDesc": "\u4F60\u5728 Obsidian \u91CC\u7FFB\u5230\u54EA\u4E00\u7BC7\uFF0C\u5F00\u7740\u7684\u9762\u677F\u5C31\u8DDF\u7740\u6253\u5F00\u540C\u4E00\u7BC7\uFF0C\u53CD\u94FE\u548C\u540C\u6B65\u72B6\u6001\u7ACB\u523B\u8DDF\u4E0A\u3002\u9762\u677F\u6CA1\u5F00\u7740\u65F6\u4E0D\u4F1A\u66FF\u4F60\u6253\u5F00\u5B83\uFF1B\u4E0D\u5728\u300C\u5F97\u5230\u5927\u8111\u300D\u76EE\u5F55\u91CC\u7684\u7B14\u8BB0\u4E5F\u4E0D\u4F1A\u8DDF\u3002",
     "settings.followToggle": "\u9762\u677F\u8DDF\u7740\u6211\u7FFB",
     "settings.followSaved": "\u8DDF\u968F\u8BBE\u7F6E\u5DF2\u4FDD\u5B58",
+    // 版本历史每篇留几版。以前这个数字写死在代码里（10 版），用户改不了：
+    // 天天改稿的人嫌少、只存定稿的人嫌库里堆快照。
+    "settings.historyTitle": "\u7248\u672C\u5386\u53F2\u7559\u51E0\u7248",
+    "settings.historyDesc": "\u6BCF\u7BC7\u7B14\u8BB0\u6700\u591A\u7559\u6700\u8FD1\u51E0\u7248\u5FEB\u7167\u3002\u8C03\u5C0F\u4E86\u4F1A\u7ACB\u523B\u628A\u5E93\u91CC\u8D85\u51FA\u7684\u90A3\u4E9B\u88C1\u6389\uFF0C\u88C1\u6389\u7684\u627E\u4E0D\u56DE\u6765\u3002",
+    "settings.historyLabel": "\u6BCF\u7BC7\u6700\u591A\u7559",
+    "settings.historyUnit": "\u7248",
+    "settings.historySaved": "\u7248\u672C\u5386\u53F2\u8BBE\u7F6E\u5DF2\u4FDD\u5B58",
+    "settings.historyPruned": "\u987A\u624B\u88C1\u6389\u4E86 {n} \u7248\u591A\u4F59\u7684\u5FEB\u7167",
+    "settings.historyBad": "\u7248\u6570\u8981\u662F 1 \u5230 200 \u4E4B\u95F4\u7684\u6574\u6570",
+    "settings.historySave": "\u4FDD\u5B58\u7248\u6570",
     "new.bookTitle": "\u8BFB\u4E66\u7B14\u8BB0",
     "new.meetingTitle": "\u4F1A\u8BAE\u8BB0\u5F55",
     "note.fontSize.s": "\u5C0F\u5B57",
@@ -9224,7 +9291,7 @@ var LEX = {
     "history.title": "\u7248\u672C\u5386\u53F2",
     "history.restore": "\u6062\u590D\u8FD9\u4E00\u7248",
     "history.empty": "\u8FD8\u6CA1\u6709\u5386\u53F2\u7248\u672C",
-    "history.emptyHint": "\u4FDD\u5B58\u6216\u5220\u9664\u7B14\u8BB0\u65F6\u63D2\u4EF6\u4F1A\u81EA\u52A8\u7559\u4E00\u7248\u5FEB\u7167\uFF0C\u6700\u591A\u7559\u6700\u8FD1 10 \u7248\u3002",
+    "history.emptyHint": "\u4FDD\u5B58\u6216\u5220\u9664\u7B14\u8BB0\u65F6\u63D2\u4EF6\u4F1A\u81EA\u52A8\u7559\u4E00\u7248\u5FEB\u7167\uFF0C\u6700\u591A\u7559\u6700\u8FD1 {n} \u7248\u3002",
     "history.diffAdded": "\u6062\u590D\u540E\u591A {n} \u884C",
     "history.diffRemoved": "\u6062\u590D\u540E\u5C11 {n} \u884C",
     "history.diffSame": "\u548C\u73B0\u5728\u4E00\u6837",
@@ -9809,6 +9876,14 @@ var LEX = {
     "settings.followDesc": "Open a note in Obsidian and the panel switches to the same one, with its backlinks and sync state right behind it. The panel will not open itself for you, and notes outside the Get\u7B14\u8BB0 folder are ignored.",
     "settings.followToggle": "Keep the panel on the note I open",
     "settings.followSaved": "Follow setting saved",
+    "settings.historyTitle": "How many versions to keep",
+    "settings.historyDesc": "Each note keeps its most recent snapshots up to this many. Lowering it trims what is already in the vault right away, and trimmed versions are gone for good.",
+    "settings.historyLabel": "Keep at most",
+    "settings.historyUnit": "versions",
+    "settings.historySaved": "History setting saved",
+    "settings.historyPruned": "Trimmed {n} extra snapshots on the way",
+    "settings.historyBad": "Use a whole number from 1 to 200",
+    "settings.historySave": "Save limit",
     "new.bookTitle": "Book notes",
     "new.meetingTitle": "Meeting",
     "note.fontSize.s": "Small",
@@ -9841,7 +9916,7 @@ var LEX = {
     "history.title": "Version history",
     "history.restore": "Restore this version",
     "history.empty": "No versions yet",
-    "history.emptyHint": "A snapshot is saved automatically each time you save or delete a note, keeping the latest 10.",
+    "history.emptyHint": "A snapshot is saved automatically each time you save or delete a note, keeping the latest {n}.",
     "history.diffAdded": "{n} lines more if restored",
     "history.diffRemoved": "{n} lines fewer if restored",
     "history.diffSame": "Same as now",
@@ -10418,6 +10493,14 @@ var LEX = {
     "settings.followDesc": "Open je een notitie in Obsidian, dan springt het paneel naar dezelfde, met de verwijzingen en de synchronisatiestatus erachteraan. Het paneel opent zichzelf niet en notities buiten de map Get\u7B14\u8BB0 worden genegeerd.",
     "settings.followToggle": "Laat het paneel mijn notitie volgen",
     "settings.followSaved": "Volginstelling opgeslagen",
+    "settings.historyTitle": "Hoeveel versies bewaren",
+    "settings.historyDesc": "Elke notitie bewaart hooguit dit aantal recente snapshots. Lager zetten snoeit meteen wat er al in de kluis staat, en gesnoeide versies zijn definitief weg.",
+    "settings.historyLabel": "Bewaar hooguit",
+    "settings.historyUnit": "versies",
+    "settings.historySaved": "Geschiedenisinstelling opgeslagen",
+    "settings.historyPruned": "Onderweg {n} extra snapshots opgeruimd",
+    "settings.historyBad": "Gebruik een heel getal van 1 tot 200",
+    "settings.historySave": "Aantal opslaan",
     "new.bookTitle": "Boeknotities",
     "new.meetingTitle": "Vergadering",
     "note.fontSize.s": "Klein",
@@ -10450,7 +10533,7 @@ var LEX = {
     "history.title": "Versiegeschiedenis",
     "history.restore": "Deze versie herstellen",
     "history.empty": "Nog geen versies",
-    "history.emptyHint": "Bij elke keer opslaan of verwijderen wordt automatisch een momentopname bewaard; de laatste 10 blijven staan.",
+    "history.emptyHint": "Bij elke keer opslaan of verwijderen wordt automatisch een momentopname bewaard; de laatste {n} blijven staan.",
     "history.diffAdded": "{n} regels meer als je herstelt",
     "history.diffRemoved": "{n} regels minder als je herstelt",
     "history.diffSame": "Hetzelfde als nu",
@@ -12784,6 +12867,8 @@ var CSS = `
 .dshgn_batchFailWhy{color:var(--dsw-alias-label-tertiary);font-size:10px}
 .dshgn_batchRow{display:flex;gap:6px;align-items:center}
 .dshgn_batchInput{flex:1;min-width:0;height:26px;font-size:12px}
+/* \u7248\u672C\u5386\u53F2\u7248\u6570\uFF1A\u4E00\u4E2A\u7A84\u683C\u5B50\uFF0C\u6570\u5B57\u9760\u53F3\uFF0C\u514D\u5F97\u548C\u65C1\u8FB9\u90A3\u4E2A\u300C\u7248\u300D\u5B57\u9694\u8001\u8FDC\u3002 */
+.dshgn_historyLimitInput{flex:none;width:72px;height:26px;font-size:12px;text-align:right}
 .dshgn_cardTitleRow{display:flex;align-items:center;gap:6px}
 .dshgn_cardTitleRow .dshgn_cardTitle{flex:1;min-width:0}
 /* \u4E2D\u680F\u7B14\u8BB0\u5361\uFF1A\u52FE\u9009\u6846\u4ECE\u884C\u5185\u632A\u5230\u5DE6\u4FA7\u7559\u767D\u91CC\u3002
@@ -18421,6 +18506,70 @@ function FollowCard(props) {
     )
   );
 }
+function HistoryCard(props) {
+  const { t: t4, status, onSaved, onError } = props;
+  const [busy, setBusy] = h2(false);
+  const saved = status !== null && status.historyLimit ? Number(status.historyLimit) : 10;
+  const [value, setValue] = h2(String(saved));
+  const [touched, setTouched] = h2(false);
+  y2(() => {
+    if (!touched) setValue(String(saved));
+  }, [saved, touched]);
+  const save = q2(async () => {
+    if (busy) return;
+    const n2 = Math.floor(Number(value));
+    if (!Number.isFinite(n2) || n2 < 1) {
+      onError(t4("settings.historyBad"));
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await api("/settings", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ historyLimit: n2 })
+      });
+      setTouched(false);
+      const pruned = result && result.pruned ? Number(result.pruned.pruned) || 0 : 0;
+      await onSaved(
+        pruned > 0 ? t4("settings.historySaved") + " \xB7 " + t4("settings.historyPruned").replace("{n}", String(pruned)) : t4("settings.historySaved")
+      );
+    } catch (err) {
+      onError(err && err.message ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, onError, onSaved, t4, value]);
+  return h4(
+    "div",
+    { className: "dshgn_section" },
+    h4("div", { className: "dshgn_sectionHead" }, h4("span", null, t4("settings.historyTitle"))),
+    h4("div", { className: "dshgn_sectionDesc" }, t4("settings.historyDesc")),
+    h4(
+      "div",
+      { className: "dshgn_rowLine" },
+      h4("span", { style: { fontSize: 11.5, color: "var(--dsw-alias-label-secondary)" } }, t4("settings.historyLabel")),
+      h4("input", {
+        className: "dshgn_input dshgn_historyLimitInput",
+        type: "number",
+        min: 1,
+        max: 200,
+        step: 1,
+        value,
+        disabled: busy || status === null,
+        onChange: (event) => {
+          setTouched(true);
+          setValue(event.target.value);
+        },
+        onKeyDown: (event) => {
+          if (event.key === "Enter") void save();
+        }
+      }),
+      h4("span", { style: { fontSize: 11.5, color: "var(--dsw-alias-label-secondary)" } }, t4("settings.historyUnit")),
+      h4("button", { type: "button", className: "dshgn_btn dshgn_btnPrimary", onClick: () => void save(), disabled: busy || status === null }, t4("settings.historySave"))
+    )
+  );
+}
 function TemplateCard(props) {
   const { t: t4, status, onSaved, onError } = props;
   const [draft, setDraft] = h2(null);
@@ -23333,7 +23482,16 @@ ${t4("tree.menuReveal")}` : absolute,
         { className: "dshgn_empty" },
         h4(Icon, { name: "clock", size: 22 }),
         h4("div", { className: "dshgn_emptyTitle" }, t4("history.empty")),
-        h4("div", { className: "dshgn_emptyDesc" }, t4("history.emptyHint"))
+        // 空态里那句「最多留最近 N 版」跟着设置走：写死 10 的话，
+        // 用户把它调成 50 之后这句就成了假话。
+        h4(
+          "div",
+          { className: "dshgn_emptyDesc" },
+          t4("history.emptyHint").replace(
+            "{n}",
+            String(status !== null && status.historyLimit ? status.historyLimit : 10)
+          )
+        )
       ) : h4(
         "div",
         { className: "dshgn_historyList" },
@@ -23995,6 +24153,8 @@ function SettingsPane(props) {
       // 跟随卡片紧跟在语言之后：它和「面板长什么样」属于同一类设置（怎么跟
       // 宿主配合），而不是「库里有什么」。
       h4(FollowCard, { t: t4, status, onSaved, onError }),
+      // 版本历史紧跟在跟随卡之后：两张都是「面板怎么配合你」，而不是「库里有什么」。
+      h4(HistoryCard, { t: t4, status, onSaved, onError }),
       // 模板卡放在语言之后、备份之前：它属于「写作习惯」这一类，跟主题色/语言
       // 挨着；备份是整库操作，应该留在最后。
       h4(TemplateCard, { t: t4, status, onSaved, onError }),

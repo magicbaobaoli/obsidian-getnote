@@ -96,7 +96,9 @@ import {
   writeNote,
 } from './vault.js'
 import {
+  HISTORY_LIMIT,
   listHistory,
+  pruneHistory,
   readHistoryEntry,
   restoreHistoryEntry,
   snapshotNote,
@@ -125,6 +127,24 @@ import {
 } from './cloud-sync.js'
 
 export const ROUTE_PREFIX = '/getnote'
+
+/**
+ * 现在该留几版历史。
+ *
+ * 每次留快照都读一遍设置文件：这个值只在写盘路径上用，一次写盘多读一个小 JSON
+ * 无所谓，换来的是「设置一改，下一次保存立刻按新口径留」——不用重启插件，
+ * 也不用在内存里维护一份可能和磁盘脱节的缓存。
+ *
+ * 读失败就回落到 history.js 的默认值：设置文件坏了不该连保存都做不成。
+ */
+async function historyLimitNow() {
+  try {
+    const settings = await readSettings()
+    return settings.historyLimit
+  } catch {
+    return HISTORY_LIMIT
+  }
+}
 
 /** Pending OAuth 授权（state → { verifier, redirectUri, createdAt }）。进程内即可。 */
 const pendingAuthorizations = new Map()
@@ -630,6 +650,9 @@ export function createHandler(config) {
       // 跟着宿主切换笔记：面板首屏就要知道这个开关是开是关——设置页那张卡的
       // 勾选状态来自这里，晚一拍拿到会让勾选框先空着再自己勾上。
       followActive: settings.followActive === true,
+      // 版本历史每篇留几版。设置页那张卡的输入框初值来自这里，
+      // 笔记头「版本历史」那句空态文案也要报这个数字。
+      historyLimit: settings.historyLimit,
       // 自定义笔记模板。跟 status 一起发：点「+」时菜单要立刻列出模板，
       // 再多一次请求会让菜单先空着再长出几项。
       templates: settings.templates,
@@ -811,9 +834,10 @@ export function createHandler(config) {
     const { root, missing } = await currentRoot()
     if (missing) throw Object.assign(new Error(`本地库目录不存在：${missing}`), { status: 404 })
     const { entries } = await scanVault(root)
+    const limit = await historyLimitNow()
     const result = await rewriteLinkTarget(root, from, to, entries, {
       snapshot: async (rel) => {
-        await snapshotNote(root, rel)
+        await snapshotNote(root, rel, { limit })
       },
     })
     send(res, 200, result)
@@ -868,11 +892,12 @@ export function createHandler(config) {
     if (missing) throw Object.assign(new Error(`本地库目录不存在：${missing}`), { status: 404 })
     const keepLocal = body.keepLocal === true
     // 采纳云端版会覆盖正本，先留一版历史——冲突解决后想反悔，历史是唯一退路。
+    const limit = await historyLimitNow()
     const snapshot = keepLocal
       ? null
       : async (rel) => {
           try {
-            await snapshotNote(root, rel)
+            await snapshotNote(root, rel, { limit })
           } catch {
             // 历史存不下不该阻塞用户解决冲突
           }
@@ -990,9 +1015,10 @@ export function createHandler(config) {
     const { entries } = await scanVault(root)
     // 走版本历史而不是给每篇留 .bak：批量删标签可能一次改几十篇，
     // 留 .bak 会在库里堆出几十个看不见的副本。
+    const limit = await historyLimitNow()
     const result = await removeTag(root, tag, entries, {
       snapshot: async (rel) => {
-        await snapshotNote(root, rel)
+        await snapshotNote(root, rel, { limit })
       },
     })
     send(res, 200, result)
@@ -1013,9 +1039,10 @@ export function createHandler(config) {
     const { root, missing } = await currentRoot()
     if (missing) throw Object.assign(new Error(`本地库目录不存在：${missing}`), { status: 404 })
     const { entries } = await scanVault(root)
+    const limit = await historyLimitNow()
     const result = await renameTag(root, from, to, entries, {
       snapshot: async (rel) => {
-        await snapshotNote(root, rel)
+        await snapshotNote(root, rel, { limit })
       },
     })
     send(res, 200, result)
@@ -1039,9 +1066,10 @@ export function createHandler(config) {
     }
     const { root, missing } = await currentRoot()
     if (missing) throw Object.assign(new Error(`本地库目录不存在：${missing}`), { status: 404 })
+    const limit = await historyLimitNow()
     const result = await toggleTodo(root, path, index, {
       snapshot: async (rel) => {
-        await snapshotNote(root, rel)
+        await snapshotNote(root, rel, { limit })
       },
     })
     send(res, 200, result)
@@ -1309,7 +1337,7 @@ export function createHandler(config) {
     // 覆盖前先留一版历史：用户在面板里改完保存、过两天想找「之前那段话」，
     // 历史是唯一退路。存不下不该阻塞保存本身，所以整段吞掉错误。
     try {
-      await snapshotNote(root, path)
+      await snapshotNote(root, path, { limit: await historyLimitNow() })
     } catch {
       // 历史是附加价值，不是保存的前置条件
     }
@@ -1365,6 +1393,8 @@ export function createHandler(config) {
 
     let changed = 0
     const failed = []
+    // 批量改几十篇时只读一次设置：每篇都读一遍同一个 JSON 是白花 IO。
+    const limit = await historyLimitNow()
     // 挪目录时顺手记下「从哪到哪」：面板正开着被挪的那篇时，得知道新路径
     // 才能把笔记头改过来，否则再点保存会写回旧位置、在旧目录里留个副本。
     const moved = []
@@ -1372,7 +1402,7 @@ export function createHandler(config) {
       try {
         if (action === 'delete') {
           try {
-            await snapshotNote(root, path)
+            await snapshotNote(root, path, { limit })
           } catch {
             // 历史不是删除的前置条件
           }
@@ -1396,7 +1426,7 @@ export function createHandler(config) {
           const updated = rewriteTags(text, [...current, tag])
           // 同上：批量加标签走历史，不留 .bak
           try {
-            await snapshotNote(root, path)
+            await snapshotNote(root, path, { limit })
           } catch {
             // 历史不是加标签的前置条件
           }
@@ -1421,7 +1451,7 @@ export function createHandler(config) {
             continue
           }
           try {
-            await snapshotNote(root, path)
+            await snapshotNote(root, path, { limit })
           } catch {
             // 历史不是去标签的前置条件
           }
@@ -1489,7 +1519,7 @@ export function createHandler(config) {
     // 删前留一版历史：回收站能救回「整篇被删」，但救不回「删了以后又新建
     // 了同名文件、回收站里那份被顶掉」这种情况；历史是按内容留的，更稳。
     try {
-      await snapshotNote(root, path)
+      await snapshotNote(root, path, { limit: await historyLimitNow() })
     } catch {
       // 同上：历史不是删除的前置条件
     }
@@ -1756,10 +1786,24 @@ export function createHandler(config) {
     // 跟着宿主切换笔记：只认布尔值，传别的（字符串 'true'）当没传，
     // 免得一个手写请求把开关悄悄打开。
     if (typeof body.followActive === 'boolean') patch.followActive = body.followActive
+    // 版本历史留几版：只认数字，传字符串当没传
+    if (typeof body.historyLimit === 'number') patch.historyLimit = body.historyLimit
     if (Object.keys(patch).length > 0) await updateSettings(patch)
     const settings = await readSettings()
     const { root } = await resolveVaultRoot(settings.vaultRoot || config.vaultPath || null)
-    send(res, 200, { ok: true, ...settings, effectiveRoot: root })
+    // 版数调小了，库里已经超出的那些当场清掉：不这样的话用户把 10 改成 3，
+    // 每篇还得再保存一次才缩到 3 版，中间那段时间设置页上写 3、历史里躺着 10。
+    // 只在这次真的动了这个字段时才扫全库——一次设置保存多走一遍 .history 值得。
+    let pruned = null
+    if ('historyLimit' in patch) {
+      try {
+        pruned = await pruneHistory(root, { limit: settings.historyLimit })
+      } catch {
+        // 清理失败不该让设置保存失败：下一次保存那篇笔记时还会再裁一次
+        pruned = null
+      }
+    }
+    send(res, 200, { ok: true, ...settings, effectiveRoot: root, pruned })
   }
 
   // ── 云端：授权 ─────────────────────────────────────────────────────────────

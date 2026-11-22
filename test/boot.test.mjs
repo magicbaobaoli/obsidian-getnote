@@ -1707,6 +1707,43 @@ test('跟着宿主切换笔记：面板开着才跟、开关关着不跟', async
   await setFollow(false)
 })
 
+test('版本历史留几版是设置项：写进去能读回来，乱填的当没填', async () => {
+  // 这个数字以前写死在 history.js 里。做成设置项之后，最容易坏的地方是
+  // 「写进去了但 status 没跟着变」——设置页那张卡的初值就是 status 里的值。
+  const origin = plugin.server.origin
+  const auth = { 'x-getnote-token': plugin.server.token }
+  const setLimit = async (value) => {
+    const response = await fetch(origin + '/getnote/settings', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...auth },
+      body: JSON.stringify({ historyLimit: value }),
+    })
+    assert.equal(response.status, 200)
+    return response.json()
+  }
+  const readStatus = async () => {
+    const response = await fetch(origin + '/getnote/status', { headers: auth })
+    assert.equal(response.status, 200)
+    return response.json()
+  }
+
+  // 默认就是 10 版——升级上来的库不用改任何东西
+  assert.equal((await readStatus()).historyLimit, 10, '默认留 10 版')
+
+  const written = await setLimit(3)
+  assert.equal(written.historyLimit, 3, '写进去要能读回来')
+  assert.equal((await readStatus()).historyLimit, 3, 'status 里也要跟着变')
+
+  // 上下界收在 1 到 200：填 0 当 1 版，填 999 当 200 版
+  assert.equal((await setLimit(0)).historyLimit, 1, '0 当 1 版')
+  assert.equal((await setLimit(999)).historyLimit, 200, '超过上限按 200 算')
+
+  // 传字符串当没传：settings 是 JSON 文件，手改坏了不该把面板带崩
+  assert.equal((await setLimit('三')).historyLimit, 200, '非数字当没传，保留原值')
+
+  await setLimit(10)
+})
+
 test('onunload 会关掉本地服务', async () => {
   const origin = plugin.server.origin
   plugin.onunload()

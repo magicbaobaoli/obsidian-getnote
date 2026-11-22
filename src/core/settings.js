@@ -20,6 +20,7 @@ import { stat as vfsStat, mkdir as vfsMkdir } from './vfs.js'
 import { randomBytes } from 'node:crypto'
 import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
+import { HISTORY_LIMIT, HISTORY_LIMIT_MAX } from './history.js'
 
 const SETTINGS_FILENAME = 'dsh-getnote.json'
 const AUTH_FILENAME = 'dsh-getnote/auth.json'
@@ -169,6 +170,19 @@ export function normalizeLocale(input) {
 }
 
 /**
+ * 版本历史每篇留几版。
+ *
+ * 上下界和 history.js 的 clampLimit 一致（1～200），但这里多一层意义：设置文件
+ * 里存的必须是**整数**，因为面板上是一个数字输入框，用户可能敲进 10.5 或者
+ * 空格。不合法就回落到默认的 10 版——那正是这个字段出现之前的行为。
+ */
+export function normalizeHistoryLimit(input) {
+  const n = Number(input)
+  if (!Number.isFinite(n)) return HISTORY_LIMIT
+  return Math.min(HISTORY_LIMIT_MAX, Math.max(1, Math.floor(n)))
+}
+
+/**
  * 读设置。
  *
  * `vaultRoot` 在 Obsidian 里恒等于「库根 + 子目录」，但仍然保留这个字段：
@@ -206,6 +220,9 @@ export async function readSettings() {
     // 打开同一篇。默认关是因为「面板自己动」这件事得用户点头——他可能正开着
     // 一篇对照着看，不希望一切换标签页就被顶掉。
     followActive: data.followActive === true,
+    // 版本历史每篇留几版。默认 10 版和以前写死的数字一致，老用户升级观感不变；
+    // 这个值传进 snapshotNote 与 pruneHistory，两处都走同一份口径。
+    historyLimit: normalizeHistoryLimit(data.historyLimit),
   }
 }
 
@@ -228,6 +245,7 @@ export async function updateSettings(patch = {}) {
     debugLogging: patch.debugLogging !== undefined ? patch.debugLogging === true : cur.debugLogging,
     cardAutoImport: patch.cardAutoImport !== undefined ? patch.cardAutoImport === true : cur.cardAutoImport,
     followActive: patch.followActive !== undefined ? patch.followActive === true : cur.followActive,
+    historyLimit: patch.historyLimit !== undefined ? normalizeHistoryLimit(patch.historyLimit) : cur.historyLimit,
   }
   await writeJsonAtomic(settingsPath(), next)
   return readSettings()

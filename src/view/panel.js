@@ -887,6 +887,16 @@ async function saveFile(url, filename) {
         'settings.followDesc': '你在 Obsidian 里翻到哪一篇，开着的面板就跟着打开同一篇，反链和同步状态立刻跟上。面板没开着时不会替你打开它；不在「得到大脑」目录里的笔记也不会跟。',
         'settings.followToggle': '面板跟着我翻',
         'settings.followSaved': '跟随设置已保存',
+        // 版本历史每篇留几版。以前这个数字写死在代码里（10 版），用户改不了：
+        // 天天改稿的人嫌少、只存定稿的人嫌库里堆快照。
+        'settings.historyTitle': '版本历史留几版',
+        'settings.historyDesc': '每篇笔记最多留最近几版快照。调小了会立刻把库里超出的那些裁掉，裁掉的找不回来。',
+        'settings.historyLabel': '每篇最多留',
+        'settings.historyUnit': '版',
+        'settings.historySaved': '版本历史设置已保存',
+        'settings.historyPruned': '顺手裁掉了 {n} 版多余的快照',
+        'settings.historyBad': '版数要是 1 到 200 之间的整数',
+        'settings.historySave': '保存版数',
         'new.bookTitle': '读书笔记',
         'new.meetingTitle': '会议记录',
         'note.fontSize.s': '小字',
@@ -919,7 +929,7 @@ async function saveFile(url, filename) {
         'history.title': '版本历史',
         'history.restore': '恢复这一版',
         'history.empty': '还没有历史版本',
-        'history.emptyHint': '保存或删除笔记时插件会自动留一版快照，最多留最近 10 版。',
+        'history.emptyHint': '保存或删除笔记时插件会自动留一版快照，最多留最近 {n} 版。',
         'history.diffAdded': '恢复后多 {n} 行',
         'history.diffRemoved': '恢复后少 {n} 行',
         'history.diffSame': '和现在一样',
@@ -1509,6 +1519,14 @@ async function saveFile(url, filename) {
         'settings.followDesc': 'Open a note in Obsidian and the panel switches to the same one, with its backlinks and sync state right behind it. The panel will not open itself for you, and notes outside the Get笔记 folder are ignored.',
         'settings.followToggle': 'Keep the panel on the note I open',
         'settings.followSaved': 'Follow setting saved',
+        'settings.historyTitle': 'How many versions to keep',
+        'settings.historyDesc': 'Each note keeps its most recent snapshots up to this many. Lowering it trims what is already in the vault right away, and trimmed versions are gone for good.',
+        'settings.historyLabel': 'Keep at most',
+        'settings.historyUnit': 'versions',
+        'settings.historySaved': 'History setting saved',
+        'settings.historyPruned': 'Trimmed {n} extra snapshots on the way',
+        'settings.historyBad': 'Use a whole number from 1 to 200',
+        'settings.historySave': 'Save limit',
         'new.bookTitle': 'Book notes',
         'new.meetingTitle': 'Meeting',
         'note.fontSize.s': 'Small',
@@ -1541,7 +1559,7 @@ async function saveFile(url, filename) {
         'history.title': 'Version history',
         'history.restore': 'Restore this version',
         'history.empty': 'No versions yet',
-        'history.emptyHint': 'A snapshot is saved automatically each time you save or delete a note, keeping the latest 10.',
+        'history.emptyHint': 'A snapshot is saved automatically each time you save or delete a note, keeping the latest {n}.',
         'history.diffAdded': '{n} lines more if restored',
         'history.diffRemoved': '{n} lines fewer if restored',
         'history.diffSame': 'Same as now',
@@ -2122,6 +2140,14 @@ async function saveFile(url, filename) {
         'settings.followDesc': 'Open je een notitie in Obsidian, dan springt het paneel naar dezelfde, met de verwijzingen en de synchronisatiestatus erachteraan. Het paneel opent zichzelf niet en notities buiten de map Get笔记 worden genegeerd.',
         'settings.followToggle': 'Laat het paneel mijn notitie volgen',
         'settings.followSaved': 'Volginstelling opgeslagen',
+        'settings.historyTitle': 'Hoeveel versies bewaren',
+        'settings.historyDesc': 'Elke notitie bewaart hooguit dit aantal recente snapshots. Lager zetten snoeit meteen wat er al in de kluis staat, en gesnoeide versies zijn definitief weg.',
+        'settings.historyLabel': 'Bewaar hooguit',
+        'settings.historyUnit': 'versies',
+        'settings.historySaved': 'Geschiedenisinstelling opgeslagen',
+        'settings.historyPruned': 'Onderweg {n} extra snapshots opgeruimd',
+        'settings.historyBad': 'Gebruik een heel getal van 1 tot 200',
+        'settings.historySave': 'Aantal opslaan',
         'new.bookTitle': 'Boeknotities',
         'new.meetingTitle': 'Vergadering',
         'note.fontSize.s': 'Klein',
@@ -2154,7 +2180,7 @@ async function saveFile(url, filename) {
         'history.title': 'Versiegeschiedenis',
         'history.restore': 'Deze versie herstellen',
         'history.empty': 'Nog geen versies',
-        'history.emptyHint': 'Bij elke keer opslaan of verwijderen wordt automatisch een momentopname bewaard; de laatste 10 blijven staan.',
+        'history.emptyHint': 'Bij elke keer opslaan of verwijderen wordt automatisch een momentopname bewaard; de laatste {n} blijven staan.',
         'history.diffAdded': '{n} regels meer als je herstelt',
         'history.diffRemoved': '{n} regels minder als je herstelt',
         'history.diffSame': 'Hetzelfde als nu',
@@ -5296,6 +5322,8 @@ async function saveFile(url, filename) {
 .dshgn_batchFailWhy{color:var(--dsw-alias-label-tertiary);font-size:10px}
 .dshgn_batchRow{display:flex;gap:6px;align-items:center}
 .dshgn_batchInput{flex:1;min-width:0;height:26px;font-size:12px}
+/* 版本历史版数：一个窄格子，数字靠右，免得和旁边那个「版」字隔老远。 */
+.dshgn_historyLimitInput{flex:none;width:72px;height:26px;font-size:12px;text-align:right}
 .dshgn_cardTitleRow{display:flex;align-items:center;gap:6px}
 .dshgn_cardTitleRow .dshgn_cardTitle{flex:1;min-width:0}
 /* 中栏笔记卡：勾选框从行内挪到左侧留白里。
@@ -11944,6 +11972,90 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
     }
 
     /**
+     * 版本历史留几版。
+     *
+     * 这个数字以前写死在 history.js 里（每篇 10 版）。它其实是「我这库多宝贵」
+     * 的另一种说法：天天改稿的人嫌 10 版太少，只存定稿的人嫌 .history 里堆东西。
+     * 做成设置项之后，两处口径（留快照、裁旧版）都读同一个值。
+     *
+     * 输入框用本地 state 而不是直接改 status：用户敲「5」的时候可能先删成空、
+     * 再敲 0 变成 50，每一下都发一次 POST 会把历史裁两遍（先裁到空档位的 1 版）。
+     * 只有「保存」这一下才真的写。
+     */
+    function HistoryCard(props) {
+      const { t, status, onSaved, onError } = props
+      const [busy, setBusy] = React.useState(false)
+      const saved = status !== null && status.historyLimit ? Number(status.historyLimit) : 10
+      const [value, setValue] = React.useState(String(saved))
+      const [touched, setTouched] = React.useState(false)
+
+      // status 刷新回来（换了库、或者别处改了设置）时跟上，但别盖掉正在敲的那一笔。
+      React.useEffect(() => {
+        if (!touched) setValue(String(saved))
+      }, [saved, touched])
+
+      const save = React.useCallback(async () => {
+        if (busy) return
+        const n = Math.floor(Number(value))
+        if (!Number.isFinite(n) || n < 1) {
+          onError(t('settings.historyBad'))
+          return
+        }
+        setBusy(true)
+        try {
+          const result = await api('/settings', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ historyLimit: n }),
+          })
+          setTouched(false)
+          // 版数调小之后服务端会顺手把超出的裁掉，裁了多少要说一句——
+          // 用户下次打开版本历史才发现少了 7 版，会以为插件把他的东西弄丢了。
+          const pruned = result && result.pruned ? Number(result.pruned.pruned) || 0 : 0
+          await onSaved(
+            pruned > 0
+              ? t('settings.historySaved') + ' · ' + t('settings.historyPruned').replace('{n}', String(pruned))
+              : t('settings.historySaved'),
+          )
+        } catch (err) {
+          onError(err && err.message ? err.message : String(err))
+        } finally {
+          setBusy(false)
+        }
+      }, [busy, onError, onSaved, t, value])
+
+      return h(
+        'div',
+        { className: 'dshgn_section' },
+        h('div', { className: 'dshgn_sectionHead' }, h('span', null, t('settings.historyTitle'))),
+        h('div', { className: 'dshgn_sectionDesc' }, t('settings.historyDesc')),
+        h(
+          'div',
+          { className: 'dshgn_rowLine' },
+          h('span', { style: { fontSize: 11.5, color: 'var(--dsw-alias-label-secondary)' } }, t('settings.historyLabel')),
+          h('input', {
+            className: 'dshgn_input dshgn_historyLimitInput',
+            type: 'number',
+            min: 1,
+            max: 200,
+            step: 1,
+            value,
+            disabled: busy || status === null,
+            onChange: (event) => {
+              setTouched(true)
+              setValue(event.target.value)
+            },
+            onKeyDown: (event) => {
+              if (event.key === 'Enter') void save()
+            },
+          }),
+          h('span', { style: { fontSize: 11.5, color: 'var(--dsw-alias-label-secondary)' } }, t('settings.historyUnit')),
+          h('button', { type: 'button', className: 'dshgn_btn dshgn_btnPrimary', onClick: () => void save(), disabled: busy || status === null }, t('settings.historySave')),
+        ),
+      )
+    }
+
+    /**
      * 自定义笔记模板。
      *
      * 内置的日记/读书/会议/随手记是写死的，覆盖最常见的四类；但「周报」「复盘」
@@ -17846,7 +17958,16 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                           { className: 'dshgn_empty' },
                           h(Icon, { name: 'clock', size: 22 }),
                           h('div', { className: 'dshgn_emptyTitle' }, t('history.empty')),
-                          h('div', { className: 'dshgn_emptyDesc' }, t('history.emptyHint')),
+                          // 空态里那句「最多留最近 N 版」跟着设置走：写死 10 的话，
+                          // 用户把它调成 50 之后这句就成了假话。
+                          h(
+                            'div',
+                            { className: 'dshgn_emptyDesc' },
+                            t('history.emptyHint').replace(
+                              '{n}',
+                              String(status !== null && status.historyLimit ? status.historyLimit : 10),
+                            ),
+                          ),
                         )
                       : h(
                           'div',
@@ -18616,6 +18737,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           // 跟随卡片紧跟在语言之后：它和「面板长什么样」属于同一类设置（怎么跟
           // 宿主配合），而不是「库里有什么」。
           h(FollowCard, { t, status, onSaved, onError }),
+          // 版本历史紧跟在跟随卡之后：两张都是「面板怎么配合你」，而不是「库里有什么」。
+          h(HistoryCard, { t, status, onSaved, onError }),
           // 模板卡放在语言之后、备份之前：它属于「写作习惯」这一类，跟主题色/语言
           // 挨着；备份是整库操作，应该留在最后。
           h(TemplateCard, { t, status, onSaved, onError }),
@@ -19026,7 +19149,7 @@ export const __internals = {
   looksLikeTranscript, formatMoment, parseTranscript, stampToSeconds, activeTranscriptIndex,
   TrashPane, TodoPane, renderEmbed, assetLabel, ThemeCard, readSession, writeSession, SESSION_KEY,
   themeVars, parseHex, rgbToHsl, hslToHex, ConflictPane, ArchiveCard, CardPane,
-  TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale,
+  TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale, HistoryCard,
   reportSync, dailyTemplateOf, frontmatterText, isTagKey, FollowCard, parseTable, countWords, readingMinutes, diffLineCounts,
   isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote, scrollToFootnoteRef, parseImageSize, renderParagraph, blockTextOf, markdownLinkTarget,
   tagBodyOf, ZoomOverlay, continueListLine, indentLines, wrapInline, linkPaste, wikilinkQueryAt, wikilinkMatches, tagQueryAt, tagMatches, findInBody, findAllBodyMatches, countTextMatches, findInBodyMatch, findInText, textHasParts,

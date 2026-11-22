@@ -14858,3 +14858,89 @@ test('回收站攒多了也能按文件名或原目录筛，清掉这个筛就�
   await sleep(200)
   await clickTab('笔记')
 })
+
+test('版本历史留几版是设置项：改小当场裁、乱填先拦住', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+  const statusNow = async () => {
+    const res = await realFetch(server.origin + '/getnote/status', {
+      headers: { 'x-getnote-token': server.token },
+    })
+    return res.json()
+  }
+
+  // 起点先归到 10 版，免得前面哪条用例把它改了
+  await post('/getnote/settings', { historyLimit: 10 })
+  const refreshBtn = Array.from(rootNode().querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  assert.ok(refreshBtn, '应该有一个刷新按钮')
+  refreshBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(700)
+
+  await clickTab('设置')
+  const card = await waitFor(
+    () => {
+      const input = rootNode().querySelector('.dshgn_historyLimitInput')
+      return input === null ? null : input.closest('.dshgn_section')
+    },
+    5000,
+    '设置页该有一张「版本历史留几版」的卡',
+  )
+  const input = card.querySelector('.dshgn_historyLimitInput')
+  assert.ok(String(card.textContent || '').includes('版本历史留几版'), '卡上要写清这张卡管什么')
+  assert.equal(input.value, '10', '输入框初值该是现在的版数')
+
+  const typeValue = async (text) => {
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(input, text)
+    input.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(150)
+  }
+  const saveBtn = () => Array.from(card.querySelectorAll('.dshgn_btn')).find((el) => (el.textContent || '').trim() === '保存版数')
+  // 校验没过走的是 onError（屏幕上那条红字），不是提示条——两处都看
+  const toastText = async () => {
+    for (let i = 0; i < 60; i += 1) {
+      const node = window.document.querySelector('.dshgn_toast')
+      if (node !== null) return String(node.textContent || '')
+      const err = window.document.querySelector('.dshgn_error')
+      if (err !== null && String(err.textContent || '').includes('1 到 200')) return String(err.textContent || '')
+      await sleep(50)
+    }
+    const err = window.document.querySelector('.dshgn_error')
+    return err === null ? '' : String(err.textContent || '')
+  }
+
+  // ① 乱填：0 版是「一版都不留」，恢复按钮就没东西可点了，得当场拦住
+  await typeValue('0')
+  saveBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const badToast = await toastText()
+  assert.ok(badToast.includes('1 到 200'), '填 0 要提示范围，实际：' + badToast)
+  assert.equal((await statusNow()).historyLimit, 10, '拦住了就不该真的写进去')
+
+  // ② 填 3 保存：设置写进去、status 跟着变
+  // waitFor 只认同步条件，传 async 回调会立刻拿到 Promise 当真值放行——这里自己轮询
+  const limitBecomes = async (want) => {
+    for (let i = 0; i < 40; i += 1) {
+      if ((await statusNow()).historyLimit === want) return true
+      await sleep(120)
+    }
+    return false
+  }
+  await typeValue('3')
+  saveBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  assert.equal(await limitBecomes(3), true, '保存之后 status 里该是 3')
+
+  // ③ 收尾：改回 10，后面的用例别被这个数字带偏
+  await typeValue('10')
+  saveBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  assert.equal(await limitBecomes(10), true, '收尾要改回 10')
+
+  await clickTab('笔记')
+})
