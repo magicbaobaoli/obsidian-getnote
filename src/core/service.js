@@ -74,6 +74,7 @@ import {
   extractInlineTags,
   applyInlineTagEdit,
   removeDir,
+  removeDirTree,
   removeTag,
   renameDir,
   renameTag,
@@ -903,15 +904,46 @@ export function createHandler(config) {
     send(res, 200, { ok: true, ...result })
   }
 
-  /** 删除目录（只允许空目录，非空回 409 并告诉用户还有几篇）。 */
+  /**
+   * 删除目录。
+   *
+   * 默认只允许空目录（非空回 409 并告诉用户还有几篇）；带 `recursive: true` 时
+   * 连里面的笔记一起处理——但那不等于真删，每一篇照旧先进回收站，只有目录本身
+   * 和剩下的空壳被删掉。这条路径必须由前端在确认框里明确选过才走。
+   */
   async function handleDeleteDir(req, res) {
     const body = await readJsonBody(req)
     const dir = String(body.dir || body.path || '').trim()
     if (dir === '') throw Object.assign(new Error('需要 dir'), { status: 400 })
     const { root, missing } = await currentRoot()
     if (missing) throw Object.assign(new Error(`本地库目录不存在：${missing}`), { status: 404 })
-    const result = await removeDir(root, dir)
+    const result = body.recursive === true ? await removeDirTree(root, dir) : await removeDir(root, dir)
     send(res, 200, { ok: true, ...result })
+  }
+
+  /**
+   * 数一个目录底下有多少篇笔记、多少个子目录。
+   *
+   * 确认框里得说清「连里面的 12 篇一起删」这句话里的 12 是多少——只说「这个目录
+   * 不是空的」，用户还是不知道自己在点掉什么。走的是同一次扫描，不额外读盘。
+   */
+  async function handleDirContents(res, url) {
+    const dir = String(url.searchParams.get('dir') || '').trim().replace(/^\/+|\/+$/g, '')
+    if (dir === '') throw Object.assign(new Error('需要 dir'), { status: 400 })
+    const { root, missing } = await currentRoot()
+    if (missing) return send(res, 200, { dir, notes: 0, dirs: 0, missing: true })
+    const { entries } = await scanVault(root)
+    const prefix = `${dir}/`
+    const notes = entries.filter((entry) => entry.path.startsWith(prefix)).length
+    const dirSet = new Set()
+    for (const entry of entries) {
+      if (!entry.path.startsWith(prefix)) continue
+      const rest = entry.path.slice(prefix.length)
+      const cut = rest.indexOf('/')
+      if (cut === -1) continue
+      dirSet.add(rest.slice(0, cut))
+    }
+    send(res, 200, { dir, notes, dirs: dirSet.size })
   }
 
   /**
@@ -2439,6 +2471,8 @@ export function createHandler(config) {
       if (method === 'GET') {
         if (action === 'status') return await handleStatus(res)
         if (action === 'tree') return await handleTree(res)
+        // 目录底下的笔记数/子目录数：删目录前那句确认要说得清删的是多少
+        if (action === 'dir' && parts[2] === 'contents') return await handleDirContents(res, url)
         if (action === 'list') return await handleList(res, url)
         if (action === 'trash' && parts[2] === 'list') return await handleTrashList(res)
         if (action === 'read') return await handleRead(res, url)

@@ -522,6 +522,7 @@ __export(vault_exports, {
   readNote: () => readNote,
   readTags: () => readTags,
   removeDir: () => removeDir,
+  removeDirTree: () => removeDirTree,
   removeTag: () => removeTag,
   renameDir: () => renameDir,
   renameTag: () => renameTag,
@@ -1854,6 +1855,65 @@ async function removeDir(root, dirInput) {
   }
   invalidateScan(root);
   return { ok: true, path: rel };
+}
+async function removeDirTree(root, dirInput) {
+  const rel = normalizeRel(dirInput);
+  if (rel === "") throw Object.assign(new Error("\u4E0D\u80FD\u5220\u9664\u5E93\u6839"), { status: 400 });
+  const { abs } = resolveInside(root, rel);
+  let top;
+  try {
+    top = await readdir2(abs, { withFileTypes: true });
+  } catch {
+    throw Object.assign(new Error("\u8FD9\u4E2A\u76EE\u5F55\u4E0D\u5B58\u5728"), { status: 404 });
+  }
+  const notes = [];
+  let dirCount = 0;
+  const walk = async (dirAbs, dirRel) => {
+    let list;
+    try {
+      list = await readdir2(dirAbs, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const dirent2 of list) {
+      const childRel = dirRel === "" ? dirent2.name : `${dirRel}/${dirent2.name}`;
+      if (dirent2.isDirectory()) {
+        if (IGNORED_DIRS.has(dirent2.name)) continue;
+        dirCount += 1;
+        await walk((0, import_node_path4.join)(dirAbs, dirent2.name), childRel);
+        continue;
+      }
+      if (!dirent2.isFile()) continue;
+      if ((0, import_node_path4.extname)(dirent2.name).toLowerCase() !== NOTE_EXT) continue;
+      notes.push(childRel);
+    }
+  };
+  await walk(abs, rel);
+  const failed = [];
+  let trashed = 0;
+  for (const noteRel of notes) {
+    try {
+      await trashNote(root, noteRel);
+      trashed += 1;
+    } catch (error2) {
+      failed.push({ path: noteRel, error: error2 && error2.message ? error2.message : String(error2) });
+    }
+  }
+  if (failed.length > 0) {
+    invalidateScan(root);
+    throw Object.assign(new Error(`\u6709 ${failed.length} \u7BC7\u6CA1\u80FD\u79FB\u8FDB\u56DE\u6536\u7AD9\uFF0C\u76EE\u5F55\u5148\u7559\u7740`), {
+      status: 409,
+      failed,
+      notes: trashed
+    });
+  }
+  try {
+    await rm2(abs, { recursive: true, force: true });
+  } catch (error2) {
+    throw Object.assign(new Error(`\u5220\u76EE\u5F55\u5931\u8D25\uFF1A${error2 && error2.message ? error2.message : error2}`), { status: 500 });
+  }
+  invalidateScan(root);
+  return { ok: true, path: rel, notes: trashed, dirs: dirCount };
 }
 async function renameDir(root, fromInput, toInput) {
   const from = normalizeRel(fromInput);
@@ -5758,8 +5818,26 @@ function createHandler(config) {
     if (dir === "") throw Object.assign(new Error("\u9700\u8981 dir"), { status: 400 });
     const { root, missing } = await currentRoot();
     if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
-    const result = await removeDir(root, dir);
+    const result = body.recursive === true ? await removeDirTree(root, dir) : await removeDir(root, dir);
     send(res, 200, { ok: true, ...result });
+  }
+  async function handleDirContents(res, url) {
+    const dir = String(url.searchParams.get("dir") || "").trim().replace(/^\/+|\/+$/g, "");
+    if (dir === "") throw Object.assign(new Error("\u9700\u8981 dir"), { status: 400 });
+    const { root, missing } = await currentRoot();
+    if (missing) return send(res, 200, { dir, notes: 0, dirs: 0, missing: true });
+    const { entries } = await scanVault(root);
+    const prefix = `${dir}/`;
+    const notes = entries.filter((entry) => entry.path.startsWith(prefix)).length;
+    const dirSet = /* @__PURE__ */ new Set();
+    for (const entry of entries) {
+      if (!entry.path.startsWith(prefix)) continue;
+      const rest = entry.path.slice(prefix.length);
+      const cut = rest.indexOf("/");
+      if (cut === -1) continue;
+      dirSet.add(rest.slice(0, cut));
+    }
+    send(res, 200, { dir, notes, dirs: dirSet.size });
   }
   async function handleDeleteTag(req, res) {
     const body = await readJsonBody(req);
@@ -6879,6 +6957,7 @@ function createHandler(config) {
       if (method === "GET") {
         if (action === "status") return await handleStatus(res);
         if (action === "tree") return await handleTree(res);
+        if (action === "dir" && parts[2] === "contents") return await handleDirContents(res, url);
         if (action === "list") return await handleList(res, url);
         if (action === "trash" && parts[2] === "list") return await handleTrashList(res);
         if (action === "read") return await handleRead(res, url);
@@ -8696,6 +8775,15 @@ var LEX = {
     "tree.deletedDir": "\u76EE\u5F55\u5DF2\u5220\u9664",
     "tree.deletedTag": "\u6807\u7B7E\u5DF2\u79FB\u9664",
     "tree.dirNotEmpty": "\u8FD9\u4E2A\u76EE\u5F55\u91CC\u8FD8\u6709\u7B14\u8BB0\uFF0C\u5148\u628A\u5B83\u4EEC\u79FB\u8D70",
+    // 目录非空时确认框里多给一条路：连里面的笔记一起删。
+    // 笔记照旧先进回收站，所以这句说的是「一起删」而不是「永久删」。
+    "tree.deleteDirNotEmpty": "\u76EE\u5F55\u300C{name}\u300D\u4E0D\u662F\u7A7A\u7684\u3002",
+    "tree.deleteDirCounting": "\u6B63\u5728\u6570\u8FD9\u4E2A\u76EE\u5F55\u91CC\u6709\u591A\u5C11\u7BC7\u2026\u2026",
+    "tree.deleteDirHas": "\u91CC\u9762\u8FD8\u6709 {notes} \u7BC7\u7B14\u8BB0\u3001{dirs} \u4E2A\u5B50\u76EE\u5F55\u3002",
+    "tree.deleteDirRecursive": "\u8FDE\u91CC\u9762\u7684 {n} \u7BC7\u4E00\u8D77\u5220",
+    "tree.deleteDirSubs": "\u8FDE\u91CC\u9762\u7684\u5B50\u76EE\u5F55\u4E00\u8D77\u5220",
+    "tree.deleteDirRecursiveOk": "\u4E00\u8D77\u5220",
+    "tree.deleteDirRecursiveDone": "\u76EE\u5F55\u5DF2\u5220\uFF0C{n} \u7BC7\u5728\u56DE\u6536\u7AD9\u91CC",
     "tree.fold": "\u6536\u8D77\u5B50\u76EE\u5F55",
     "tree.unfold": "\u5C55\u5F00\u5B50\u76EE\u5F55",
     "tree.foldTag": "\u6536\u8D77\u5B50\u6807\u7B7E",
@@ -9273,6 +9361,13 @@ var LEX = {
     "tree.deletedDir": "Folder deleted",
     "tree.deletedTag": "Tag removed",
     "tree.dirNotEmpty": "This folder still has notes \u2014 move them out first",
+    "tree.deleteDirNotEmpty": "Folder \u201C{name}\u201D is not empty.",
+    "tree.deleteDirCounting": "Counting the notes in this folder\u2026",
+    "tree.deleteDirHas": "It still holds {notes} notes and {dirs} subfolders.",
+    "tree.deleteDirRecursive": "Delete the {n} notes inside too",
+    "tree.deleteDirSubs": "Delete the subfolders inside too",
+    "tree.deleteDirRecursiveOk": "Delete them too",
+    "tree.deleteDirRecursiveDone": "Folder deleted, {n} notes are in the trash",
     "tree.fold": "Collapse subfolders",
     "tree.unfold": "Expand subfolders",
     "tree.foldTag": "Collapse subtags",
@@ -9840,6 +9935,13 @@ var LEX = {
     "tree.deletedDir": "Map verwijderd",
     "tree.deletedTag": "Tag verwijderd",
     "tree.dirNotEmpty": "Er staan nog notities in deze map \u2014 verplaats ze eerst",
+    "tree.deleteDirNotEmpty": "Map \u2018{name}\u2019 is niet leeg.",
+    "tree.deleteDirCounting": "De notities in deze map worden geteld\u2026",
+    "tree.deleteDirHas": "Er staan nog {notes} notities en {dirs} submappen in.",
+    "tree.deleteDirRecursive": "Verwijder ook de {n} notities erin",
+    "tree.deleteDirSubs": "Verwijder ook de submappen erin",
+    "tree.deleteDirRecursiveOk": "Ook verwijderen",
+    "tree.deleteDirRecursiveDone": "Map verwijderd, {n} notities staan in de prullenbak",
     "tree.fold": "Submappen inklappen",
     "tree.unfold": "Submappen uitklappen",
     "tree.foldTag": "Subtags inklappen",
@@ -14545,6 +14647,14 @@ ${insert}
     },
     [current, draft, openNote, refresh, showToast, t4]
   );
+  const dirContentsOf = async (dir) => {
+    try {
+      const json = await api("/dir/contents?dir=" + encodeURIComponent(String(dir || "")));
+      return { notes: Number(json.notes) || 0, dirs: Number(json.dirs) || 0 };
+    } catch {
+      return { notes: 0, dirs: 0 };
+    }
+  };
   const deleteNote = q2(async () => {
     if (current === null) return;
     setBusy(true);
@@ -15518,6 +15628,7 @@ ${insert}
           setTagSort(next);
           makeSortPref("dshgn.sortTag").write(next);
         },
+        onDirContents: (dir) => dirContentsOf(dir),
         onPickDir: (dir) => {
           setActiveDir(dir);
           setActiveTag("");
@@ -15580,14 +15691,17 @@ ${insert}
             setError(err && err.message ? err.message : String(err));
           }
         },
-        onDeleteDir: async (name) => {
+        onDeleteDir: async (name, recursive = false) => {
           try {
-            await api("/dir/delete", {
+            const removed = await api("/dir/delete", {
               method: "POST",
               headers: { "content-type": "application/json" },
-              body: JSON.stringify({ dir: name })
+              body: JSON.stringify({ dir: name, recursive: recursive === true })
             });
-            showToast(t4("tree.deletedDir"));
+            const movedCount = Number(removed && removed.notes) || 0;
+            showToast(
+              recursive === true && movedCount > 0 ? t4("tree.deleteDirRecursiveDone").replace("{n}", String(movedCount)) : t4("tree.deletedDir")
+            );
             if (activeDir === name) setActiveDir("");
             await refresh();
           } catch (err) {
@@ -20413,6 +20527,7 @@ function TreePane(props) {
     onPickTag,
     onCreateDir,
     onDeleteDir,
+    onDirContents,
     onDeleteTag,
     onCreateTag,
     onRenameTag,
@@ -20611,11 +20726,11 @@ function TreePane(props) {
       setBusy(false);
     }
   };
-  const runDelete = async () => {
+  const runDelete = async (recursive = false) => {
     if (confirm === null) return;
     setBusy(true);
     try {
-      if (confirm.kind === "dir") await onDeleteDir(confirm.name);
+      if (confirm.kind === "dir") await onDeleteDir(confirm.name, recursive);
       else await onDeleteTag(confirm.name);
       setConfirm(null);
     } finally {
@@ -20705,8 +20820,18 @@ function TreePane(props) {
           className: "dshgn_rowBtn dshgn_rowBtnDanger",
           title: target.kind === "dir" ? t4("tree.deleteDir") : t4("tree.deleteTag"),
           onClick: () => {
-            setConfirm({ kind: target.kind, name: target.name });
             setMenu(null);
+            const target2 = target;
+            if (target2.kind !== "dir" || typeof onDirContents !== "function") {
+              setConfirm({ kind: target2.kind, name: target2.name });
+              return;
+            }
+            setConfirm({ kind: target2.kind, name: target2.name, counting: true, notes: 0, dirs: 0 });
+            void onDirContents(target2.name).then((info) => {
+              setConfirm(
+                (prev) => prev === null || prev.name !== target2.name ? prev : { ...prev, counting: false, notes: info.notes, dirs: info.dirs }
+              );
+            });
           }
         },
         h4(Icon, { name: "trash", size: 11 }),
@@ -21118,7 +21243,9 @@ ${t4("tree.menuDelete")}\uFF1A\u53F3\u952E`
         h4(
           "div",
           { className: "dshgn_modalBody" },
-          (confirm.kind === "dir" ? t4("tree.deleteDirConfirm") : t4("tree.deleteTagConfirm")).replace(
+          // 目录非空时这句话得改口：原来那句「先把里面的移走」在这条路上
+          // 是死胡同——用户就是不想一篇篇移。所以先报数，再给两条路。
+          confirm.kind === "dir" && confirm.counting === true ? t4("tree.deleteDirCounting") : confirm.kind === "dir" && (Number(confirm.notes) > 0 || Number(confirm.dirs) > 0) ? `${t4("tree.deleteDirNotEmpty").replace("{name}", confirm.name)} ${t4("tree.deleteDirHas").replace("{notes}", String(Number(confirm.notes) || 0)).replace("{dirs}", String(Number(confirm.dirs) || 0))}` : (confirm.kind === "dir" ? t4("tree.deleteDirConfirm") : t4("tree.deleteTagConfirm")).replace(
             "{name}",
             confirm.name
           )
@@ -21131,13 +21258,28 @@ ${t4("tree.menuDelete")}\uFF1A\u53F3\u952E`
             { type: "button", className: "dshgn_btn", onClick: () => setConfirm(null), disabled: busy },
             t4("action.cancel")
           ),
-          h4(
+          // 非空目录多给一颗：笔记先移进回收站再删目录，不是永久删，
+          // 所以这颗按钮的文案说的是「一起删」而不是「全部永久删」。
+          confirm.kind === "dir" && (Number(confirm.notes) > 0 || Number(confirm.dirs) > 0) ? h4(
             "button",
             {
               type: "button",
               className: "dshgn_btn dshgn_btnDanger",
+              onClick: () => void runDelete(true),
+              disabled: busy,
+              "data-recursive": "true"
+            },
+            Number(confirm.notes) > 0 ? t4("tree.deleteDirRecursive").replace("{n}", String(Number(confirm.notes) || 0)) : t4("tree.deleteDirSubs")
+          ) : null,
+          h4(
+            "button",
+            {
+              type: "button",
+              className: confirm.kind === "dir" && (Number(confirm.notes) > 0 || Number(confirm.dirs) > 0) ? "dshgn_btn" : "dshgn_btn dshgn_btnDanger",
               onClick: () => void runDelete(),
-              disabled: busy
+              // 目录里还有东西时这颗按了也是 409，干脆置灰——能走的那条
+              // 是旁边那颗「连里面的 N 篇一起删」。
+              disabled: busy || confirm.counting === true || confirm.kind === "dir" && (Number(confirm.notes) > 0 || Number(confirm.dirs) > 0)
             },
             t4("action.delete")
           )

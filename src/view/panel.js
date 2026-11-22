@@ -676,6 +676,15 @@ async function saveFile(url, filename) {
         'tree.deletedDir': '目录已删除',
         'tree.deletedTag': '标签已移除',
         'tree.dirNotEmpty': '这个目录里还有笔记，先把它们移走',
+        // 目录非空时确认框里多给一条路：连里面的笔记一起删。
+        // 笔记照旧先进回收站，所以这句说的是「一起删」而不是「永久删」。
+        'tree.deleteDirNotEmpty': '目录「{name}」不是空的。',
+        'tree.deleteDirCounting': '正在数这个目录里有多少篇……',
+        'tree.deleteDirHas': '里面还有 {notes} 篇笔记、{dirs} 个子目录。',
+        'tree.deleteDirRecursive': '连里面的 {n} 篇一起删',
+        'tree.deleteDirSubs': '连里面的子目录一起删',
+        'tree.deleteDirRecursiveOk': '一起删',
+        'tree.deleteDirRecursiveDone': '目录已删，{n} 篇在回收站里',
         'tree.fold': '收起子目录',
         'tree.unfold': '展开子目录',
         'tree.foldTag': '收起子标签',
@@ -1258,6 +1267,13 @@ async function saveFile(url, filename) {
         'tree.deletedDir': 'Folder deleted',
         'tree.deletedTag': 'Tag removed',
         'tree.dirNotEmpty': 'This folder still has notes — move them out first',
+        'tree.deleteDirNotEmpty': 'Folder “{name}” is not empty.',
+        'tree.deleteDirCounting': 'Counting the notes in this folder…',
+        'tree.deleteDirHas': 'It still holds {notes} notes and {dirs} subfolders.',
+        'tree.deleteDirRecursive': 'Delete the {n} notes inside too',
+        'tree.deleteDirSubs': 'Delete the subfolders inside too',
+        'tree.deleteDirRecursiveOk': 'Delete them too',
+        'tree.deleteDirRecursiveDone': 'Folder deleted, {n} notes are in the trash',
         'tree.fold': 'Collapse subfolders',
         'tree.unfold': 'Expand subfolders',
         'tree.foldTag': 'Collapse subtags',
@@ -1830,6 +1846,13 @@ async function saveFile(url, filename) {
         'tree.deletedDir': 'Map verwijderd',
         'tree.deletedTag': 'Tag verwijderd',
         'tree.dirNotEmpty': 'Er staan nog notities in deze map — verplaats ze eerst',
+        'tree.deleteDirNotEmpty': 'Map ‘{name}’ is niet leeg.',
+        'tree.deleteDirCounting': 'De notities in deze map worden geteld…',
+        'tree.deleteDirHas': 'Er staan nog {notes} notities en {dirs} submappen in.',
+        'tree.deleteDirRecursive': 'Verwijder ook de {n} notities erin',
+        'tree.deleteDirSubs': 'Verwijder ook de submappen erin',
+        'tree.deleteDirRecursiveOk': 'Ook verwijderen',
+        'tree.deleteDirRecursiveDone': 'Map verwijderd, {n} notities staan in de prullenbak',
         'tree.fold': 'Submappen inklappen',
         'tree.unfold': 'Submappen uitklappen',
         'tree.foldTag': 'Subtags inklappen',
@@ -7722,6 +7745,17 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         [current, draft, openNote, refresh, showToast, t],
       )
 
+      // 删目录之前先数一下它底下有多少篇：确认框里那句「连里面的 N 篇一起删」
+      // 里的 N 得是真的。查不到就当 0，不拦着用户删。
+      const dirContentsOf = async (dir) => {
+        try {
+          const json = await api('/dir/contents?dir=' + encodeURIComponent(String(dir || '')))
+          return { notes: Number(json.notes) || 0, dirs: Number(json.dirs) || 0 }
+        } catch {
+          return { notes: 0, dirs: 0 }
+        }
+      }
+
       const deleteNote = React.useCallback(async () => {
         if (current === null) return
         setBusy(true)
@@ -8924,6 +8958,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
               setTagSort(next)
               makeSortPref('dshgn.sortTag').write(next)
             },
+            onDirContents: (dir) => dirContentsOf(dir),
             onPickDir: (dir) => {
               setActiveDir(dir)
               setActiveTag('')
@@ -8986,14 +9021,21 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                 setError(err && err.message ? err.message : String(err))
               }
             },
-            onDeleteDir: async (name) => {
+            onDeleteDir: async (name, recursive = false) => {
               try {
-                await api('/dir/delete', {
+                const removed = await api('/dir/delete', {
                   method: 'POST',
                   headers: { 'content-type': 'application/json' },
-                  body: JSON.stringify({ dir: name }),
+                  body: JSON.stringify({ dir: name, recursive: recursive === true }),
                 })
-                showToast(t('tree.deletedDir'))
+                // 连笔记一起删的那条路要说清楚「删了几篇、都在回收站」——
+                // 只回一句「目录已删除」，用户会以为那些笔记真没了。
+                const movedCount = Number(removed && removed.notes) || 0
+                showToast(
+                  recursive === true && movedCount > 0
+                    ? t('tree.deleteDirRecursiveDone').replace('{n}', String(movedCount))
+                    : t('tree.deletedDir'),
+                )
                 // 正在看的目录被删掉了就退回全部笔记，否则列表会空着
                 if (activeDir === name) setActiveDir('')
                 await refresh()
@@ -14651,6 +14693,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         onPickTag,
         onCreateDir,
         onDeleteDir,
+        onDirContents,
         onDeleteTag,
         onCreateTag,
         onRenameTag,
@@ -14914,11 +14957,11 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         }
       }
 
-      const runDelete = async () => {
+      const runDelete = async (recursive = false) => {
         if (confirm === null) return
         setBusy(true)
         try {
-          if (confirm.kind === 'dir') await onDeleteDir(confirm.name)
+          if (confirm.kind === 'dir') await onDeleteDir(confirm.name, recursive)
           else await onDeleteTag(confirm.name)
           setConfirm(null)
         } finally {
@@ -15023,8 +15066,22 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
               className: 'dshgn_rowBtn dshgn_rowBtnDanger',
               title: target.kind === 'dir' ? t('tree.deleteDir') : t('tree.deleteTag'),
               onClick: () => {
-                setConfirm({ kind: target.kind, name: target.name })
                 setMenu(null)
+                const target2 = target
+                // 目录先数一下底下有多少篇：确认框里那句「连里面的 N 篇一起删」
+                // 里的 N 得是真的。标签没有这回事，直接开确认框。
+                if (target2.kind !== 'dir' || typeof onDirContents !== 'function') {
+                  setConfirm({ kind: target2.kind, name: target2.name })
+                  return
+                }
+                setConfirm({ kind: target2.kind, name: target2.name, counting: true, notes: 0, dirs: 0 })
+                void onDirContents(target2.name).then((info) => {
+                  setConfirm((prev) =>
+                    prev === null || prev.name !== target2.name
+                      ? prev
+                      : { ...prev, counting: false, notes: info.notes, dirs: info.dirs },
+                  )
+                })
               },
             },
             h(Icon, { name: 'trash', size: 11 }),
@@ -15472,10 +15529,18 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                 h(
                   'div',
                   { className: 'dshgn_modalBody' },
-                  (confirm.kind === 'dir' ? t('tree.deleteDirConfirm') : t('tree.deleteTagConfirm')).replace(
-                    '{name}',
-                    confirm.name,
-                  ),
+                  // 目录非空时这句话得改口：原来那句「先把里面的移走」在这条路上
+                  // 是死胡同——用户就是不想一篇篇移。所以先报数，再给两条路。
+                  confirm.kind === 'dir' && confirm.counting === true
+                    ? t('tree.deleteDirCounting')
+                    : confirm.kind === 'dir' && (Number(confirm.notes) > 0 || Number(confirm.dirs) > 0)
+                      ? `${t('tree.deleteDirNotEmpty').replace('{name}', confirm.name)} ${t('tree.deleteDirHas')
+                          .replace('{notes}', String(Number(confirm.notes) || 0))
+                          .replace('{dirs}', String(Number(confirm.dirs) || 0))}`
+                      : (confirm.kind === 'dir' ? t('tree.deleteDirConfirm') : t('tree.deleteTagConfirm')).replace(
+                          '{name}',
+                          confirm.name,
+                        ),
                 ),
                 h(
                   'div',
@@ -15485,13 +15550,35 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                     { type: 'button', className: 'dshgn_btn', onClick: () => setConfirm(null), disabled: busy },
                     t('action.cancel'),
                   ),
+                  // 非空目录多给一颗：笔记先移进回收站再删目录，不是永久删，
+                  // 所以这颗按钮的文案说的是「一起删」而不是「全部永久删」。
+                  confirm.kind === 'dir' && (Number(confirm.notes) > 0 || Number(confirm.dirs) > 0)
+                    ? h(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'dshgn_btn dshgn_btnDanger',
+                          onClick: () => void runDelete(true),
+                          disabled: busy,
+                          'data-recursive': 'true',
+                        },
+                        Number(confirm.notes) > 0
+                          ? t('tree.deleteDirRecursive').replace('{n}', String(Number(confirm.notes) || 0))
+                          : t('tree.deleteDirSubs'),
+                      )
+                    : null,
                   h(
                     'button',
                     {
                       type: 'button',
-                      className: 'dshgn_btn dshgn_btnDanger',
+                      className: confirm.kind === 'dir' && (Number(confirm.notes) > 0 || Number(confirm.dirs) > 0) ? 'dshgn_btn' : 'dshgn_btn dshgn_btnDanger',
                       onClick: () => void runDelete(),
-                      disabled: busy,
+                      // 目录里还有东西时这颗按了也是 409，干脆置灰——能走的那条
+                      // 是旁边那颗「连里面的 N 篇一起删」。
+                      disabled:
+                        busy ||
+                        confirm.counting === true ||
+                        (confirm.kind === 'dir' && (Number(confirm.notes) > 0 || Number(confirm.dirs) > 0)),
                     },
                     t('action.delete'),
                   ),

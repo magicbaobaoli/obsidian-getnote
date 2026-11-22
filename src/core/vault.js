@@ -1906,6 +1906,83 @@ export async function removeDir(root, dirInput) {
 }
 
 /**
+ * 删一个目录，连同里面的笔记一起。
+ *
+ * 和 removeDir 的区别：removeDir 只肯删空目录（点一下删掉几十篇是灾难），这条
+ * 只在用户于确认框里明确选了「连里面的笔记一起删」之后才走。但「一起删」不等于
+ * 「真删」：里面的每一篇笔记照旧先移进回收站，随时能恢复；只有目录本身（连同
+ * 剩下的空子目录、附件之类非笔记文件）被真删。
+ *
+ * 有一篇移不进回收站就整个停下、目录留着——半个目录删掉、剩下几篇散在原地，
+ * 比干脆不删更难收拾。
+ */
+export async function removeDirTree(root, dirInput) {
+  const rel = normalizeRel(dirInput)
+  if (rel === '') throw Object.assign(new Error('不能删除库根'), { status: 400 })
+  const { abs } = resolveInside(root, rel)
+  let top
+  try {
+    top = await readdir(abs, { withFileTypes: true })
+  } catch {
+    throw Object.assign(new Error('这个目录不存在'), { status: 404 })
+  }
+  // 先收集这个目录底下所有笔记（含子目录）。目录树的遍历走一遍就够了，
+  // 后面 trashNote 只认文件、不依赖目录还在不在。
+  const notes = []
+  let dirCount = 0
+  const walk = async (dirAbs, dirRel) => {
+    let list
+    try {
+      list = await readdir(dirAbs, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const dirent of list) {
+      const childRel = dirRel === '' ? dirent.name : `${dirRel}/${dirent.name}`
+      if (dirent.isDirectory()) {
+        // 插件自己的保留目录（.trash/.history/...）不参与，也不计入子目录数
+        if (IGNORED_DIRS.has(dirent.name)) continue
+        dirCount += 1
+        await walk(join(dirAbs, dirent.name), childRel)
+        continue
+      }
+      if (!dirent.isFile()) continue
+      if (extname(dirent.name).toLowerCase() !== NOTE_EXT) continue
+      notes.push(childRel)
+    }
+  }
+  await walk(abs, rel)
+  const failed = []
+  let trashed = 0
+  for (const noteRel of notes) {
+    try {
+      await trashNote(root, noteRel)
+      trashed += 1
+    } catch (error) {
+      failed.push({ path: noteRel, error: error && error.message ? error.message : String(error) })
+    }
+  }
+  if (failed.length > 0) {
+    invalidateScan(root)
+    throw Object.assign(new Error(`有 ${failed.length} 篇没能移进回收站，目录先留着`), {
+      status: 409,
+      failed,
+      notes: trashed,
+    })
+  }
+  try {
+    // 笔记都搬走了，剩下的是空子目录和附件之类的非笔记文件：这里才允许递归删。
+    // removeDir 故意不用 recursive:true，是因为它删的是「已确认的空目录」；
+    // 这条路径已经把该搬的都搬走了，剩下的内容不再有可恢复的价值。
+    await rm(abs, { recursive: true, force: true })
+  } catch (error) {
+    throw Object.assign(new Error(`删目录失败：${error && error.message ? error.message : error}`), { status: 500 })
+  }
+  invalidateScan(root)
+  return { ok: true, path: rel, notes: trashed, dirs: dirCount }
+}
+
+/**
  * 给一个目录改名（连同底下的笔记和子目录一起搬过去）。
  *
  * 目录名就是磁盘上的文件夹名，改名等于 `rename(旧, 新)`——一条系统调用搬走整棵子树，

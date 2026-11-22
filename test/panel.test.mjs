@@ -13997,3 +13997,94 @@ test('空态里那颗「写一篇新的」是真的能点，不是只指着顶�
   )
   assert.ok(before >= 0, '列表里卡片数量不为负（只是占位断言，避免未使用变量）')
 })
+
+test('目录里有笔记时，删目录那颗能连笔记一起删——笔记进回收站，不是真没', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const backToList = async () => {
+    const back = rootNode().querySelector('.dshgn_noteBack')
+    if (back !== null) {
+      panel.setConfirmDialog(() => Promise.resolve(true))
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回列表')
+  }
+  await backToList()
+  clickTab('笔记')
+  await waitFor(() => rootNode().querySelector('.dshgn_search') !== null, 4000, '笔记页签里有搜索框')
+  const search = rootNode().querySelector('.dshgn_search')
+  Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(search, '')
+  search.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(400)
+
+  const make = async (dir, title, content, requestId) => {
+    const res = await realFetch(`${server.origin}/getnote/create`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({ dir, title, content, withDatePrefix: false, requestId }),
+    })
+    const json = await res.json()
+    return json.path
+  }
+  const a = await make('删目录验收', '删目录验收-甲', '# 删目录验收-甲\n\n正文。\n', 'seed-dir-rm-a')
+  const b = await make('删目录验收', '删目录验收-乙', '# 删目录验收-乙\n\n正文。\n', 'seed-dir-rm-b')
+
+  const rowOf = (name) =>
+    Array.from(rootNode().querySelectorAll('.dshgn_treeRow')).find((el) => {
+      const label = el.querySelector('.dshgn_treeName')
+      return label !== null && (label.textContent || '').trim() === name
+    })
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rowOf('删目录验收') !== undefined, 8000, '左栏里出现新目录')
+
+  rowOf('删目录验收').dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+  const deleteBtn = await waitFor(() => {
+    const menu = rootNode().querySelector('.dshgn_rowMenu')
+    if (menu === null) return null
+    const hit = Array.from(menu.querySelectorAll('.dshgn_rowBtn')).find((btn) => btn.title === '删除目录')
+    return hit === undefined ? null : hit
+  }, 4000, '目录行右键里应该有「删除目录」')
+  deleteBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+
+  // 确认框会先去数一遍这个目录里有多少篇，数完才给「连里面的 N 篇一起删」
+  const modal = await waitFor(() => rootNode().querySelector('.dshgn_modal'), 4000, '确认框出现')
+  const recursive = await waitFor(
+    () => modal.querySelector('button[data-recursive="true"]'),
+    8000,
+    '非空目录该多一颗「连里面的 N 篇一起删」',
+  )
+  assert.ok(
+    (recursive.textContent || '').includes('2'),
+    '按钮上要说清是几篇：' + (recursive.textContent || ''),
+  )
+  const bodyText = String((modal.querySelector('.dshgn_modalBody') || {}).textContent || '')
+  assert.ok(bodyText.includes('不是空的'), '正文要说明这个目录不是空的：' + bodyText)
+  assert.ok(bodyText.includes('2'), '正文里也要报数：' + bodyText)
+  // 旁边那颗「删除」在目录非空时该是灰的——按了也只会 409
+  const plain = Array.from(modal.querySelectorAll('.dshgn_modalActions button')).find(
+    (btn) => (btn.textContent || '').trim() === '删除',
+  )
+  assert.ok(plain !== undefined, '确认框里该有「删除」')
+  assert.equal(plain.disabled, true, '目录非空时那颗「删除」该置灰')
+
+  recursive.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+
+  // 目录没了
+  await waitFor(() => rowOf('删目录验收') === undefined, 10000, '目录该从左栏消失')
+  // 笔记没真没：两篇都进了回收站
+  const trash = await realFetch(`${server.origin}/getnote/trash/list`, {
+    headers: { 'x-getnote-token': server.token },
+  })
+  const trashJson = await trash.json()
+  const names = (trashJson.items || []).map((one) => String(one.originalName || ''))
+  assert.ok(names.includes('删目录验收-甲.md'), '甲该在回收站里：' + names.join('、'))
+  assert.ok(names.includes('删目录验收-乙.md'), '乙该在回收站里：' + names.join('、'))
+  // 原路径已经读不到了
+  const still = await realFetch(
+    `${server.origin}/getnote/read?path=${encodeURIComponent(a)}`,
+    { headers: { 'x-getnote-token': server.token } },
+  )
+  assert.notEqual(still.status, 200, '删完原路径不该还能读到')
+  assert.ok(b !== '', '乙的路径不该为空（占位，避免未使用变量）')
+})
