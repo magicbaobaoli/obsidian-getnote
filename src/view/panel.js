@@ -579,6 +579,11 @@ async function saveFile(url, filename) {
   // 就这么多还是被条数上限截了，而这两种情况下一步该做的事正相反。
   'search.scan': '扫了 {scanned} 篇，对上 {n} 篇',
   'search.scanCut': '（到条数上限就停了，后面还有没扫到的）',
+  // 这次搜索到底按什么在筛：把 tag:/dir:/正文词/排除词拆成几颗能单独点掉的胶囊。
+  // 一行灰字提示教的是「怎么写」，这里回答的是「我这次写了什么」。
+  'search.bits': '这次按这些筛',
+  'search.bitsClear': '全清掉',
+  'search.bitDrop': '点掉这一段',
         'search.jumpToLine': '跳到这一行',
         'batch.pick': '选择这篇',
         'batch.picked': '篇已选',
@@ -1162,6 +1167,9 @@ async function saveFile(url, filename) {
         'search.placeholder': 'Search title, body, tags…',
         'search.scan': 'Searched {scanned} notes, {n} matched',
   'search.scanCut': ' (stopped at the result limit, some notes were not searched)',
+  'search.bits': 'Filtering by',
+  'search.bitsClear': 'Clear all',
+  'search.bitDrop': 'Drop this part',
   'search.hint': 'Narrow it down: tag:voice · dir:notes · #private. All words must match; quote a phrase to keep it together, put - in front to exclude it.',
         'search.jumpToLine': 'Jump to this line',
         'batch.pick': 'Select this note',
@@ -1725,6 +1733,9 @@ async function saveFile(url, filename) {
         'search.hint': 'Verfijn: tag:spraak · dir:notities · #privé. Alle woorden moeten voorkomen; zet een frase tussen quotes, en - ervoor om hem uit te sluiten.',
         'search.scan': '{scanned} notities doorzocht, {n} gevonden',
         'search.scanCut': ' (gestopt bij de limiet, sommige notities zijn niet doorzocht)',
+        'search.bits': 'Gefilterd op',
+        'search.bitsClear': 'Alles wissen',
+        'search.bitDrop': 'Dit stuk weghalen',
         'search.jumpToLine': 'Naar deze regel',
         'batch.pick': 'Deze notitie selecteren',
         'batch.picked': 'geselecteerd',
@@ -3466,6 +3477,59 @@ async function saveFile(url, filename) {
       return terms
     }
 
+    /**
+     * 把一次搜索拆成「摆得出来的几块」：限定词、排除词、正文词各一块。
+     *
+     * 用户敲的是 tag:录音卡 dir:随手记 会议 -录音 这样一串，敲完只能从那行灰字
+     * 提示里猜「这次到底按什么在筛」。这里跟服务端同一套拆法，但多带一个位置，
+     * 好让界面上每一块都能单独点掉——去掉一个限定词比清空重打一遍快得多。
+     */
+    function searchQueryBits(input) {
+      const raw = String(input === null || input === undefined ? '' : input)
+      const out = []
+      const taken = []
+      const free = (from, to) => !taken.some(([start, end]) => from < end && to > start)
+      let m
+      // 先认限定词：tag:xxx / dir:"带 空格"
+      const qual = /(?:^|\s)((?:tag|dir):(?:"[^"]*"|\S+))/gi
+      while ((m = qual.exec(raw)) !== null) {
+        const start = m.index + m[0].length - m[1].length
+        const end = start + m[1].length
+        const colon = m[1].indexOf(':')
+        const value = m[1]
+          .slice(colon + 1)
+          .replace(/^"|"$/g, '')
+          .trim()
+        if (value === '') continue
+        taken.push([start, end])
+        out.push({ kind: m[1].slice(0, colon).toLowerCase(), value, start, end })
+        qual.lastIndex = end
+      }
+      // 再认裸 #标签
+      const bare = /(?:^|\s)(#[^\s#]+)/g
+      while ((m = bare.exec(raw)) !== null) {
+        const start = m.index + m[0].length - m[1].length
+        const end = start + m[1].length
+        if (!free(start, end)) continue
+        taken.push([start, end])
+        out.push({ kind: 'tag', value: m[1].slice(1), start, end })
+        bare.lastIndex = end
+      }
+      // 剩下的是正文词：引号包住的一串算一个，前导减号是排除
+      const token = /(-?)"([^"]*)"|(-?)(\S+)/g
+      while ((m = token.exec(raw)) !== null) {
+        const start = m.index
+        const end = m.index + m[0].length
+        if (!free(start, end)) continue
+        const neg = (m[1] !== undefined ? m[1] : m[3]) === '-'
+        const value = (m[2] !== undefined ? m[2] : m[4]).trim()
+        if (value === '') continue
+        taken.push([start, end])
+        out.push({ kind: neg ? 'not' : 'term', value, start, end })
+      }
+      return out.sort((a, b) => a.start - b.start)
+    }
+
     /** 命中行 / 摘录里把搜索词标出来。没词时原样返回那一串。 */
     function highlightTerms(text, terms) {
       const parts = splitByTerms(text, terms)
@@ -5093,6 +5157,25 @@ async function saveFile(url, filename) {
 .dshgn_searchScan{padding:0 10px 7px;font-size:10px;line-height:1.5;
   color:var(--dsw-alias-label-tertiary)}
 .dshgn_searchScan[data-cut="true"]{color:var(--dsw-alias-label-secondary)}
+/* 这次按什么在筛：限定词 / 正文词 / 排除词各一颗，点一颗就去掉那一段。
+   和「最近搜过」那排同一个视觉语言，但底色更淡——它是状态，不是入口。 */
+.dshgn_queryBits{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:4px;
+  padding:0 10px 7px}
+.dshgn_queryBitsLabel{flex:none;font-size:10px;color:var(--dsw-alias-label-tertiary);
+  margin-right:1px}
+.dshgn_queryBit{appearance:none;display:inline-flex;align-items:center;gap:3px;
+  max-width:180px;padding:1px 7px;border:0.5px solid var(--dsw-alias-border-l2);
+  border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary);
+  font:inherit;font-size:10px;line-height:1.7;cursor:pointer}
+.dshgn_queryBit:hover{background:var(--dsw-alias-interactive-bg-hover);
+  color:var(--dsw-alias-label-primary)}
+.dshgn_queryBit:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+/* 排除词那颗说清是「不要它」，不然一排胶囊里分不出正负 */
+.dshgn_queryBit[data-kind="not"]{text-decoration:line-through;
+  color:var(--dsw-alias-label-tertiary)}
+.dshgn_queryBit[data-kind="dir"]{border-color:var(--dsw-alias-border-l1)}
+.dshgn_queryBit[data-kind="tag"]{border-color:var(--dsw-alias-border-l1)}
+.dshgn_queryBitName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* 最近搜过的词：搜索框空着时摆在它下面一行。只摆词不摆结果——结果会过期，
    重搜一遍拿到的才是当下的库。整条用一排小胶囊，和补全候选同一个视觉语言。 */
 .dshgn_recent{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:4px;
@@ -6686,6 +6769,26 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 结果里要把用户敲的词标出来，先按服务端那套拆一遍：tag:/dir: 是限定词，
       // 不会出现在正文那一行上，拿它去标等于把整行染成「没命中」。
       const searchTerms = React.useMemo(() => searchTermsOf(query), [query])
+      // 这次搜索按什么在筛：限定词 / 正文词 / 排除词各一颗，点掉哪颗就把那段从
+      // 搜索框里删掉。只认「这次敲进去的那几个」——从别处（深链、右键）进来的词
+      // 一样能点掉，因为它读的就是搜索框里那一串。
+      const queryBits = React.useMemo(() => searchQueryBits(query), [query])
+      const dropQueryBit = React.useCallback(
+        (bit) => {
+          if (bit === null || bit === undefined) return
+          const raw = String(query || '')
+          const start = Number(bit.start)
+          const end = Number(bit.end)
+          if (!Number.isFinite(start) || !Number.isFinite(end)) return
+          const next = (raw.slice(0, start) + ' ' + raw.slice(end)).replace(/\s+/g, ' ').trim()
+          setQuery(next)
+          setSuggestAt(null)
+          setSuggestIndex(null)
+          const box = findInPanel('.dshgn_search')
+          if (box !== null) box.focus()
+        },
+        [query],
+      )
       // 搜索框的补全：只认正在敲的那一个词，候选来自库里已有的目录与标签。
       // 敲完整词之后（末尾有空白）就不再提示——那时用户已经在往下写了。
       const [suggestAt, setSuggestAt] = React.useState(null)
@@ -9095,6 +9198,35 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                       onClick: clearRecentSearches,
                     },
                     h(Icon, { name: 'close', size: 10 }),
+                  ),
+                )
+              : null,
+            // 这次到底按什么在筛。搜索框里那一串敲完就滚走了，剩下的只有一行灰字
+            // 提示——它教的是「怎么写」，不回答「我这次写了什么」。这里把限定词、
+            // 正文词、排除词拆成几颗胶囊，每颗都能单独点掉：想去掉一个限定词，
+            // 比清空重打一遍快得多。只敲一个普通词时不摆——一颗胶囊重复框里那两个字
+            // 纯属噪声，有拼接或有限定词时才有「拆开看」的必要。
+            queryBits.length > 1 || queryBits.some((bit) => bit.kind !== 'term')
+              ? h(
+                  'div',
+                  { className: 'dshgn_queryBits' },
+                  h('span', { className: 'dshgn_queryBitsLabel' }, t('search.bits')),
+                  queryBits.map((bit) =>
+                    h(
+                      'button',
+                      {
+                        key: `bit-${bit.start}-${bit.kind}`,
+                        type: 'button',
+                        className: 'dshgn_queryBit',
+                        'data-kind': bit.kind,
+                        title: `${t('search.bitDrop')}：${bit.value}`,
+                        'aria-label': `${t('search.bitDrop')}：${bit.value}`,
+                        onClick: () => dropQueryBit(bit),
+                      },
+                      h(Icon, { name: bit.kind === 'dir' ? 'folder' : bit.kind === 'tag' ? 'hash' : 'search', size: 10 }),
+                      h('span', { className: 'dshgn_queryBitName' }, bit.value),
+                      h(Icon, { name: 'close', size: 9 }),
+                    ),
                   ),
                 )
               : null,

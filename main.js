@@ -8466,6 +8466,11 @@ var LEX = {
     // 就这么多还是被条数上限截了，而这两种情况下一步该做的事正相反。
     "search.scan": "\u626B\u4E86 {scanned} \u7BC7\uFF0C\u5BF9\u4E0A {n} \u7BC7",
     "search.scanCut": "\uFF08\u5230\u6761\u6570\u4E0A\u9650\u5C31\u505C\u4E86\uFF0C\u540E\u9762\u8FD8\u6709\u6CA1\u626B\u5230\u7684\uFF09",
+    // 这次搜索到底按什么在筛：把 tag:/dir:/正文词/排除词拆成几颗能单独点掉的胶囊。
+    // 一行灰字提示教的是「怎么写」，这里回答的是「我这次写了什么」。
+    "search.bits": "\u8FD9\u6B21\u6309\u8FD9\u4E9B\u7B5B",
+    "search.bitsClear": "\u5168\u6E05\u6389",
+    "search.bitDrop": "\u70B9\u6389\u8FD9\u4E00\u6BB5",
     "search.jumpToLine": "\u8DF3\u5230\u8FD9\u4E00\u884C",
     "batch.pick": "\u9009\u62E9\u8FD9\u7BC7",
     "batch.picked": "\u7BC7\u5DF2\u9009",
@@ -9044,6 +9049,9 @@ var LEX = {
     "search.placeholder": "Search title, body, tags\u2026",
     "search.scan": "Searched {scanned} notes, {n} matched",
     "search.scanCut": " (stopped at the result limit, some notes were not searched)",
+    "search.bits": "Filtering by",
+    "search.bitsClear": "Clear all",
+    "search.bitDrop": "Drop this part",
     "search.hint": "Narrow it down: tag:voice \xB7 dir:notes \xB7 #private. All words must match; quote a phrase to keep it together, put - in front to exclude it.",
     "search.jumpToLine": "Jump to this line",
     "batch.pick": "Select this note",
@@ -9602,6 +9610,9 @@ var LEX = {
     "search.hint": "Verfijn: tag:spraak \xB7 dir:notities \xB7 #priv\xE9. Alle woorden moeten voorkomen; zet een frase tussen quotes, en - ervoor om hem uit te sluiten.",
     "search.scan": "{scanned} notities doorzocht, {n} gevonden",
     "search.scanCut": " (gestopt bij de limiet, sommige notities zijn niet doorzocht)",
+    "search.bits": "Gefilterd op",
+    "search.bitsClear": "Alles wissen",
+    "search.bitDrop": "Dit stuk weghalen",
     "search.jumpToLine": "Naar deze regel",
     "batch.pick": "Deze notitie selecteren",
     "batch.picked": "geselecteerd",
@@ -10941,6 +10952,45 @@ function searchTermsOf(query) {
   }
   return terms;
 }
+function searchQueryBits(input) {
+  const raw = String(input === null || input === void 0 ? "" : input);
+  const out = [];
+  const taken = [];
+  const free = (from, to) => !taken.some(([start, end]) => from < end && to > start);
+  let m3;
+  const qual = /(?:^|\s)((?:tag|dir):(?:"[^"]*"|\S+))/gi;
+  while ((m3 = qual.exec(raw)) !== null) {
+    const start = m3.index + m3[0].length - m3[1].length;
+    const end = start + m3[1].length;
+    const colon = m3[1].indexOf(":");
+    const value = m3[1].slice(colon + 1).replace(/^"|"$/g, "").trim();
+    if (value === "") continue;
+    taken.push([start, end]);
+    out.push({ kind: m3[1].slice(0, colon).toLowerCase(), value, start, end });
+    qual.lastIndex = end;
+  }
+  const bare = /(?:^|\s)(#[^\s#]+)/g;
+  while ((m3 = bare.exec(raw)) !== null) {
+    const start = m3.index + m3[0].length - m3[1].length;
+    const end = start + m3[1].length;
+    if (!free(start, end)) continue;
+    taken.push([start, end]);
+    out.push({ kind: "tag", value: m3[1].slice(1), start, end });
+    bare.lastIndex = end;
+  }
+  const token = /(-?)"([^"]*)"|(-?)(\S+)/g;
+  while ((m3 = token.exec(raw)) !== null) {
+    const start = m3.index;
+    const end = m3.index + m3[0].length;
+    if (!free(start, end)) continue;
+    const neg = (m3[1] !== void 0 ? m3[1] : m3[3]) === "-";
+    const value = (m3[2] !== void 0 ? m3[2] : m3[4]).trim();
+    if (value === "") continue;
+    taken.push([start, end]);
+    out.push({ kind: neg ? "not" : "term", value, start, end });
+  }
+  return out.sort((a3, b3) => a3.start - b3.start);
+}
 function highlightTerms(text, terms) {
   const parts = splitByTerms(text, terms);
   if (parts.length === 1 && !parts[0].hit) return parts[0].text;
@@ -12175,6 +12225,25 @@ var CSS = `
 .dshgn_searchScan{padding:0 10px 7px;font-size:10px;line-height:1.5;
   color:var(--dsw-alias-label-tertiary)}
 .dshgn_searchScan[data-cut="true"]{color:var(--dsw-alias-label-secondary)}
+/* \u8FD9\u6B21\u6309\u4EC0\u4E48\u5728\u7B5B\uFF1A\u9650\u5B9A\u8BCD / \u6B63\u6587\u8BCD / \u6392\u9664\u8BCD\u5404\u4E00\u9897\uFF0C\u70B9\u4E00\u9897\u5C31\u53BB\u6389\u90A3\u4E00\u6BB5\u3002
+   \u548C\u300C\u6700\u8FD1\u641C\u8FC7\u300D\u90A3\u6392\u540C\u4E00\u4E2A\u89C6\u89C9\u8BED\u8A00\uFF0C\u4F46\u5E95\u8272\u66F4\u6DE1\u2014\u2014\u5B83\u662F\u72B6\u6001\uFF0C\u4E0D\u662F\u5165\u53E3\u3002 */
+.dshgn_queryBits{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:4px;
+  padding:0 10px 7px}
+.dshgn_queryBitsLabel{flex:none;font-size:10px;color:var(--dsw-alias-label-tertiary);
+  margin-right:1px}
+.dshgn_queryBit{appearance:none;display:inline-flex;align-items:center;gap:3px;
+  max-width:180px;padding:1px 7px;border:0.5px solid var(--dsw-alias-border-l2);
+  border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary);
+  font:inherit;font-size:10px;line-height:1.7;cursor:pointer}
+.dshgn_queryBit:hover{background:var(--dsw-alias-interactive-bg-hover);
+  color:var(--dsw-alias-label-primary)}
+.dshgn_queryBit:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+/* \u6392\u9664\u8BCD\u90A3\u9897\u8BF4\u6E05\u662F\u300C\u4E0D\u8981\u5B83\u300D\uFF0C\u4E0D\u7136\u4E00\u6392\u80F6\u56CA\u91CC\u5206\u4E0D\u51FA\u6B63\u8D1F */
+.dshgn_queryBit[data-kind="not"]{text-decoration:line-through;
+  color:var(--dsw-alias-label-tertiary)}
+.dshgn_queryBit[data-kind="dir"]{border-color:var(--dsw-alias-border-l1)}
+.dshgn_queryBit[data-kind="tag"]{border-color:var(--dsw-alias-border-l1)}
+.dshgn_queryBitName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* \u6700\u8FD1\u641C\u8FC7\u7684\u8BCD\uFF1A\u641C\u7D22\u6846\u7A7A\u7740\u65F6\u6446\u5728\u5B83\u4E0B\u9762\u4E00\u884C\u3002\u53EA\u6446\u8BCD\u4E0D\u6446\u7ED3\u679C\u2014\u2014\u7ED3\u679C\u4F1A\u8FC7\u671F\uFF0C
    \u91CD\u641C\u4E00\u904D\u62FF\u5230\u7684\u624D\u662F\u5F53\u4E0B\u7684\u5E93\u3002\u6574\u6761\u7528\u4E00\u6392\u5C0F\u80F6\u56CA\uFF0C\u548C\u8865\u5168\u5019\u9009\u540C\u4E00\u4E2A\u89C6\u89C9\u8BED\u8A00\u3002 */
 .dshgn_recent{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:4px;
@@ -13613,6 +13682,23 @@ function GetnotePage() {
   }, [query, hits, rememberSearch]);
   const searchMode = query.trim() !== "" && hits !== null;
   const searchTerms = T2(() => searchTermsOf(query), [query]);
+  const queryBits = T2(() => searchQueryBits(query), [query]);
+  const dropQueryBit = q2(
+    (bit) => {
+      if (bit === null || bit === void 0) return;
+      const raw = String(query || "");
+      const start = Number(bit.start);
+      const end = Number(bit.end);
+      if (!Number.isFinite(start) || !Number.isFinite(end)) return;
+      const next = (raw.slice(0, start) + " " + raw.slice(end)).replace(/\s+/g, " ").trim();
+      setQuery(next);
+      setSuggestAt(null);
+      setSuggestIndex(null);
+      const box = findInPanel(".dshgn_search");
+      if (box !== null) box.focus();
+    },
+    [query]
+  );
   const [suggestAt, setSuggestAt] = h2(null);
   const [suggestIndex, setSuggestIndex] = h2(null);
   const searchTags = T2(() => [...new Set(entries.flatMap((entry) => entry.tags || []))], [entries]);
@@ -15572,6 +15658,33 @@ ${insert}
               onClick: clearRecentSearches
             },
             h4(Icon, { name: "close", size: 10 })
+          )
+        ) : null,
+        // 这次到底按什么在筛。搜索框里那一串敲完就滚走了，剩下的只有一行灰字
+        // 提示——它教的是「怎么写」，不回答「我这次写了什么」。这里把限定词、
+        // 正文词、排除词拆成几颗胶囊，每颗都能单独点掉：想去掉一个限定词，
+        // 比清空重打一遍快得多。只敲一个普通词时不摆——一颗胶囊重复框里那两个字
+        // 纯属噪声，有拼接或有限定词时才有「拆开看」的必要。
+        queryBits.length > 1 || queryBits.some((bit) => bit.kind !== "term") ? h4(
+          "div",
+          { className: "dshgn_queryBits" },
+          h4("span", { className: "dshgn_queryBitsLabel" }, t4("search.bits")),
+          queryBits.map(
+            (bit) => h4(
+              "button",
+              {
+                key: `bit-${bit.start}-${bit.kind}`,
+                type: "button",
+                className: "dshgn_queryBit",
+                "data-kind": bit.kind,
+                title: `${t4("search.bitDrop")}\uFF1A${bit.value}`,
+                "aria-label": `${t4("search.bitDrop")}\uFF1A${bit.value}`,
+                onClick: () => dropQueryBit(bit)
+              },
+              h4(Icon, { name: bit.kind === "dir" ? "folder" : bit.kind === "tag" ? "hash" : "search", size: 10 }),
+              h4("span", { className: "dshgn_queryBitName" }, bit.value),
+              h4(Icon, { name: "close", size: 9 })
+            )
           )
         ) : null,
         // 限定语法提示：`tag:` / `dir:` 是隐藏功能，不提示没人会知道。

@@ -13376,3 +13376,92 @@ test('勾了一张之后按住 Shift 再点一张，就把这一摊连着勾上�
   if (clearBtn) clearBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
   await clickTab('笔记')
 })
+
+test('搜的时候把这次按什么在筛摆出来，点掉一颗就少一个限定词', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+
+  panel.setConfirmDialog(async () => true)
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = window.document.querySelector('.dshgn_noteBack')
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(220)
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  const box = () => window.document.querySelector('.dshgn_search')
+  const typeIn = async (text) => {
+    setter.call(box(), text)
+    box().dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(420)
+  }
+  const chips = () => Array.from(window.document.querySelectorAll('.dshgn_queryBit'))
+  const chipOf = (kind, value) =>
+    chips().find((el) => el.getAttribute('data-kind') === kind && (el.textContent || '').includes(value)) || null
+
+  await typeIn('')
+  await post('/getnote/create', {
+    dir: '搜索胶囊验收',
+    title: '搜索胶囊-甲',
+    content: ['# 搜索胶囊甲', '', '这一篇里写着搜索胶囊验收词。', ''].join('\n'),
+    withDatePrefix: false,
+    requestId: 'seed-query-bit-a',
+  })
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(700)
+
+  // ① 一串限定词摆成几颗胶囊，各带各的类别
+  await typeIn('tag:搜索胶囊标签 dir:搜索胶囊验收 搜索胶囊验收词 -不要这个词')
+  const wrap = await waitFor(
+    () => (chips().length > 0 ? window.document.querySelector('.dshgn_queryBits') : null),
+    8000,
+    '按什么在筛那一排要摆出来',
+  )
+  assert.ok((wrap.textContent || '').includes('这次按这些筛'), '要有一句说明这排是什么：' + wrap.textContent)
+  assert.equal(chips().length, 4, '四段各摆一颗：' + chips().map((el) => el.textContent).join(' / '))
+  assert.ok(chipOf('tag', '搜索胶囊标签') !== null, 'tag: 那颗要认出来')
+  assert.ok(chipOf('dir', '搜索胶囊验收') !== null, 'dir: 那颗要认出来')
+  assert.ok(chipOf('term', '搜索胶囊验收词') !== null, '正文词那颗要认出来')
+  const notChip = chipOf('not', '不要这个词')
+  assert.ok(notChip !== null, '排除词那颗要认出来，而且要标成 not')
+  assert.ok((notChip.title || '').length > 0, '每颗都要有悬停说明')
+
+  // ② 点掉一颗，搜索框里那一段就没了，别的段原样留着
+  notChip.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(420)
+  assert.ok(!(box().value || '').includes('不要这个词'), '点掉之后排除词要真的从框里删掉：' + box().value)
+  assert.ok((box().value || '').includes('tag:搜索胶囊标签'), '别的段不能被顺手删掉：' + box().value)
+  assert.ok((box().value || '').includes('dir:搜索胶囊验收'), '别的段不能被顺手删掉：' + box().value)
+  assert.equal(chips().length, 3, '点掉一颗之后就只剩三颗')
+
+  // ③ 限定词那颗点掉，正文词还在，卡片也跟着回来
+  const dirChip = chipOf('dir', '搜索胶囊验收')
+  assert.ok(dirChip !== null, '点掉一颗之后 dir 那颗还该在')
+  dirChip.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(500)
+  assert.ok(!(box().value || '').includes('dir:'), '点掉 dir 之后框里不该再有 dir:：' + box().value)
+  assert.ok((box().value || '').includes('搜索胶囊验收词'), '正文词要留着：' + box().value)
+
+  // ④ 全清掉框里就没词了，那一排跟着收起来
+  await typeIn('')
+  assert.equal(chips().length, 0, '空搜索时不该摆这一排')
+  assert.equal(window.document.querySelector('.dshgn_queryBits'), null, '空搜索时那一排要收起来')
+
+  await clickTab('笔记')
+})
