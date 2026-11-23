@@ -9185,6 +9185,10 @@ var LEX = {
     "note.localAudio": "\u672C\u5730\u5F55\u97F3",
     "note.outline": "\u672C\u6587\u5927\u7EB2",
     "note.copyHeadingLink": "\u590D\u5236\u6307\u5411\u8FD9\u4E00\u8282\u7684\u94FE\u63A5",
+    // 大纲一长（长逐字稿几十个小节）光靠滚也费劲，顶上给一行筛。
+    "note.outlineFilter": "\u6309\u6807\u9898\u627E\u4E00\u8282",
+    "note.outlineFilterClear": "\u6E05\u6389\u8FD9\u4E2A\u7B5B",
+    "note.outlineFilterNone": "\u6CA1\u6709\u5BF9\u5F97\u4E0A\u7684\u5C0F\u8282",
     "note.openImage": "\u5728 Obsidian \u91CC\u6253\u5F00\u8FD9\u5F20\u56FE",
     "note.zoomImage": "\u70B9\u5F00\u770B\u5927\u56FE",
     "zoom.prev": "\u4E0A\u4E00\u5F20",
@@ -9825,6 +9829,9 @@ var LEX = {
     "note.localAudio": "Local recording",
     "note.outline": "Outline",
     "note.copyHeadingLink": "Copy a link to this section",
+    "note.outlineFilter": "Find a section",
+    "note.outlineFilterClear": "Clear this filter",
+    "note.outlineFilterNone": "No section matches",
     "note.openImage": "Open this image in Obsidian",
     "note.zoomImage": "Click to enlarge",
     "zoom.prev": "Previous image",
@@ -10448,6 +10455,9 @@ var LEX = {
     "note.localAudio": "Lokale opname",
     "note.outline": "Overzicht",
     "note.copyHeadingLink": "Kopieer een link naar dit kopje",
+    "note.outlineFilter": "Zoek een kopje",
+    "note.outlineFilterClear": "Dit filter wissen",
+    "note.outlineFilterNone": "Geen kopje gevonden",
     "note.openImage": "Open deze afbeelding in Obsidian",
     "note.zoomImage": "Klik om te vergroten",
     "zoom.prev": "Vorige afbeelding",
@@ -12753,6 +12763,12 @@ var CSS = `
 .dshgn_outlineCount{margin-left:auto;min-width:16px;text-align:center;padding:0 4px;border-radius:7px;
   background:rgba(var(--dshgn-tintRgb),.1);font-size:10px;line-height:15px;
   color:var(--dsw-alias-label-tertiary)}
+/* \u5927\u7EB2\u9876\u4E0A\u90A3\u884C\u7B5B\uFF1A\u53EA\u5728\u8282\u6570\u591A\u7684\u65F6\u5019\u51FA\u73B0\uFF0C\u6240\u4EE5\u505A\u5F97\u77EE\u4E00\u70B9\uFF0C\u522B\u5360\u6389\u4E24\u884C\u6807\u9898\u7684\u4F4D\u7F6E\u3002 */
+.dshgn_outlineFilterRow{display:flex;align-items:center;gap:5px;padding:0 8px 4px;
+  color:var(--dsw-alias-label-tertiary)}
+.dshgn_outlineFilter{flex:1 1 auto;min-width:0;height:22px;font-size:11px}
+.dshgn_outlineFilterClear{flex:none;width:22px;height:22px}
+.dshgn_outlineEmpty{padding:6px 10px;font-size:11px;color:var(--dsw-alias-label-dimmed)}
 .dshgn_outlineList{padding:0 0 5px;max-height:220px;overflow-y:auto}
 /* \u4E00\u884C = \u6807\u9898 + \u4E00\u9897\u300C\u6284\u94FE\u63A5\u300D\u7684\u5C0F\u6309\u94AE\u3002\u6309\u94AE\u5E73\u65F6\u4E0D\u663E\u5F62\uFF0C\u9F20\u6807\u505C\u5728\u90A3\u4E00\u884C
    \u6216\u8005\u7528\u952E\u76D8\u805A\u7126\u5230\u5B83\u624D\u51FA\u73B0\u2014\u2014\u5927\u7EB2\u672C\u6765\u5C31\u662F\u4E00\u5217\u7EAF\u6587\u5B57\uFF0C\u591A\u5341\u51E0\u9897\u56FE\u6807\u4F1A\u628A
@@ -22319,6 +22335,7 @@ function NotePane(props) {
   };
   const [editing, setEditing] = h2(false);
   const [showOutline, setShowOutline] = h2(true);
+  const [outlineFilter, setOutlineFilter] = h2("");
   const [showProps, setShowProps] = h2(true);
   const [backlinks, setBacklinks] = h2(null);
   const [backlinksOpen, setBacklinksOpen] = h2(false);
@@ -22831,6 +22848,12 @@ function NotePane(props) {
     const body = current.body !== void 0 && current.body !== null ? current.body : current.content;
     return countWords(body);
   }, [current]);
+  const outlineNeedle = outlineFilter.trim().toLowerCase();
+  const outlineShown = T2(() => {
+    const all = current !== null && current !== void 0 && Array.isArray(current.outline) ? current.outline : [];
+    if (outlineNeedle === "") return all.map((item, index) => ({ item, index }));
+    return all.map((item, index) => ({ item, index })).filter((row) => String(row.item.text || "").toLowerCase().includes(outlineNeedle));
+  }, [current, outlineNeedle]);
   const jumpToHeading = q2((index) => {
     const host = scrollRef.current;
     if (!host) return;
@@ -22918,8 +22941,7 @@ function NotePane(props) {
   y2(() => {
     const host = outlineRef.current;
     if (!host || activeHeading < 0) return;
-    const rows = host.querySelectorAll(".dshgn_outlineRow");
-    const row = rows[activeHeading];
+    const row = host.querySelector(`.dshgn_outlineRow[data-index="${activeHeading}"]`);
     if (!row) return;
     const delta = outlineScrollDelta(host.getBoundingClientRect(), row.getBoundingClientRect());
     if (delta === 0) return;
@@ -23770,17 +23792,60 @@ ${t4("tree.menuReveal")}` : absolute,
           t4("note.outline"),
           h4("span", { className: "dshgn_outlineCount" }, String(current.outline.length))
         ),
+        // 小节一多才摆这行筛：只有三五个小节时，多一行输入框纯属挡路。
+        showOutline && current.outline.length > 6 ? h4(
+          "div",
+          { className: "dshgn_outlineFilterRow" },
+          h4(Icon, { name: "search", size: 11 }),
+          h4("input", {
+            type: "text",
+            className: "dshgn_input dshgn_outlineFilter",
+            value: outlineFilter,
+            placeholder: t4("note.outlineFilter"),
+            "aria-label": t4("note.outlineFilter"),
+            onInput: (event) => setOutlineFilter(String(event.target.value || "")),
+            onKeyDown: (event) => {
+              if (event.key !== "Escape") return;
+              event.preventDefault();
+              event.stopPropagation();
+              setOutlineFilter("");
+            }
+          }),
+          outlineFilter.trim() === "" ? null : h4(
+            "button",
+            {
+              type: "button",
+              className: "dshgn_iconBtn dshgn_outlineFilterClear",
+              title: t4("note.outlineFilterClear"),
+              "aria-label": t4("note.outlineFilterClear"),
+              onClick: () => setOutlineFilter("")
+            },
+            h4(Icon, { name: "close", size: 11 })
+          )
+        ) : null,
         showOutline ? h4(
           "div",
           { className: "dshgn_outlineList", ref: outlineRef },
-          current.outline.map(
-            (item, index) => (
+          // 一条都对不上时别摆一个空盒子：直说没有对得上的小节。
+          outlineShown.length === 0 ? h4(
+            "div",
+            { className: "dshgn_outlineEmpty" },
+            t4("note.outlineFilterNone")
+          ) : null,
+          outlineShown.map(
+            ({ item, index }) => (
               // 一行两件事：点标题跳过去，点右边那颗抄一条指向这一节的
               // 链接。以前想引用某一节得自己拼 [[笔记#小节]]，拼错了
               // 不报错，只是变成一条点了没反应的死链。
               h4(
                 "div",
-                { key: `${index}-${item.text}`, className: "dshgn_outlineRow" },
+                {
+                  key: `${index}-${item.text}`,
+                  className: "dshgn_outlineRow",
+                  // 筛着的时候 DOM 里的顺序不再是「第几节」，
+                  // 把原序号挂在行上，跳转和「亮着哪一节」都按它认。
+                  "data-index": String(index)
+                },
                 h4(
                   "button",
                   {

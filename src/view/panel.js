@@ -822,6 +822,10 @@ async function saveFile(url, filename) {
         'note.localAudio': '本地录音',
         'note.outline': '本文大纲',
         'note.copyHeadingLink': '复制指向这一节的链接',
+        // 大纲一长（长逐字稿几十个小节）光靠滚也费劲，顶上给一行筛。
+        'note.outlineFilter': '按标题找一节',
+        'note.outlineFilterClear': '清掉这个筛',
+        'note.outlineFilterNone': '没有对得上的小节',
         'note.openImage': '在 Obsidian 里打开这张图',
         'note.zoomImage': '点开看大图',
         'zoom.prev': '上一张',
@@ -1467,6 +1471,9 @@ async function saveFile(url, filename) {
         'note.localAudio': 'Local recording',
         'note.outline': 'Outline',
         'note.copyHeadingLink': 'Copy a link to this section',
+        'note.outlineFilter': 'Find a section',
+        'note.outlineFilterClear': 'Clear this filter',
+        'note.outlineFilterNone': 'No section matches',
         'note.openImage': 'Open this image in Obsidian',
         'note.zoomImage': 'Click to enlarge',
         'zoom.prev': 'Previous image',
@@ -2094,6 +2101,9 @@ async function saveFile(url, filename) {
         'note.localAudio': 'Lokale opname',
         'note.outline': 'Overzicht',
         'note.copyHeadingLink': 'Kopieer een link naar dit kopje',
+        'note.outlineFilter': 'Zoek een kopje',
+        'note.outlineFilterClear': 'Dit filter wissen',
+        'note.outlineFilterNone': 'Geen kopje gevonden',
         'note.openImage': 'Open deze afbeelding in Obsidian',
         'note.zoomImage': 'Klik om te vergroten',
         'zoom.prev': 'Vorige afbeelding',
@@ -5235,6 +5245,12 @@ async function saveFile(url, filename) {
 .dshgn_outlineCount{margin-left:auto;min-width:16px;text-align:center;padding:0 4px;border-radius:7px;
   background:rgba(var(--dshgn-tintRgb),.1);font-size:10px;line-height:15px;
   color:var(--dsw-alias-label-tertiary)}
+/* 大纲顶上那行筛：只在节数多的时候出现，所以做得矮一点，别占掉两行标题的位置。 */
+.dshgn_outlineFilterRow{display:flex;align-items:center;gap:5px;padding:0 8px 4px;
+  color:var(--dsw-alias-label-tertiary)}
+.dshgn_outlineFilter{flex:1 1 auto;min-width:0;height:22px;font-size:11px}
+.dshgn_outlineFilterClear{flex:none;width:22px;height:22px}
+.dshgn_outlineEmpty{padding:6px 10px;font-size:11px;color:var(--dsw-alias-label-dimmed)}
 .dshgn_outlineList{padding:0 0 5px;max-height:220px;overflow-y:auto}
 /* 一行 = 标题 + 一颗「抄链接」的小按钮。按钮平时不显形，鼠标停在那一行
    或者用键盘聚焦到它才出现——大纲本来就是一列纯文字，多十几颗图标会把
@@ -16519,6 +16535,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       }
       const [editing, setEditing] = React.useState(false)
       const [showOutline, setShowOutline] = React.useState(true)
+      // 大纲自己的筛：长逐字稿几十个小节，光靠 220px 那个小列表滚也费劲，
+      // 敲两个字把对得上的留下，比一格格往下翻快得多。只管这一页。
+      const [outlineFilter, setOutlineFilter] = React.useState('')
       // 属性区默认展开：头部就三五条，藏起来等于没有；笔记没有头部时整块不渲染。
       const [showProps, setShowProps] = React.useState(true)
       const [backlinks, setBacklinks] = React.useState(null)
@@ -17260,6 +17279,17 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         return countWords(body)
       }, [current])
 
+      // 大纲筛出来的那几节：留下的是「原来第几节」，跳转还得按原序号算，
+      // 所以这里不把序号重排，筛完照样能跳到正确的那一节。
+      const outlineNeedle = outlineFilter.trim().toLowerCase()
+      const outlineShown = React.useMemo(() => {
+        const all = current !== null && current !== undefined && Array.isArray(current.outline) ? current.outline : []
+        if (outlineNeedle === '') return all.map((item, index) => ({ item, index }))
+        return all
+          .map((item, index) => ({ item, index }))
+          .filter((row) => String(row.item.text || '').toLowerCase().includes(outlineNeedle))
+      }, [current, outlineNeedle])
+
       // 大纲跳转按「第几个标题」定位而不是按行号：renderBlocks 和 outlineOf 都跳过
       // 代码围栏里的 #，两者的标题顺序完全一致，序号是稳的；行号在正文被重新渲染
       // 后（比如编辑保存）就对不上了。
@@ -17378,8 +17408,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       React.useEffect(() => {
         const host = outlineRef.current
         if (!host || activeHeading < 0) return
-        const rows = host.querySelectorAll('.dshgn_outlineRow')
-        const row = rows[activeHeading]
+        // 按行上挂的原序号找，不按 DOM 顺序：筛着的时候列表里只剩几条，
+        // rows[activeHeading] 会指到别人身上。
+        const row = host.querySelector(`.dshgn_outlineRow[data-index="${activeHeading}"]`)
         if (!row) return
         // 位置换算抽成纯函数，好单测：这里只管把它算出来的那点距离用上。
         const delta = outlineScrollDelta(host.getBoundingClientRect(), row.getBoundingClientRect())
@@ -18333,17 +18364,67 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                       t('note.outline'),
                       h('span', { className: 'dshgn_outlineCount' }, String(current.outline.length)),
                     ),
+                    // 小节一多才摆这行筛：只有三五个小节时，多一行输入框纯属挡路。
+                    showOutline && current.outline.length > 6
+                      ? h(
+                          'div',
+                          { className: 'dshgn_outlineFilterRow' },
+                          h(Icon, { name: 'search', size: 11 }),
+                          h('input', {
+                            type: 'text',
+                            className: 'dshgn_input dshgn_outlineFilter',
+                            value: outlineFilter,
+                            placeholder: t('note.outlineFilter'),
+                            'aria-label': t('note.outlineFilter'),
+                            onInput: (event) => setOutlineFilter(String(event.target.value || '')),
+                            onKeyDown: (event) => {
+                              if (event.key !== 'Escape') return
+                              // 这一下 Esc 只清大纲这个筛，别把面板别处的选择一起收了
+                              event.preventDefault()
+                              event.stopPropagation()
+                              setOutlineFilter('')
+                            },
+                          }),
+                          outlineFilter.trim() === ''
+                            ? null
+                            : h(
+                                'button',
+                                {
+                                  type: 'button',
+                                  className: 'dshgn_iconBtn dshgn_outlineFilterClear',
+                                  title: t('note.outlineFilterClear'),
+                                  'aria-label': t('note.outlineFilterClear'),
+                                  onClick: () => setOutlineFilter(''),
+                                },
+                                h(Icon, { name: 'close', size: 11 }),
+                              ),
+                        )
+                      : null,
                     showOutline
                       ? h(
                           'div',
                           { className: 'dshgn_outlineList', ref: outlineRef },
-                          current.outline.map((item, index) =>
+                          // 一条都对不上时别摆一个空盒子：直说没有对得上的小节。
+                          outlineShown.length === 0
+                            ? h(
+                                'div',
+                                { className: 'dshgn_outlineEmpty' },
+                                t('note.outlineFilterNone'),
+                              )
+                            : null,
+                          outlineShown.map(({ item, index }) =>
                             // 一行两件事：点标题跳过去，点右边那颗抄一条指向这一节的
                             // 链接。以前想引用某一节得自己拼 [[笔记#小节]]，拼错了
                             // 不报错，只是变成一条点了没反应的死链。
                             h(
                               'div',
-                              { key: `${index}-${item.text}`, className: 'dshgn_outlineRow' },
+                              {
+                                key: `${index}-${item.text}`,
+                                className: 'dshgn_outlineRow',
+                                // 筛着的时候 DOM 里的顺序不再是「第几节」，
+                                // 把原序号挂在行上，跳转和「亮着哪一节」都按它认。
+                                'data-index': String(index),
+                              },
                               h(
                                 'button',
                                 {

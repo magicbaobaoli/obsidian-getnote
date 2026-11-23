@@ -15862,3 +15862,113 @@ test('正文滚下去之后右下角浮出「回到顶部」，按一下收回�
     await sleep(300)
   }
 })
+test('大纲小节一多，顶上那行筛能筛到想找的那一节，Esc 清掉就回全量', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  for (let i = 0; i < 4; i += 1) {
+    const back0 = window.document.querySelector('.dshgn_noteBack')
+    if (back0 === null) break
+    back0.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(250)
+  }
+
+  const search = rootNode().querySelector('.dshgn_search')
+  if (search !== null && String(search.value || '') !== '') {
+    search.value = ''
+    search.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(300)
+  }
+
+  const seed = async (title, content, requestId) => {
+    const res = await realFetch(server.origin + '/getnote/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({ dir: '随手记', title, content, withDatePrefix: false, requestId }),
+    })
+    assert.equal(res.ok, true, '造数据：' + title)
+  }
+  const nl = String.fromCharCode(10)
+  const heads = ['# 大纲筛验收']
+  for (let i = 1; i <= 8; i += 1) heads.push('## 第' + i + '节')
+  await seed('大纲筛验收', heads.join(nl) + nl, 'seed-outline-filter')
+  await seed('大纲筛少节', '# 大纲筛少节' + nl + '## 只有一节' + nl, 'seed-outline-filter-few')
+
+  const allRow = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find(
+      (el) => (el.querySelector('.dshgn_treeName') || {}).textContent === '全部笔记',
+    )
+  if (allRow() !== undefined) {
+    allRow().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(250)
+  }
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  const cardOf = (name) =>
+    waitFor(
+      () =>
+        Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) =>
+          (el.textContent || '').includes(name),
+        ) || null,
+      8000,
+      '列表里的那一篇：' + name,
+    )
+
+  const few = await cardOf('大纲筛少节')
+  few.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(
+    () => (window.document.querySelectorAll('.dshgn_outlineRow').length >= 2 ? true : null),
+    8000,
+    '少节那篇的大纲该出来',
+  )
+  assert.equal(window.document.querySelector('.dshgn_outlineFilter'), null, '小节少的时候不摆筛')
+
+  const back1 = window.document.querySelector('.dshgn_noteBack')
+  if (back1) {
+    back1.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+
+  const card = await cardOf('大纲筛验收')
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(
+    () => (window.document.querySelectorAll('.dshgn_outlineRow').length >= 9 ? true : null),
+    8000,
+    '九个小节该摆九行',
+  )
+
+  const rowsNow = () => Array.from(window.document.querySelectorAll('.dshgn_outlineRow'))
+  const input = window.document.querySelector('.dshgn_outlineFilter')
+  assert.ok(input !== null, '小节多的时候顶上该有那行筛')
+  assert.equal(rowsNow().length, 9, '一开始摊全九行')
+
+  input.value = '第3节'
+  input.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await waitFor(() => (rowsNow().length === 1 ? true : null), 5000, '筛到只剩一节')
+  assert.equal(String(rowsNow()[0].getAttribute('data-index')), '3', '留下的那一行还记着原来第几节')
+
+  input.value = '这一串谁也对不上'
+  input.dispatchEvent(new window.Event('input', { bubbles: true }))
+  const empty = await waitFor(
+    () => window.document.querySelector('.dshgn_outlineEmpty'),
+    5000,
+    '一条都对不上时要说一声',
+  )
+  assert.equal(String(empty.textContent || '').includes('没有对得上的小节'), true, '空态写清没有对得上的小节')
+
+  input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  await waitFor(() => (rowsNow().length === 9 ? true : null), 5000, 'Esc 之后回全量')
+  assert.equal(window.document.querySelector('.dshgn_outlineEmpty'), null, '回全量之后空态也没了')
+
+  const back2 = window.document.querySelector('.dshgn_noteBack')
+  if (back2) {
+    back2.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+  if (allRow() !== undefined) {
+    allRow().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+})
