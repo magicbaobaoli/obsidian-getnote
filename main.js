@@ -9118,6 +9118,7 @@ var LEX = {
     "reader.frontmatter": "\u5C5E\u6027",
     "reader.words": "{n} \u5B57",
     "reader.minutes": "\u7EA6 {n} \u5206\u949F\u8BFB\u5B8C",
+    "reader.toTop": "\u56DE\u5230\u9876\u90E8",
     "import.title": "\u4E00\u6B21\u6027\u5BFC\u5165",
     "import.desc": "\u8D81\u5F97\u5230\u5927\u8111\u4F1A\u5458\u8FD8\u6709\u6548\uFF0C\u628A\u4E91\u7AEF\u7B14\u8BB0\u5168\u91CF\u6293\u6210\u672C\u5730 Markdown\u3002\u4E4B\u540E\u4F1A\u5458\u5230\u671F\u3001\u65AD\u7F51\u3001\u751A\u81F3\u670D\u52A1\u4E0B\u7EBF\uFF0C\u8FD9\u91CC\u7684\u7B14\u8BB0\u90FD\u7167\u5E38\u80FD\u8BFB\u80FD\u6539 \u2014\u2014 \u5BFC\u5165\u662F\u672C\u63D2\u4EF6\u552F\u4E00\u4F1A\u8054\u7F51\u7684\u52A8\u4F5C\u3002",
     "import.loggedIn": "\u5DF2\u8FDE\u63A5\u5F97\u5230\u5927\u8111",
@@ -9760,6 +9761,7 @@ var LEX = {
     "reader.frontmatter": "Properties",
     "reader.words": "{n} words",
     "reader.minutes": "About {n} min read",
+    "reader.toTop": "Back to top",
     "import.title": "One-time import",
     "import.desc": "While your subscription still works, pull every cloud note down as local Markdown. Afterwards the notes stay readable and editable \u2014 this is the only action in the plugin that touches the network.",
     "import.loggedIn": "Connected",
@@ -10382,6 +10384,7 @@ var LEX = {
     "reader.frontmatter": "Eigenschappen",
     "reader.words": "{n} woorden",
     "reader.minutes": "Ongeveer {n} min leestijd",
+    "reader.toTop": "Terug naar boven",
     "import.title": "Eenmalige import",
     "import.desc": "Zolang je abonnement loopt, haal je elke cloudnotitie als lokale Markdown binnen. Daarna blijven de notities leesbaar en bewerkbaar \u2014 dit is de enige actie in de plug-in die het netwerk gebruikt.",
     "import.loggedIn": "Verbonden",
@@ -11436,6 +11439,12 @@ function headingNodes(host) {
   const own = host.querySelectorAll(".dshgn_h");
   if (own.length > 0) return Array.from(own);
   return Array.from(host.querySelectorAll("h1, h2, h3, h4, h5, h6"));
+}
+var TO_TOP_AFTER = 320;
+function toTopVisible(scrollTop) {
+  const top = Number(scrollTop);
+  if (!Number.isFinite(top)) return false;
+  return top > TO_TOP_AFTER;
 }
 function outlineScrollDelta(hostRect, rowRect) {
   if (!hostRect || !rowRect) return 0;
@@ -13362,7 +13371,7 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 .dshgn_cardTagMore[data-open="true"]{border-style:solid;color:var(--dsw-alias-label-secondary)}
 .dshgn_cardExcerpt{font-size:11px;line-height:15px;color:var(--dsw-alias-label-tertiary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dshgn_note{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
+.dshgn_note{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;position:relative}
 .dshgn_noteHead{flex:none;display:flex;align-items:center;gap:8px;padding:8px 14px;
   border-bottom:0.5px solid var(--dsw-alias-border-l2)}
 .dshgn_notePath{flex:1;min-width:0;font-size:11px;color:var(--dsw-alias-label-tertiary);
@@ -13503,6 +13512,14 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 .dshgn_editorHint{margin-left:auto;opacity:.75}
 .dshgn_readFoot{color:var(--dsw-alias-label-tertiary)}
 .dshgn_readPos{flex:none;font-size:10px;color:var(--dsw-alias-label-dimmed)}
+/* \u6B63\u6587\u6EDA\u4E0B\u53BB\u4E4B\u540E\u6D6E\u5728\u53F3\u4E0B\u89D2\u90A3\u9897\uFF1A\u53EA\u5360\u4E00\u5C0F\u5757\uFF0C\u4E0D\u6321\u5B57\u4E5F\u4E0D\u6324\u6392\u7248 */
+.dshgn_toTop{position:absolute;right:18px;bottom:16px;z-index:20;appearance:none;
+  display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:999px;
+  border:0.5px solid var(--dsw-alias-border-l2);background:var(--dshgn-surface);
+  color:var(--dsw-alias-label-secondary);font:inherit;font-size:11px;line-height:18px;
+  cursor:pointer;box-shadow:0 2px 8px rgba(var(--dshgn-tintRgb),.16)}
+.dshgn_toTop:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-brand-primary)}
+.dshgn_toTop:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 
 .dshgn_linkPick{display:flex;flex-wrap:wrap;gap:6px;padding:6px clamp(16px,3vw,32px);border-top:0.5px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-secondary);max-height:112px;overflow-y:auto}
 .dshgn_linkPickItem{display:inline-flex;align-items:center;gap:5px;appearance:none;max-width:100%;padding:2px 9px;border:0.5px solid var(--dsw-alias-border-l1);border-radius:999px;background:var(--dsw-alias-bg-primary);font:inherit;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary);cursor:pointer}
@@ -22309,6 +22326,7 @@ function NotePane(props) {
   const [outlinksOpen, setOutlinksOpen] = h2(false);
   const scrollRef = A2(null);
   const outlineRef = A2(null);
+  const [scrollPast, setScrollPast] = h2(false);
   const [textScale, setTextScale] = h2(() => {
     try {
       const saved = window.localStorage.getItem("dshgn.textScale");
@@ -22828,6 +22846,7 @@ function NotePane(props) {
     if (!host || currentPathOf === "") return void 0;
     const want = scrollMarkOf(currentPathOf);
     scrollTopRef.current = want;
+    setScrollPast(toTopVisible(want));
     if (want <= 0) {
       host.scrollTop = 0;
       return void 0;
@@ -22851,6 +22870,8 @@ function NotePane(props) {
     const onScroll = () => {
       if (restoringRef.current) return;
       scrollTopRef.current = host.scrollTop;
+      const show = toTopVisible(host.scrollTop);
+      setScrollPast((prev) => prev === show ? prev : show);
       if (saveTimerRef.current !== 0) return;
       saveTimerRef.current = window.setTimeout(() => {
         saveTimerRef.current = 0;
@@ -23993,6 +24014,25 @@ ${t4("tree.menuReveal")}` : absolute,
         )
       )
     ),
+    // 读到后面想回开头：滚过一屏才摆，摆在右下角，按一下平滑回到顶上。
+    // 编辑态有自己那块 textarea（滚动不在正文容器上），所以那里不摆。
+    !editing && scrollPast ? h4(
+      "button",
+      {
+        type: "button",
+        className: "dshgn_toTop",
+        title: t4("reader.toTop"),
+        onClick: () => {
+          const host = scrollRef.current;
+          if (host) host.scrollTo({ top: 0, behavior: "smooth" });
+          scrollTopRef.current = 0;
+          if (currentPathOf !== "") writeScrollMark(currentPathOf, 0);
+          setScrollPast(false);
+        }
+      },
+      h4(Icon, { name: "up", size: 11 }),
+      t4("reader.toTop")
+    ) : null,
     // 放大查看的遮罩。点空白处关掉（图片自己 stopPropagation，点图不关），
     // 右上角那颗 × 是给「不知道该按 Esc」的人留的。
     zoomed !== null ? h4(ZoomOverlay, {

@@ -15749,3 +15749,116 @@ test('大纲一长，亮着的那一节自己滚到看得见的地方，正文�
     await sleep(300)
   }
 })
+
+test('滚过一屏才摆「回到顶部」，脏数字一律不摆', () => {
+  const show = panel.__internals.toTopVisible
+  assert.equal(typeof show, 'function', 'toTopVisible 该导出来')
+  const after = panel.__internals.TO_TOP_AFTER
+  assert.equal(typeof after, 'number', '阈值该导出来')
+  assert.ok(after > 0, '阈值得是个正数')
+
+  // 一屏以内不摆：小笔记一进来就飘一颗按钮，等于凭空多一件要忽略的东西
+  assert.equal(show(0), false, '顶上不摆')
+  assert.equal(show(after), false, '刚到阈值还不摆')
+  assert.equal(show(after + 1), true, '过一点点就摆')
+  assert.equal(show(5000), true, '滚得很远当然摆')
+
+  // 脏输入不摆：宁可少一颗按钮，也不能因为 NaN 让按钮闪
+  assert.equal(show(undefined), false, '没数字不摆')
+  assert.equal(show(null), false, 'null 不摆')
+  assert.equal(show('1200'), true, '数字串按数字算')
+  assert.equal(show('不是数字'), false, '认不出的不摆')
+})
+test('正文滚下去之后右下角浮出「回到顶部」，按一下收回去', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    const backBtn = window.document.querySelector('.dshgn_noteBack')
+    if (backBtn) {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    }
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  const box = await waitFor(() => window.document.querySelector('.dshgn_search'), 5000, '搜索框')
+  const setInput = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  setInput.call(box, '')
+  box.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(260)
+
+  const lines = ['# 回到顶部验收', '']
+  for (let i = 1; i <= 6; i += 1) lines.push('第' + i + '段话，凑够一屏。', '')
+  const res = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '回到顶部验收',
+      content: lines.join(String.fromCharCode(10)),
+      withDatePrefix: false,
+      requestId: 'seed-to-top',
+    }),
+  })
+  assert.equal((await res.json()).path, '随手记/回到顶部验收.md')
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  const card = await waitFor(
+    () => {
+      const all = Array.from(window.document.querySelectorAll('.dshgn_card'))
+      return all.find((el) => (el.textContent || '').includes('回到顶部验收')) || null
+    },
+    8000,
+    '列表里的那一篇',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+
+  const scroller = await waitFor(() => window.document.querySelector('.dshgn_scroll'), 8000, '正文容器')
+  // 还没滚：不摆
+  assert.equal(window.document.querySelector('.dshgn_toTop'), null, '刚打开不摆')
+
+  // 等 effect 把 scroll 监听挂上再发事件：waitFor 只等到节点出现，监听是提交之后再挂的。
+  await sleep(400)
+  // jsdom 没有真排版，但 scrollTop 会存值；事件得自己发，面板就是靠这个事件判断的。
+  // 每轮都重发一次：万一第一下正好落在监听挂上之前，后面几轮还能补上。
+  const btn = await waitFor(
+    () => {
+      const hosts = Array.from(window.document.querySelectorAll('.dshgn_scroll'))
+      for (const host of hosts) {
+        host.scrollTop = 900
+        host.dispatchEvent(new window.Event('scroll'))
+      }
+      return window.document.querySelector('.dshgn_toTop')
+    },
+    8000,
+    '滚下去之后该浮出那颗按钮（滚动记录：' + String(window.localStorage.getItem('dshgn.scroll') || '空') + '；滚动区 ' + String(window.document.querySelectorAll('.dshgn_scroll').length) + ' 个）',
+  )
+  assert.equal(String(btn.textContent || '').includes('回到顶部'), true, '按钮上写着「回到顶部」')
+  assert.equal(btn.getAttribute('title'), '回到顶部', 'title 也说清是干什么的')
+
+  // 滚回顶上：按钮自己收回去，不用等下一次滚动
+  scroller.scrollTop = 0
+  btn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_toTop') === null, 5000, '按完该收回去')
+
+  const back = window.document.querySelector('.dshgn_noteBack')
+  if (back) {
+    back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+  const allBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find(
+      (el) => (el.querySelector('.dshgn_treeName') || {}).textContent === '全部笔记',
+    )
+  if (allBtn() !== undefined) {
+    allBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+})

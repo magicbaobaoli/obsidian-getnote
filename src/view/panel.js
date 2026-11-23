@@ -754,6 +754,7 @@ async function saveFile(url, filename) {
         'reader.frontmatter': '属性',
         'reader.words': '{n} 字',
         'reader.minutes': '约 {n} 分钟读完',
+        'reader.toTop': '回到顶部',
         'import.title': '一次性导入',
         'import.desc':
           '趁得到大脑会员还有效，把云端笔记全量抓成本地 Markdown。之后会员到期、断网、甚至服务下线，这里的笔记都照常能读能改 —— 导入是本插件唯一会联网的动作。',
@@ -1401,6 +1402,7 @@ async function saveFile(url, filename) {
         'reader.frontmatter': 'Properties',
         'reader.words': '{n} words',
         'reader.minutes': 'About {n} min read',
+        'reader.toTop': 'Back to top',
         'import.title': 'One-time import',
         'import.desc':
           'While your subscription still works, pull every cloud note down as local Markdown. Afterwards the notes stay readable and editable — this is the only action in the plugin that touches the network.',
@@ -2028,6 +2030,7 @@ async function saveFile(url, filename) {
         'reader.frontmatter': 'Eigenschappen',
         'reader.words': '{n} woorden',
         'reader.minutes': 'Ongeveer {n} min leestijd',
+        'reader.toTop': 'Terug naar boven',
         'import.title': 'Eenmalige import',
         'import.desc': 'Zolang je abonnement loopt, haal je elke cloudnotitie als lokale Markdown binnen. Daarna blijven de notities leesbaar en bewerkbaar — dit is de enige actie in de plug-in die het netwerk gebruikt.',
         'import.loggedIn': 'Verbonden',
@@ -3363,6 +3366,19 @@ async function saveFile(url, filename) {
       const own = host.querySelectorAll('.dshgn_h')
       if (own.length > 0) return Array.from(own)
       return Array.from(host.querySelectorAll('h1, h2, h3, h4, h5, h6'))
+    }
+
+    /**
+     * 正文滚过这么多像素才摆「回到顶部」。
+     *
+     * 一屏以内的小笔记一进来就有一颗按钮飘在右下角，等于凭空多一件要忽略的东西；
+     * 而两三行就够不着的长文，滚到那个位置时用户已经明确想往下读了。
+     */
+    const TO_TOP_AFTER = 320
+    function toTopVisible(scrollTop) {
+      const top = Number(scrollTop)
+      if (!Number.isFinite(top)) return false
+      return top > TO_TOP_AFTER
     }
 
     /**
@@ -5837,7 +5853,7 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 .dshgn_cardTagMore[data-open="true"]{border-style:solid;color:var(--dsw-alias-label-secondary)}
 .dshgn_cardExcerpt{font-size:11px;line-height:15px;color:var(--dsw-alias-label-tertiary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dshgn_note{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
+.dshgn_note{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;position:relative}
 .dshgn_noteHead{flex:none;display:flex;align-items:center;gap:8px;padding:8px 14px;
   border-bottom:0.5px solid var(--dsw-alias-border-l2)}
 .dshgn_notePath{flex:1;min-width:0;font-size:11px;color:var(--dsw-alias-label-tertiary);
@@ -5978,6 +5994,14 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 .dshgn_editorHint{margin-left:auto;opacity:.75}
 .dshgn_readFoot{color:var(--dsw-alias-label-tertiary)}
 .dshgn_readPos{flex:none;font-size:10px;color:var(--dsw-alias-label-dimmed)}
+/* 正文滚下去之后浮在右下角那颗：只占一小块，不挡字也不挤排版 */
+.dshgn_toTop{position:absolute;right:18px;bottom:16px;z-index:20;appearance:none;
+  display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:999px;
+  border:0.5px solid var(--dsw-alias-border-l2);background:var(--dshgn-surface);
+  color:var(--dsw-alias-label-secondary);font:inherit;font-size:11px;line-height:18px;
+  cursor:pointer;box-shadow:0 2px 8px rgba(var(--dshgn-tintRgb),.16)}
+.dshgn_toTop:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-brand-primary)}
+.dshgn_toTop:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 
 .dshgn_linkPick{display:flex;flex-wrap:wrap;gap:6px;padding:6px clamp(16px,3vw,32px);border-top:0.5px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-secondary);max-height:112px;overflow-y:auto}
 .dshgn_linkPickItem{display:inline-flex;align-items:center;gap:5px;appearance:none;max-width:100%;padding:2px 9px;border:0.5px solid var(--dsw-alias-border-l1);border-radius:999px;background:var(--dsw-alias-bg-primary);font:inherit;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary);cursor:pointer}
@@ -16509,6 +16533,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 大纲那一列自己也是个滚动区（长笔记几十个小节，超过 220px 就截断），
       // 它得跟着「现在读到哪一节」自己挪，不然亮着的那条躲在列表外面等于没亮。
       const outlineRef = React.useRef(null)
+      // 正文滚下去之后右下角浮一颗「回到顶部」：几千字的逐字稿读到末尾，
+      // 想回开头只能一路滚回去，或者先用大纲点第一节（还得这篇有标题）。
+      const [scrollPast, setScrollPast] = React.useState(false)
       // 字号三档：阅读长文（尤其逐字稿）时 13.5px 偏小，但直接调大又会让
       // 习惯默认的人觉得挤。做成三档自己选，存在 localStorage 里——
       // 这是纯本机观感偏好，没必要走一趟 host 写配置文件。
@@ -17263,6 +17290,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         if (!host || currentPathOf === '') return undefined
         const want = scrollMarkOf(currentPathOf)
         scrollTopRef.current = want
+        // 换一篇就把那颗按钮收起来：上一篇滚过一半，不代表这一篇也要摆。
+        setScrollPast(toTopVisible(want))
         // 没记过（或者上次就停在顶上）的这一篇从头开始。必须显式归零：
         // 正文容器是同一个 DOM 节点，不清的话会停在上一篇读到的地方。
         if (want <= 0) {
@@ -17292,6 +17321,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         const onScroll = () => {
           if (restoringRef.current) return
           scrollTopRef.current = host.scrollTop
+          const show = toTopVisible(host.scrollTop)
+          setScrollPast((prev) => (prev === show ? prev : show))
           if (saveTimerRef.current !== 0) return
           saveTimerRef.current = window.setTimeout(() => {
             saveTimerRef.current = 0
@@ -18589,6 +18620,28 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                   ),
                 ),
             ),
+        // 读到后面想回开头：滚过一屏才摆，摆在右下角，按一下平滑回到顶上。
+        // 编辑态有自己那块 textarea（滚动不在正文容器上），所以那里不摆。
+        !editing && scrollPast
+          ? h(
+              'button',
+              {
+                type: 'button',
+                className: 'dshgn_toTop',
+                title: t('reader.toTop'),
+                onClick: () => {
+                  const host = scrollRef.current
+                  if (host) host.scrollTo({ top: 0, behavior: 'smooth' })
+                  // 顺手把「上次读到哪儿」也归零：下次打开这一篇就该从顶上开始。
+                  scrollTopRef.current = 0
+                  if (currentPathOf !== '') writeScrollMark(currentPathOf, 0)
+                  setScrollPast(false)
+                },
+              },
+              h(Icon, { name: 'up', size: 11 }),
+              t('reader.toTop'),
+            )
+          : null,
         // 放大查看的遮罩。点空白处关掉（图片自己 stopPropagation，点图不关），
         // 右上角那颗 × 是给「不知道该按 Esc」的人留的。
         zoomed !== null
@@ -19404,6 +19457,8 @@ export const __internals = {
   isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote, scrollToFootnoteRef, parseImageSize, renderParagraph, blockTextOf, markdownLinkTarget,
   tagBodyOf, ZoomOverlay, continueListLine, indentLines, wrapInline, linkPaste, wikilinkQueryAt, wikilinkMatches, tagQueryAt, tagMatches, findInBody, findAllBodyMatches, countTextMatches, findInBodyMatch, findInText, textHasParts,
       outlineScrollDelta,
+      toTopVisible,
+      TO_TOP_AFTER,
       readScrollMarks, writeScrollMark, scrollMarkOf, SCROLL_KEY,
   readDrafts, draftOf, writeDraft, dropDraft, DRAFT_KEY, DRAFT_KEEP, DRAFT_MAX,
   readNoteScales, noteScaleOf, writeNoteScale, NOTE_SCALE_KEY, NOTE_SCALE_KEEP,
