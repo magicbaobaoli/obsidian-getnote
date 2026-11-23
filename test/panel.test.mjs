@@ -15408,6 +15408,22 @@ test('反链一多先摆前四条，底下那颗写着还有几条，点开就�
   more().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
   await waitFor(() => items().length === 4, 5000, '再点一下收回四条：' + items().length)
 
+  // 收尾：退回列表、点「全部笔记」，别把打开状态留给下一条用例
+  const back = window.document.querySelector('.dshgn_noteBack')
+  if (back) {
+    back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+  const allBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find(
+      (el) => (el.querySelector('.dshgn_treeName') || {}).textContent === '全部笔记',
+    )
+  if (allBtn() !== undefined) {
+    allBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+})
+
 test('搜到的比一次给的多时，底下那颗能把剩下的接上来', async () => {
   const rootNode = () => window.document.querySelector('.dshgn_root')
   await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
@@ -15433,9 +15449,9 @@ test('搜到的比一次给的多时，底下那颗能把剩下的接上来', as
   panel.setConfirmDialog(() => Promise.resolve(true))
   try {
     for (let i = 0; i < 4; i += 1) {
-      const back = window.document.querySelector('.dshgn_noteBack')
-      if (!back) break
-      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      const backBtn = window.document.querySelector('.dshgn_noteBack')
+      if (!backBtn) break
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
       await sleep(200)
     }
   } finally {
@@ -15476,7 +15492,7 @@ test('搜到的比一次给的多时，底下那颗能把剩下的接上来', as
   const cards = () => window.document.querySelectorAll('.dshgn_card').length
   assert.equal(cards(), 40, '一次先给 40 条，实际 ' + cards())
 
-  // 底下那颗要把「还有多少」说清，而不是只写一个「更多」
+  // 底下那颗要把「还能多接几篇」说清，而不是只写一个「更多」
   const moreRow = () => window.document.querySelector('.dshgn_searchMoreRow')
   assert.ok(moreRow() !== null, '被截的时候底下要有一颗继续看的按钮')
   const moreBtn = moreRow().querySelector('.dshgn_btn')
@@ -15486,7 +15502,7 @@ test('搜到的比一次给的多时，底下那颗能把剩下的接上来', as
     '按钮上写着这次能多接几篇：' + String(moreBtn.textContent || ''),
   )
 
-  // 按一下：把这次搜索的条数翻一倍重取，词不变
+  // 按一下：把这次搜索的条数往上加一档重取，词一个字不动
   moreBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
   await waitFor(() => cards() === 45, 10000, '按一下之后剩下五篇要接上来：' + cards())
   assert.equal(cards(), 45, '45 篇都该在列表里，实际 ' + cards())
@@ -15502,19 +15518,4 @@ test('搜到的比一次给的多时，底下那颗能把剩下的接上来', as
   await clickTab('笔记')
 })
 
-  // 收尾：退回列表、点「全部笔记」，别把打开状态留给下一条用例
-  const back = window.document.querySelector('.dshgn_noteBack')
-  if (back) {
-    back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
-    await sleep(300)
-  }
-  const allBtn = () =>
-    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find(
-      (el) => (el.querySelector('.dshgn_treeName') || {}).textContent === '全部笔记',
-    )
-  if (allBtn() !== undefined) {
-    allBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
-    await sleep(300)
-  }
-})
 
