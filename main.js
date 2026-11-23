@@ -11437,6 +11437,17 @@ function headingNodes(host) {
   if (own.length > 0) return Array.from(own);
   return Array.from(host.querySelectorAll("h1, h2, h3, h4, h5, h6"));
 }
+function outlineScrollDelta(hostRect, rowRect) {
+  if (!hostRect || !rowRect) return 0;
+  const top = Number(hostRect.top) || 0;
+  const height = Number(hostRect.height) || 0;
+  const rowTop = Number(rowRect.top) || 0;
+  const rowHeight = Number(rowRect.height) || 0;
+  if (height <= 0) return 0;
+  if (rowTop >= top && rowTop + rowHeight <= top + height) return 0;
+  const center = top + Math.round(height / 2 - rowHeight / 2);
+  return Math.round(rowTop - center);
+}
 function frontmatterText(value) {
   if (value === null || value === void 0) return "";
   if (Array.isArray(value)) {
@@ -22297,6 +22308,7 @@ function NotePane(props) {
   const [outlinks, setOutlinks] = h2(null);
   const [outlinksOpen, setOutlinksOpen] = h2(false);
   const scrollRef = A2(null);
+  const outlineRef = A2(null);
   const [textScale, setTextScale] = h2(() => {
     try {
       const saved = window.localStorage.getItem("dshgn.textScale");
@@ -22882,6 +22894,16 @@ function NotePane(props) {
       host.removeEventListener("scroll", onScroll);
     };
   }, [currentPathOf]);
+  y2(() => {
+    const host = outlineRef.current;
+    if (!host || activeHeading < 0) return;
+    const rows = host.querySelectorAll(".dshgn_outlineRow");
+    const row = rows[activeHeading];
+    if (!row) return;
+    const delta = outlineScrollDelta(host.getBoundingClientRect(), row.getBoundingClientRect());
+    if (delta === 0) return;
+    host.scrollTop = Math.max(0, host.scrollTop + delta);
+  }, [activeHeading]);
   y2(() => {
     if (anchorRequest === null || anchorRequest === void 0) return;
     if (String(anchorRequest.path || "") !== "" && String(anchorRequest.path) !== String(currentPath || "")) return;
@@ -23729,7 +23751,7 @@ ${t4("tree.menuReveal")}` : absolute,
         ),
         showOutline ? h4(
           "div",
-          { className: "dshgn_outlineList" },
+          { className: "dshgn_outlineList", ref: outlineRef },
           current.outline.map(
             (item, index) => (
               // 一行两件事：点标题跳过去，点右边那颗抄一条指向这一节的

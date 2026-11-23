@@ -15622,3 +15622,130 @@ test('出链一多先摆前六颗，最后那颗写着还有几条，点开就�
 })
 
 
+
+test('大纲该滚多少：整条看得见就不动，看不见就往中间挪', () => {
+  const delta = panel.__internals.outlineScrollDelta
+  assert.equal(typeof delta, 'function', 'outlineScrollDelta 该导出来')
+
+  const host = { top: 0, height: 220 }
+  // 整条在可见区里（含贴边）→ 一下都不动，否则每滚一下就居中，列表会抖
+  assert.equal(delta(host, { top: 0, height: 30 }), 0, '贴着顶边也算看得见')
+  assert.equal(delta(host, { top: 190, height: 30 }), 0, '贴着底边也算看得见')
+  assert.equal(delta(host, { top: 60, height: 30 }), 0, '正中间当然不动')
+
+  // 在可见区下方：往下滚（正数），落到「上下留白一样多」的位置
+  // 第 11 行 top = 330、高 30；容器 220 高，居中后行顶该在 95 左右 → 滚 235
+  assert.equal(delta(host, { top: 330, height: 30 }), 235, '底下那条往下滚到中间')
+  // 在可见区上方：往上滚（负数）
+  assert.equal(delta(host, { top: -100, height: 30 }), -195, '上面那条往上滚到中间')
+
+  // 容器不在视口顶上时按相对位置算，不是绝对坐标
+  assert.equal(delta({ top: 500, height: 220 }, { top: 830, height: 30 }), 235, '容器挪下去，答案不变')
+
+  // 脏输入一律「不动」：宁可不滚，也不能算出 NaN 把列表甩到天边
+  assert.equal(delta(null, { top: 10, height: 30 }), 0, '没有容器就不动')
+  assert.equal(delta(host, null), 0, '没有那一行就不动')
+  assert.equal(delta({ top: 0, height: 0 }, { top: 100, height: 30 }), 0, '容器没高度就没「看得见」')
+  assert.equal(delta({ top: 'x', height: 'y' }, { top: 10, height: 30 }), 0, '尺寸不是数字也不动')
+})
+test('大纲一长，亮着的那一节自己滚到看得见的地方，正文那边一动不动', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    const backBtn = window.document.querySelector('.dshgn_noteBack')
+    if (backBtn) {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    }
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  const box = await waitFor(() => window.document.querySelector('.dshgn_search'), 5000, '搜索框')
+  const setInput = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  setInput.call(box, '')
+  box.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(260)
+
+  // 十二个小节：大纲那一列最高 220px，摆不下这么多行，非滚不可
+  const lines = ['# 大纲滚动验收', '']
+  for (let i = 1; i <= 11; i += 1) {
+    lines.push('## 第' + i + '节', '', '第' + i + '节的话。', '')
+  }
+  const res = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '大纲滚动验收',
+      content: lines.join(String.fromCharCode(10)),
+      withDatePrefix: false,
+      requestId: 'seed-outline-scroll',
+    }),
+  })
+  assert.equal((await res.json()).path, '随手记/大纲滚动验收.md')
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  const card = await waitFor(
+    () => {
+      const all = Array.from(window.document.querySelectorAll('.dshgn_card'))
+      return all.find((el) => (el.textContent || '').includes('大纲滚动验收')) || null
+    },
+    8000,
+    '列表里的那一篇',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+
+  await waitFor(
+    () => {
+      const all = Array.from(window.document.querySelectorAll('.dshgn_outlineRow'))
+      return all.length >= 12 ? all : null
+    },
+    8000,
+    '大纲里该有十二行',
+  )
+
+  // jsdom 没有排版：所有 rect 都是 0，列表滚不滚得动也无从判断。所以分两段验：
+  // 「该滚多少」交给纯函数单测（上面那几条），「这一页真的摆了个能滚的列表、
+  // 点一下不会崩」用真渲染验。位置换算的数学不依赖 DOM，不值得为它伪造整套排版。
+  const styleText = (() => {
+    const el = window.document.getElementById('dshgn-style')
+    return el === null ? '' : String(el.textContent || '')
+  })()
+  assert.ok(
+    /\.dshgn_outlineList\{[^}]*max-height:220px[^}]*overflow-y:auto/.test(styleText),
+    '大纲列表得自己滚：max-height 220 + overflow-y auto',
+  )
+
+  const listEl = window.document.querySelector('.dshgn_outlineList')
+  assert.ok(listEl !== null, '大纲外面应该有那个可滚的列表')
+  const rowsNow = () => Array.from(window.document.querySelectorAll('.dshgn_outlineRow'))
+  assert.equal(rowsNow().length, 12, '十二个小节就该摆十二行')
+
+  // 点最后一条：不崩、行还在（滚到哪儿由上面那个纯函数保证，这里只管接线没断）
+  const items = () => Array.from(window.document.querySelectorAll('.dshgn_outlineItem'))
+  items()[11].dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+  assert.equal(window.document.querySelectorAll('.dshgn_outlineList').length, 1, '点完大纲还该在')
+  assert.equal(rowsNow().length, 12, '点完十二行还在')
+
+  const back = window.document.querySelector('.dshgn_noteBack')
+  if (back) {
+    back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+  const allBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find(
+      (el) => (el.querySelector('.dshgn_treeName') || {}).textContent === '全部笔记',
+    )
+  if (allBtn() !== undefined) {
+    allBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+})

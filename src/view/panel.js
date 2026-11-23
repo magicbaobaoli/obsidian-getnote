@@ -3366,6 +3366,28 @@ async function saveFile(url, filename) {
     }
 
     /**
+     * 大纲列表要滚多少，才让亮着的那一条落进可见区。
+     *
+     * 传进来的是两边的视口坐标（getBoundingClientRect 那套），返回「相对现在
+     * 还要再滚多少」：负数往上、正数往下、0 表示不用动。整条已经在可见区里
+     * 就返回 0——每滚一下就居中，列表会抖得点不准。尺寸缺了或者不是数字，
+     * 一律当「不用动」，宁可不动也不能算出 NaN 把列表甩到天边。
+     */
+    function outlineScrollDelta(hostRect, rowRect) {
+      if (!hostRect || !rowRect) return 0
+      const top = Number(hostRect.top) || 0
+      const height = Number(hostRect.height) || 0
+      const rowTop = Number(rowRect.top) || 0
+      const rowHeight = Number(rowRect.height) || 0
+      // 容器没有高度（还没排版、或者根本没渲染出来）就没「看得见」这回事。
+      if (height <= 0) return 0
+      if (rowTop >= top && rowTop + rowHeight <= top + height) return 0
+      // 行在可见区下方时要往下滚（scrollTop 变大），所以是「行位置减中心」。
+      const center = top + Math.round(height / 2 - rowHeight / 2)
+      return Math.round(rowTop - center)
+    }
+
+    /**
      * frontmatter 里的一个值 → 一行文字。
      *
      * 我们自己写出去的头部只有字符串和字符串数组两种形状（见 core/vault.js 的
@@ -16484,6 +16506,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 而多数时候要点的就是最前面那几个。
       const [outlinksOpen, setOutlinksOpen] = React.useState(false)
       const scrollRef = React.useRef(null)
+      // 大纲那一列自己也是个滚动区（长笔记几十个小节，超过 220px 就截断），
+      // 它得跟着「现在读到哪一节」自己挪，不然亮着的那条躲在列表外面等于没亮。
+      const outlineRef = React.useRef(null)
       // 字号三档：阅读长文（尤其逐字稿）时 13.5px 偏小，但直接调大又会让
       // 习惯默认的人觉得挤。做成三档自己选，存在 localStorage 里——
       // 这是纯本机观感偏好，没必要走一趟 host 写配置文件。
@@ -17315,6 +17340,21 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           host.removeEventListener('scroll', onScroll)
         }
       }, [currentPathOf])
+
+      // 大纲自己也得跟着挪：长笔记几十个小节，那个列表超过 220px 就自己滚，
+      // 亮着的那条一落到可见区外面，「现在读到哪一节」就等于没告诉人。
+      // 只改这个列表自己的 scrollTop，正文那边一点都不动。
+      React.useEffect(() => {
+        const host = outlineRef.current
+        if (!host || activeHeading < 0) return
+        const rows = host.querySelectorAll('.dshgn_outlineRow')
+        const row = rows[activeHeading]
+        if (!row) return
+        // 位置换算抽成纯函数，好单测：这里只管把它算出来的那点距离用上。
+        const delta = outlineScrollDelta(host.getBoundingClientRect(), row.getBoundingClientRect())
+        if (delta === 0) return
+        host.scrollTop = Math.max(0, host.scrollTop + delta)
+      }, [activeHeading])
 
       // 从 `[[笔记#小节]]` 跳进来时滚到那一节。
       //
@@ -18265,7 +18305,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                     showOutline
                       ? h(
                           'div',
-                          { className: 'dshgn_outlineList' },
+                          { className: 'dshgn_outlineList', ref: outlineRef },
                           current.outline.map((item, index) =>
                             // 一行两件事：点标题跳过去，点右边那颗抄一条指向这一节的
                             // 链接。以前想引用某一节得自己拼 [[笔记#小节]]，拼错了
@@ -19363,6 +19403,7 @@ export const __internals = {
   reportSync, dailyTemplateOf, frontmatterText, bodyOfSnapshot, isTagKey, FollowCard, parseTable, countWords, readingMinutes, diffLineCounts,
   isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote, scrollToFootnoteRef, parseImageSize, renderParagraph, blockTextOf, markdownLinkTarget,
   tagBodyOf, ZoomOverlay, continueListLine, indentLines, wrapInline, linkPaste, wikilinkQueryAt, wikilinkMatches, tagQueryAt, tagMatches, findInBody, findAllBodyMatches, countTextMatches, findInBodyMatch, findInText, textHasParts,
+      outlineScrollDelta,
       readScrollMarks, writeScrollMark, scrollMarkOf, SCROLL_KEY,
   readDrafts, draftOf, writeDraft, dropDraft, DRAFT_KEY, DRAFT_KEEP, DRAFT_MAX,
   readNoteScales, noteScaleOf, writeNoteScale, NOTE_SCALE_KEY, NOTE_SCALE_KEEP,
