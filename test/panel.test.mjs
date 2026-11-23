@@ -15226,8 +15226,13 @@ test('历史列表按设置里的「留几版」截断，撞到上限时头部�
   // 那三条，所以轮询到真的只剩两条为止，别拿旧 DOM 当结果。
   await waitFor(() => itemsNow().length === 2, 8000, '上限压到 2 版之后列表只剩两条：' + itemsNow().length)
   assert.equal(itemsNow().length, 2, '上限是 2 版，列表只该给 2 条：' + itemsNow().length)
-  const cap = window.document.querySelector('.dshgn_historyCap')
-  assert.ok(cap !== null, '撞到上限时头部要说一句')
+  // 那句解释要等面板手上的 status 也换成新的才画得出来（historyCap 取自 status），
+  // 列表先到位、解释晚一步是正常的，别拿旧 DOM 当结论。
+  const cap = await waitFor(
+    () => window.document.querySelector('.dshgn_historyCap'),
+    8000,
+    '撞到上限时头部要说一句',
+  )
   assert.ok(
     String(cap.textContent || '').includes('最多留 2 版'),
     '要说清现在只留几版：' + String(cap.textContent || ''),
@@ -15313,5 +15318,109 @@ test('面板里那几块白都压暗了一档，深色下也不回落成白的',
     3000,
     '切回浅色后撤掉行内变量',
   )
+})
+
+/**
+ * 反链一多就把后面几条收起来。
+ *
+ * 一屏里摊十几条「谁提到过我」，正文会被挤成一条缝；而多数时候用户只想看
+ * 最近提到的那两三篇。收起来的那几条不是藏了——底下那颗按钮直接写着还有几条。
+ */
+test('反链一多先摆前四条，底下那颗写着还有几条，点开就能看全部', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const backBtn = window.document.querySelector('.dshgn_noteBack')
+  if (backBtn) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    try {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+  }
+
+  const seed = async (title, content, requestId) => {
+    const res = await realFetch(server.origin + '/getnote/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({ dir: '随手记', title, content, withDatePrefix: false, requestId }),
+    })
+    const json = await res.json()
+    assert.equal(json.path, '随手记/' + title + '.md')
+    return json.path
+  }
+
+  const target = await seed('反链收起目标', '# 反链收起目标\n\n正文\n', 'seed-bl-fold-target')
+  for (let i = 1; i <= 6; i += 1) {
+    await seed(
+      '反链收起来源' + i,
+      ['# 反链收起来源' + i, '', '第 ' + i + ' 篇里提到 [[反链收起目标]] 一句', ''].join('\n'),
+      'seed-bl-fold-src-' + i,
+    )
+  }
+
+  await clickTab('笔记')
+  // 上一条用例可能把左栏筛在某个目录上、中栏搜索框里也可能还留着词：
+  // 不先清掉，新建的这一篇根本不会出现在列表里。
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox !== null && searchBox.value !== '') {
+    searchBox.value = ''
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(300)
+  }
+  const allRow = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find(
+      (el) => (el.querySelector('.dshgn_treeName') || {}).textContent === '全部笔记',
+    )
+  if (allRow() !== undefined) {
+    allRow().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(200)
+  }
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+  const card = await waitFor(
+    () => Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === target),
+    10000,
+    '目标笔记出现在列表里：' +
+      JSON.stringify(Array.from(window.document.querySelectorAll('.dshgn_cardTitle')).map((el) => (el.textContent || '').trim()).slice(0, 12)),
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 8000, '目标笔记打开')
+
+  const items = () => Array.from(window.document.querySelectorAll('.dshgn_backlinkItem'))
+  await waitFor(() => items().length === 4, 10000, '六条反链先只摆四条：' + items().length)
+  assert.equal(items().length, 4, '默认只摆前四条，实际 ' + items().length)
+
+  const more = () => window.document.querySelector('.dshgn_backlinkMore')
+  assert.ok(more() !== null, '收起来的那几条要有颗按钮兜着')
+  assert.equal(String(more().textContent || '').trim(), '+2', '按钮上直接写着还有几条')
+  assert.equal(more().getAttribute('aria-expanded'), 'false', '没摊开时 aria-expanded 是 false')
+
+  more().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => items().length === 6, 5000, '点开之后六条全摆出来：' + items().length)
+  assert.equal(String(more().textContent || '').trim(), '收起', '摊开之后按钮变成「收起」')
+  assert.equal(more().getAttribute('aria-expanded'), 'true', '摊开时 aria-expanded 是 true')
+
+  more().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => items().length === 4, 5000, '再点一下收回四条：' + items().length)
+
+  // 收尾：退回列表、点「全部笔记」，别把打开状态留给下一条用例
+  const back = window.document.querySelector('.dshgn_noteBack')
+  if (back) {
+    back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+  const allBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find(
+      (el) => (el.querySelector('.dshgn_treeName') || {}).textContent === '全部笔记',
+    )
+  if (allBtn() !== undefined) {
+    allBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
 })
 

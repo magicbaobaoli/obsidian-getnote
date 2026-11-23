@@ -12855,6 +12855,14 @@ var CSS = `
   outline-offset:1px;border-radius:3px}
 .dshgn_backlinkPath{font-size:10px;color:var(--dsw-alias-label-dimmed);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* \u300C\u8FD8\u6709 N \u5904\u300D\uFF1A\u548C\u5361\u7247\u91CC\u51FA\u94FE\u90A3\u9897\u865A\u7EBF\u80F6\u56CA\u540C\u4E00\u526F\u6837\u5B50\uFF0C\u4F46\u6574\u884C\u5C45\u4E2D\u2014\u2014\u53CD\u94FE\u5E95\u4E0B
+   \u8FD9\u4E00\u884C\u53EA\u6709\u5B83\u4E00\u4E2A\uFF0C\u9760\u5DE6\u4F1A\u663E\u5F97\u50CF\u6CA1\u753B\u5B8C\u3002 */
+.dshgn_backlinkMore{appearance:none;display:block;width:100%;margin:2px 0 0;padding:3px 0;
+  border:0.5px dashed var(--dsw-alias-border-l2);border-radius:999px;background:transparent;
+  color:var(--dsw-alias-label-dimmed);font:inherit;font-size:10px;line-height:1.6;cursor:pointer}
+.dshgn_backlinkMore:hover{color:var(--dsw-alias-label-secondary)}
+.dshgn_backlinkMore:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_backlinkMore[data-open="true"]{border-style:solid;color:var(--dsw-alias-label-secondary)}
 /* \u51FA\u94FE\uFF1A\u8FD9\u7BC7\u81EA\u5DF1\u5F15\u7528\u4E86\u8C01\u3002\u4E00\u6761\u6761\u7AD6\u6392\u592A\u5360\u5730\u65B9\uFF08\u51FA\u94FE\u5E38\u5E38\u5341\u51E0\u6761\uFF09\uFF0C\u6392\u6210\u4E00\u884C\u80F6\u56CA\u3002 */
 .dshgn_outlinks{margin-top:14px;padding-top:10px;border-top:0.5px solid var(--dsw-alias-border-l1)}
 .dshgn_outlinksHead{display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:11px;
@@ -22248,6 +22256,7 @@ function NotePane(props) {
   const [showOutline, setShowOutline] = h2(true);
   const [showProps, setShowProps] = h2(true);
   const [backlinks, setBacklinks] = h2(null);
+  const [backlinksOpen, setBacklinksOpen] = h2(false);
   const [outlinks, setOutlinks] = h2(null);
   const scrollRef = A2(null);
   const [textScale, setTextScale] = h2(() => {
@@ -22648,10 +22657,12 @@ function NotePane(props) {
   y2(() => {
     if (currentPath === null) {
       setBacklinks(null);
+      setBacklinksOpen(false);
       return void 0;
     }
     let alive = true;
     setBacklinks(null);
+    setBacklinksOpen(false);
     const scanLocally = () => {
       void api(`/backlinks?path=${encodeURIComponent(currentPath)}`).then((json) => {
         if (alive) setBacklinks(json);
@@ -22707,6 +22718,10 @@ function NotePane(props) {
     }
     return out;
   }, [outlinks, resolveNote]);
+  const BACKLINK_SHOWN = 4;
+  const backlinkHits = backlinks !== null && Array.isArray(backlinks.hits) ? backlinks.hits : [];
+  const shownBacklinks = backlinksOpen ? backlinkHits : backlinkHits.slice(0, BACKLINK_SHOWN);
+  const hiddenBacklinks = backlinkHits.length - shownBacklinks.length;
   const propRows = T2(() => {
     const data = current !== null && current.frontmatter !== null && typeof current.frontmatter === "object" ? current.frontmatter : {};
     const rows = [];
@@ -23794,7 +23809,7 @@ ${t4("tree.menuReveal")}` : absolute,
         "div",
         { className: "dshgn_backlinks" },
         h4("div", { className: "dshgn_backlinksHead" }, h4(Icon, { name: "link", size: 12 }), t4("note.backlinks"), h4("span", { className: "dshgn_outlineCount" }, String(backlinks.hits.length))),
-        backlinks.hits.map(
+        shownBacklinks.map(
           (hit) => h4(
             "button",
             {
@@ -23840,7 +23855,21 @@ ${t4("tree.menuReveal")}` : absolute,
             ),
             h4("span", { className: "dshgn_backlinkPath" }, hit.path)
           )
-        )
+        ),
+        // 收起来的那几条得有个出口：按钮上直接写着「还有 N 处」，
+        // 摊开之后变成「收起」——和卡片里出链那颗是同一套说法。
+        backlinkHits.length > BACKLINK_SHOWN ? h4(
+          "button",
+          {
+            type: "button",
+            className: "dshgn_backlinkMore",
+            title: backlinksOpen ? t4("note.lessLinks") : t4("note.moreLinks").replace("{n}", String(hiddenBacklinks)),
+            "aria-expanded": backlinksOpen ? "true" : "false",
+            "data-open": backlinksOpen ? "true" : "false",
+            onClick: () => setBacklinksOpen((prev) => !prev)
+          },
+          backlinksOpen ? t4("note.lessLinks") : `+${hiddenBacklinks}`
+        ) : null
       ) : null,
       // 出链：这篇引用了谁。反链回答「谁提到我」，出链回答「我提到过谁」，
       // 两个方向合起来才是用户脑子里的那张网。

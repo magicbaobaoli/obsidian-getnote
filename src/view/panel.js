@@ -5319,6 +5319,14 @@ async function saveFile(url, filename) {
   outline-offset:1px;border-radius:3px}
 .dshgn_backlinkPath{font-size:10px;color:var(--dsw-alias-label-dimmed);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 「还有 N 处」：和卡片里出链那颗虚线胶囊同一副样子，但整行居中——反链底下
+   这一行只有它一个，靠左会显得像没画完。 */
+.dshgn_backlinkMore{appearance:none;display:block;width:100%;margin:2px 0 0;padding:3px 0;
+  border:0.5px dashed var(--dsw-alias-border-l2);border-radius:999px;background:transparent;
+  color:var(--dsw-alias-label-dimmed);font:inherit;font-size:10px;line-height:1.6;cursor:pointer}
+.dshgn_backlinkMore:hover{color:var(--dsw-alias-label-secondary)}
+.dshgn_backlinkMore:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_backlinkMore[data-open="true"]{border-style:solid;color:var(--dsw-alias-label-secondary)}
 /* 出链：这篇自己引用了谁。一条条竖排太占地方（出链常常十几条），排成一行胶囊。 */
 .dshgn_outlinks{margin-top:14px;padding-top:10px;border-top:0.5px solid var(--dsw-alias-border-l1)}
 .dshgn_outlinksHead{display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:11px;
@@ -16416,6 +16424,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 属性区默认展开：头部就三五条，藏起来等于没有；笔记没有头部时整块不渲染。
       const [showProps, setShowProps] = React.useState(true)
       const [backlinks, setBacklinks] = React.useState(null)
+      // 反链一多就先把后面几条收起来：一屏里塞十几条「谁提到过我」会把正文挤得
+      // 只剩一条缝，而多数时候用户想看的只是最近的那两三篇。
+      const [backlinksOpen, setBacklinksOpen] = React.useState(false)
       const [outlinks, setOutlinks] = React.useState(null)
       const scrollRef = React.useRef(null)
       // 字号三档：阅读长文（尤其逐字稿）时 13.5px 偏小，但直接调大又会让
@@ -16983,10 +16994,13 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       React.useEffect(() => {
         if (currentPath === null) {
           setBacklinks(null)
+          setBacklinksOpen(false)
           return undefined
         }
         let alive = true
         setBacklinks(null)
+        // 换一篇就重新收起：上一篇摊开过不等于这一篇也要摊开。
+        setBacklinksOpen(false)
         const scanLocally = () => {
           void api(`/backlinks?path=${encodeURIComponent(currentPath)}`)
             .then((json) => {
@@ -17064,6 +17078,13 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         }
         return out
       }, [outlinks, resolveNote])
+
+      // 反链默认只摆前 4 条：十几条「谁提到过我」摊在正文底下，正文就被挤成
+      // 一条缝了。收起来的那些不是藏了，底下那颗按钮写着还有几条。
+      const BACKLINK_SHOWN = 4
+      const backlinkHits = backlinks !== null && Array.isArray(backlinks.hits) ? backlinks.hits : []
+      const shownBacklinks = backlinksOpen ? backlinkHits : backlinkHits.slice(0, BACKLINK_SHOWN)
+      const hiddenBacklinks = backlinkHits.length - shownBacklinks.length
 
       // 属性区：把 frontmatter 摊成「键 → 值」几行。
       //
@@ -18319,7 +18340,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                     'div',
                     { className: 'dshgn_backlinks' },
                     h('div', { className: 'dshgn_backlinksHead' }, h(Icon, { name: 'link', size: 12 }), t('note.backlinks'), h('span', { className: 'dshgn_outlineCount' }, String(backlinks.hits.length))),
-                    backlinks.hits.map((hit) =>
+                    shownBacklinks.map((hit) =>
                       h(
                         'button',
                         {
@@ -18382,6 +18403,22 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                         h('span', { className: 'dshgn_backlinkPath' }, hit.path),
                       ),
                     ),
+                    // 收起来的那几条得有个出口：按钮上直接写着「还有 N 处」，
+                    // 摊开之后变成「收起」——和卡片里出链那颗是同一套说法。
+                    backlinkHits.length > BACKLINK_SHOWN
+                      ? h(
+                          'button',
+                          {
+                            type: 'button',
+                            className: 'dshgn_backlinkMore',
+                            title: backlinksOpen ? t('note.lessLinks') : t('note.moreLinks').replace('{n}', String(hiddenBacklinks)),
+                            'aria-expanded': backlinksOpen ? 'true' : 'false',
+                            'data-open': backlinksOpen ? 'true' : 'false',
+                            onClick: () => setBacklinksOpen((prev) => !prev),
+                          },
+                          backlinksOpen ? t('note.lessLinks') : `+${hiddenBacklinks}`,
+                        )
+                      : null,
                   )
                 : null,
               // 出链：这篇引用了谁。反链回答「谁提到我」，出链回答「我提到过谁」，
