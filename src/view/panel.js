@@ -579,6 +579,8 @@ async function saveFile(url, filename) {
   // 就这么多还是被条数上限截了，而这两种情况下一步该做的事正相反。
   'search.scan': '扫了 {scanned} 篇，对上 {n} 篇',
   'search.scanCut': '（到条数上限就停了，后面还有没扫到的）',
+  'search.more': '再多看 {n} 篇',
+  'search.scanAll': '（一次最多就这么多，再往下要靠收窄词）',
   // 这次搜索到底按什么在筛：把 tag:/dir:/正文词/排除词拆成几颗能单独点掉的胶囊。
   // 一行灰字提示教的是「怎么写」，这里回答的是「我这次写了什么」。
   'search.bits': '这次按这些筛',
@@ -1248,6 +1250,8 @@ async function saveFile(url, filename) {
         'search.placeholder': 'Search title, body, tags…',
         'search.scan': 'Searched {scanned} notes, {n} matched',
   'search.scanCut': ' (stopped at the result limit, some notes were not searched)',
+        'search.more': 'Show {n} more',
+        'search.scanAll': ' (this is as many as one search returns; narrow the words to go further)',
   'search.bits': 'Filtering by',
   'search.bitsClear': 'Clear all',
   'search.bitDrop': 'Drop this part',
@@ -1874,6 +1878,8 @@ async function saveFile(url, filename) {
         'search.hint': 'Verfijn: tag:spraak · dir:notities · #privé. Alle woorden moeten voorkomen; zet een frase tussen quotes, en - ervoor om hem uit te sluiten.',
         'search.scan': '{scanned} notities doorzocht, {n} gevonden',
         'search.scanCut': ' (gestopt bij de limiet, sommige notities zijn niet doorzocht)',
+        'search.more': 'Nog {n} meer',
+        'search.scanAll': ' (meer geeft één zoekopdracht niet; verfijn de woorden om verder te komen)',
         'search.bits': 'Gefilterd op',
         'search.bitsClear': 'Alles wissen',
         'search.bitDrop': 'Dit stuk weghalen',
@@ -5759,6 +5765,9 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
    而「全部」是那种偶尔才按一次、按了就要一次看完的按钮。 */
 .dshgn_moreRow{display:flex;gap:6px;margin:6px 0 2px}
 .dshgn_moreRow .dshgn_btn{flex:1 1 auto;justify-content:center;min-width:0}
+/* 搜索态那颗「再多看几篇」：它属于上面那行「扫了多少篇」，所以跟着那行的
+   左右边距走，别缩进成列表卡片那样——它说的是搜索本身，不是结果。 */
+.dshgn_searchMoreRow{padding:0 10px 7px;margin:0}
 .dshgn_moreBtn{display:block;width:100%;margin:6px 0 2px;justify-content:center}
 .dshgn_card{display:flex;flex-direction:column;gap:2px;padding:7px 8px;border-radius:8px;cursor:pointer;
   border-left:2px solid transparent;user-select:none}
@@ -6993,6 +7002,11 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 四十篇的时候，人分不清是库里就这么多，还是被截了——两种情况下一步
       // 该做的事完全不同（放宽词 vs 收窄词）。
       const [searchScan, setSearchScan] = React.useState(null)
+      // 这一次搜索要拿多少条。原来写死 40：库里对上 60 篇的时候，后 20 篇
+      // 连入口都没有——扫过、对上了，就是摆不出来。这里记「这一串词拿几条」，
+      // 换词自动回到第一批，按「再多看」才往上加。
+      const [searchTake, setSearchTake] = React.useState({ q: '', n: SEARCH_PAGE })
+      const takeNow = searchTake.q === query.trim() ? searchTake.n : SEARCH_PAGE
       React.useEffect(() => {
         const raw = query.trim()
         if (raw === '') {
@@ -7004,7 +7018,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         setSearching(true)
         let alive = true
         const timer = window.setTimeout(() => {
-          void api(`/search?q=${encodeURIComponent(raw)}&limit=40`)
+          void api(`/search?q=${encodeURIComponent(raw)}&limit=${takeNow}`)
             .then((json) => {
               if (!alive) return
               const list = Array.isArray(json.hits) ? json.hits : []
@@ -7028,7 +7042,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           alive = false
           window.clearTimeout(timer)
         }
-      }, [query])
+      }, [query, takeNow])
       // 搜过什么记下来：等搜索停手一会儿再记，避免把「录」「录音」「录音卡」
       // 这种边打边搜的中间态全存进去。只记词不记结果——结果会过期。
       React.useEffect(() => {
@@ -9657,7 +9671,30 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                   t('search.scan')
                     .replace('{scanned}', String(searchScan.scanned))
                     .replace('{n}', String(searchScan.shown)),
-                  searchScan.truncated ? t('search.scanCut') : null,
+                  searchScan.truncated
+                    ? takeNow >= SEARCH_MAX
+                      ? t('search.scanAll')
+                      : t('search.scanCut')
+                    : null,
+                )
+              : null,
+            // 扫到上限就停的时候，除了说清「停了」，还得给一条继续往下看的
+            // 路——否则那句提示等于告诉你「还有，但你拿不到」。按一下就把这次
+            // 搜索的条数翻一倍重新取，词不变。
+            searchMode && searchScan !== null && searchScan.truncated && searchScan.shown >= takeNow && takeNow < SEARCH_MAX
+              ? h(
+                  'div',
+                  { className: 'dshgn_moreRow dshgn_searchMoreRow' },
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'dshgn_btn dshgn_moreBtn',
+                      onClick: () =>
+                        setSearchTake({ q: query.trim(), n: Math.min(SEARCH_MAX, takeNow + SEARCH_PAGE) }),
+                    },
+                    t('search.more').replace('{n}', String(SEARCH_PAGE)),
+                  ),
                 )
               : null,
             // 筛选条：左栏点了目录或标签之后，中栏只剩一部分卡片，但界面上一直
@@ -15117,6 +15154,13 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
     // 列表一次渲染多少条。一屏大约 8~10 张卡片，60 条足够滚两三屏，
     // 又不至于把几千个 DOM 节点一次性建出来。
     const LIST_PAGE_SIZE = 60
+
+    // 搜索一次先拿多少条。这个数是「一屏多一点」：先给一眼看得完的量，够不上
+    // 再往上加，而不是一上来就把三百条塞进 DOM。
+    const SEARCH_PAGE = 40
+    // 服务端一次最多给三百条（handleSearch 里那个 Math.min），面板这边也跟着
+    // 停在同一个数上：按到底就说「到顶了」，而不是一直按一直没反应。
+    const SEARCH_MAX = 300
 
     // 回收站里「看一眼」最多摊多少字。这一段是用来认出「是不是这一篇」的，
     // 不是让人在这儿读完——真要看全就恢复回去。

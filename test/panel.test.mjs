@@ -15408,6 +15408,100 @@ test('反链一多先摆前四条，底下那颗写着还有几条，点开就�
   more().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
   await waitFor(() => items().length === 4, 5000, '再点一下收回四条：' + items().length)
 
+test('搜到的比一次给的多时，底下那颗能把剩下的接上来', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  const box = () => window.document.querySelector('.dshgn_search')
+  const typeIn = async (text) => {
+    setter.call(box(), text)
+    box().dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(400)
+  }
+
+  // 先退回列表：上一条用例可能还开着某一篇
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = window.document.querySelector('.dshgn_noteBack')
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(200)
+    }
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  await typeIn('')
+
+  // 45 篇都写着同一个词：一次只给 40 条，剩下 5 条得靠底下那颗接上来
+  const word = '搜索更多验收词'
+  const seeds = []
+  for (let i = 0; i < 45; i += 1) {
+    seeds.push(
+      post('/getnote/create', {
+        dir: '搜索更多验收',
+        title: '搜索更多-' + String(i + 1),
+        content: ['# 搜索更多' + String(i + 1), '', '这一篇里写着' + word + '。', ''].join(String.fromCharCode(10)),
+        withDatePrefix: false,
+        requestId: 'seed-search-more-' + String(i),
+      }),
+    )
+  }
+  await Promise.all(seeds)
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(900)
+
+  await typeIn(word)
+  const scan = await waitFor(() => {
+    const el = window.document.querySelector('.dshgn_searchScan')
+    return el !== null && el.getAttribute('data-cut') === 'true' ? el : null
+  }, 10000, '一次给不完时要明说被截了')
+  assert.ok((scan.textContent || '').includes('条数上限'), '被截时要写清停在条数上限：' + scan.textContent)
+
+  const cards = () => window.document.querySelectorAll('.dshgn_card').length
+  assert.equal(cards(), 40, '一次先给 40 条，实际 ' + cards())
+
+  // 底下那颗要把「还有多少」说清，而不是只写一个「更多」
+  const moreRow = () => window.document.querySelector('.dshgn_searchMoreRow')
+  assert.ok(moreRow() !== null, '被截的时候底下要有一颗继续看的按钮')
+  const moreBtn = moreRow().querySelector('.dshgn_btn')
+  assert.ok(moreBtn !== null, '按钮得是颗真按钮')
+  assert.ok(
+    String(moreBtn.textContent || '').includes('再多看 40 篇'),
+    '按钮上写着这次能多接几篇：' + String(moreBtn.textContent || ''),
+  )
+
+  // 按一下：把这次搜索的条数翻一倍重取，词不变
+  moreBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => cards() === 45, 10000, '按一下之后剩下五篇要接上来：' + cards())
+  assert.equal(cards(), 45, '45 篇都该在列表里，实际 ' + cards())
+
+  const after = window.document.querySelector('.dshgn_searchScan')
+  assert.ok(after !== null, '接上来之后那行还得在')
+  assert.equal(after.getAttribute('data-cut'), 'false', '全给完了就不该再说被截')
+  assert.ok(!(after.textContent || '').includes('条数上限'), '没被截时不说被截：' + after.textContent)
+  assert.equal(moreRow(), null, '都摆出来了就不必再摆那颗按钮')
+  assert.equal(String(box().value), word, '取更多不该动搜索框里的词')
+
+  await typeIn('')
+  await clickTab('笔记')
+})
+
   // 收尾：退回列表、点「全部笔记」，别把打开状态留给下一条用例
   const back = window.document.querySelector('.dshgn_noteBack')
   if (back) {

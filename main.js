@@ -8943,6 +8943,8 @@ var LEX = {
     // 就这么多还是被条数上限截了，而这两种情况下一步该做的事正相反。
     "search.scan": "\u626B\u4E86 {scanned} \u7BC7\uFF0C\u5BF9\u4E0A {n} \u7BC7",
     "search.scanCut": "\uFF08\u5230\u6761\u6570\u4E0A\u9650\u5C31\u505C\u4E86\uFF0C\u540E\u9762\u8FD8\u6709\u6CA1\u626B\u5230\u7684\uFF09",
+    "search.more": "\u518D\u591A\u770B {n} \u7BC7",
+    "search.scanAll": "\uFF08\u4E00\u6B21\u6700\u591A\u5C31\u8FD9\u4E48\u591A\uFF0C\u518D\u5F80\u4E0B\u8981\u9760\u6536\u7A84\u8BCD\uFF09",
     // 这次搜索到底按什么在筛：把 tag:/dir:/正文词/排除词拆成几颗能单独点掉的胶囊。
     // 一行灰字提示教的是「怎么写」，这里回答的是「我这次写了什么」。
     "search.bits": "\u8FD9\u6B21\u6309\u8FD9\u4E9B\u7B5B",
@@ -9607,6 +9609,8 @@ var LEX = {
     "search.placeholder": "Search title, body, tags\u2026",
     "search.scan": "Searched {scanned} notes, {n} matched",
     "search.scanCut": " (stopped at the result limit, some notes were not searched)",
+    "search.more": "Show {n} more",
+    "search.scanAll": " (this is as many as one search returns; narrow the words to go further)",
     "search.bits": "Filtering by",
     "search.bitsClear": "Clear all",
     "search.bitDrop": "Drop this part",
@@ -10228,6 +10232,8 @@ var LEX = {
     "search.hint": "Verfijn: tag:spraak \xB7 dir:notities \xB7 #priv\xE9. Alle woorden moeten voorkomen; zet een frase tussen quotes, en - ervoor om hem uit te sluiten.",
     "search.scan": "{scanned} notities doorzocht, {n} gevonden",
     "search.scanCut": " (gestopt bij de limiet, sommige notities zijn niet doorzocht)",
+    "search.more": "Nog {n} meer",
+    "search.scanAll": " (meer geeft \xE9\xE9n zoekopdracht niet; verfijn de woorden om verder te komen)",
     "search.bits": "Gefilterd op",
     "search.bitsClear": "Alles wissen",
     "search.bitDrop": "Dit stuk weghalen",
@@ -13295,6 +13301,9 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
    \u800C\u300C\u5168\u90E8\u300D\u662F\u90A3\u79CD\u5076\u5C14\u624D\u6309\u4E00\u6B21\u3001\u6309\u4E86\u5C31\u8981\u4E00\u6B21\u770B\u5B8C\u7684\u6309\u94AE\u3002 */
 .dshgn_moreRow{display:flex;gap:6px;margin:6px 0 2px}
 .dshgn_moreRow .dshgn_btn{flex:1 1 auto;justify-content:center;min-width:0}
+/* \u641C\u7D22\u6001\u90A3\u9897\u300C\u518D\u591A\u770B\u51E0\u7BC7\u300D\uFF1A\u5B83\u5C5E\u4E8E\u4E0A\u9762\u90A3\u884C\u300C\u626B\u4E86\u591A\u5C11\u7BC7\u300D\uFF0C\u6240\u4EE5\u8DDF\u7740\u90A3\u884C\u7684
+   \u5DE6\u53F3\u8FB9\u8DDD\u8D70\uFF0C\u522B\u7F29\u8FDB\u6210\u5217\u8868\u5361\u7247\u90A3\u6837\u2014\u2014\u5B83\u8BF4\u7684\u662F\u641C\u7D22\u672C\u8EAB\uFF0C\u4E0D\u662F\u7ED3\u679C\u3002 */
+.dshgn_searchMoreRow{padding:0 10px 7px;margin:0}
 .dshgn_moreBtn{display:block;width:100%;margin:6px 0 2px;justify-content:center}
 .dshgn_card{display:flex;flex-direction:column;gap:2px;padding:7px 8px;border-radius:8px;cursor:pointer;
   border-left:2px solid transparent;user-select:none}
@@ -14381,6 +14390,8 @@ function GetnotePage() {
   const [hits, setHits] = h2(null);
   const [searching, setSearching] = h2(false);
   const [searchScan, setSearchScan] = h2(null);
+  const [searchTake, setSearchTake] = h2({ q: "", n: SEARCH_PAGE });
+  const takeNow = searchTake.q === query.trim() ? searchTake.n : SEARCH_PAGE;
   y2(() => {
     const raw = query.trim();
     if (raw === "") {
@@ -14392,7 +14403,7 @@ function GetnotePage() {
     setSearching(true);
     let alive = true;
     const timer = window.setTimeout(() => {
-      void api(`/search?q=${encodeURIComponent(raw)}&limit=40`).then((json) => {
+      void api(`/search?q=${encodeURIComponent(raw)}&limit=${takeNow}`).then((json) => {
         if (!alive) return;
         const list = Array.isArray(json.hits) ? json.hits : [];
         setHits(list);
@@ -14414,7 +14425,7 @@ function GetnotePage() {
       alive = false;
       window.clearTimeout(timer);
     };
-  }, [query]);
+  }, [query, takeNow]);
   y2(() => {
     const word = query.trim();
     if (word === "" || hits === null) return void 0;
@@ -16527,7 +16538,23 @@ ${insert}
           "div",
           { className: "dshgn_searchScan", "data-cut": searchScan.truncated ? "true" : "false" },
           t4("search.scan").replace("{scanned}", String(searchScan.scanned)).replace("{n}", String(searchScan.shown)),
-          searchScan.truncated ? t4("search.scanCut") : null
+          searchScan.truncated ? takeNow >= SEARCH_MAX ? t4("search.scanAll") : t4("search.scanCut") : null
+        ) : null,
+        // 扫到上限就停的时候，除了说清「停了」，还得给一条继续往下看的
+        // 路——否则那句提示等于告诉你「还有，但你拿不到」。按一下就把这次
+        // 搜索的条数翻一倍重新取，词不变。
+        searchMode && searchScan !== null && searchScan.truncated && searchScan.shown >= takeNow && takeNow < SEARCH_MAX ? h4(
+          "div",
+          { className: "dshgn_moreRow dshgn_searchMoreRow" },
+          h4(
+            "button",
+            {
+              type: "button",
+              className: "dshgn_btn dshgn_moreBtn",
+              onClick: () => setSearchTake({ q: query.trim(), n: Math.min(SEARCH_MAX, takeNow + SEARCH_PAGE) })
+            },
+            t4("search.more").replace("{n}", String(SEARCH_PAGE))
+          )
         ) : null,
         // 筛选条：左栏点了目录或标签之后，中栏只剩一部分卡片，但界面上一直
         // 没有任何「现在筛的是什么」的痕迹——换个目录再回来，人只会以为
@@ -21212,6 +21239,8 @@ function HeatmapStrip(props) {
   );
 }
 var LIST_PAGE_SIZE = 60;
+var SEARCH_PAGE = 40;
+var SEARCH_MAX = 300;
 var TRASH_PREVIEW_CHARS = 320;
 var NAV_LIMIT = 40;
 var TREE_MIN_W = 150;
