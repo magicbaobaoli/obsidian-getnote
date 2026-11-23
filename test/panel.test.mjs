@@ -15518,4 +15518,107 @@ test('搜到的比一次给的多时，底下那颗能把剩下的接上来', as
   await clickTab('笔记')
 })
 
+test('出链一多先摆前六颗，最后那颗写着还有几条，点开就摊全', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const backBtn = window.document.querySelector('.dshgn_noteBack')
+      if (!backBtn) break
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(200)
+    }
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+
+  const seed = async (title, content, requestId) => {
+    const res = await realFetch(server.origin + '/getnote/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({ dir: '随手记', title, content, withDatePrefix: false, requestId }),
+    })
+    const json = await res.json()
+    assert.equal(json.path, '随手记/' + title + '.md')
+    return json.path
+  }
+
+  // 九篇被引用的笔记都真建出来：死链也照样占一颗胶囊，但那不是这条用例要看的东西
+  for (let i = 1; i <= 9; i += 1) {
+    await seed('出链收起目标' + i, ['# 出链收起目标' + i, '', '正文', ''].join(String.fromCharCode(10)), 'seed-ol-fold-t-' + i)
+  }
+  const links = []
+  for (let i = 1; i <= 9; i += 1) links.push('[[' + '出链收起目标' + i + ']]')
+  const source = await seed(
+    '出链收起来源',
+    ['# 出链收起来源', '', '这一篇里引用了' + links.join('、') + '。', ''].join(String.fromCharCode(10)),
+    'seed-ol-fold-src',
+  )
+
+  await clickTab('笔记')
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox !== null && searchBox.value !== '') {
+    searchBox.value = ''
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(300)
+  }
+  const allRow = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find(
+      (el) => (el.querySelector('.dshgn_treeName') || {}).textContent === '全部笔记',
+    )
+  if (allRow() !== undefined) {
+    allRow().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(200)
+  }
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+  const card = await waitFor(
+    () => Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === source),
+    10000,
+    '来源笔记出现在列表里：' +
+      JSON.stringify(Array.from(window.document.querySelectorAll('.dshgn_cardTitle')).map((el) => (el.textContent || '').trim()).slice(0, 12)),
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 8000, '来源笔记打开')
+
+  const chips = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_outlinkRow .dshgn_outlinkChip')).filter(
+      (el) => !el.classList.contains('dshgn_outlinkMore'),
+    )
+  await waitFor(() => chips().length === 6, 10000, '九颗出链先只摆六颗：' + chips().length)
+  assert.equal(chips().length, 6, '默认只摆前六颗，实际 ' + chips().length)
+
+  const more = () => window.document.querySelector('.dshgn_outlinkMore')
+  assert.ok(more() !== null, '收起来的要有一颗胶囊兜着')
+  assert.equal(String(more().textContent || '').trim(), '+3', '胶囊上直接写着还有几颗')
+  assert.equal(more().getAttribute('aria-expanded'), 'false', '没摊开时 aria-expanded 是 false')
+
+  more().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => chips().length === 9, 5000, '点开之后九颗全摆出来：' + chips().length)
+  assert.equal(String(more().textContent || '').trim(), '收起', '摊开之后胶囊变成「收起」')
+  assert.equal(more().getAttribute('aria-expanded'), 'true', '摊开时 aria-expanded 是 true')
+
+  more().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => chips().length === 6, 5000, '再点一下收回六颗：' + chips().length)
+
+  const back = window.document.querySelector('.dshgn_noteBack')
+  if (back) {
+    back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+  const allBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find(
+      (el) => (el.querySelector('.dshgn_treeName') || {}).textContent === '全部笔记',
+    )
+  if (allBtn() !== undefined) {
+    allBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+})
+
 

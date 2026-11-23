@@ -12884,6 +12884,14 @@ var CSS = `
   box-shadow:inset 0 0 0 0.5px var(--dsw-alias-border-l2)}
 .dshgn_outlinkDead:hover{background:var(--dsw-alias-interactive-bg-hover);
   color:var(--dsw-alias-label-secondary)}
+/* \u51FA\u94FE\u8D85\u8FC7\u516D\u9897\u65F6\u6700\u540E\u90A3\u9897\u300C+N\u300D\uFF1A\u548C\u53CD\u94FE\u5E95\u4E0B\u90A3\u9897\u540C\u4E00\u4E2A\u610F\u601D\uFF0C\u53EA\u662F\u6392\u5728\u540C\u4E00\u884C\u91CC\uFF0C
+   \u6240\u4EE5\u505A\u6210\u80F6\u56CA\u800C\u4E0D\u662F\u6574\u884C\u6309\u94AE\u3002\u865A\u7EBF\u8FB9\u662F\u4E3A\u4E86\u8BA9\u4EBA\u4E00\u773C\u770B\u51FA\u5B83\u4E0D\u662F\u4E00\u6761\u94FE\u63A5\u3002 */
+.dshgn_outlinkMore{background:transparent;color:var(--dsw-alias-label-dimmed);
+  box-shadow:inset 0 0 0 0.5px var(--dsw-alias-border-l2);border:0;border-style:dashed}
+.dshgn_outlinkMore:hover{background:var(--dsw-alias-interactive-bg-hover);
+  color:var(--dsw-alias-label-secondary)}
+.dshgn_outlinkMore:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_outlinkMore[data-open="true"]{color:var(--dsw-alias-label-secondary)}
 /* \u641C\u7D22\u589E\u5F3A\uFF1A\u547D\u4E2D\u6B21\u6570\u7528\u4E00\u4E2A\u5C0F\u80F6\u56CA\u6807\u5728\u6807\u9898\u53F3\u8FB9\uFF0C\u547D\u4E2D\u884C\u5E26\u884C\u53F7\u2014\u2014
    \u7528\u6237\u5224\u65AD\u300C\u8FD9\u7BC7\u662F\u4E0D\u662F\u6211\u8981\u7684\u300D\u9760\u7684\u5C31\u662F\u8FD9\u4E24\u6837\u4E1C\u897F\u3002 */
 .dshgn_pickBox{flex:none;width:14px;height:14px;border-radius:4px;display:flex;
@@ -22287,6 +22295,7 @@ function NotePane(props) {
   const [backlinks, setBacklinks] = h2(null);
   const [backlinksOpen, setBacklinksOpen] = h2(false);
   const [outlinks, setOutlinks] = h2(null);
+  const [outlinksOpen, setOutlinksOpen] = h2(false);
   const scrollRef = A2(null);
   const [textScale, setTextScale] = h2(() => {
     try {
@@ -22724,8 +22733,10 @@ function NotePane(props) {
   y2(() => {
     if (currentPath === null) {
       setOutlinks(null);
+      setOutlinksOpen(false);
       return void 0;
     }
+    setOutlinksOpen(false);
     const hosted = linksViaHost(currentPath);
     if (hosted !== null && Array.isArray(hosted.links)) {
       setOutlinks(hosted.links);
@@ -22751,6 +22762,9 @@ function NotePane(props) {
   const backlinkHits = backlinks !== null && Array.isArray(backlinks.hits) ? backlinks.hits : [];
   const shownBacklinks = backlinksOpen ? backlinkHits : backlinkHits.slice(0, BACKLINK_SHOWN);
   const hiddenBacklinks = backlinkHits.length - shownBacklinks.length;
+  const OUTLINK_SHOWN = 6;
+  const shownOutlinks = outlinksOpen ? outlinkChips : outlinkChips.slice(0, OUTLINK_SHOWN);
+  const hiddenOutlinks = outlinkChips.length - shownOutlinks.length;
   const propRows = T2(() => {
     const data = current !== null && current.frontmatter !== null && typeof current.frontmatter === "object" ? current.frontmatter : {};
     const rows = [];
@@ -23909,7 +23923,7 @@ ${t4("tree.menuReveal")}` : absolute,
         h4(
           "div",
           { className: "dshgn_outlinkRow" },
-          outlinkChips.map(
+          shownOutlinks.map(
             (link) => h4(
               "button",
               {
@@ -23921,7 +23935,19 @@ ${t4("tree.menuReveal")}` : absolute,
               },
               link.text
             )
-          )
+          ),
+          outlinkChips.length > OUTLINK_SHOWN ? h4(
+            "button",
+            {
+              type: "button",
+              className: "dshgn_outlinkChip dshgn_outlinkMore",
+              title: outlinksOpen ? t4("note.lessLinks") : t4("note.moreLinks").replace("{n}", String(hiddenOutlinks)),
+              "aria-expanded": outlinksOpen ? "true" : "false",
+              "data-open": outlinksOpen ? "true" : "false",
+              onClick: () => setOutlinksOpen((prev) => !prev)
+            },
+            outlinksOpen ? t4("note.lessLinks") : `+${hiddenOutlinks}`
+          ) : null
         )
       ) : null,
       // 阅读态脚下那一条：这一篇多少字、大概读多久。长逐字稿常常几千字，

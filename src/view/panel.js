@@ -5348,6 +5348,14 @@ async function saveFile(url, filename) {
   box-shadow:inset 0 0 0 0.5px var(--dsw-alias-border-l2)}
 .dshgn_outlinkDead:hover{background:var(--dsw-alias-interactive-bg-hover);
   color:var(--dsw-alias-label-secondary)}
+/* 出链超过六颗时最后那颗「+N」：和反链底下那颗同一个意思，只是排在同一行里，
+   所以做成胶囊而不是整行按钮。虚线边是为了让人一眼看出它不是一条链接。 */
+.dshgn_outlinkMore{background:transparent;color:var(--dsw-alias-label-dimmed);
+  box-shadow:inset 0 0 0 0.5px var(--dsw-alias-border-l2);border:0;border-style:dashed}
+.dshgn_outlinkMore:hover{background:var(--dsw-alias-interactive-bg-hover);
+  color:var(--dsw-alias-label-secondary)}
+.dshgn_outlinkMore:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_outlinkMore[data-open="true"]{color:var(--dsw-alias-label-secondary)}
 /* 搜索增强：命中次数用一个小胶囊标在标题右边，命中行带行号——
    用户判断「这篇是不是我要的」靠的就是这两样东西。 */
 .dshgn_pickBox{flex:none;width:14px;height:14px;border-radius:4px;display:flex;
@@ -16472,6 +16480,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 只剩一条缝，而多数时候用户想看的只是最近的那两三篇。
       const [backlinksOpen, setBacklinksOpen] = React.useState(false)
       const [outlinks, setOutlinks] = React.useState(null)
+      // 出链也收：一篇读书笔记写十几个 [[ ]] 时，这排胶囊能占掉右栏半屏，
+      // 而多数时候要点的就是最前面那几个。
+      const [outlinksOpen, setOutlinksOpen] = React.useState(false)
       const scrollRef = React.useRef(null)
       // 字号三档：阅读长文（尤其逐字稿）时 13.5px 偏小，但直接调大又会让
       // 习惯默认的人觉得挤。做成三档自己选，存在 localStorage 里——
@@ -17092,8 +17103,11 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       React.useEffect(() => {
         if (currentPath === null) {
           setOutlinks(null)
+          setOutlinksOpen(false)
           return undefined
         }
+        // 换一篇就重新收起，和反链那边同一个理由。
+        setOutlinksOpen(false)
         const hosted = linksViaHost(currentPath)
         if (hosted !== null && Array.isArray(hosted.links)) {
           setOutlinks(hosted.links)
@@ -17129,6 +17143,11 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       const backlinkHits = backlinks !== null && Array.isArray(backlinks.hits) ? backlinks.hits : []
       const shownBacklinks = backlinksOpen ? backlinkHits : backlinkHits.slice(0, BACKLINK_SHOWN)
       const hiddenBacklinks = backlinkHits.length - shownBacklinks.length
+
+      // 出链同样默认只摆前六颗：一行胶囊四五个就满了，十几个会把下面的字挤走。
+      const OUTLINK_SHOWN = 6
+      const shownOutlinks = outlinksOpen ? outlinkChips : outlinkChips.slice(0, OUTLINK_SHOWN)
+      const hiddenOutlinks = outlinkChips.length - shownOutlinks.length
 
       // 属性区：把 frontmatter 摊成「键 → 值」几行。
       //
@@ -18475,7 +18494,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                     h(
                       'div',
                       { className: 'dshgn_outlinkRow' },
-                      outlinkChips.map((link) =>
+                      shownOutlinks.map((link) =>
                         h(
                           'button',
                           {
@@ -18488,6 +18507,20 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                           link.text,
                         ),
                       ),
+                      outlinkChips.length > OUTLINK_SHOWN
+                        ? h(
+                            'button',
+                            {
+                              type: 'button',
+                              className: 'dshgn_outlinkChip dshgn_outlinkMore',
+                              title: outlinksOpen ? t('note.lessLinks') : t('note.moreLinks').replace('{n}', String(hiddenOutlinks)),
+                              'aria-expanded': outlinksOpen ? 'true' : 'false',
+                              'data-open': outlinksOpen ? 'true' : 'false',
+                              onClick: () => setOutlinksOpen((prev) => !prev),
+                            },
+                            outlinksOpen ? t('note.lessLinks') : `+${hiddenOutlinks}`,
+                          )
+                        : null,
                     ),
                   )
                 : null,
