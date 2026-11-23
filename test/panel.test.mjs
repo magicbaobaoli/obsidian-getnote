@@ -15251,3 +15251,67 @@ test('历史列表按设置里的「留几版」截断，撞到上限时头部�
   }
 })
 
+/**
+ * 白色太刺眼：搜索框、卡片、弹层原来都是纯白 #fff，浅蓝底上像贴白纸，
+ * 深色桌面上整块发亮。这里盯住三件事——默认浅色板里不再有纯白、
+ * 中栏搜索框走的是「凹槽」色而不是纯白实底、深色下这几个变量也有值且够暗。
+ */
+test('面板里那几块白都压暗了一档，深色下也不回落成白的', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const cssText = () => {
+    const el = window.document.getElementById('dshgn-style')
+    return el === null ? '' : String(el.textContent || '')
+  }
+  // 从样式表正文里取某个自定义属性的默认值（浅色板写在 .dshgn_root 那条规则里）
+  const cssVar = (name) => {
+    const text = cssText()
+    const at = text.indexOf(name + ':')
+    if (at === -1) return ''
+    const rest = text.slice(at + name.length + 1)
+    const end = rest.search(/[;}]/)
+    return (end === -1 ? rest : rest.slice(0, end)).trim()
+  }
+
+  const surface = cssVar('--dshgn-surface')
+  const surfaceStrong = cssVar('--dshgn-surfaceStrong')
+  assert.ok(surface !== '', '浅色板里该有 --dshgn-surface，实际没找到')
+  assert.ok(surfaceStrong !== '', '浅色板里该有 --dshgn-surfaceStrong，实际没找到')
+  assert.ok(!/^#ffffff$/i.test(surface), '卡片底色不该还是纯白，实际 ' + surface)
+  assert.ok(!/^#ffffff$/i.test(surfaceStrong), '卡片强底色不该还是纯白，实际 ' + surfaceStrong)
+  const surfaceLum = luminance(surface)
+  assert.ok(surfaceLum !== null && surfaceLum < 0.97, '卡片底色该比纯白沉一档，实际亮度 ' + surfaceLum)
+
+  const light = cssVar('--dshgn-light')
+  const lightLum = luminance(light)
+  assert.ok(lightLum !== null && lightLum < 0.98, '右栏底色不该是接近纯白的浅蓝，实际 ' + light)
+
+  // 中栏搜索框：从「纯白实底」改成凹槽色，别又白得发亮
+  const searchRule = /\.dshgn_list \.dshgn_search\{([^}]*)\}/.exec(cssText())
+  assert.ok(searchRule !== null, '该有中栏搜索框那条样式')
+  assert.ok(
+    searchRule[1].includes('var(--dshgn-well)'),
+    '中栏搜索框该走凹槽色，实际 ' + searchRule[1].trim(),
+  )
+
+  // 深色：这几个变量必须由 themeVars 重新给，否则夜里弹层/卡片还是白的
+  window.document.body.classList.add('theme-dark')
+  await waitFor(
+    () => rootNode().style.getPropertyValue('--dshgn-surface').trim() !== '',
+    3000,
+    '深色下算出卡片底色',
+  )
+  const darkSurface = luminance(rootNode().style.getPropertyValue('--dshgn-surface'))
+  const darkWell = luminance(rootNode().style.getPropertyValue('--dshgn-well'))
+  assert.ok(darkSurface !== null && darkSurface < 0.3, '深色下卡片底色该很暗，实际亮度 ' + darkSurface)
+  assert.ok(darkWell !== null && darkWell < 0.2, '深色下凹槽该比卡片更暗，实际亮度 ' + darkWell)
+
+  window.document.body.classList.remove('theme-dark')
+  await waitFor(
+    () => rootNode().style.getPropertyValue('--dshgn-surface').trim() === '',
+    3000,
+    '切回浅色后撤掉行内变量',
+  )
+})
+

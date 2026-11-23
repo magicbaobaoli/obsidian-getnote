@@ -11099,6 +11099,12 @@ function themeVars(input, dark = false) {
       "--dshgn-accentOnDark": hslToHex(hue, 0.86, 0.8),
       "--dshgn-accentOnLight": hslToHex(hue, 0.82, 0.68),
       "--dshgn-tintRgb": `${Math.round(rgb.r)},${Math.round(rgb.g)},${Math.round(rgb.b)}`,
+      // 深色下的卡片/弹层底色。原来这里没给，于是深色界面上弹层、设置卡片
+      // 一律落到 CSS 里那个浅色的 --dshgn-surface，夜里点开像手电筒照脸。
+      "--dshgn-surface": hslToHex(hue, tint(0.22, 0.4), 0.215),
+      "--dshgn-surfaceStrong": hslToHex(hue, tint(0.24, 0.44), 0.185),
+      // 凹槽（搜索框）比底色更暗一档，深色下才是「嵌进去」而不是「浮起来」。
+      "--dshgn-well": hslToHex(hue, tint(0.22, 0.4), 0.1),
       "--dshgn-btnFill": hslToHex(hue, 0.68, 0.5),
       "--dshgn-btnHover": hslToHex(hue, 0.7, 0.58),
       "--dshgn-btnFillSoft": hslToHex(hue, 0.44, 0.42),
@@ -11129,6 +11135,11 @@ function themeVars(input, dark = false) {
     // 强调色：深底上要够亮，浅底上要够沉，否则链接/选中态会糊掉
     "--dshgn-accentOnDark": hslToHex(hue, 0.92, 0.74),
     "--dshgn-accentOnLight": hslToHex(hue, 0.8, 0.38),
+    // 卡片/弹层底色：比右栏再沉一点点，靠这一点点差分出「浮起来的一块」。
+    // 不给的话会回落 CSS 里那套默认浅蓝白，自定义主题色时配色就断在半路。
+    "--dshgn-surface": hslToHex(hue, tint(0.24, 0.52), 0.955),
+    "--dshgn-surfaceStrong": hslToHex(hue, tint(0.26, 0.56), 0.925),
+    "--dshgn-well": hslToHex(hue, tint(0.26, 0.56), 0.905),
     // 所有半透明描边/阴影统一由这一个分量推导。
     // 原来 17 处硬编码 rgba(var(--dshgn-tintRgb),…) 散在 CSS 里，换主题色时它们不会跟着变，
     // 界面就会「底色换了、线条还是旧的蓝」。
@@ -13823,9 +13834,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
   --dshgn-midFg:#102a45;
   --dshgn-midFg2:#3d5c7e;
   --dshgn-midFg3:#5d7c9d;
-  /* \u53F3\u680F\uFF08\u9605\u8BFB\u533A\uFF09\uFF1A\u5F88\u6D45\u5F88\u6D45\u3001\u63A5\u8FD1\u767D\u7684\u84DD */
-  --dshgn-light:#f7fbff;
-  --dshgn-light2:#eef6ff;
+  /* \u53F3\u680F\uFF08\u9605\u8BFB\u533A\uFF09\uFF1A\u6D45\u84DD\u3002\u539F\u6765\u662F #f7fbff \u90A3\u79CD\u300C\u63A5\u8FD1\u7EAF\u767D\u300D\uFF0C
+     \u5728\u6DF1\u8272\u684C\u9762\u4E0A\u6574\u5757\u4EAE\u5F97\u523A\u773C\uFF0C\u538B\u4E00\u6863\u5230\u660E\u663E\u5E26\u8272\u76F8\u7684\u6D45\u84DD\u3002 */
+  --dshgn-light:#eff5fc;
+  --dshgn-light2:#e6eef9;
   --dshgn-lightFg:#16283c;
   --dshgn-lightFg2:#40586f;
   --dshgn-lightFg3:#6b8298;
@@ -13844,9 +13856,14 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
   --dshgn-btnHoverSoft:#6b99c4;
   --dshgn-btnFillPale:#a8c6e4;
   --dshgn-btnHoverPale:#96badd;
-  /* \u5361\u7247/\u5F39\u5C42/\u8F93\u5165\u6846\u7684\u5B9E\u5E95\u8272\u3002\u6D45\u8272\u662F\u7EAF\u767D\uFF0C\u6DF1\u8272\u7531 themeVars \u6362\u6210\u6DF1\u7070\u3002 */
-  --dshgn-surface:#ffffff;
-  --dshgn-surfaceStrong:#ffffff;
+  /* \u5361\u7247/\u5F39\u5C42/\u8F93\u5165\u6846\u7684\u5B9E\u5E95\u8272\u3002\u539F\u6765\u662F\u7EAF\u767D\uFF1A\u8BBE\u7F6E\u9875\u6574\u6392\u5361\u7247\u3001\u5217\u8868\u91CC\u7684\u641C\u7D22\u6846
+     \u5168\u662F\u4E00\u5757\u5757 #fff\uFF0C\u5728\u6D45\u84DD\u5E95\u4E0A\u50CF\u8D34\u4E86\u767D\u7EB8\u3002\u6539\u6210\u5E26\u4E00\u70B9\u5E95\u8272\u7684\u6D45\u84DD\u767D\uFF0C
+     \u65E2\u8FD8\u5206\u5F97\u51FA\u300C\u8FD9\u662F\u6D6E\u8D77\u6765\u7684\u4E00\u5757\u300D\uFF0C\u53C8\u4E0D\u523A\u773C\u3002\u6DF1\u8272\u7531 themeVars \u6362\u6210\u6DF1\u8272\u3002 */
+  --dshgn-surface:#eef4fb;
+  --dshgn-surfaceStrong:#e3edf8;
+  /* \u51F9\u8FDB\u53BB\u7684\u8F93\u5165\u69FD\uFF08\u4E2D\u680F\u641C\u7D22\u6846\uFF09\uFF1A\u6BD4\u6240\u5728\u90A3\u4E00\u680F\u7565\u6C89\u4E00\u6863\uFF0C\u50CF\u5D4C\u8FDB\u53BB\u7684\u3002
+     \u6D45\u8272\u7ED9\u4E00\u5C42\u8584\u767D\u7EB1\uFF0C\u6DF1\u8272\u7531 themeVars \u6362\u6210\u66F4\u6697\u7684\u4E00\u6863\u3002 */
+  --dshgn-well:rgba(255,255,255,.42);
   --dshgn-overlayMask:rgba(4,12,24,.42);
 }
 
@@ -14031,7 +14048,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
 }
 .dshgn_list .dshgn_searchWrap{border-bottom-color:rgba(var(--dshgn-tintRgb),.14)}
 .dshgn_list .dshgn_search{
-  background:var(--dshgn-surfaceStrong);border-color:rgba(var(--dshgn-tintRgb),.16);
+  /* \u641C\u7D22\u6846\u539F\u6765\u662F\u7EAF\u767D\uFF08surfaceStrong\uFF09\uFF0C\u5728\u4E2D\u680F\u6D45\u84DD\u4E0A\u767D\u5F97\u53D1\u4EAE\uFF1B
+     \u73B0\u5728\u8D70 --dshgn-well\uFF1A\u4E00\u5C42\u8584\u7EB1\uFF0C\u548C\u5E95\u8272\u540C\u4E00\u4E2A\u8272\u7CFB\uFF0C\u53EA\u662F\u7565\u6C89\u4E00\u70B9\u3002 */
+  background:var(--dshgn-well);border-color:rgba(var(--dshgn-tintRgb),.22);
 }
 .dshgn_list .dshgn_search::placeholder{color:var(--dshgn-midFg3)}
 .dshgn_list .dshgn_card{border-radius:9px;margin-bottom:2px}
@@ -14089,7 +14108,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
   --dsw-alias-button-primary-hover:var(--dshgn-btnHover);
 }
 .dshgn_pane .dshgn_section{box-shadow:0 1px 2px rgba(var(--dshgn-tintRgb),.06)}
-.dshgn_pane .dshgn_input,.dshgn_pane .dshgn_textarea{background:var(--dshgn-surface)}
+/* \u8F93\u5165\u69FD\u8D70 well\uFF1A\u6BD4\u5361\u7247\u5E95\u8272\u6C89\u4E00\u70B9\uFF0C\u770B\u7740\u50CF\u5D4C\u8FDB\u5361\u7247\u91CC\uFF0C\u4E0D\u662F\u53C8\u8D34\u4E00\u5F20\u767D\u7EB8\u3002 */
+.dshgn_pane .dshgn_input,.dshgn_pane .dshgn_textarea{background:var(--dshgn-well)}
 .dshgn_pane .dshgn_log{background:rgba(var(--dshgn-tintRgb),.06)}
 .dshgn_pane .dshgn_stat{background:rgba(var(--dshgn-tintRgb),.08)}
 .dshgn_root{background:var(--dshgn-light)}

@@ -2911,6 +2911,12 @@ async function saveFile(url, filename) {
           '--dshgn-accentOnDark': hslToHex(hue, 0.86, 0.80),
           '--dshgn-accentOnLight': hslToHex(hue, 0.82, 0.68),
           '--dshgn-tintRgb': `${Math.round(rgb.r)},${Math.round(rgb.g)},${Math.round(rgb.b)}`,
+          // 深色下的卡片/弹层底色。原来这里没给，于是深色界面上弹层、设置卡片
+          // 一律落到 CSS 里那个浅色的 --dshgn-surface，夜里点开像手电筒照脸。
+          '--dshgn-surface': hslToHex(hue, tint(0.22, 0.40), 0.215),
+          '--dshgn-surfaceStrong': hslToHex(hue, tint(0.24, 0.44), 0.185),
+          // 凹槽（搜索框）比底色更暗一档，深色下才是「嵌进去」而不是「浮起来」。
+          '--dshgn-well': hslToHex(hue, tint(0.22, 0.40), 0.10),
           '--dshgn-btnFill': hslToHex(hue, 0.68, 0.50),
           '--dshgn-btnHover': hslToHex(hue, 0.70, 0.58),
           '--dshgn-btnFillSoft': hslToHex(hue, 0.44, 0.42),
@@ -2941,6 +2947,11 @@ async function saveFile(url, filename) {
         // 强调色：深底上要够亮，浅底上要够沉，否则链接/选中态会糊掉
         '--dshgn-accentOnDark': hslToHex(hue, 0.92, 0.74),
         '--dshgn-accentOnLight': hslToHex(hue, 0.80, 0.38),
+        // 卡片/弹层底色：比右栏再沉一点点，靠这一点点差分出「浮起来的一块」。
+        // 不给的话会回落 CSS 里那套默认浅蓝白，自定义主题色时配色就断在半路。
+        '--dshgn-surface': hslToHex(hue, tint(0.24, 0.52), 0.955),
+        '--dshgn-surfaceStrong': hslToHex(hue, tint(0.26, 0.56), 0.925),
+        '--dshgn-well': hslToHex(hue, tint(0.26, 0.56), 0.905),
         // 所有半透明描边/阴影统一由这一个分量推导。
         // 原来 17 处硬编码 rgba(var(--dshgn-tintRgb),…) 散在 CSS 里，换主题色时它们不会跟着变，
         // 界面就会「底色换了、线条还是旧的蓝」。
@@ -6287,9 +6298,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
   --dshgn-midFg:#102a45;
   --dshgn-midFg2:#3d5c7e;
   --dshgn-midFg3:#5d7c9d;
-  /* 右栏（阅读区）：很浅很浅、接近白的蓝 */
-  --dshgn-light:#f7fbff;
-  --dshgn-light2:#eef6ff;
+  /* 右栏（阅读区）：浅蓝。原来是 #f7fbff 那种「接近纯白」，
+     在深色桌面上整块亮得刺眼，压一档到明显带色相的浅蓝。 */
+  --dshgn-light:#eff5fc;
+  --dshgn-light2:#e6eef9;
   --dshgn-lightFg:#16283c;
   --dshgn-lightFg2:#40586f;
   --dshgn-lightFg3:#6b8298;
@@ -6308,9 +6320,14 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
   --dshgn-btnHoverSoft:#6b99c4;
   --dshgn-btnFillPale:#a8c6e4;
   --dshgn-btnHoverPale:#96badd;
-  /* 卡片/弹层/输入框的实底色。浅色是纯白，深色由 themeVars 换成深灰。 */
-  --dshgn-surface:#ffffff;
-  --dshgn-surfaceStrong:#ffffff;
+  /* 卡片/弹层/输入框的实底色。原来是纯白：设置页整排卡片、列表里的搜索框
+     全是一块块 #fff，在浅蓝底上像贴了白纸。改成带一点底色的浅蓝白，
+     既还分得出「这是浮起来的一块」，又不刺眼。深色由 themeVars 换成深色。 */
+  --dshgn-surface:#eef4fb;
+  --dshgn-surfaceStrong:#e3edf8;
+  /* 凹进去的输入槽（中栏搜索框）：比所在那一栏略沉一档，像嵌进去的。
+     浅色给一层薄白纱，深色由 themeVars 换成更暗的一档。 */
+  --dshgn-well:rgba(255,255,255,.42);
   --dshgn-overlayMask:rgba(4,12,24,.42);
 }
 
@@ -6495,7 +6512,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
 }
 .dshgn_list .dshgn_searchWrap{border-bottom-color:rgba(var(--dshgn-tintRgb),.14)}
 .dshgn_list .dshgn_search{
-  background:var(--dshgn-surfaceStrong);border-color:rgba(var(--dshgn-tintRgb),.16);
+  /* 搜索框原来是纯白（surfaceStrong），在中栏浅蓝上白得发亮；
+     现在走 --dshgn-well：一层薄纱，和底色同一个色系，只是略沉一点。 */
+  background:var(--dshgn-well);border-color:rgba(var(--dshgn-tintRgb),.22);
 }
 .dshgn_list .dshgn_search::placeholder{color:var(--dshgn-midFg3)}
 .dshgn_list .dshgn_card{border-radius:9px;margin-bottom:2px}
@@ -6553,7 +6572,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
   --dsw-alias-button-primary-hover:var(--dshgn-btnHover);
 }
 .dshgn_pane .dshgn_section{box-shadow:0 1px 2px rgba(var(--dshgn-tintRgb),.06)}
-.dshgn_pane .dshgn_input,.dshgn_pane .dshgn_textarea{background:var(--dshgn-surface)}
+/* 输入槽走 well：比卡片底色沉一点，看着像嵌进卡片里，不是又贴一张白纸。 */
+.dshgn_pane .dshgn_input,.dshgn_pane .dshgn_textarea{background:var(--dshgn-well)}
 .dshgn_pane .dshgn_log{background:rgba(var(--dshgn-tintRgb),.06)}
 .dshgn_pane .dshgn_stat{background:rgba(var(--dshgn-tintRgb),.08)}
 .dshgn_root{background:var(--dshgn-light)}
