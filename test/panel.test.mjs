@@ -13484,6 +13484,141 @@ test('批量里有几篇没成时，把那几篇和原因摊出来，而不是�
     await clickTab('笔记')
   }
 })
+test('一次批量挂掉十几篇时，清单先摆前八条，底下那颗写着还剩几篇，点开就摊全', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const backBtn = () => window.document.querySelector('.dshgn_noteBack')
+
+  panel.setConfirmDialog(async () => true)
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = backBtn()
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(220)
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox !== null) {
+    setValue.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(260)
+  }
+
+  const pathA = '批量失败折叠验收/批量失败折叠-甲.md'
+  const created = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '批量失败折叠验收',
+      title: '批量失败折叠-甲',
+      content: '正文',
+      withDatePrefix: false,
+      requestId: 'seed-batch-fold-a',
+    }),
+  })
+  assert.equal(created.status, 200, '建笔记要成功')
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+
+  const rowOf = (name) =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+      const label = el.querySelector('.dshgn_treeName')
+      return label !== null && (label.textContent || '').trim() === name
+    })
+  const dirRow = await waitFor(() => rowOf('批量失败折叠验收'), 8000, '左栏里出现这个目录')
+  dirRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+
+  const cardOf = (path) =>
+    Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) => el.getAttribute('title') === path) || null
+  const cardA = await waitFor(() => cardOf(pathA), 8000, '要加标签的那一篇')
+  cardA.querySelector('.dshgn_pickBox').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_batchBar') !== null, 3000, '批量栏出现')
+
+  // 十二篇没成：真去让磁盘挂十二次太脆，直接在 /batch 的响应里挂上十二条 failed，
+  // 考的是面板「只摆前八条、底下写着还剩几篇、点开能摊全」这一套。
+  const failPaths = []
+  for (let i = 1; i <= 12; i += 1) failPaths.push('批量失败折叠验收/没成-' + i + '.md')
+  const wrapped = window.fetch
+  window.fetch = globalThis.fetch = async (input, init) => {
+    const url = typeof input === 'string' ? input : String(input && input.url)
+    const res = await wrapped(input, init)
+    if (!url.includes('/getnote/batch')) return res
+    const json = await res.json()
+    json.changed = 0
+    json.failed = failPaths.map((p) => ({ path: p, error: '文件被别的程序占着' }))
+    return { ok: true, status: 200, json: async () => json }
+  }
+
+  const items = () => Array.from(window.document.querySelectorAll('.dshgn_batchFailItem'))
+  try {
+    const moreBtn = Array.from(window.document.querySelectorAll('.dshgn_batchBtn')).find(
+      (el) => (el.textContent || '').trim() === '批量操作',
+    )
+    assert.ok(moreBtn, '批量条上应该有「批量操作」')
+    moreBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+
+    const tagInput = await waitFor(
+      () => window.document.querySelector('.dshgn_batchInput'),
+      3000,
+      '批量操作里应该有标签框',
+    )
+    setValue.call(tagInput, '批量失败折叠标签')
+    tagInput.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(200)
+
+    const addBtn = Array.from(window.document.querySelectorAll('.dshgn_btn.dshgn_btnPrimary')).find(
+      (el) => (el.textContent || '').trim() === '加标签',
+    )
+    assert.ok(addBtn, '应该有一颗「加标签」')
+    addBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+
+    await waitFor(() => window.document.querySelector('.dshgn_batchFails') !== null, 8000, '没成的清单要摊出来')
+    assert.equal(items().length, 8, '一上来只摆前八条，实际 ' + items().length)
+
+    const foldBtn = await waitFor(
+      () => window.document.querySelector('.dshgn_batchFailMore'),
+      3000,
+      '十二篇没成时底下该有一颗「还有几篇」',
+    )
+    assert.equal((foldBtn.textContent || '').trim(), '+4', '这颗胶囊要写还剩几篇')
+    assert.equal(foldBtn.getAttribute('aria-expanded'), 'false', '没摊开时 aria-expanded 是 false')
+
+    foldBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => items().length === 12, 5000, '点开之后十二条都摊出来')
+    const opened = window.document.querySelector('.dshgn_batchFailMore')
+    assert.equal((opened.textContent || '').trim(), '只看前八篇', '摊开之后按钮改成「只看前八篇」')
+    assert.equal(opened.getAttribute('aria-expanded'), 'true', '摊开之后 aria-expanded 是 true')
+    assert.equal(opened.getAttribute('data-open'), 'true', '摊开之后 data-open 是 true')
+
+    opened.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => items().length === 8, 5000, '再点回前八条')
+    assert.equal(
+      (window.document.querySelector('.dshgn_batchFailMore').textContent || '').trim(),
+      '+4',
+      '收回去之后按钮又写回还剩几篇',
+    )
+
+    const closeBtn = Array.from(window.document.querySelectorAll('.dshgn_batchFails .dshgn_batchBtn')).find(
+      (el) => (el.textContent || '').trim() === '知道了',
+    )
+    assert.ok(closeBtn, '清单旁边要有一颗「知道了」')
+    closeBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => window.document.querySelector('.dshgn_batchFails') === null, 3000, '点「知道了」之后清单收起来')
+  } finally {
+    window.fetch = globalThis.fetch = wrapped
+    await clickTab('笔记')
+  }
+})
 test('勾了一张之后按住 Shift 再点一张，就把这一摊连着勾上，再点一次整段取消', async () => {
   const rootNode = () => window.document.querySelector('.dshgn_root')
   const backBtn = () => window.document.querySelector('.dshgn_noteBack')

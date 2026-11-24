@@ -8990,6 +8990,10 @@ var LEX = {
     "batch.partial": "\u6709 {n} \u7BC7\u6CA1\u6210",
     "batch.failTitle": "\u8FD9\u51E0\u7BC7\u6CA1\u5904\u7406\u6210",
     "batch.failClose": "\u77E5\u9053\u4E86",
+    // 一次批量挂掉几十篇时，前八条之外的那些以前只有个数，没有名字：
+    // 到底哪几篇没成得自己回去对。点开就摊全，再点收回八条。
+    "batch.failMore": "\u8FD8\u6709 {n} \u7BC7\uFF0C\u70B9\u5F00\u770B\u5168\u90E8",
+    "batch.failLess": "\u53EA\u770B\u524D\u516B\u7BC7",
     // 一次要勾十几篇时，一张一张点勾选框是纯体力活；连着勾一段才是人
     // 在文件管理器里习惯的那套（Shift 点第二下）。提示挂在勾选框上，
     // 没勾过的时候也不占地方。
@@ -9675,6 +9679,8 @@ var LEX = {
     "batch.partial": "{n} did not go through",
     "batch.failTitle": "These did not go through",
     "batch.failClose": "Got it",
+    "batch.failMore": "{n} more, click to see them all",
+    "batch.failLess": "Show the first eight",
     "batch.pickHint": "Hold Shift and click another card to select the whole stretch",
     "batch.shiftHint": "Hold Shift and click another card to select a stretch",
     "trash.pick": "Select this one",
@@ -10320,6 +10326,8 @@ var LEX = {
     "batch.partial": "{n} is niet gelukt",
     "batch.failTitle": "Deze zijn niet gelukt",
     "batch.failClose": "Begrepen",
+    "batch.failMore": "Nog {n}, klik om ze allemaal te zien",
+    "batch.failLess": "Alleen de eerste acht",
     "batch.pickHint": "Houd Shift ingedrukt en klik nog een kaart om het hele stuk te selecteren",
     "batch.shiftHint": "Houd Shift ingedrukt en klik nog een kaart voor een heel stuk",
     "trash.pick": "Deze selecteren",
@@ -13046,7 +13054,12 @@ var CSS = `
 .dshgn_batchFailItem{display:inline-flex;align-items:baseline;gap:4px;max-width:100%;
   padding:1px 6px;border-radius:5px;word-break:break-all;
   color:var(--dsw-alias-label-secondary);box-shadow:inset 0 0 0 0.5px var(--dsw-alias-border-l2)}
-.dshgn_batchFailWhy{color:var(--dsw-alias-label-tertiary);font-size:10px}
+/* \u6E05\u5355\u53EA\u6446\u524D\u516B\u6761\u65F6\uFF0C\u5E95\u4E0B\u90A3\u9897\u865A\u7EBF\u80F6\u56CA\u5199\u7740\u8FD8\u5269\u51E0\u7BC7 */
+.dshgn_batchFailMore{appearance:none;flex:none;padding:1px 7px;border:0.5px dashed var(--dsw-alias-border-l2);
+  border-radius:999px;background:transparent;color:var(--dsw-alias-label-dimmed);
+  font:inherit;font-size:10px;line-height:16px;cursor:pointer}
+.dshgn_batchFailMore:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-brand-primary)}
+.dshgn_batchFailMore:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dshgn_batchRow{display:flex;gap:6px;align-items:center}
 .dshgn_batchInput{flex:1;min-width:0;height:26px;font-size:12px}
 /* \u7248\u672C\u5386\u53F2\u7248\u6570\uFF1A\u4E00\u4E2A\u7A84\u683C\u5B50\uFF0C\u6570\u5B57\u9760\u53F3\uFF0C\u514D\u5F97\u548C\u65C1\u8FB9\u90A3\u4E2A\u300C\u7248\u300D\u5B57\u9694\u8001\u8FDC\u3002 */
@@ -15562,15 +15575,18 @@ ${insert}
   const [batchTagIndex, setBatchTagIndex] = h2(null);
   const [batchOpen, setBatchOpen] = h2(false);
   const [batchFails, setBatchFails] = h2([]);
+  const [batchFailsOpen, setBatchFailsOpen] = h2(false);
   const [pickAnchor, setPickAnchor] = h2("");
   const pickedCount = picked.size;
+  const BATCH_FAIL_SHOWN = 8;
   const reportBatchFails = q2((json) => {
     const rows = json !== null && json !== void 0 && Array.isArray(json.failed) ? json.failed : [];
     const list = rows.filter((item) => item !== null && item !== void 0).map((item) => ({
       path: String(item.path || ""),
       error: String(item.error || "")
     }));
-    setBatchFails(list.slice(0, 8));
+    setBatchFails(list);
+    setBatchFailsOpen(false);
     return list.length;
   }, []);
   const pickRange = q2(
@@ -16781,7 +16797,7 @@ ${insert}
           "div",
           { className: "dshgn_batchFails", role: "status" },
           h4("span", { className: "dshgn_batchFailsTitle" }, t4("batch.failTitle")),
-          batchFails.map(
+          (batchFailsOpen ? batchFails : batchFails.slice(0, BATCH_FAIL_SHOWN)).map(
             (item) => h4(
               "span",
               { key: item.path, className: "dshgn_batchFailItem", title: item.error === "" ? item.path : item.error },
@@ -16789,13 +16805,28 @@ ${insert}
               item.error === "" ? null : h4("span", { className: "dshgn_batchFailWhy" }, item.error)
             )
           ),
+          batchFails.length > BATCH_FAIL_SHOWN ? h4(
+            "button",
+            {
+              type: "button",
+              className: "dshgn_batchFailMore",
+              title: batchFailsOpen ? t4("batch.failLess") : t4("batch.failMore").replace("{n}", String(batchFails.length - BATCH_FAIL_SHOWN)),
+              "aria-expanded": batchFailsOpen ? "true" : "false",
+              "data-open": batchFailsOpen ? "true" : "false",
+              onClick: () => setBatchFailsOpen((prev) => !prev)
+            },
+            batchFailsOpen ? t4("batch.failLess") : `+${batchFails.length - BATCH_FAIL_SHOWN}`
+          ) : null,
           h4(
             "button",
             {
               type: "button",
               className: "dshgn_batchBtn",
               title: t4("batch.failClose"),
-              onClick: () => setBatchFails([])
+              onClick: () => {
+                setBatchFails([]);
+                setBatchFailsOpen(false);
+              }
             },
             t4("batch.failClose")
           )

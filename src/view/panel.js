@@ -623,6 +623,10 @@ async function saveFile(url, filename) {
         'batch.partial': '有 {n} 篇没成',
         'batch.failTitle': '这几篇没处理成',
         'batch.failClose': '知道了',
+        // 一次批量挂掉几十篇时，前八条之外的那些以前只有个数，没有名字：
+        // 到底哪几篇没成得自己回去对。点开就摊全，再点收回八条。
+        'batch.failMore': '还有 {n} 篇，点开看全部',
+        'batch.failLess': '只看前八篇',
         // 一次要勾十几篇时，一张一张点勾选框是纯体力活；连着勾一段才是人
         // 在文件管理器里习惯的那套（Shift 点第二下）。提示挂在勾选框上，
         // 没勾过的时候也不占地方。
@@ -1313,6 +1317,8 @@ async function saveFile(url, filename) {
         'batch.partial': '{n} did not go through',
         'batch.failTitle': 'These did not go through',
         'batch.failClose': 'Got it',
+        'batch.failMore': '{n} more, click to see them all',
+        'batch.failLess': 'Show the first eight',
         'batch.pickHint': 'Hold Shift and click another card to select the whole stretch',
         'batch.shiftHint': 'Hold Shift and click another card to select a stretch',
         'trash.pick': 'Select this one',
@@ -1963,6 +1969,8 @@ async function saveFile(url, filename) {
         'batch.partial': '{n} is niet gelukt',
         'batch.failTitle': 'Deze zijn niet gelukt',
         'batch.failClose': 'Begrepen',
+        'batch.failMore': 'Nog {n}, klik om ze allemaal te zien',
+        'batch.failLess': 'Alleen de eerste acht',
         'batch.pickHint': 'Houd Shift ingedrukt en klik nog een kaart om het hele stuk te selecteren',
         'batch.shiftHint': 'Houd Shift ingedrukt en klik nog een kaart voor een heel stuk',
         'trash.pick': 'Deze selecteren',
@@ -5543,7 +5551,12 @@ async function saveFile(url, filename) {
 .dshgn_batchFailItem{display:inline-flex;align-items:baseline;gap:4px;max-width:100%;
   padding:1px 6px;border-radius:5px;word-break:break-all;
   color:var(--dsw-alias-label-secondary);box-shadow:inset 0 0 0 0.5px var(--dsw-alias-border-l2)}
-.dshgn_batchFailWhy{color:var(--dsw-alias-label-tertiary);font-size:10px}
+/* 清单只摆前八条时，底下那颗虚线胶囊写着还剩几篇 */
+.dshgn_batchFailMore{appearance:none;flex:none;padding:1px 7px;border:0.5px dashed var(--dsw-alias-border-l2);
+  border-radius:999px;background:transparent;color:var(--dsw-alias-label-dimmed);
+  font:inherit;font-size:10px;line-height:16px;cursor:pointer}
+.dshgn_batchFailMore:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-brand-primary)}
+.dshgn_batchFailMore:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dshgn_batchRow{display:flex;gap:6px;align-items:center}
 .dshgn_batchInput{flex:1;min-width:0;height:26px;font-size:12px}
 /* 版本历史版数：一个窄格子，数字靠右，免得和旁边那个「版」字隔老远。 */
@@ -8529,13 +8542,18 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 批量里没成的那几篇。/batch 一直有回 failed，只是以前没人读：选十篇加标签、
       // 其中两篇被别的程序占着，界面上只写「已处理 8」，剩下两篇去哪了没人说。
       const [batchFails, setBatchFails] = React.useState([])
+      // 清单本身留全，摆的时候只摆前八条，多的收成一颗「还有 N 篇」。
+      // 以前是直接 slice 掉：一次批量挂掉几十篇时，剩下那几十篇连名字都没有。
+      const [batchFailsOpen, setBatchFailsOpen] = React.useState(false)
       // Shift 连着勾一段要有个起点：上一次点的那一张。它和 picked 分开记，
       // 因为「起点」不一定是勾着的（再 Shift 点一下就是整段取消）。
       const [pickAnchor, setPickAnchor] = React.useState('')
       const pickedCount = picked.size
 
-      // 把服务端回的 failed 收成「哪几篇、为什么」。只留前 8 条：一次批量里
-      // 挂掉几十篇时，摊满一屏的清单并不比「还有 N 篇」更有用。
+      const BATCH_FAIL_SHOWN = 8
+      // 把服务端回的 failed 收成「哪几篇、为什么」。全都留着，摆的时候只摆前 8 条：
+      // 一次批量里挂掉几十篇时，一上来摊满一屏并不比「还有 N 篇」更有用，
+      // 但想找某几篇的时候得点得开。
       const reportBatchFails = React.useCallback((json) => {
         const rows = json !== null && json !== undefined && Array.isArray(json.failed) ? json.failed : []
         const list = rows
@@ -8544,7 +8562,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             path: String(item.path || ''),
             error: String(item.error || ''),
           }))
-        setBatchFails(list.slice(0, 8))
+        setBatchFails(list)
+        setBatchFailsOpen(false)
         return list.length
       }, [])
 
@@ -9978,7 +9997,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                   'div',
                   { className: 'dshgn_batchFails', role: 'status' },
                   h('span', { className: 'dshgn_batchFailsTitle' }, t('batch.failTitle')),
-                  batchFails.map((item) =>
+                  (batchFailsOpen ? batchFails : batchFails.slice(0, BATCH_FAIL_SHOWN)).map((item) =>
                     h(
                       'span',
                       { key: item.path, className: 'dshgn_batchFailItem', title: item.error === '' ? item.path : item.error },
@@ -9986,13 +10005,34 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                       item.error === '' ? null : h('span', { className: 'dshgn_batchFailWhy' }, item.error),
                     ),
                   ),
+                  batchFails.length > BATCH_FAIL_SHOWN
+                    ? h(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'dshgn_batchFailMore',
+                          title: batchFailsOpen
+                            ? t('batch.failLess')
+                            : t('batch.failMore').replace('{n}', String(batchFails.length - BATCH_FAIL_SHOWN)),
+                          'aria-expanded': batchFailsOpen ? 'true' : 'false',
+                          'data-open': batchFailsOpen ? 'true' : 'false',
+                          onClick: () => setBatchFailsOpen((prev) => !prev),
+                        },
+                        batchFailsOpen
+                          ? t('batch.failLess')
+                          : `+${batchFails.length - BATCH_FAIL_SHOWN}`,
+                      )
+                    : null,
                   h(
                     'button',
                     {
                       type: 'button',
                       className: 'dshgn_batchBtn',
                       title: t('batch.failClose'),
-                      onClick: () => setBatchFails([]),
+                      onClick: () => {
+                        setBatchFails([])
+                        setBatchFailsOpen(false)
+                      },
                     },
                     t('batch.failClose'),
                   ),
