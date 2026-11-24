@@ -14344,6 +14344,7 @@ function GetnotePage() {
   const [colWidths, setColWidths] = h2(() => readColWidths());
   const [treeOpen, setTreeOpen] = h2(false);
   const [listLimit, setListLimit] = h2(LIST_PAGE_SIZE);
+  const listBodyRef = A2(null);
   const [current, setCurrent] = h2(null);
   const openSeq = A2(0);
   const selfSavedRef = A2(null);
@@ -14600,6 +14601,10 @@ function GetnotePage() {
     },
     [shown.length]
   );
+  y2(() => {
+    const el = listBodyRef.current;
+    if (el) el.scrollTop = 0;
+  }, [filterKey]);
   const navRef = A2({ stack: [], index: -1 });
   const navJumpRef = A2(false);
   const [navState, setNavState] = h2({ canBack: false, canForward: false });
@@ -16950,6 +16955,7 @@ ${insert}
           "div",
           {
             className: "dshgn_listBody",
+            ref: listBodyRef,
             onScroll: onListScroll,
             // 宿主的文件拖到列表里 = 把它挪进当前筛的这个目录。
             // 从宿主文件树拖进来的是宿主自己的路径口径，交给 onDropNote 去认。

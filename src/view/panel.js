@@ -6890,6 +6890,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 列表一次渲染多少条。库大了以后把几千个卡片全塞进 DOM，滚动会明显发涩，
       // 所以先渲染一屏多一点，滚到底再续。搜索、切目录、切标签都会重置回初始值。
       const [listLimit, setListLimit] = React.useState(LIST_PAGE_SIZE)
+      // 中栏列表那个滚动容器。换了目录/标签/搜索词之后要把它的滚动位置
+      // 也拉回顶上：列表内容已经换成另一批了，还停在刚才滚到的半腰，
+      // 用户会以为「这个目录里就这几篇」。
+      const listBodyRef = React.useRef(null)
       const [current, setCurrent] = React.useState(null)
       // 在飞的 /read 请求序号，见 openNote 里的说明
       const openSeq = React.useRef(0)
@@ -7266,6 +7270,13 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         },
         [shown.length],
       )
+      // 换了目录/标签/搜索词，列表里装的就是另一批笔记了，滚动位置也跟着回到
+      // 顶上。不回去的话，新目录照样从刚才那个高度开始铺——头几篇直接被跳过，
+      // 用户看到的「这个目录第一篇」其实是第五篇。
+      React.useEffect(() => {
+        const el = listBodyRef.current
+        if (el) el.scrollTop = 0
+      }, [filterKey])
 
       // 笔记之间的前进/后退。读的时候从 A 跳到 B 再跳到 C，想回 A 得回列表里
       // 重新找一遍——宿主里 Alt+← 就回去了，这里也一样。
@@ -10146,6 +10157,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
               'div',
               {
                 className: 'dshgn_listBody',
+                ref: listBodyRef,
                 onScroll: onListScroll,
                 // 宿主的文件拖到列表里 = 把它挪进当前筛的这个目录。
                 // 从宿主文件树拖进来的是宿主自己的路径口径，交给 onDropNote 去认。

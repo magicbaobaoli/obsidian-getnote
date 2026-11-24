@@ -16277,3 +16277,84 @@ test('冲突攒多了，顶上那行筛能筛到想找的那一条，清掉就�
     await sleep(300)
   }
 })
+
+test('换了目录或者搜索词，中栏列表的滚动位置回到顶上', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const allRow = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+      const name = el.querySelector('.dshgn_treeName')
+      return name !== null && (name.textContent || '').trim() === '全部笔记'
+    })
+
+  const back0 = window.document.querySelector('.dshgn_noteBack')
+  if (back0) {
+    back0.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+
+  const seed = async (title, requestId) => {
+    const res = await realFetch(server.origin + '/getnote/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({
+        dir: '列表回顶验收',
+        title,
+        content: '# ' + title + String.fromCharCode(10) + String.fromCharCode(10) + '这一篇用来验列表滚动位置。' + String.fromCharCode(10),
+        withDatePrefix: false,
+        requestId,
+      }),
+    })
+    const json = await res.json()
+    assert.equal(res.status, 200, '种下 ' + title)
+    return json.path
+  }
+  await seed('列表回顶甲', 'seed-list-top-a')
+  await seed('列表回顶乙', 'seed-list-top-b')
+
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox) {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setter.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(400)
+  }
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+
+  const bodyEl = () => window.document.querySelector('.dshgn_listBody')
+  const rowOf = (name) =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+      const label = el.querySelector('.dshgn_treeName')
+      return label !== null && (label.textContent || '').trim() === name
+    })
+
+  const dirRow = await waitFor(() => rowOf('列表回顶验收'), 8000, '左栏出现这个目录')
+  assert.notEqual(bodyEl(), null, '中栏该有列表滚动容器')
+
+  // 先滚到半腰，再点左栏那个目录：换的是另一批笔记，位置该回到顶上。
+  bodyEl().scrollTop = 640
+  assert.equal(bodyEl().scrollTop, 640, '先得能滚下去（jsdom 会存值）')
+  dirRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => (bodyEl() !== null && bodyEl().scrollTop === 0 ? true : null), 5000, '点了目录之后列表要回到顶上')
+
+  // 再滚下去，这次换搜索词，也一样回到顶上。
+  bodyEl().scrollTop = 520
+  const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  setValue.call(searchBox, '列表回顶')
+  searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await waitFor(() => (bodyEl() !== null && bodyEl().scrollTop === 0 ? true : null), 5000, '敲了搜索词之后列表也要回到顶上')
+
+  // 清掉搜索词回到全部笔记，别把搜索态留给后面的用例。
+  setValue.call(searchBox, '')
+  searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(400)
+  if (allRow() !== undefined) {
+    allRow().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+})
+
