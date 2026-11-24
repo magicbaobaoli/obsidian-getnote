@@ -16831,3 +16831,107 @@ test('报错条上那颗叉：点一下就收起来，连「写一篇」那颗�
   await clickTab('笔记')
 })
 
+// 「最近搜过」原来只有一颗整条清空的叉：搜过的词里常有一两个是当时的临时词
+// （打错的、试一下的），为了它把整排记录都清掉太重。
+test('最近搜过那一排里，每一条都能单独去掉，别的照旧留着', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  const box = () => window.document.querySelector('.dshgn_search')
+  const typeIn = async (text) => {
+    setter.call(box(), text)
+    box().dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(400)
+  }
+  const chipTexts = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_recentChip')).map((el) => (el.textContent || '').trim())
+
+  panel.setConfirmDialog(async () => true)
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = window.document.querySelector('.dshgn_noteBack')
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(200)
+    }
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  await typeIn('')
+  // 从干净的一排开始，别让上一条用例留下的词混进来
+  const wipe = window.document.querySelector('.dshgn_recentClear')
+  if (wipe !== null) {
+    wipe.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+  window.localStorage.removeItem('dshgn.recentSearches')
+
+  // 两个互不为前缀的词：rememberSearch 会把前缀/被包含的旧条目剔掉，用这两个才不会被合并
+  const wordA = '丙丁验收词'
+  const wordB = '戊己验收词'
+  const createRes = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '最近搜过单条去掉验收',
+      content: ['# 验收', '', '这一篇里写着' + wordA + '和' + wordB + '。', ''].join('\n'),
+      withDatePrefix: false,
+      requestId: 'seed-recent-drop',
+    }),
+  })
+  assert.equal(createRes.status, 200, '建笔记要成功')
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(600)
+
+  // 先搜 A、再搜 B：B 排在前面
+  await typeIn(wordA)
+  await waitFor(() => window.document.querySelector('.dshgn_card') !== null, 8000, '搜到那一篇')
+  await sleep(1800)
+  await typeIn(wordB)
+  await sleep(1800)
+  await typeIn('')
+
+  await waitFor(() => chipTexts().length >= 2, 6000, '两条记录都摆出来了')
+  const before = chipTexts()
+  assert.deepEqual(before.slice(0, 2), [wordB, wordA], '后搜的排前面，实际：' + JSON.stringify(before))
+
+  // 每条旁边都有自己的小叉，悬停/读屏都要说清去掉的是哪一条
+  const itemOf = (word) => {
+    const chip = Array.from(window.document.querySelectorAll('.dshgn_recentChip')).find(
+      (el) => (el.textContent || '').trim() === word,
+    )
+    return chip === null || chip.parentElement === null ? null : chip.parentElement
+  }
+  const dropOf = (word) => {
+    const item = itemOf(word)
+    return item === null ? null : item.querySelector('.dshgn_recentDrop')
+  }
+  const dropA = dropOf(wordA)
+  assert.ok(dropA !== null, '每一条记录旁边都要有一颗自己的叉')
+  assert.equal(dropA.getAttribute('title'), '把这一条从记录里去掉：' + wordA, '悬停要说清去掉的是哪一条')
+  assert.equal(dropA.getAttribute('aria-label'), '把这一条从记录里去掉：' + wordA, '读屏也要读得出来')
+  assert.ok(itemOf(wordB).querySelector('.dshgn_recentDrop') !== null, '另一条也有自己的叉')
+
+  dropA.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => !chipTexts().includes(wordA), 4000, '点一下这条就从记录里没了')
+  assert.deepEqual(chipTexts(), [wordB], '只该少这一条，别的照旧：' + JSON.stringify(chipTexts()))
+  const storedOne = window.localStorage.getItem('dshgn.recentSearches')
+  assert.ok(storedOne !== null && !storedOne.includes(wordA), '落盘那份也要把它删掉：' + storedOne)
+  assert.ok(storedOne.includes(wordB), '剩下那条还得在：' + storedOne)
+
+  // 去掉一条不等于清空：搜索框还是空的，这一排照样在
+  assert.ok(window.document.querySelector('.dshgn_recent') !== null, '这一排不该整条收起来')
+  assert.equal(box().value, '', '点叉不该顺手搜一下')
+
+  // 只剩最后一条时再点叉，整排收起、落盘那份删干净
+  dropOf(wordB).dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_recent') === null, 4000, '最后一条去掉之后整排收起来')
+  assert.equal(window.localStorage.getItem('dshgn.recentSearches'), null, '落盘那份要删干净')
+
+  await clickTab('笔记')
+})

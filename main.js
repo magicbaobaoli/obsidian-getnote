@@ -9018,6 +9018,8 @@ var LEX = {
     // 搜过什么、下次还想再搜：这一条记在 localStorage 里，重启 Obsidian 也在。
     "search.recent": "\u6700\u8FD1\u641C\u8FC7",
     "search.recentClear": "\u6E05\u6389\u8FD9\u4E9B\u8BB0\u5F55",
+    // 整条清空太重了：只想把某一个不再想搜的词从记录里去掉时，得有个只针对它的出口。
+    "search.recentDrop": "\u628A\u8FD9\u4E00\u6761\u4ECE\u8BB0\u5F55\u91CC\u53BB\u6389",
     "search.recentEmpty": "\u8FD8\u6CA1\u6709\u641C\u8FC7\u4EC0\u4E48",
     "tree.all": "\u5168\u90E8\u7B14\u8BB0",
     "tree.dirs": "\u76EE\u5F55",
@@ -9702,6 +9704,7 @@ var LEX = {
     "search.copied": "Copied a list of {n} notes",
     "search.recent": "Searched recently",
     "search.recentClear": "Clear this list",
+    "search.recentDrop": "Drop this one from the list",
     "search.recentEmpty": "Nothing searched yet",
     "tree.all": "All notes",
     "tree.dirs": "Folders",
@@ -10350,6 +10353,7 @@ var LEX = {
     "search.copied": "Een lijst van {n} notities gekopieerd",
     "search.recent": "Onlangs gezocht",
     "search.recentClear": "Deze lijst wissen",
+    "search.recentDrop": "Deze uit de lijst halen",
     "search.recentEmpty": "Nog niets gezocht",
     "tree.all": "Alle notities",
     "tree.dirs": "Mappen",
@@ -13142,6 +13146,15 @@ var CSS = `
 .dshgn_recentChip:hover{background:var(--dsw-alias-interactive-bg-hover);
   color:var(--dsw-alias-label-primary)}
 .dshgn_recentChip:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+/* \u4E00\u9897\u8BB0\u5F55 = \u80F6\u56CA + \u5B83\u81EA\u5DF1\u7684\u5C0F\u53C9\u3002\u6574\u6761\u6E05\u7A7A\u662F\u91CD\u624B\uFF0C\u53EA\u60F3\u53BB\u6389\u4E00\u4E2A\u65F6\u7528\u8FD9\u9897\u3002 */
+.dshgn_recentItem{display:inline-flex;align-items:center;gap:0;max-width:100%}
+.dshgn_recentDrop{appearance:none;flex:none;display:inline-flex;align-items:center;
+  justify-content:center;width:14px;height:14px;padding:0;margin-left:-3px;border:0;
+  border-radius:50%;background:transparent;color:var(--dsw-alias-label-dimmed);
+  cursor:pointer;opacity:.65}
+.dshgn_recentDrop:hover{opacity:1;background:var(--dsw-alias-interactive-bg-hover);
+  color:var(--dsw-alias-label-primary)}
+.dshgn_recentDrop:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dshgn_recentClear{appearance:none;flex:none;display:inline-flex;align-items:center;
   justify-content:center;width:16px;height:16px;padding:0;border:0;border-radius:50%;
   background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer}
@@ -14391,6 +14404,23 @@ function GetnotePage() {
       window.localStorage.removeItem(RECENT_KEY);
     } catch {
     }
+  }, []);
+  const dropRecentSearch = q2((text) => {
+    const word = String(text === null || text === void 0 ? "" : text).trim();
+    if (word === "") return;
+    setRecentSearches((prev) => {
+      const next = prev.filter((item) => item !== word);
+      if (next.length === prev.length) return prev;
+      if (next.length === 0) {
+        try {
+          window.localStorage.removeItem(RECENT_KEY);
+        } catch {
+        }
+        return next;
+      }
+      writeRecentSearches(next);
+      return next;
+    });
   }, []);
   const [activeDir, setActiveDir] = h2(bootSession.dir);
   const [activeTag, setActiveTag] = h2(bootSession.tag);
@@ -16672,20 +16702,38 @@ ${insert}
           { className: "dshgn_recent" },
           h4("span", { className: "dshgn_recentLabel" }, t4("search.recent")),
           recentSearches.map(
-            (word) => h4(
-              "button",
-              {
-                key: "recent-" + word,
-                type: "button",
-                className: "dshgn_recentChip",
-                title: word,
-                onClick: () => {
-                  setQuery(word);
-                  const box = findInPanel(".dshgn_search");
-                  if (box !== null) box.focus();
-                }
-              },
-              word
+            (word) => (
+              // 一颗胶囊 + 它自己的小叉。叉不能塞进胶囊里——button 里套 button
+              // 是非法结构，浏览器会把里层那个拆出来，点下去的行为全乱。
+              h4(
+                "span",
+                { key: "recent-" + word, className: "dshgn_recentItem" },
+                h4(
+                  "button",
+                  {
+                    type: "button",
+                    className: "dshgn_recentChip",
+                    title: word,
+                    onClick: () => {
+                      setQuery(word);
+                      const box = findInPanel(".dshgn_search");
+                      if (box !== null) box.focus();
+                    }
+                  },
+                  word
+                ),
+                h4(
+                  "button",
+                  {
+                    type: "button",
+                    className: "dshgn_recentDrop",
+                    title: `${t4("search.recentDrop")}\uFF1A${word}`,
+                    "aria-label": `${t4("search.recentDrop")}\uFF1A${word}`,
+                    onClick: () => dropRecentSearch(word)
+                  },
+                  h4(Icon, { name: "close", size: 9 })
+                )
+              )
             )
           ),
           h4(

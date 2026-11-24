@@ -651,6 +651,8 @@ async function saveFile(url, filename) {
         // 搜过什么、下次还想再搜：这一条记在 localStorage 里，重启 Obsidian 也在。
         'search.recent': '最近搜过',
         'search.recentClear': '清掉这些记录',
+        // 整条清空太重了：只想把某一个不再想搜的词从记录里去掉时，得有个只针对它的出口。
+        'search.recentDrop': '把这一条从记录里去掉',
         'search.recentEmpty': '还没有搜过什么',
         'tree.all': '全部笔记',
         'tree.dirs': '目录',
@@ -1340,6 +1342,7 @@ async function saveFile(url, filename) {
         'search.copied': 'Copied a list of {n} notes',
         'search.recent': 'Searched recently',
         'search.recentClear': 'Clear this list',
+        'search.recentDrop': 'Drop this one from the list',
         'search.recentEmpty': 'Nothing searched yet',
         'tree.all': 'All notes',
         'tree.dirs': 'Folders',
@@ -1993,6 +1996,7 @@ async function saveFile(url, filename) {
         'search.copied': 'Een lijst van {n} notities gekopieerd',
         'search.recent': 'Onlangs gezocht',
         'search.recentClear': 'Deze lijst wissen',
+        'search.recentDrop': 'Deze uit de lijst halen',
         'search.recentEmpty': 'Nog niets gezocht',
         'tree.all': 'Alle notities',
         'tree.dirs': 'Mappen',
@@ -5639,6 +5643,15 @@ async function saveFile(url, filename) {
 .dshgn_recentChip:hover{background:var(--dsw-alias-interactive-bg-hover);
   color:var(--dsw-alias-label-primary)}
 .dshgn_recentChip:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+/* 一颗记录 = 胶囊 + 它自己的小叉。整条清空是重手，只想去掉一个时用这颗。 */
+.dshgn_recentItem{display:inline-flex;align-items:center;gap:0;max-width:100%}
+.dshgn_recentDrop{appearance:none;flex:none;display:inline-flex;align-items:center;
+  justify-content:center;width:14px;height:14px;padding:0;margin-left:-3px;border:0;
+  border-radius:50%;background:transparent;color:var(--dsw-alias-label-dimmed);
+  cursor:pointer;opacity:.65}
+.dshgn_recentDrop:hover{opacity:1;background:var(--dsw-alias-interactive-bg-hover);
+  color:var(--dsw-alias-label-primary)}
+.dshgn_recentDrop:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dshgn_recentClear{appearance:none;flex:none;display:inline-flex;align-items:center;
   justify-content:center;width:16px;height:16px;padding:0;border:0;border-radius:50%;
   background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer}
@@ -6923,6 +6936,26 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         } catch {
           // 存不了也删不了，那就这次先清空着
         }
+      }, [])
+      // 只去掉一条。搜过的词里常有一两个是当时的临时词（打错的、试一下的），
+      // 为了它把整排记录都清掉太重了。剩下的顺序不动，只把这一个拿掉。
+      const dropRecentSearch = React.useCallback((text) => {
+        const word = String(text === null || text === undefined ? '' : text).trim()
+        if (word === '') return
+        setRecentSearches((prev) => {
+          const next = prev.filter((item) => item !== word)
+          if (next.length === prev.length) return prev
+          if (next.length === 0) {
+            try {
+              window.localStorage.removeItem(RECENT_KEY)
+            } catch {
+              // 删不掉就当这次只在内存里没了
+            }
+            return next
+          }
+          writeRecentSearches(next)
+          return next
+        })
       }, [])
       const [activeDir, setActiveDir] = React.useState(bootSession.dir)
       const [activeTag, setActiveTag] = React.useState(bootSession.tag)
@@ -9847,20 +9880,36 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                   { className: 'dshgn_recent' },
                   h('span', { className: 'dshgn_recentLabel' }, t('search.recent')),
                   recentSearches.map((word) =>
+                    // 一颗胶囊 + 它自己的小叉。叉不能塞进胶囊里——button 里套 button
+                    // 是非法结构，浏览器会把里层那个拆出来，点下去的行为全乱。
                     h(
-                      'button',
-                      {
-                        key: 'recent-' + word,
-                        type: 'button',
-                        className: 'dshgn_recentChip',
-                        title: word,
-                        onClick: () => {
-                          setQuery(word)
-                          const box = findInPanel('.dshgn_search')
-                          if (box !== null) box.focus()
+                      'span',
+                      { key: 'recent-' + word, className: 'dshgn_recentItem' },
+                      h(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'dshgn_recentChip',
+                          title: word,
+                          onClick: () => {
+                            setQuery(word)
+                            const box = findInPanel('.dshgn_search')
+                            if (box !== null) box.focus()
+                          },
                         },
-                      },
-                      word,
+                        word,
+                      ),
+                      h(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'dshgn_recentDrop',
+                          title: `${t('search.recentDrop')}：${word}`,
+                          'aria-label': `${t('search.recentDrop')}：${word}`,
+                          onClick: () => dropRecentSearch(word),
+                        },
+                        h(Icon, { name: 'close', size: 9 }),
+                      ),
                     ),
                   ),
                   h(
