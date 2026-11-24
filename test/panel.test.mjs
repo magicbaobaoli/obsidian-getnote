@@ -16500,3 +16500,103 @@ test('三语文案一把钥匙都不少，搬进来的那几句三种语言都�
   assert.ok(LEX.nl['cloud.recallCount'].includes('{n}'), '荷兰文那条要留 {n}')
 })
 
+// 附件太大时，服务端要到收完整份字节才回一句英文的 413：白等一趟、还看不懂。
+// 现在在本地先看一眼 file.size，拦在发请求之前，并说清上限是多少。
+test('附件超过单个体积上限时，在本地就拦下来、说人话，不白传一趟', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const backBtn = window.document.querySelector('.dshgn_noteBack')
+  if (backBtn) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    try {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+  }
+
+  const max = panel.__internals.ATTACH_MAX_BYTES
+  assert.equal(typeof max, 'number', '上限要能被测试看见')
+  assert.equal(max, 100 * 1024 * 1024, '和服务端 readBufferBody 的上限对齐')
+
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox !== null && searchBox.value !== '') {
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(300)
+  }
+
+  const createRes = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '附件过大验收',
+      content: '正文开头',
+      withDatePrefix: false,
+      requestId: 'seed-attach-big',
+    }),
+  })
+  const created = await createRes.json()
+  assert.equal(created.path, '随手记/附件过大验收.md')
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  const card = await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_card')).find(
+        (el) => el.getAttribute('title') === created.path,
+      ),
+    5000,
+    '笔记出现在列表里',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(
+    () => ((window.document.querySelector('.dshgn_note') || {}).textContent || '').includes('正文开头'),
+    5000,
+    '笔记打开了',
+  )
+
+  // 只造形状：真拿 100MB 字节来测没有意义，拦的是 size 这个数。
+  const hugeFile = {
+    name: '超大视频.mov',
+    size: max + 1,
+    arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+  }
+  const callsBefore = fetchCalls.filter((url) => url.includes('/asset/upload')).length
+  const note = window.document.querySelector('.dshgn_note')
+  const dropEvent = new window.Event('drop', { bubbles: true, cancelable: true })
+  dropEvent.dataTransfer = { files: [hugeFile] }
+  note.dispatchEvent(dropEvent)
+
+  const toast = await waitFor(
+    () => {
+      const el = window.document.querySelector('.dshgn_toast')
+      return el !== null && (el.textContent || '').includes('传不上去') ? el : null
+    },
+    8000,
+    '太大时要当场说一声',
+  )
+  assert.ok(toast.textContent.includes('100.0 MB'), '提示里要写出上限，实际：' + toast.textContent)
+
+  const callsAfter = fetchCalls.filter((url) => url.includes('/asset/upload')).length
+  assert.equal(callsAfter, callsBefore, '拦在本地就不该真去传一趟')
+
+  // 正文一个字都不该动
+  const readRes = await realFetch(
+    server.origin + '/getnote/read?path=' + encodeURIComponent(created.path),
+    { headers: { 'x-getnote-token': server.token } },
+  )
+  const readJson = await readRes.json()
+  assert.equal(readJson.content, '正文开头', '没传上去就不该往正文里写引用')
+  assert.equal((readJson.assets || []).length, 0, '附件目录里也不该多出东西')
+
+  await clickTab('笔记')
+})
+

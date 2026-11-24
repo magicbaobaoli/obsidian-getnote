@@ -9219,6 +9219,7 @@ var LEX = {
     "attach.added": "\u9644\u4EF6\u5DF2\u63D2\u5165",
     "attach.failed": "\u6709\u51E0\u4E2A\u9644\u4EF6\u6CA1\u4F20\u4E0A\u53BB",
     "attach.needNote": "\u5148\u6253\u5F00\u4E00\u7BC7\u7B14\u8BB0\uFF0C\u518D\u5F80\u91CC\u653E\u6587\u4EF6",
+    "attach.tooBig": "\u6709\u8D85\u8FC7 {max} \u7684\u6587\u4EF6\uFF0C\u4F20\u4E0D\u4E0A\u53BB\u2014\u2014\u5148\u538B\u7F29\u4E00\u4E0B\u518D\u653E",
     "note.backlinks": "\u5F15\u7528\u4E86\u8FD9\u7BC7\u7684\u7B14\u8BB0",
     "note.backlinkJump": "\u53BB\u8FD9\u4E00\u53E5",
     "sel.newNote": "\u5B58\u6210\u65B0\u7B14\u8BB0",
@@ -9881,6 +9882,7 @@ var LEX = {
     "attach.added": "Attachment inserted",
     "attach.failed": "Some files could not be uploaded",
     "attach.needNote": "Open a note first, then drop files into it",
+    "attach.tooBig": "Files over {max} cannot be uploaded \u2014 shrink them first",
     "note.backlinks": "Notes linking here",
     "note.backlinkJump": "Jump to this line",
     "sel.newNote": "Save as a new note",
@@ -10525,6 +10527,7 @@ var LEX = {
     "attach.added": "Bijlage ingevoegd",
     "attach.failed": "Sommige bestanden zijn niet ge\xFCpload",
     "attach.needNote": "Open eerst een notitie en zet daar bestanden in",
+    "attach.tooBig": "Bestanden boven {max} kunnen niet worden ge\xFCpload \u2014 maak ze eerst kleiner",
     "note.backlinks": "Notities die hierheen linken",
     "note.backlinkJump": "Naar deze regel",
     "sel.newNote": "Als nieuwe notitie opslaan",
@@ -12171,6 +12174,7 @@ function noteBodyBytes(text) {
   }
   return bytes;
 }
+var ATTACH_MAX_BYTES = 100 * 1024 * 1024;
 function diffLineCounts(fromText, toText) {
   const split = (value) => String(value === null || value === void 0 ? "" : value).replace(/\r\n/g, "\n").split("\n");
   const from = split(fromText);
@@ -15248,7 +15252,12 @@ function GetnotePage() {
       try {
         const names = [];
         let failed = 0;
+        let tooBig = 0;
         for (const file of files) {
+          if (Number(file.size) > ATTACH_MAX_BYTES) {
+            tooBig += 1;
+            continue;
+          }
           try {
             const saved = await uploadAsset(current.path, file);
             if (saved && typeof saved.name === "string" && saved.name !== "") names.push(saved.name);
@@ -15257,7 +15266,7 @@ function GetnotePage() {
           }
         }
         if (names.length === 0) {
-          showToast(t4("attach.failed"));
+          showToast(tooBig > 0 ? t4("attach.tooBig").replace("{max}", formatBytes2(ATTACH_MAX_BYTES)) : t4("attach.failed"));
           return;
         }
         const base = draft !== null ? draft : current.content;
@@ -15278,7 +15287,8 @@ ${insert}
           });
           await openNote(current.path);
         }
-        showToast(failed > 0 ? t4("attach.failed") : t4("attach.added"));
+        if (tooBig > 0) showToast(t4("attach.tooBig").replace("{max}", formatBytes2(ATTACH_MAX_BYTES)));
+        else showToast(failed > 0 ? t4("attach.failed") : t4("attach.added"));
       } catch (err) {
         setError(err && err.message ? err.message : String(err));
       } finally {

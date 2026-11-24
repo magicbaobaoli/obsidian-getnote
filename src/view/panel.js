@@ -853,6 +853,7 @@ async function saveFile(url, filename) {
         'attach.added': '附件已插入',
         'attach.failed': '有几个附件没传上去',
         'attach.needNote': '先打开一篇笔记，再往里放文件',
+        'attach.tooBig': '有超过 {max} 的文件，传不上去——先压缩一下再放',
         'note.backlinks': '引用了这篇的笔记',
     'note.backlinkJump': '去这一句',
         'sel.newNote': '存成新笔记',
@@ -1520,6 +1521,7 @@ async function saveFile(url, filename) {
         'attach.added': 'Attachment inserted',
         'attach.failed': 'Some files could not be uploaded',
         'attach.needNote': 'Open a note first, then drop files into it',
+        'attach.tooBig': 'Files over {max} cannot be uploaded — shrink them first',
         'note.backlinks': 'Notes linking here',
     'note.backlinkJump': 'Jump to this line',
         'sel.newNote': 'Save as a new note',
@@ -2168,6 +2170,7 @@ async function saveFile(url, filename) {
         'attach.added': 'Bijlage ingevoegd',
         'attach.failed': 'Sommige bestanden zijn niet geüpload',
         'attach.needNote': 'Open eerst een notitie en zet daar bestanden in',
+        'attach.tooBig': 'Bestanden boven {max} kunnen niet worden geüpload — maak ze eerst kleiner',
         'note.backlinks': 'Notities die hierheen linken',
     'note.backlinkJump': 'Naar deze regel',
         'sel.newNote': 'Als nieuwe notitie opslaan',
@@ -4449,6 +4452,11 @@ async function saveFile(url, filename) {
       }
       return bytes
     }
+
+    // 单个附件能有多大：服务端 readBufferBody 的上限是 100MB。超了只会换回
+    // 一句英文的 413，而且要先把它整份传上去才知道——在本地先看一眼 file.size，
+    // 拦在发请求之前，省一趟白跑，也说得出人话。
+    const ATTACH_MAX_BYTES = 100 * 1024 * 1024
 
     /**
      * 版本历史里「这一版和现在差多少」。
@@ -8125,7 +8133,13 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           try {
             const names = []
             let failed = 0
+            let tooBig = 0
             for (const file of files) {
+              // 太大的先拦在本地：整份传上去再被 413 打回来，白等一趟还只得到一句英文。
+              if (Number(file.size) > ATTACH_MAX_BYTES) {
+                tooBig += 1
+                continue
+              }
               try {
                 const saved = await uploadAsset(current.path, file)
                 if (saved && typeof saved.name === 'string' && saved.name !== '') names.push(saved.name)
@@ -8134,7 +8148,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
               }
             }
             if (names.length === 0) {
-              showToast(t('attach.failed'))
+              showToast(tooBig > 0 ? t('attach.tooBig').replace('{max}', formatBytes(ATTACH_MAX_BYTES)) : t('attach.failed'))
               return
             }
             const base = draft !== null ? draft : current.content
@@ -8151,7 +8165,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
               })
               await openNote(current.path)
             }
-            showToast(failed > 0 ? t('attach.failed') : t('attach.added'))
+            if (tooBig > 0) showToast(t('attach.tooBig').replace('{max}', formatBytes(ATTACH_MAX_BYTES)))
+            else showToast(failed > 0 ? t('attach.failed') : t('attach.added'))
           } catch (err) {
             setError(err && err.message ? err.message : String(err))
           } finally {
@@ -19812,6 +19827,7 @@ export const __internals = {
   TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale, HistoryCard,
   reportSync, dailyTemplateOf, frontmatterText, bodyOfSnapshot, isTagKey, FollowCard, parseTable, countWords, readingMinutes, diffLineCounts,
   noteBodyBytes, NOTE_MAX_BYTES,
+  ATTACH_MAX_BYTES,
   isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote, scrollToFootnoteRef, parseImageSize, renderParagraph, blockTextOf, markdownLinkTarget,
   tagBodyOf, ZoomOverlay, continueListLine, indentLines, wrapInline, linkPaste, wikilinkQueryAt, wikilinkMatches, tagQueryAt, tagMatches, findInBody, findAllBodyMatches, countTextMatches, findInBodyMatch, findInText, textHasParts,
       outlineScrollDelta,
