@@ -812,9 +812,11 @@ npm run check:market  # 上架条件自检：id/name/description 的规矩、版
 Obsidian 且必须以标点收尾、版本三处一致、仓库里没有个人信息与真凭证）在提交时就查一遍，
 免得等到目录审核驳回再重走一轮。
 
-打标签即发布（`.github/workflows/release.yml`）：`git tag 0.1.0 && git push --tags`
+打标签即发布（`.github/workflows/release.yml`）：`git tag 0.1.1 && git push --tags`
 会重跑测试、打包出 `getnote-brain-<tag>.zip`（含 `main.js` / `manifest.json` /
 `styles.css` / `card/` / `locale/`）挂到 Release 上，可以直接下载解压进插件目录；
+**tag 名必须和 `manifest.json` 里的 `version` 一字不差**——社区目录和 Obsidian 的自动更新
+都是按 manifest 的 version 去找同名 tag 的 Release 取文件，差一个字就取到旧构建或者取不到；
 同一份 Release 里还单独挂了 `main.js` / `manifest.json` / `styles.css` 三个文件，
 社区目录校验和 Obsidian 的自动更新都按这三个文件取，少一个就更新不了。
 
