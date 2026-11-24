@@ -9348,6 +9348,11 @@ var LEX = {
     "conflict.pickedCloud": "\u5F53\u521D\u9009\u4E86\u4E91\u7AEF\u7248",
     "conflict.undo": "\u9000\u56DE\u672A\u5904\u7406",
     "conflict.undone": "\u5DF2\u9000\u56DE\u672A\u5904\u7406",
+    "conflict.filter": "\u6309\u540D\u5B57\u627E\u4E00\u6761",
+    "conflict.filterClear": "\u6E05\u6389\u8FD9\u4E2A\u7B5B",
+    "conflict.filterNone": "\u6CA1\u6709\u5BF9\u5F97\u4E0A\u7684\u51B2\u7A81",
+    "conflict.filterNoneHint": "\u6362\u4E2A\u8BCD\u8BD5\u8BD5\uFF0C\u6216\u8005\u628A\u7B5B\u6E05\u6389\u770B\u5168\u90E8\u3002",
+    "conflict.filtered": "\u7B5B\u51FA {n} \u6761\uFF0C\u4E00\u5171 {total} \u6761",
     "tab.trash": "\u56DE\u6536\u7AD9",
     "tab.broken": "\u65AD\u94FE",
     "broken.desc": "\u8FD9\u91CC\u5217\u51FA\u5168\u5E93\u300C\u5199\u4E86\u53CC\u94FE\u3001\u4F46\u5E93\u91CC\u6CA1\u6709\u8FD9\u4E00\u7BC7\u300D\u7684\u5730\u65B9\u3002\u70B9\u4E00\u884C\u5C31\u6253\u5F00\u51FA\u95EE\u9898\u7684\u90A3\u4E00\u7BC7\uFF0C\u6539\u6389\u90A3\u4E2A\u540D\u5B57\u5C31\u597D\u3002",
@@ -9984,6 +9989,11 @@ var LEX = {
     "conflict.pickedCloud": "you took cloud",
     "conflict.undo": "Mark unresolved",
     "conflict.undone": "Marked unresolved",
+    "conflict.filter": "Find one by name",
+    "conflict.filterClear": "Clear this filter",
+    "conflict.filterNone": "No conflict matches",
+    "conflict.filterNoneHint": "Try another word, or clear the filter to see everything.",
+    "conflict.filtered": "Showing {n} of {total}",
     "tab.trash": "Trash",
     "tab.broken": "Broken links",
     "broken.desc": "Every place where a note links to something that is not in the vault. Click a row to open the note and fix the name.",
@@ -10612,6 +10622,11 @@ var LEX = {
     "conflict.pickedCloud": "je koos cloud",
     "conflict.undo": "Terugzetten op onafgehandeld",
     "conflict.undone": "Teruggezet op onafgehandeld",
+    "conflict.filter": "Zoek er een op naam",
+    "conflict.filterClear": "Dit filter wissen",
+    "conflict.filterNone": "Geen conflict gevonden",
+    "conflict.filterNoneHint": "Probeer een ander woord, of wis het filter om alles te zien.",
+    "conflict.filtered": "{n} van {total} getoond",
     "tab.trash": "Prullenbak",
     "tab.broken": "Dode links",
     "broken.desc": "Elke plek waar een notitie naar iets linkt dat niet in de map staat. Klik op een regel om de notitie te openen en de naam te herstellen.",
@@ -19496,6 +19511,7 @@ function ConflictPane(props) {
   const [detail, setDetail] = h2(null);
   const [diffMode, setDiffMode] = h2("rendered");
   const [resolvedOpen, setResolvedOpen] = h2(false);
+  const [filter, setFilter] = h2("");
   const load = q2(async () => {
     setLoading(true);
     try {
@@ -19573,8 +19589,15 @@ function ConflictPane(props) {
     }
   }, [detail, load, onChanged, onError, showToast, t4]);
   const list = items === null ? [] : items;
-  const pendingItems = list.filter((item) => item.resolved !== true);
-  const resolvedItems = list.filter((item) => item.resolved === true);
+  const needle = filter.trim().toLowerCase();
+  const keep = (item) => {
+    if (needle === "") return true;
+    const name = String(item.originalName || item.name || item.path || "").toLowerCase();
+    const side = item.resolved === true ? item.keptLocal === true ? "local" : "cloud" : "";
+    return name.includes(needle) || side.includes(needle);
+  };
+  const pendingItems = list.filter((item) => item.resolved !== true && keep(item));
+  const resolvedItems = list.filter((item) => item.resolved === true && keep(item));
   const renderRow = (item) => h4(
     "div",
     {
@@ -19726,7 +19749,43 @@ function ConflictPane(props) {
           t4("action.refresh")
         )
       ),
-      h4("div", { className: "dshgn_sectionDesc" }, t4("conflict.desc"))
+      h4("div", { className: "dshgn_sectionDesc" }, t4("conflict.desc")),
+      // 一条冲突都没有时别摆这个筛：空清单上没有可筛的东西。
+      list.length === 0 ? null : h4(
+        "div",
+        { className: "dshgn_brokenFilterRow" },
+        h4(Icon, { name: "search", size: 12 }),
+        h4("input", {
+          type: "text",
+          className: "dshgn_input dshgn_brokenFilter",
+          value: filter,
+          placeholder: t4("conflict.filter"),
+          "aria-label": t4("conflict.filter"),
+          onInput: (event) => setFilter(String(event.target.value || "")),
+          onKeyDown: (event) => {
+            if (event.key !== "Escape") return;
+            event.preventDefault();
+            event.stopPropagation();
+            setFilter("");
+          }
+        }),
+        filter.trim() === "" ? null : h4(
+          "button",
+          {
+            type: "button",
+            className: "dshgn_btn dshgn_brokenFilterClear",
+            title: t4("conflict.filterClear"),
+            onClick: () => setFilter("")
+          },
+          h4(Icon, { name: "close", size: 12 })
+        )
+      ),
+      // 筛着的时候报一句「筛出几条、一共几条」：不报的话用户以为冲突只剩这么点了。
+      needle === "" ? null : h4(
+        "div",
+        { className: "dshgn_sectionDesc dshgn_brokenFiltered" },
+        t4("conflict.filtered").replace("{n}", String(pendingItems.length + resolvedItems.length)).replace("{total}", String(list.length))
+      )
     ),
     loading && list.length === 0 ? h4("div", { className: "dshgn_emptyState" }, h4("span", { className: "dshgn_spin" })) : list.length === 0 ? h4(
       "div",
@@ -19741,9 +19800,10 @@ function ConflictPane(props) {
       pendingItems.length === 0 ? h4(
         "div",
         { className: "dshgn_empty" },
-        h4(Icon, { name: "check", size: 24 }),
-        h4("div", { className: "dshgn_emptyTitle" }, t4("conflict.empty")),
-        h4("div", { className: "dshgn_emptyDesc" }, t4("conflict.emptyHint"))
+        // 筛着的时候不能说「没有待处理的冲突」——那是在说另一件事。
+        h4(Icon, { name: needle === "" ? "check" : "search", size: 24 }),
+        h4("div", { className: "dshgn_emptyTitle" }, needle === "" ? t4("conflict.empty") : t4("conflict.filterNone")),
+        h4("div", { className: "dshgn_emptyDesc" }, needle === "" ? t4("conflict.emptyHint") : t4("conflict.filterNoneHint"))
       ) : pendingItems.map(renderRow),
       // 已处理区：默认折叠。这些是「已经决定过」的归档，留着是为了
       // 能反悔和复查，不该占据一进页面就能看到的视觉重心。

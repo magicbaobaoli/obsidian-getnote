@@ -986,6 +986,11 @@ async function saveFile(url, filename) {
         'conflict.pickedCloud': '当初选了云端版',
         'conflict.undo': '退回未处理',
         'conflict.undone': '已退回未处理',
+        'conflict.filter': '按名字找一条',
+        'conflict.filterClear': '清掉这个筛',
+        'conflict.filterNone': '没有对得上的冲突',
+        'conflict.filterNoneHint': '换个词试试，或者把筛清掉看全部。',
+        'conflict.filtered': '筛出 {n} 条，一共 {total} 条',
         'tab.trash': '回收站',
         'tab.broken': '断链',
         'broken.desc': '这里列出全库「写了双链、但库里没有这一篇」的地方。点一行就打开出问题的那一篇，改掉那个名字就好。',
@@ -1627,6 +1632,11 @@ async function saveFile(url, filename) {
         'conflict.pickedCloud': 'you took cloud',
         'conflict.undo': 'Mark unresolved',
         'conflict.undone': 'Marked unresolved',
+        'conflict.filter': 'Find one by name',
+        'conflict.filterClear': 'Clear this filter',
+        'conflict.filterNone': 'No conflict matches',
+        'conflict.filterNoneHint': 'Try another word, or clear the filter to see everything.',
+        'conflict.filtered': 'Showing {n} of {total}',
         'tab.trash': 'Trash',
         'tab.broken': 'Broken links',
         'broken.desc': 'Every place where a note links to something that is not in the vault. Click a row to open the note and fix the name.',
@@ -2259,6 +2269,11 @@ async function saveFile(url, filename) {
         'conflict.pickedCloud': 'je koos cloud',
         'conflict.undo': 'Terugzetten op onafgehandeld',
         'conflict.undone': 'Teruggezet op onafgehandeld',
+        'conflict.filter': 'Zoek er een op naam',
+        'conflict.filterClear': 'Dit filter wissen',
+        'conflict.filterNone': 'Geen conflict gevonden',
+        'conflict.filterNoneHint': 'Probeer een ander woord, of wis het filter om alles te zien.',
+        'conflict.filtered': '{n} van {total} getoond',
         'tab.trash': 'Prullenbak',
         'tab.broken': 'Dode links',
         'broken.desc': 'Elke plek waar een notitie naar iets linkt dat niet in de map staat. Klik op een regel om de notitie te openen en de naam te herstellen.',
@@ -13145,6 +13160,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 「已处理」区默认折叠：处理完的东西是归档，不是待办。默认展开的话
       // 用户每次进来都要先滚过一堆已经决定过的条目才能看到真正要处理的。
       const [resolvedOpen, setResolvedOpen] = React.useState(false)
+      // 冲突攒多了（同步出岔子时一次能出几十条），想找某一篇只能一行行扫。
+      // 这个筛只在这一页里生效，不碰中栏那个搜索框。
+      const [filter, setFilter] = React.useState('')
 
       const load = React.useCallback(async () => {
         setLoading(true)
@@ -13232,8 +13250,17 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       }, [detail, load, onChanged, onError, showToast, t])
 
       const list = items === null ? [] : items
-      const pendingItems = list.filter((item) => item.resolved !== true)
-      const resolvedItems = list.filter((item) => item.resolved === true)
+      // 筛的是「这一篇叫什么」：文件名、以及当初采纳了哪一边，两样都能搜到。
+      // 未处理与已处理两区各筛各的，计数也跟着筛后的数走。
+      const needle = filter.trim().toLowerCase()
+      const keep = (item) => {
+        if (needle === '') return true
+        const name = String(item.originalName || item.name || item.path || '').toLowerCase()
+        const side = item.resolved === true ? (item.keptLocal === true ? 'local' : 'cloud') : ''
+        return name.includes(needle) || side.includes(needle)
+      }
+      const pendingItems = list.filter((item) => item.resolved !== true && keep(item))
+      const resolvedItems = list.filter((item) => item.resolved === true && keep(item))
 
       const renderRow = (item) =>
         h(
@@ -13419,6 +13446,51 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             ),
           ),
           h('div', { className: 'dshgn_sectionDesc' }, t('conflict.desc')),
+          // 一条冲突都没有时别摆这个筛：空清单上没有可筛的东西。
+          list.length === 0
+            ? null
+            : h(
+                'div',
+                { className: 'dshgn_brokenFilterRow' },
+                h(Icon, { name: 'search', size: 12 }),
+                h('input', {
+                  type: 'text',
+                  className: 'dshgn_input dshgn_brokenFilter',
+                  value: filter,
+                  placeholder: t('conflict.filter'),
+                  'aria-label': t('conflict.filter'),
+                  onInput: (event) => setFilter(String(event.target.value || '')),
+                  onKeyDown: (event) => {
+                    if (event.key !== 'Escape') return
+                    // Esc 只清这一页的筛，别顺手把别处的输入也一起收了
+                    event.preventDefault()
+                    event.stopPropagation()
+                    setFilter('')
+                  },
+                }),
+                filter.trim() === ''
+                  ? null
+                  : h(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'dshgn_btn dshgn_brokenFilterClear',
+                        title: t('conflict.filterClear'),
+                        onClick: () => setFilter(''),
+                      },
+                      h(Icon, { name: 'close', size: 12 }),
+                    ),
+              ),
+          // 筛着的时候报一句「筛出几条、一共几条」：不报的话用户以为冲突只剩这么点了。
+          needle === ''
+            ? null
+            : h(
+                'div',
+                { className: 'dshgn_sectionDesc dshgn_brokenFiltered' },
+                t('conflict.filtered')
+                  .replace('{n}', String(pendingItems.length + resolvedItems.length))
+                  .replace('{total}', String(list.length)),
+              ),
         ),
         loading && list.length === 0
           ? h('div', { className: 'dshgn_emptyState' }, h('span', { className: 'dshgn_spin' }))
@@ -13438,9 +13510,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                   ? h(
                       'div',
                       { className: 'dshgn_empty' },
-                      h(Icon, { name: 'check', size: 24 }),
-                      h('div', { className: 'dshgn_emptyTitle' }, t('conflict.empty')),
-                      h('div', { className: 'dshgn_emptyDesc' }, t('conflict.emptyHint')),
+                      // 筛着的时候不能说「没有待处理的冲突」——那是在说另一件事。
+                      h(Icon, { name: needle === '' ? 'check' : 'search', size: 24 }),
+                      h('div', { className: 'dshgn_emptyTitle' }, needle === '' ? t('conflict.empty') : t('conflict.filterNone')),
+                      h('div', { className: 'dshgn_emptyDesc' }, needle === '' ? t('conflict.emptyHint') : t('conflict.filterNoneHint')),
                     )
                   : pendingItems.map(renderRow),
                 // 已处理区：默认折叠。这些是「已经决定过」的归档，留着是为了

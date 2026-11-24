@@ -16097,3 +16097,85 @@ test('单篇字节数按 UTF-8 算，超了编辑态脚下就说，保存被 413
     await sleep(300)
   }
 })
+
+test('冲突攒多了，顶上那行筛能筛到想找的那一条，清掉就回全量', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const allRow = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+      const name = el.querySelector('.dshgn_treeName')
+      return name !== null && (name.textContent || '').trim() === '全部笔记'
+    })
+
+  // 上一条用例把笔记留在编辑态：先退回去，别让右栏还占着。
+  const back0 = window.document.querySelector('.dshgn_noteBack')
+  if (back0) {
+    back0.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+
+  // 造三条真冲突留档：文件名必须是「时间戳__原名」才会被 listConflicts 认出来，
+  // 正本也得真存在，不然点进比对页是空的两栏。
+  const seedNames = ['筛冲突-甲', '筛冲突-乙', '筛冲突-丙']
+  for (let i = 0; i < seedNames.length; i += 1) {
+    const name = seedNames[i]
+    const canon = '冲突筛验收/' + name + '.md'
+    const put = async (target, text) => {
+      const res = await realFetch(server.origin + '/getnote/save', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+        body: JSON.stringify({ path: target, content: text }),
+      })
+      assert.equal(res.status, 200, '种下 ' + target)
+    }
+    await put(canon, '# ' + name + String.fromCharCode(10) + String.fromCharCode(10) + '云端那一版。' + String.fromCharCode(10))
+    await put('.conflicts/2026-11-20T0' + i + '-00-00-000Z__' + name + '.md', '# ' + name + String.fromCharCode(10) + String.fromCharCode(10) + '本地那一版。' + String.fromCharCode(10))
+  }
+
+  await clickTab('冲突')
+  const rows = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_pane .dshgn_rowLine')).filter(
+      (el) => el.querySelector('.dshgn_cardTitle') !== null,
+    )
+  await waitFor(() => (rows().length >= 3 ? rows() : null), 8000, '冲突列表里出现那三条')
+
+  // 有冲突才摆筛；清单一空就不该有这行输入框。
+  const filterBox = () => window.document.querySelector('.dshgn_brokenFilter')
+  assert.notEqual(filterBox(), null, '有冲突时要摆出筛那一行')
+
+  const typeInto = async (el, text) => {
+    const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setValue.call(el, text)
+    el.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(300)
+  }
+
+  // 筛到「乙」：只剩一条，并且顶上要说清「筛出几条、一共几条」。
+  await typeInto(filterBox(), '乙')
+  await waitFor(() => (rows().length === 1 ? rows() : null), 5000, '筛到乙只剩一条')
+  assert.equal(String(rows()[0].textContent || '').includes('筛冲突-乙'), true, '剩下的该是乙：' + rows()[0].textContent)
+  const counted = await waitFor(() => window.document.querySelector('.dshgn_brokenFiltered'), 5000, '筛着时要报数')
+  const countedText = String(counted.textContent || '')
+  assert.equal(countedText.includes('1'), true, '要说筛出一条：' + countedText)
+  assert.equal(countedText.includes('3'), true, '要说一共三条：' + countedText)
+
+  // 谁都对不上时不能说「没有待处理的冲突」——那是在说另一件事。
+  await typeInto(filterBox(), '这一串谁也对不上')
+  await waitFor(() => (rows().length === 0 ? rows() : null), 5000, '对不上时列表该空')
+  const noneTitle = await waitFor(() => window.document.querySelector('.dshgn_pane .dshgn_emptyTitle'), 5000, '空态标题')
+  assert.equal(String(noneTitle.textContent || '').includes('没有对得上的冲突'), true, '标题要说对不上：' + noneTitle.textContent)
+  const noneDesc = window.document.querySelector('.dshgn_pane .dshgn_emptyDesc')
+  assert.equal(String((noneDesc && noneDesc.textContent) || '').includes('换个词试试'), true, '要给出路：' + (noneDesc && noneDesc.textContent))
+
+  // Esc 清掉这个筛就回全量，报数那句也跟着收起来。
+  filterBox().dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  await sleep(300)
+  await waitFor(() => (rows().length === 3 ? rows() : null), 5000, 'Esc 之后回全量')
+  assert.equal(window.document.querySelector('.dshgn_brokenFiltered'), null, '筛清掉了就不该再报数')
+
+  // 收尾：回笔记页，别把冲突页留给后面的用例。
+  await clickTab('笔记')
+  if (allRow() !== undefined) {
+    allRow().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+})
