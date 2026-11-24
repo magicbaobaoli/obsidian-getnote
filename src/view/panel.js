@@ -965,6 +965,7 @@ async function saveFile(url, filename) {
       'archive.scopeAll': '整库',
       'archive.scopeNotes': '只要文字',
       'archive.scopeAssets': '只要附件',
+      'archive.defaultName': '得到大脑归档',
         'archive.imported': '导入完成：新增/跳过',
         'archive.importMode': '同名时',
         'archive.mode.rename': '另存一份',
@@ -1084,6 +1085,9 @@ async function saveFile(url, filename) {
         'trash.previewMore': '在这儿看全',
         'trash.previewLess': '只看开头',
         'cloud.newNote': '新建云端笔记',
+        'cloud.recall': '语义搜索',
+        'cloud.recallCount': '语义搜索 ({n})',
+        'cloud.untitled': '(无标题)',
         'cloud.newNoteTitle': '标题',
         'cloud.newNoteBody': '正文',
         'cloud.create': '创建',
@@ -1175,6 +1179,7 @@ async function saveFile(url, filename) {
         'api.idPlaceholder': 'cli_...',
         'api.grantPlaceholder': 'grt_...（留空即可）',
         'api.save': '保存凭证',
+        'api.savedPlaceholder': '••••••••（已保存，重新填可替换）',
         'api.saved': '凭证已保存',
         'api.test': '测试连接',
         'api.testing': '测试中…',
@@ -1211,7 +1216,9 @@ async function saveFile(url, filename) {
         'card.none': '卡片上没有录音。',
         'card.dir': '放进哪个目录',
         'card.dirHint': '留空就放库里已有的「录音卡」目录。',
+        'card.dirPlaceholder': '录音卡',
         'card.deleteAfter': '导入后从卡片上删掉原件',
+        'card.deleteAfterConfirm': '导入成功后会把卡片上的原件永久删掉，不能恢复。确定要这样吗？',
         'card.deleteAfterHint': '默认不动卡片。打开后导入成功的文件会被永久删除，不能恢复。',
         'card.wifiTitle': '热点快传',
         'card.wifiDesc':
@@ -1616,6 +1623,7 @@ async function saveFile(url, filename) {
       'archive.scopeAll': 'Whole vault',
       'archive.scopeNotes': 'Notes only',
       'archive.scopeAssets': 'Attachments only',
+      'archive.defaultName': 'Vault archive',
         'archive.imported': 'Import done — added/skipped',
         'archive.importMode': 'On name clash',
         'archive.mode.rename': 'Keep both',
@@ -1726,6 +1734,9 @@ async function saveFile(url, filename) {
         'trash.previewMore': 'Show it all here',
         'trash.previewLess': 'Back to the opening',
         'cloud.newNote': 'New cloud note',
+        'cloud.recall': 'Semantic search',
+        'cloud.recallCount': 'Semantic search ({n})',
+        'cloud.untitled': '(Untitled)',
         'cloud.newNoteTitle': 'Title',
         'cloud.newNoteBody': 'Body',
         'cloud.create': 'Create',
@@ -1817,6 +1828,7 @@ async function saveFile(url, filename) {
         'api.idPlaceholder': 'cli_...',
         'api.grantPlaceholder': 'grt_... (leave empty)',
         'api.save': 'Save credentials',
+        'api.savedPlaceholder': '•••••••• (saved; type again to replace)',
         'api.saved': 'Credentials saved',
         'api.test': 'Test connection',
         'api.testing': 'Testing…',
@@ -1853,7 +1865,9 @@ async function saveFile(url, filename) {
         'card.none': 'No recordings on the card.',
         'card.dir': 'Import into folder',
         'card.dirHint': 'Leave empty to use the existing "Recorder" folder in the vault.',
+        'card.dirPlaceholder': 'Recorder',
         'card.deleteAfter': 'Delete originals from the card after import',
+        'card.deleteAfterConfirm': 'After a successful import the originals on the card are deleted for good and cannot be recovered. Go ahead?',
         'card.deleteAfterHint': 'The card is left untouched by default. When enabled, imported files are deleted permanently.',
         'card.wifiTitle': 'Wi-Fi transfer',
         'card.wifiDesc':
@@ -2257,6 +2271,7 @@ async function saveFile(url, filename) {
       'archive.scopeAll': 'Hele kluis',
       'archive.scopeNotes': 'Alleen notities',
       'archive.scopeAssets': 'Alleen bijlagen',
+      'archive.defaultName': 'Kluisarchief',
         'archive.imported': 'Import klaar — toegevoegd/overgeslagen',
         'archive.importMode': 'Bij naamconflict',
         'archive.mode.rename': 'Beide houden',
@@ -2367,6 +2382,9 @@ async function saveFile(url, filename) {
         'trash.previewMore': 'Hier alles tonen',
         'trash.previewLess': 'Alleen het begin',
         'cloud.newNote': 'Nieuwe cloudnotitie',
+        'cloud.recall': 'Semantisch zoeken',
+        'cloud.recallCount': 'Semantisch zoeken ({n})',
+        'cloud.untitled': '(Zonder titel)',
         'cloud.newNoteTitle': 'Titel',
         'cloud.newNoteBody': 'Tekst',
         'cloud.create': 'Aanmaken',
@@ -2453,6 +2471,7 @@ async function saveFile(url, filename) {
         'api.idPlaceholder': 'cli_...',
         'api.grantPlaceholder': 'grt_... (leeg laten)',
         'api.save': 'Inloggegevens opslaan',
+        'api.savedPlaceholder': '•••••••• (opgeslagen; opnieuw invullen om te vervangen)',
         'api.saved': 'Inloggegevens opgeslagen',
         'api.test': 'Verbinding testen',
         'api.testing': 'Testen…',
@@ -2489,7 +2508,9 @@ async function saveFile(url, filename) {
         'card.none': 'Geen opnames op de kaart.',
         'card.dir': 'Importeer in map',
         'card.dirHint': 'Laat leeg om de bestaande map “Recordercard” in de kluis te gebruiken.',
+        'card.dirPlaceholder': 'Recordercard',
         'card.deleteAfter': 'Verwijder originelen van de kaart na import',
+        'card.deleteAfterConfirm': 'Na een geslaagde import worden de originelen op de kaart definitief verwijderd en dat kan niet worden teruggedraaid. Doorgaan?',
         'card.deleteAfterHint': 'De kaart blijft standaard ongemoeid. Ingeschakeld worden geïmporteerde bestanden permanent verwijderd.',
         'card.wifiTitle': 'Wifi-overdracht',
         'card.wifiDesc':
@@ -11666,7 +11687,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             'button',
             { type: 'button', className: 'dshgn_btn', onClick: doRecall, disabled: recalling || query.trim() === '' },
             recalling ? h('span', { className: 'dshgn_spin' }) : h(Icon, { name: 'search', size: 12 }),
-            recallHits !== null ? `语义搜索 (${recallHits.length})` : '语义搜索',
+            recallHits !== null ? t('cloud.recallCount').replace('{n}', String(recallHits.length)) : t('cloud.recall'),
           ),
           h(
             'button',
@@ -11710,7 +11731,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                       'div',
                       { className: 'dshgn_cardTitle' },
                       note.hasAudio ? h(Icon, { name: 'audio', size: 11 }) : null,
-                      note.title || '(无标题)',
+                      note.title || t('cloud.untitled'),
                     ),
                     h(
                       'div',
@@ -11861,7 +11882,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                         h(
                           'div',
                           { className: 'dshgn_md' },
-                          h('h1', { className: 'dshgn_h dshgn_h1' }, detail.title || '(无标题)'),
+                          h('h1', { className: 'dshgn_h dshgn_h1' }, detail.title || t('cloud.untitled')),
                           detail.tags.length > 0
                             ? h(
                                 'div',
@@ -12679,9 +12700,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
 
       const startImport = React.useCallback(async () => {
         if (deleteAfter) {
-          const ok = await confirmDialog(
-            '导入成功后会把卡片上的原件永久删掉，不能恢复。确定要这样吗？',
-          )
+          const ok = await confirmDialog(t('card.deleteAfterConfirm'))
           if (!ok) return
         }
         try {
@@ -13043,7 +13062,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
               h('input', {
                 className: 'dshgn_input',
                 value: dir,
-                placeholder: '录音卡',
+                placeholder: t('card.dirPlaceholder'),
                 onChange: (event) => setDir(event.target.value),
               }),
               h('div', { className: 'dshgn_fieldHint' }, t('card.dirHint')),
@@ -13126,7 +13145,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         try {
           const suffix = exportScope === 'notes' ? '-文字' : exportScope === 'assets' ? '-附件' : ''
           const url = withToken(`${apiOrigin()}/getnote/archive/export?scope=${encodeURIComponent(exportScope)}`)
-          const name = '得到大脑归档' + suffix + '-' + new Date().toISOString().slice(0, 10) + '.zip'
+          const name = t('archive.defaultName') + suffix + '-' + new Date().toISOString().slice(0, 10) + '.zip'
           // 宿主能弹保存框就走它（用户能选位置），否则退回 a[download]。
           const saved = await saveFile(url, name)
           if (saved) {
@@ -19649,7 +19668,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             autoComplete: 'off',
             spellCheck: false,
             value: apiKey,
-            placeholder: configured ? '••••••••（已保存，重新填可替换）' : t('api.keyPlaceholder'),
+            placeholder: configured ? t('api.savedPlaceholder') : t('api.keyPlaceholder'),
             onChange: (event) => setApiKey(event.target.value),
           }),
         ),
@@ -19661,7 +19680,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             className: 'dshgn_input',
             spellCheck: false,
             value: clientId,
-            placeholder: configured ? '••••••••（已保存，重新填可替换）' : t('api.idPlaceholder'),
+            placeholder: configured ? t('api.savedPlaceholder') : t('api.idPlaceholder'),
             onChange: (event) => setClientId(event.target.value),
           }),
         ),

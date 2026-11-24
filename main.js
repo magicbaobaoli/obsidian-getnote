@@ -9330,6 +9330,7 @@ var LEX = {
     "archive.scopeAll": "\u6574\u5E93",
     "archive.scopeNotes": "\u53EA\u8981\u6587\u5B57",
     "archive.scopeAssets": "\u53EA\u8981\u9644\u4EF6",
+    "archive.defaultName": "\u5F97\u5230\u5927\u8111\u5F52\u6863",
     "archive.imported": "\u5BFC\u5165\u5B8C\u6210\uFF1A\u65B0\u589E/\u8DF3\u8FC7",
     "archive.importMode": "\u540C\u540D\u65F6",
     "archive.mode.rename": "\u53E6\u5B58\u4E00\u4EFD",
@@ -9449,6 +9450,9 @@ var LEX = {
     "trash.previewMore": "\u5728\u8FD9\u513F\u770B\u5168",
     "trash.previewLess": "\u53EA\u770B\u5F00\u5934",
     "cloud.newNote": "\u65B0\u5EFA\u4E91\u7AEF\u7B14\u8BB0",
+    "cloud.recall": "\u8BED\u4E49\u641C\u7D22",
+    "cloud.recallCount": "\u8BED\u4E49\u641C\u7D22 ({n})",
+    "cloud.untitled": "(\u65E0\u6807\u9898)",
     "cloud.newNoteTitle": "\u6807\u9898",
     "cloud.newNoteBody": "\u6B63\u6587",
     "cloud.create": "\u521B\u5EFA",
@@ -9538,6 +9542,7 @@ var LEX = {
     "api.idPlaceholder": "cli_...",
     "api.grantPlaceholder": "grt_...\uFF08\u7559\u7A7A\u5373\u53EF\uFF09",
     "api.save": "\u4FDD\u5B58\u51ED\u8BC1",
+    "api.savedPlaceholder": "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\uFF08\u5DF2\u4FDD\u5B58\uFF0C\u91CD\u65B0\u586B\u53EF\u66FF\u6362\uFF09",
     "api.saved": "\u51ED\u8BC1\u5DF2\u4FDD\u5B58",
     "api.test": "\u6D4B\u8BD5\u8FDE\u63A5",
     "api.testing": "\u6D4B\u8BD5\u4E2D\u2026",
@@ -9574,7 +9579,9 @@ var LEX = {
     "card.none": "\u5361\u7247\u4E0A\u6CA1\u6709\u5F55\u97F3\u3002",
     "card.dir": "\u653E\u8FDB\u54EA\u4E2A\u76EE\u5F55",
     "card.dirHint": "\u7559\u7A7A\u5C31\u653E\u5E93\u91CC\u5DF2\u6709\u7684\u300C\u5F55\u97F3\u5361\u300D\u76EE\u5F55\u3002",
+    "card.dirPlaceholder": "\u5F55\u97F3\u5361",
     "card.deleteAfter": "\u5BFC\u5165\u540E\u4ECE\u5361\u7247\u4E0A\u5220\u6389\u539F\u4EF6",
+    "card.deleteAfterConfirm": "\u5BFC\u5165\u6210\u529F\u540E\u4F1A\u628A\u5361\u7247\u4E0A\u7684\u539F\u4EF6\u6C38\u4E45\u5220\u6389\uFF0C\u4E0D\u80FD\u6062\u590D\u3002\u786E\u5B9A\u8981\u8FD9\u6837\u5417\uFF1F",
     "card.deleteAfterHint": "\u9ED8\u8BA4\u4E0D\u52A8\u5361\u7247\u3002\u6253\u5F00\u540E\u5BFC\u5165\u6210\u529F\u7684\u6587\u4EF6\u4F1A\u88AB\u6C38\u4E45\u5220\u9664\uFF0C\u4E0D\u80FD\u6062\u590D\u3002",
     "card.wifiTitle": "\u70ED\u70B9\u5FEB\u4F20",
     "card.wifiDesc": "\u8BA9\u5361\u7247\u81EA\u5DF1\u5F00\u4E00\u4E2A\u70ED\u70B9\uFF0C\u7535\u8111\u8FDE\u4E0A\u53BB\u76F4\u63A5\u4E0B\u8F7D\u3002\u540C\u6837\u7684\u6587\u4EF6\uFF0C\u84DD\u7259\u8981\u51E0\u5341\u5206\u949F\uFF0C\u8D70\u70ED\u70B9\u901A\u5E38\u4E00\u4E24\u5206\u949F\u3002\u5361\u7247\u70ED\u70B9\u6CA1\u6709\u4E92\u8054\u7F51\uFF0C\u4F20\u5B8C\u8BB0\u5F97\u70B9\u300C\u9000\u51FA\u70ED\u70B9\u300D\u628A\u7F51\u7EDC\u8FD8\u56DE\u53BB\u3002",
@@ -9976,6 +9983,7 @@ var LEX = {
     "archive.scopeAll": "Whole vault",
     "archive.scopeNotes": "Notes only",
     "archive.scopeAssets": "Attachments only",
+    "archive.defaultName": "Vault archive",
     "archive.imported": "Import done \u2014 added/skipped",
     "archive.importMode": "On name clash",
     "archive.mode.rename": "Keep both",
@@ -10086,6 +10094,9 @@ var LEX = {
     "trash.previewMore": "Show it all here",
     "trash.previewLess": "Back to the opening",
     "cloud.newNote": "New cloud note",
+    "cloud.recall": "Semantic search",
+    "cloud.recallCount": "Semantic search ({n})",
+    "cloud.untitled": "(Untitled)",
     "cloud.newNoteTitle": "Title",
     "cloud.newNoteBody": "Body",
     "cloud.create": "Create",
@@ -10175,6 +10186,7 @@ var LEX = {
     "api.idPlaceholder": "cli_...",
     "api.grantPlaceholder": "grt_... (leave empty)",
     "api.save": "Save credentials",
+    "api.savedPlaceholder": "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022 (saved; type again to replace)",
     "api.saved": "Credentials saved",
     "api.test": "Test connection",
     "api.testing": "Testing\u2026",
@@ -10211,7 +10223,9 @@ var LEX = {
     "card.none": "No recordings on the card.",
     "card.dir": "Import into folder",
     "card.dirHint": 'Leave empty to use the existing "Recorder" folder in the vault.',
+    "card.dirPlaceholder": "Recorder",
     "card.deleteAfter": "Delete originals from the card after import",
+    "card.deleteAfterConfirm": "After a successful import the originals on the card are deleted for good and cannot be recovered. Go ahead?",
     "card.deleteAfterHint": "The card is left untouched by default. When enabled, imported files are deleted permanently.",
     "card.wifiTitle": "Wi-Fi transfer",
     "card.wifiDesc": 'Let the card start its own hotspot and download over it. The same files take tens of minutes over Bluetooth and one or two minutes over Wi-Fi. The card hotspot has no internet \u2014 tap "Leave hotspot" when you are done.',
@@ -10613,6 +10627,7 @@ var LEX = {
     "archive.scopeAll": "Hele kluis",
     "archive.scopeNotes": "Alleen notities",
     "archive.scopeAssets": "Alleen bijlagen",
+    "archive.defaultName": "Kluisarchief",
     "archive.imported": "Import klaar \u2014 toegevoegd/overgeslagen",
     "archive.importMode": "Bij naamconflict",
     "archive.mode.rename": "Beide houden",
@@ -10723,6 +10738,9 @@ var LEX = {
     "trash.previewMore": "Hier alles tonen",
     "trash.previewLess": "Alleen het begin",
     "cloud.newNote": "Nieuwe cloudnotitie",
+    "cloud.recall": "Semantisch zoeken",
+    "cloud.recallCount": "Semantisch zoeken ({n})",
+    "cloud.untitled": "(Zonder titel)",
     "cloud.newNoteTitle": "Titel",
     "cloud.newNoteBody": "Tekst",
     "cloud.create": "Aanmaken",
@@ -10809,6 +10827,7 @@ var LEX = {
     "api.idPlaceholder": "cli_...",
     "api.grantPlaceholder": "grt_... (leeg laten)",
     "api.save": "Inloggegevens opslaan",
+    "api.savedPlaceholder": "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022 (opgeslagen; opnieuw invullen om te vervangen)",
     "api.saved": "Inloggegevens opgeslagen",
     "api.test": "Verbinding testen",
     "api.testing": "Testen\u2026",
@@ -10845,7 +10864,9 @@ var LEX = {
     "card.none": "Geen opnames op de kaart.",
     "card.dir": "Importeer in map",
     "card.dirHint": "Laat leeg om de bestaande map \u201CRecordercard\u201D in de kluis te gebruiken.",
+    "card.dirPlaceholder": "Recordercard",
     "card.deleteAfter": "Verwijder originelen van de kaart na import",
+    "card.deleteAfterConfirm": "Na een geslaagde import worden de originelen op de kaart definitief verwijderd en dat kan niet worden teruggedraaid. Doorgaan?",
     "card.deleteAfterHint": "De kaart blijft standaard ongemoeid. Ingeschakeld worden ge\xEFmporteerde bestanden permanent verwijderd.",
     "card.wifiTitle": "Wifi-overdracht",
     "card.wifiDesc": 'Laat de kaart zijn eigen hotspot starten en download eroverheen. Dezelfde bestanden kosten tientallen minuten via Bluetooth en een paar minuten via wifi. De hotspot heeft geen internet \u2014 tik op "Hotspot verlaten" als je klaar bent.',
@@ -18251,7 +18272,7 @@ ${t4("cloud.pushHint")}`)) return;
         "button",
         { type: "button", className: "dshgn_btn", onClick: doRecall, disabled: recalling || query.trim() === "" },
         recalling ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "search", size: 12 }),
-        recallHits !== null ? `\u8BED\u4E49\u641C\u7D22 (${recallHits.length})` : "\u8BED\u4E49\u641C\u7D22"
+        recallHits !== null ? t4("cloud.recallCount").replace("{n}", String(recallHits.length)) : t4("cloud.recall")
       ),
       h4(
         "button",
@@ -18289,7 +18310,7 @@ ${t4("cloud.pushHint")}`)) return;
             "div",
             { className: "dshgn_cardTitle" },
             note.hasAudio ? h4(Icon, { name: "audio", size: 11 }) : null,
-            note.title || "(\u65E0\u6807\u9898)"
+            note.title || t4("cloud.untitled")
           ),
           h4(
             "div",
@@ -18423,7 +18444,7 @@ ${t4("cloud.pushHint")}`)) return;
         h4(
           "div",
           { className: "dshgn_md" },
-          h4("h1", { className: "dshgn_h dshgn_h1" }, detail.title || "(\u65E0\u6807\u9898)"),
+          h4("h1", { className: "dshgn_h dshgn_h1" }, detail.title || t4("cloud.untitled")),
           detail.tags.length > 0 ? h4(
             "div",
             { className: "dshgn_rowLine", style: { gap: 6, marginBottom: 12 } },
@@ -19072,9 +19093,7 @@ function CardPane(props) {
   }, [onError]);
   const startImport = q2(async () => {
     if (deleteAfter) {
-      const ok = await confirmDialog(
-        "\u5BFC\u5165\u6210\u529F\u540E\u4F1A\u628A\u5361\u7247\u4E0A\u7684\u539F\u4EF6\u6C38\u4E45\u5220\u6389\uFF0C\u4E0D\u80FD\u6062\u590D\u3002\u786E\u5B9A\u8981\u8FD9\u6837\u5417\uFF1F"
-      );
+      const ok = await confirmDialog(t4("card.deleteAfterConfirm"));
       if (!ok) return;
     }
     try {
@@ -19389,7 +19408,7 @@ function CardPane(props) {
           h4("input", {
             className: "dshgn_input",
             value: dir,
-            placeholder: "\u5F55\u97F3\u5361",
+            placeholder: t4("card.dirPlaceholder"),
             onChange: (event) => setDir(event.target.value)
           }),
           h4("div", { className: "dshgn_fieldHint" }, t4("card.dirHint"))
@@ -19469,7 +19488,7 @@ function ArchiveCard(props) {
     try {
       const suffix = exportScope === "notes" ? "-\u6587\u5B57" : exportScope === "assets" ? "-\u9644\u4EF6" : "";
       const url = withToken(`${apiOrigin()}/getnote/archive/export?scope=${encodeURIComponent(exportScope)}`);
-      const name = "\u5F97\u5230\u5927\u8111\u5F52\u6863" + suffix + "-" + (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) + ".zip";
+      const name = t4("archive.defaultName") + suffix + "-" + (/* @__PURE__ */ new Date()).toISOString().slice(0, 10) + ".zip";
       const saved = await saveFile(url, name);
       if (saved) {
         showToast(t4("archive.exported"));
@@ -24856,7 +24875,7 @@ function CloudCredCard(props) {
         autoComplete: "off",
         spellCheck: false,
         value: apiKey,
-        placeholder: configured ? "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\uFF08\u5DF2\u4FDD\u5B58\uFF0C\u91CD\u65B0\u586B\u53EF\u66FF\u6362\uFF09" : t4("api.keyPlaceholder"),
+        placeholder: configured ? t4("api.savedPlaceholder") : t4("api.keyPlaceholder"),
         onChange: (event) => setApiKey(event.target.value)
       })
     ),
@@ -24868,7 +24887,7 @@ function CloudCredCard(props) {
         className: "dshgn_input",
         spellCheck: false,
         value: clientId,
-        placeholder: configured ? "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\uFF08\u5DF2\u4FDD\u5B58\uFF0C\u91CD\u65B0\u586B\u53EF\u66FF\u6362\uFF09" : t4("api.idPlaceholder"),
+        placeholder: configured ? t4("api.savedPlaceholder") : t4("api.idPlaceholder"),
         onChange: (event) => setClientId(event.target.value)
       })
     ),

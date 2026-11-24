@@ -16463,3 +16463,40 @@ test('离底多近才续一页：留一百二十像素余量，量不出来就�
   assert.equal(near(1399, 600, 2000, 0), false, '差一像素不算')
 })
 
+// 面板上每一句话都要三种语言都有：漏一个键，那一种语言下就会露出另一门语言的原话。
+// 这次顺手把几处写死在代码里的中文搬进了 LEX，就一并把「三语键集合完全一致」钉成断言。
+test('三语文案一把钥匙都不少，搬进来的那几句三种语言都写了', () => {
+  const LEX = panel.__internals.LEX
+  const zh = new Set(Object.keys(LEX.zh))
+  const en = new Set(Object.keys(LEX.en))
+  const nl = new Set(Object.keys(LEX.nl))
+  assert.ok(zh.size > 500, `中文文案该有几百条，实际 ${zh.size}`)
+  const missingIn = (from, other) => [...from].filter((key) => !other.has(key))
+  assert.deepEqual(missingIn(zh, en), [], '英文缺了这些键')
+  assert.deepEqual(missingIn(zh, nl), [], '荷兰文缺了这些键')
+  assert.deepEqual(missingIn(en, zh), [], '中文缺了这些键')
+  assert.deepEqual(missingIn(nl, zh), [], '中文缺了这些键（荷兰文那边多出来的）')
+  assert.equal(en.size, zh.size, '英文条数要和中文一样')
+  assert.equal(nl.size, zh.size, '荷兰文条数要和中文一样')
+
+  // 这一批从代码里搬进 LEX 的几句：三种语言都得有，而且英文荷兰文里不该再出现汉字。
+  const moved = [
+    'cloud.recall', 'cloud.recallCount', 'cloud.untitled',
+    'api.savedPlaceholder', 'card.dirPlaceholder', 'card.deleteAfterConfirm',
+    'archive.defaultName',
+  ]
+  const cjk = /[\u4e00-\u9fff]/
+  for (const key of moved) {
+    for (const [lang, table] of [['zh', LEX.zh], ['en', LEX.en], ['nl', LEX.nl]]) {
+      assert.equal(typeof table[key], 'string', `${lang} 缺了 ${key}`)
+      assert.ok(table[key].length > 0, `${lang} 的 ${key} 是空的`)
+      if (lang !== 'zh') assert.ok(!cjk.test(table[key]), `${lang} 的 ${key} 里还有汉字：${table[key]}`)
+    }
+  }
+
+  // 带占位符的那条要真带 {n}，否则 replace 之后数字根本不会出现。
+  assert.ok(LEX.zh['cloud.recallCount'].includes('{n}'), '中文那条要留 {n}')
+  assert.ok(LEX.en['cloud.recallCount'].includes('{n}'), '英文那条要留 {n}')
+  assert.ok(LEX.nl['cloud.recallCount'].includes('{n}'), '荷兰文那条要留 {n}')
+})
+
