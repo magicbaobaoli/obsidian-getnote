@@ -618,6 +618,43 @@ try {
   check('语言：保存时不动自动同步设置', typeof localeKeep.json.autoSync === 'boolean')
   await postLocale(null)
 
+  // ── 明暗（uiMode）：light / dark 钉死，null = 跟着宿主 ─────────────────────
+  const modeDefault = await call('/status')
+  check('明暗：默认是 null（跟着宿主）', modeDefault.json.uiMode === null, JSON.stringify(modeDefault.json.uiMode))
+
+  const postMode = async (value) =>
+    call('/settings', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ uiMode: value }),
+    })
+
+  const modeDark = await postMode('dark')
+  check('明暗：能钉死成深色', modeDark.status === 200 && modeDark.json.uiMode === 'dark', JSON.stringify(modeDark.json.uiMode))
+  const modeAfterDark = await call('/status')
+  check('明暗：写进 status 供面板取用', modeAfterDark.json.uiMode === 'dark', JSON.stringify(modeAfterDark.json.uiMode))
+
+  const modeLight = await postMode('light')
+  check('明暗：能钉死成浅色', modeLight.json.uiMode === 'light', JSON.stringify(modeLight.json.uiMode))
+
+  // 大小写和空白要归一，用户手改 settings.json 时不该因为写成 Dark 就失效
+  const modeShouty = await postMode('  Dark ')
+  check('明暗：大小写与空白都归一', modeShouty.json.uiMode === 'dark', JSON.stringify(modeShouty.json.uiMode))
+
+  // 认不出来的值不能存：否则面板会拿到一个既不是 light 也不是 dark 的字符串
+  const modeBad = await postMode('sepia')
+  check('明暗：认不出来的值回落跟着宿主', modeBad.json.uiMode === null, JSON.stringify(modeBad.json.uiMode))
+
+  // null 是真实选项（跟着宿主），不能被当成「没传」而留着上一个值
+  await postMode('dark')
+  const modeReset = await postMode(null)
+  check('明暗：传 null 能回到跟着宿主（不被当成未传）', modeReset.json.uiMode === null, JSON.stringify(modeReset.json.uiMode))
+
+  const modeKeep = await postMode('dark')
+  check('明暗：保存时不动库路径', modeKeep.json.vaultRoot === vault, JSON.stringify(modeKeep.json.vaultRoot))
+  check('明暗：保存时不动语言', modeKeep.json.uiLocale === null, JSON.stringify(modeKeep.json.uiLocale))
+  await postMode(null)
+
   // ── 自定义笔记模板：整组替换、空数组合法、坏数据被挡 ──────────────────────
   const tplDefault = await call('/status')
   check('模板：默认是空数组', Array.isArray(tplDefault.json.templates) && tplDefault.json.templates.length === 0, JSON.stringify(tplDefault.json.templates))

@@ -644,6 +644,8 @@ export function createHandler(config) {
       // 界面语言（null = 自动跟随宿主）。同样放 status：面板首屏就要定稿文案，
       // 晚一拍拿到的语言会让界面先中文后英文闪一下。
       uiLocale: settings.uiLocale,
+      // 明暗（null = 跟着宿主的主题走）。同样首屏就要，晚一拍会让面板先浅后深闪一下。
+      uiMode: settings.uiMode,
       // 库内相对路径。面板首屏就要拿它拼 wiki 链接的跳转目标（库里是
       // 「得到大脑/随手记/a.md」，而 status.vaultRoot 是绝对路径）。
       subfolder: getRuntime().subfolder,
@@ -1788,6 +1790,8 @@ export function createHandler(config) {
     if ('themeColor' in body) patch.themeColor = body.themeColor
     // 界面语言同理：null 是「自动」这个真实选项
     if ('uiLocale' in body) patch.uiLocale = body.uiLocale
+    // 明暗：null 是「跟着宿主」，同样是真实动作
+    if ('uiMode' in body) patch.uiMode = body.uiMode
     // 自定义模板：整组替换（空数组＝清空），不是逐项合并
     if ('templates' in body) patch.templates = body.templates
     // 跟着宿主切换笔记：只认布尔值，传别的（字符串 'true'）当没传，

@@ -3068,6 +3068,12 @@ function normalizeThemeColor(input) {
   if (short) return `#${short[1]}${short[1]}${short[2]}${short[2]}${short[3]}${short[3]}`;
   return /^#[0-9a-f]{6}$/.test(raw) ? raw : null;
 }
+function normalizeUiMode(input) {
+  if (typeof input !== "string") return null;
+  const raw = input.trim().toLowerCase();
+  if (raw === "light" || raw === "dark") return raw;
+  return null;
+}
 function normalizeLocale(input) {
   if (typeof input !== "string") return null;
   const raw = input.trim().toLowerCase();
@@ -3100,6 +3106,7 @@ async function readSettings() {
     autoSyncForegroundOnly: auto.foregroundOnly,
     themeColor: normalizeThemeColor(data.themeColor),
     uiLocale: normalizeLocale(data.uiLocale),
+    uiMode: normalizeUiMode(data.uiMode),
     templates: normalizeTemplates(data.templates),
     subfolder: typeof data.subfolder === "string" && data.subfolder.trim() !== "" ? data.subfolder.trim() : null,
     // Obsidian 版专有：本地回环服务的端口。固定端口才能让 OAuth 的
@@ -3131,6 +3138,8 @@ async function updateSettings(patch = {}) {
     autoSyncForegroundOnly: patch.autoSyncForegroundOnly !== void 0 ? patch.autoSyncForegroundOnly === true : cur.autoSyncForegroundOnly,
     themeColor: "themeColor" in patch ? normalizeThemeColor(patch.themeColor) : cur.themeColor,
     uiLocale: "uiLocale" in patch ? normalizeLocale(patch.uiLocale) : cur.uiLocale,
+    // 明暗同理：null 是「跟着宿主」这个真实选项，所以用 in 判断而不是 !== undefined
+    uiMode: "uiMode" in patch ? normalizeUiMode(patch.uiMode) : cur.uiMode,
     templates: "templates" in patch ? normalizeTemplates(patch.templates) : cur.templates,
     subfolder: patch.subfolder !== void 0 ? toSubfolder(patch.subfolder) : cur.subfolder,
     localPort: patch.localPort !== void 0 ? patch.localPort : cur.localPort,
@@ -5817,6 +5826,8 @@ function createHandler(config) {
       // 界面语言（null = 自动跟随宿主）。同样放 status：面板首屏就要定稿文案，
       // 晚一拍拿到的语言会让界面先中文后英文闪一下。
       uiLocale: settings.uiLocale,
+      // 明暗（null = 跟着宿主的主题走）。同样首屏就要，晚一拍会让面板先浅后深闪一下。
+      uiMode: settings.uiMode,
       // 库内相对路径。面板首屏就要拿它拼 wiki 链接的跳转目标（库里是
       // 「得到大脑/随手记/a.md」，而 status.vaultRoot 是绝对路径）。
       subfolder: getRuntime().subfolder,
@@ -6639,6 +6650,7 @@ function createHandler(config) {
     if (typeof body.syncImages === "boolean") patch.syncImages = body.syncImages;
     if ("themeColor" in body) patch.themeColor = body.themeColor;
     if ("uiLocale" in body) patch.uiLocale = body.uiLocale;
+    if ("uiMode" in body) patch.uiMode = body.uiMode;
     if ("templates" in body) patch.templates = body.templates;
     if (typeof body.followActive === "boolean") patch.followActive = body.followActive;
     if (typeof body.historyLimit === "number") patch.historyLimit = body.historyLimit;
@@ -9175,6 +9187,13 @@ var LEX = {
     "theme.previewLeft": "\u5DE6\u680F",
     "theme.previewMid": "\u4E2D\u680F",
     "theme.previewRight": "\u53F3\u680F",
+    // 明暗开关：默认「跟着宿主」，想固定一种的在这儿选。
+    "appearance.title": "\u660E\u6697",
+    "appearance.desc": "\u9762\u677F\u9ED8\u8BA4\u8DDF\u7740\u5BBF\u4E3B\u7684\u4E3B\u9898\u8D70\u3002\u60F3\u8BA9\u5B83\u81EA\u5DF1\u56FA\u5B9A\u4E00\u79CD\uFF0C\u5C31\u5728\u8FD9\u513F\u9009\uFF1B\u9009\u300C\u8DDF\u7740\u5BBF\u4E3B\u300D\u5C31\u8FD8\u662F\u539F\u6765\u7684\u884C\u4E3A\u3002",
+    "appearance.auto": "\u8DDF\u7740\u5BBF\u4E3B",
+    "appearance.light": "\u6D45\u8272",
+    "appearance.dark": "\u6DF1\u8272",
+    "appearance.saved": "\u660E\u6697\u5DF2\u4FDD\u5B58",
     "error.prefix": "\u51FA\u9519\u4E86",
     // 报错条以前只能等下一次操作把它顶掉：用户已经看明白那句话、也决定
     // 先不管它，它还是杵在顶上占一行。给一颗明摆着的收起键。
@@ -9852,6 +9871,12 @@ var LEX = {
     "theme.previewLeft": "Left",
     "theme.previewMid": "Middle",
     "theme.previewRight": "Right",
+    "appearance.title": "Light or dark",
+    "appearance.desc": "The panel follows your Obsidian theme by default. Pin it to one here if you prefer \u2014 choosing Follow Obsidian keeps the old behaviour.",
+    "appearance.auto": "Follow Obsidian",
+    "appearance.light": "Light",
+    "appearance.dark": "Dark",
+    "appearance.saved": "Appearance saved",
     "error.prefix": "Error",
     "error.dismiss": "Dismiss this message",
     "capture.title": "Clipping",
@@ -10503,6 +10528,12 @@ var LEX = {
     "theme.previewLeft": "Links",
     "theme.previewMid": "Midden",
     "theme.previewRight": "Rechts",
+    "appearance.title": "Licht of donker",
+    "appearance.desc": "Het paneel volgt standaard het thema van Obsidian. Zet het hier vast als je dat liever hebt \u2014 bij Volg Obsidian blijft alles zoals het was.",
+    "appearance.auto": "Volg Obsidian",
+    "appearance.light": "Licht",
+    "appearance.dark": "Donker",
+    "appearance.saved": "Weergave opgeslagen",
     "error.prefix": "Fout",
     "error.dismiss": "Deze melding sluiten",
     "capture.title": "Knipsel",
@@ -11176,10 +11207,15 @@ function findInPanel(selector, doc) {
   }
   return null;
 }
-function isDarkTheme() {
+function hostIsDark() {
   const doc = panelDocument();
   if (doc === null || !doc.body) return false;
   return doc.body.classList.contains("theme-dark");
+}
+function isDarkTheme(mode = null) {
+  if (mode === "dark") return true;
+  if (mode === "light") return false;
+  return hostIsDark();
 }
 function themeVars(input, dark = false) {
   const rgb = parseHex(input) || (dark === true ? parseHex(DEFAULT_THEME_COLOR) : null);
@@ -12777,9 +12813,16 @@ function renderBlocks(markdown, options) {
   return blocks;
 }
 var CSS = `
-.dshgn_root{box-sizing:border-box;display:flex;flex-direction:column;height:100%;min-height:0;
+.dshgn_root{
+  /* \u5B57\u4F53\u53EA\u6709\u4E24\u5957\uFF1A\u6B63\u6587\u4E00\u5957\u3001\u7B49\u5BBD\u4E00\u5957\u3002
+     \u4EE5\u524D 17 \u5904\u5404\u5199\u4E00\u904D\u5B57\u4F53\u6808\uFF08\u6709\u7684\u5E26 Consolas\u3001\u6709\u7684\u4E0D\u5E26\u3001\u9010\u5B57\u7A3F\u8FD8\u786C\u7F16\u7801\u4E86
+     \u4E00\u957F\u4E32\u4E2D\u6587\u5B57\u4F53\u540D\uFF09\uFF0C\u6362\u5BBF\u4E3B\u5B57\u4F53\u6216\u52A0\u4E00\u79CD\u8BED\u8A00\u5C31\u5F97\u6328\u4E2A\u627E\u3002\u6536\u655B\u6210\u4E24\u4E2A\u53D8\u91CF\u540E\uFF0C
+     \u60F3\u8C03\u53EA\u6539\u8FD9\u91CC\uFF1B\u9762\u677F\u91CC\u4EFB\u4F55\u5730\u65B9\u8981\u5B57\u4F53\u4E5F\u53EA\u8BA4\u8FD9\u4E24\u4E2A\u540D\u5B57\u3002 */
+  --dshgn-fontText:var(--font-text,var(--dsw-font-sans,var(--font-interface,inherit)));
+  --dshgn-fontMono:var(--font-monospace,var(--dsw-font-mono,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace));
+  box-sizing:border-box;display:flex;flex-direction:column;height:100%;min-height:0;
   background:var(--dsw-alias-bg-base,transparent);color:var(--dsw-alias-label-primary);
-  font-family:var(--font-interface,var(--dsw-font-sans,inherit));font-size:var(--font-ui-small,13px)}
+  font-family:var(--dshgn-fontText);font-size:var(--font-ui-small,13px)}
 .dshgn_head{flex:none;display:flex;align-items:center;gap:10px;padding:10px 14px;
   border-bottom:0.5px solid var(--dsw-alias-border-l2)}
 .dshgn_headMain{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
@@ -13270,7 +13313,7 @@ var CSS = `
   background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);
   border-bottom:0.5px solid var(--dsw-alias-border-l1)}
 .dshgn_diffBody{flex:1;min-height:0;margin:0;padding:10px 12px;overflow:auto;
-  font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);font-size:11.5px;
+  font-family:var(--dshgn-fontMono);font-size:11.5px;
   line-height:1.65;white-space:pre-wrap;word-break:break-word;
   color:var(--dsw-alias-label-primary)}
 /* \u6E32\u67D3\u6A21\u5F0F\uFF1A\u6CBF\u7528 .dshgn_md \u7684\u6392\u7248\u89C4\u5219\uFF08\u6807\u9898\u5C42\u7EA7/\u8868\u683C/\u5F15\u7528/\u56F4\u680F\uFF09\uFF0C
@@ -13327,7 +13370,7 @@ var CSS = `
   border-right:0.5px solid var(--dsw-alias-border-l2);overflow-y:auto;overflow-x:hidden;padding:8px 6px}
 .dshgn_treeHead{display:flex;align-items:center;justify-content:space-between;gap:6px;
   padding:4px 6px;font-size:11px;color:var(--dsw-alias-label-tertiary);user-select:none}
-.dshgn_treeRow{display:flex;align-items:center;gap:6px;height:26px;padding:0 7px;border-radius:7px;
+.dshgn_treeRow{display:flex;align-items:center;gap:6px;height:26px;padding:0 9px;border-radius:7px;
   color:var(--dsw-alias-label-secondary);cursor:pointer;white-space:nowrap;overflow:hidden;
   text-overflow:ellipsis;user-select:none}
 .dshgn_treeRow:hover{background:var(--dsw-alias-interactive-bg-hover)}
@@ -13484,7 +13527,7 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
    \u5DE6\u53F3\u8FB9\u8DDD\u8D70\uFF0C\u522B\u7F29\u8FDB\u6210\u5217\u8868\u5361\u7247\u90A3\u6837\u2014\u2014\u5B83\u8BF4\u7684\u662F\u641C\u7D22\u672C\u8EAB\uFF0C\u4E0D\u662F\u7ED3\u679C\u3002 */
 .dshgn_searchMoreRow{padding:0 10px 7px;margin:0}
 .dshgn_moreBtn{display:block;width:100%;margin:6px 0 2px;justify-content:center}
-.dshgn_card{display:flex;flex-direction:column;gap:2px;padding:7px 8px;border-radius:8px;cursor:pointer;
+.dshgn_card{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border-radius:8px;cursor:pointer;
   border-left:2px solid transparent;user-select:none}
 .dshgn_card:hover{background:var(--dsw-alias-interactive-bg-hover)}
 .dshgn_card[data-on="true"]{background:var(--dsw-alias-interactive-bg-hover-accent);
@@ -13535,7 +13578,7 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
   outline-offset:1px;border-radius:3px}
 .dshgn_scroll{flex:1;overflow-y:auto;padding:16px clamp(16px,3vw,32px) 48px}
 .dshgn_md{max-width:760px;margin:0 auto;color:var(--dsw-alias-label-primary);
-  font-family:var(--font-text,var(--dsw-font-sans,inherit));font-size:var(--font-text-size,13px);
+  font-family:var(--dshgn-fontText);font-size:var(--font-text-size,13px);
   line-height:var(--line-height-normal,1.75)}
 .dshgn_h{font-size:1em;margin:18px 0 8px;line-height:1.4;font-weight:600;color:var(--dsw-alias-label-primary)}
 /* \u6807\u9898\u7528 em \u800C\u4E0D\u662F px\uFF1A\u5B57\u53F7\u4E09\u6863\u53EA\u6539 .dshgn_md \u7684\u57FA\u51C6\u5B57\u53F7\uFF0C\u6807\u9898\u6309\u6BD4\u4F8B\u8DDF\u7740\u653E\u5927\uFF0C
@@ -13553,10 +13596,10 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 .dshgn_del{text-decoration:line-through;opacity:.72}
 .dshgn_mark{padding:0 2px;border-radius:3px;background:rgba(255,208,0,.34);color:inherit}
 .dshgn_code{padding:1px 5px;border-radius:4px;background:var(--dsw-alias-interactive-bg-hover);
-  font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);font-size:12px}
+  font-family:var(--dshgn-fontMono);font-size:12px}
 .dshgn_pre{position:relative;margin:10px 0;padding:11px 12px;border-radius:9px;overflow-x:auto;
   background:var(--dsw-alias-interactive-bg-hover);border:0.5px solid var(--dsw-alias-border-l1)}
-.dshgn_pre code{font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);font-size:12px;
+.dshgn_pre code{font-family:var(--dshgn-fontMono);font-size:12px;
   line-height:1.65;white-space:pre;color:var(--dsw-alias-label-primary)}
 .dshgn_preLang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--dsw-alias-label-dimmed)}
 /* \u6709\u300C\u590D\u5236\u300D\u6309\u94AE\u65F6\u628A\u8BED\u8A00\u6807\u7B7E\u8BA9\u5F00\u4E00\u70B9\uFF0C\u4E24\u4E2A\u90FD\u6324\u5728\u53F3\u4E0A\u89D2\u4F1A\u53E0\u5728\u4E00\u8D77 */
@@ -13566,16 +13609,16 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 /* \u9010\u5B57\u7A3F\u5355\u72EC\u4E00\u5957\u6392\u7248\uFF1A\u5B83\u662F\u4E00\u6BB5\u6BB5\u4E2D\u6587\u53E3\u8BED\uFF0C\u4E0D\u662F\u4EE3\u7801\u3002
    \u4EE5\u524D\u590D\u7528 .dshgn_pre \u7684\u7B49\u5BBD\u5B57\u4F53\uFF0C\u4E2D\u6587\u5168\u90E8\u56DE\u843D\u5230\u5B8B\u4F53/\u96C5\u9ED1\uFF0C\u7B49\u5BBD\u5BF9\u4E2D\u6587\u6BEB\u65E0\u4F5C\u7528\uFF0C
    \u52A0\u4E0A white-space:pre \u4E0D\u6298\u884C\uFF0C\u957F\u53E5\u5728\u7A84\u680F\u91CC\u88AB\u6A2A\u5411\u88C1\u6389\uFF0C\u53EA\u80FD\u62D6\u6EDA\u52A8\u6761\u770B\u2014\u2014\u8FD9\u5C31\u662F\u300C\u5B57\u4F53\u592A\u4E11\u300D\u7684\u7531\u6765\u3002
-   \u73B0\u5728\u6362\u6210\u6B63\u6587\u5B57\u4F53\u6808\u3001\u653E\u5927\u5B57\u53F7\u3001\u653E\u5BBD\u884C\u8DDD\uFF0C\u5E76\u5141\u8BB8\u81EA\u52A8\u6298\u884C\uFF1B\u6BCF\u6BB5\u4E4B\u95F4\u7528\u7EC6\u5206\u9694\u7EBF\uFF0C
-   \u65B9\u4FBF\u5BF9\u7740\u65F6\u95F4\u6233\u627E\u4F4D\u7F6E\u3002 */
+   \u73B0\u5728\u8DDF\u6B63\u6587\u4E00\u6837\u8BA4 --dshgn-fontText\uFF08\u5BBF\u4E3B\u8BBE\u7684\u6B63\u6587\u5B57\u4F53\uFF0C\u4E2D\u6587\u843D\u5230\u82F9\u65B9/\u96C5\u9ED1\u4E5F\u597D\u770B\uFF09\uFF0C
+   \u653E\u5927\u5B57\u53F7\u3001\u653E\u5BBD\u884C\u8DDD\uFF0C\u5E76\u5141\u8BB8\u81EA\u52A8\u6298\u884C\uFF1B\u6BCF\u6BB5\u4E4B\u95F4\u7528\u7EC6\u5206\u9694\u7EBF\uFF0C\u65B9\u4FBF\u5BF9\u7740\u65F6\u95F4\u6233\u627E\u4F4D\u7F6E\u3002 */
 .dshgn_transcript{margin:10px 0;padding:2px 0 2px 0;border:0;background:transparent;
-  font-family:var(--dsw-font-sans,"PingFang SC","Microsoft YaHei","Noto Sans CJK SC","Source Han Sans SC",system-ui,-apple-system,"Segoe UI",sans-serif);
+  font-family:var(--dshgn-fontText);
   font-size:13px;line-height:1.9;color:var(--dsw-alias-label-primary);white-space:pre-wrap;
   word-break:break-word;overflow-wrap:anywhere}
 .dshgn_transcript p{margin:0;padding:5px 0;border-bottom:0.5px solid var(--dsw-alias-border-l1)}
 .dshgn_transcript p:last-child{border-bottom:0}
 .dshgn_transcript .dshgn_ts{display:inline-block;min-width:56px;margin-right:8px;
-  font-family:var(--dsw-font-mono,var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace));
+  font-family:var(--dshgn-fontMono);
   font-size:11px;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary);
   user-select:none}
 .dshgn_transcript .dshgn_speaker{color:var(--dsw-alias-brand-primary);font-weight:600;margin-right:6px}
@@ -13583,7 +13626,7 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
    \u5374\u53EA\u80FD\u81EA\u5DF1\u62D6\u8FDB\u5EA6\u6761\u53BB\u627E\u4F4D\u7F6E\u3002\u6837\u5F0F\u4E0A\u4ECD\u4FDD\u6301\u300C\u4E00\u5217\u5C0F\u5B57\u300D\u7684\u89C2\u611F\uFF0C\u53EA\u5728\u60AC\u505C
    \u548C\u805A\u7126\u65F6\u9732\u51FA\u53EF\u70B9\u7684\u7EBF\u7D22\uFF0C\u514D\u5F97\u6574\u6BB5\u9010\u5B57\u7A3F\u53D8\u6210\u4E00\u7247\u84DD\u8272\u6309\u94AE\u3002 */
 .dshgn_transcript .dshgn_tsBtn{background:none;border:0;padding:1px 4px;margin-left:-4px;border-radius:4px;
-  font:inherit;font-family:var(--dsw-font-mono,var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace));
+  font:inherit;font-family:var(--dshgn-fontMono);
   font-size:11px;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary);
   cursor:pointer;text-align:left;user-select:none}
 .dshgn_transcript .dshgn_tsBtn:hover{background:var(--dsw-alias-interactive-bg-hover);
@@ -13655,7 +13698,7 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
   background:var(--dsw-alias-interactive-bg-hover)}
 .dshgn_editor{flex:1;width:100%;box-sizing:border-box;resize:none;border:0;outline:none;padding:16px clamp(16px,3vw,32px);
   background:transparent;color:var(--dsw-alias-label-primary);
-  font-family:var(--font-text,var(--dsw-font-sans,inherit));font-size:var(--font-text-size,13px);
+  font-family:var(--dshgn-fontText);font-size:var(--font-text-size,13px);
   line-height:var(--line-height-normal,1.7)}
 .dshgn_editorFoot{display:flex;align-items:center;gap:10px;padding:5px clamp(16px,3vw,32px);
   border-top:0.5px solid var(--dsw-alias-border-l1);font-size:10.5px;
@@ -13755,7 +13798,7 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
   box-shadow:inset 0 0 0 0.5px var(--dsw-alias-state-warn-primary)}
 .dshgn_badgeErr{color:var(--dsw-alias-state-error-primary)}
 .dshgn_log{max-height:220px;overflow-y:auto;padding:8px 10px;border-radius:8px;
-  background:var(--dsw-alias-interactive-bg-hover);font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,monospace);
+  background:var(--dsw-alias-interactive-bg-hover);font-family:var(--dshgn-fontMono);
   font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary);white-space:pre-wrap}
 .dshgn_error{padding:8px 10px;border-radius:8px;font-size:11.5px;line-height:1.6;
   display:flex;align-items:center;gap:8px;flex-wrap:wrap;
@@ -13791,7 +13834,7 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
   overflow:auto;background:var(--dsw-alias-interactive-bg-hover);
   border:0.5px solid var(--dsw-alias-border-l1);font-size:11.5px;line-height:1.6;
   color:var(--dsw-alias-label-secondary);
-  font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);white-space:pre-wrap}
+  font-family:var(--dshgn-fontMono);white-space:pre-wrap}
 /* \u2500\u2500 \u97F3\u9891\u64AD\u653E\u5668 \u2500\u2500 */
 .dshgn_audioCard{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-radius:10px;
   border:0.5px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-overlay)}
@@ -13851,13 +13894,13 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 /* \u644A\u5F00\u5168\u6587\u90A3\u4E00\u5757\uFF1A\u4FDD\u7559\u6362\u884C\u3001\u81EA\u5DF1\u6EDA\uFF0C\u4E0D\u628A\u8BBE\u7F6E\u9875\u6491\u957F\u3002 */
 .dshgn_tplFull{margin:2px 0 0;max-height:220px;overflow:auto;padding:7px 8px;border-radius:6px;
   background:var(--dsw-alias-bg-base,#0000);border:0.5px solid var(--dsw-alias-border-l1);
-  font-family:var(--font-monospace,monospace);font-size:11px;line-height:1.65;
+  font-family:var(--dshgn-fontMono);font-size:11px;line-height:1.65;
   color:var(--dsw-alias-label-secondary);white-space:pre-wrap;word-break:break-word}
 .dshgn_tplForm{display:flex;flex-direction:column;gap:6px}
 .dshgn_btnRow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .dshgn_textarea{width:100%;box-sizing:border-box;min-height:180px;resize:vertical;padding:9px 10px;
   border:0.5px solid var(--dsw-alias-border-l2);border-radius:8px;background:transparent;
-  color:var(--dsw-alias-label-primary);font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);
+  color:var(--dsw-alias-label-primary);font-family:var(--dshgn-fontMono);
   font-size:12px;line-height:1.65;outline:none}
 .dshgn_textarea:focus{border-color:var(--dsw-alias-brand-primary)}
 .dshgn_btn{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 11px;border-radius:7px;
@@ -14245,7 +14288,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
 .dshgn_helpKeys{flex:none;min-width:104px;display:inline-flex;flex-wrap:wrap;gap:3px}
 .dshgn_helpKey{display:inline-block;padding:0 5px;border:0.5px solid var(--dsw-alias-border-l2);
   border-radius:4px;background:var(--dsw-alias-interactive-bg-hover);
-  font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);
+  font-family:var(--dshgn-fontMono);
   font-size:10px;line-height:1.7;color:var(--dsw-alias-label-secondary);white-space:nowrap}
 .dshgn_helpWhat{min-width:0;font-size:12px;line-height:1.6;color:var(--dsw-alias-label-secondary)}
 
@@ -14482,11 +14525,11 @@ function GetnotePage() {
   const refreshOutcome = A2(null);
   const SPIN_MS = 1400;
   const [themePreview, setThemePreview] = h2(null);
-  const [darkTheme, setDarkTheme] = h2(() => isDarkTheme());
+  const [hostDark, setHostDark] = h2(() => isDarkTheme());
   y2(() => {
     const Observer = typeof MutationObserver !== "undefined" ? MutationObserver : typeof window !== "undefined" ? window.MutationObserver : void 0;
     if (typeof Observer !== "function") return void 0;
-    const sync = () => setDarkTheme(isDarkTheme());
+    const sync = () => setHostDark(isDarkTheme());
     const observer = new Observer(sync);
     const observed = /* @__PURE__ */ new Set();
     const attach = () => {
@@ -17687,9 +17730,10 @@ ${insert}
   y2(() => {
     writeColWidths(colWidths);
   }, [colWidths]);
+  const uiMode = status !== null && (status.uiMode === "light" || status.uiMode === "dark") ? status.uiMode : null;
   const themeStyle = themeVars(
     themePreview !== null ? themePreview : status !== null ? status.themeColor : null,
-    darkTheme
+    uiMode !== null ? isDarkTheme(uiMode) : hostDark
   );
   const rootStyle = {
     ...themeStyle === null ? {} : themeStyle,
@@ -24738,6 +24782,7 @@ function ImportPane(props) {
 }
 function SettingsPane(props) {
   const { t: t4, status, onSaved, onError, onThemePreview, showToast, locale, onLocaleChange, onSyncChanged } = props;
+  const uiMode = status !== null && (status.uiMode === "light" || status.uiMode === "dark") ? status.uiMode : null;
   const [input, setInput] = h2("");
   const [busy, setBusy] = h2(false);
   const [touched, setTouched] = h2(false);
@@ -24813,7 +24858,9 @@ function SettingsPane(props) {
       // 通道连云端」，这里说「多久自动拉一次」。中间隔着主题色/语言会让这层
       // 关系看不出来。
       h4(SyncPane, { t: t4, status, onChanged: onSyncChanged, onError, showToast }),
-      h4(ThemeCard, { t: t4, themeColor: status !== null ? status.themeColor : null, onSaved, onError, onPreview: onThemePreview }),
+      h4(ThemeCard, { t: t4, themeColor: status !== null ? status.themeColor : null, uiMode, onSaved, onError, onPreview: onThemePreview }),
+      // 明暗紧跟主题色：两张都在说「面板长什么样」，隔着语言会看不出关系。
+      h4(AppearanceCard, { t: t4, uiMode, onSaved, onError }),
       h4(LanguageCard, { t: t4, locale, onSaved, onError, onLocaleChange }),
       // 跟随卡片紧跟在语言之后：它和「面板长什么样」属于同一类设置（怎么跟
       // 宿主配合），而不是「库里有什么」。
@@ -24848,8 +24895,62 @@ function SettingsPane(props) {
     )
   );
 }
+function AppearanceCard(props) {
+  const { t: t4, uiMode, onSaved, onError } = props;
+  const [busy, setBusy] = h2(false);
+  const active = uiMode === "light" || uiMode === "dark" ? uiMode : null;
+  const pick = q2(
+    async (next) => {
+      if (busy) return;
+      setBusy(true);
+      try {
+        await api("/settings", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ uiMode: next })
+        });
+        await onSaved(t4("appearance.saved"));
+      } catch (err) {
+        onError(err && err.message ? err.message : String(err));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, onError, onSaved, t4]
+  );
+  const options = [
+    { id: null, label: t4("appearance.auto") },
+    { id: "light", label: t4("appearance.light") },
+    { id: "dark", label: t4("appearance.dark") }
+  ];
+  return h4(
+    "div",
+    { className: "dshgn_section" },
+    h4("div", { className: "dshgn_sectionHead" }, h4("span", null, t4("appearance.title"))),
+    h4("div", { className: "dshgn_sectionDesc" }, t4("appearance.desc")),
+    h4(
+      "div",
+      { className: "dshgn_langRow" },
+      options.map(
+        (option) => h4(
+          "button",
+          {
+            key: option.id === null ? "auto" : option.id,
+            type: "button",
+            className: active === option.id ? "dshgn_chip dshgn_chipOn" : "dshgn_chip",
+            "aria-pressed": active === option.id ? "true" : "false",
+            "data-mode": option.id === null ? "auto" : option.id,
+            disabled: busy,
+            onClick: () => void pick(option.id)
+          },
+          option.label
+        )
+      )
+    )
+  );
+}
 function ThemeCard(props) {
-  const { t: t4, themeColor, onSaved, onError, onPreview } = props;
+  const { t: t4, themeColor, uiMode, onSaved, onError, onPreview } = props;
   const [draft, setDraft] = h2(null);
   const [busy, setBusy] = h2(false);
   const [custom, setCustom] = h2(false);
@@ -24925,7 +25026,7 @@ function ThemeCard(props) {
     // 三栏效果预览条：设置页主体是白卡片，用户在这儿看不到目录树/列表/正文，
     // 光靠点色块没法判断「左深中浅右白」到底长什么样，所以直接画一条出来。
     (() => {
-      const preview = themeVars(active, isDarkTheme());
+      const preview = themeVars(active, isDarkTheme(uiMode === void 0 ? null : uiMode));
       if (preview === null) return null;
       return h4(
         "div",

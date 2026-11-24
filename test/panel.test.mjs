@@ -17041,4 +17041,109 @@ test('附件里的转写稿在笔记页能看见，点一下就在面板里打�
   )
 
   await clickTab('笔记')
+
+/**
+ * 设置页里的明暗开关。
+ *
+ * 面板自带三栏配色，跟宿主主题是两套东西：有人白天想要浅色面板配深色 Obsidian，
+ * 也有人反过来。所以给一个「跟着宿主 / 浅色 / 深色」的三档选择，默认还是跟着宿主，
+ * 老用户看到的观感一点不变。
+ */
+test('设置页里能把面板钉成浅色或深色，钉住之后宿主的主题就不管用了', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+  const statusNow = async () => {
+    const res = await realFetch(server.origin + '/getnote/status', {
+      headers: { 'x-getnote-token': server.token },
+    })
+    return res.json()
+  }
+  // waitFor 只认同步条件，异步的自己去轮询
+  const modeBecomes = async (want) => {
+    for (let i = 0; i < 50; i += 1) {
+      if ((await statusNow()).uiMode === want) return true
+      await sleep(120)
+    }
+    return false
+  }
+  const surfaceLum = () => luminance(rootNode().style.getPropertyValue('--dshgn-surface'))
+
+  // 先给一个主题色：没有主题色时浅色板走 CSS 默认值、根节点上没有行内变量，
+  // 那样就看不出「切了明暗」。给一个色之后两档都会算出一套行内变量。
+  await post('/getnote/settings', { themeColor: '#22434f', uiMode: null })
+  const refreshBtn = Array.from(rootNode().querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(600)
+
+  await clickTab('设置')
+  const card = await waitFor(
+    () =>
+      Array.from(rootNode().querySelectorAll('.dshgn_section')).find((el) =>
+        String(el.textContent || '').includes('明暗'),
+      ) || null,
+    6000,
+    '设置页该有一张「明暗」的卡',
+  )
+  const chips = () => Array.from(card.querySelectorAll('.dshgn_chip'))
+  assert.equal(chips().length, 3, '三档：跟着宿主、浅色、深色')
+  assert.deepEqual(
+    chips().map((el) => el.getAttribute('data-mode')),
+    ['auto', 'light', 'dark'],
+    '三档的顺序与标记',
+  )
+  assert.deepEqual(
+    chips().map((el) => String(el.textContent || '').trim()),
+    ['跟着宿主', '浅色', '深色'],
+    '三档的文案',
+  )
+  // 默认跟着宿主：第一颗是亮着的，另外两颗不是
+  assert.ok(chips()[0].className.includes('dshgn_chipOn'), '默认该停在「跟着宿主」')
+  assert.equal(chips()[0].getAttribute('aria-pressed'), 'true', '选中的那颗要说明自己是选中的')
+  assert.equal(chips()[2].getAttribute('aria-pressed'), 'false', '没选中的那颗不该说自己选中')
+
+  const pick = async (mode) => {
+    const chip = chips().find((el) => el.getAttribute('data-mode') === mode)
+    chip.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    assert.equal(await modeBecomes(mode === 'auto' ? null : mode), true, '点了「' + mode + '」要真的存进去')
+  }
+
+  // ① 钉死深色：哪怕宿主是浅色，面板也自己算一套深色
+  window.document.body.classList.remove('theme-dark')
+  await pick('dark')
+  await waitFor(() => (surfaceLum() !== null ? true : null), 4000, '深色下算出卡片底色')
+  const pinnedDark = surfaceLum()
+  assert.ok(pinnedDark !== null && pinnedDark < 0.3, '钉死深色之后卡片底色该很暗，实际亮度 ' + pinnedDark)
+  assert.ok(chips()[2].className.includes('dshgn_chipOn'), '深色那颗该亮起来')
+
+  // ② 钉死浅色：反过来，宿主是深色也不跟着黑下去
+  window.document.body.classList.add('theme-dark')
+  await pick('light')
+  await waitFor(() => {
+    const lum = surfaceLum()
+    return lum !== null && lum > 0.6 ? true : null
+  }, 4000, '钉死浅色之后要变亮')
+  assert.equal((await statusNow()).uiMode, 'light', '钉住的值不该被宿主的主题改掉')
+  assert.ok(chips()[1].className.includes('dshgn_chipOn'), '浅色那颗该亮起来')
+
+  // ③ 交还给宿主：宿主这会儿是深色，面板就该跟着黑回去
+  await pick('auto')
+  await waitFor(() => {
+    const lum = surfaceLum()
+    return lum !== null && lum < 0.3 ? true : null
+  }, 4000, '选回「跟着宿主」之后跟着变深')
+
+  // 收尾：宿主主题复原、主题色和明暗都清掉，别把状态留给下一条用例
+  window.document.body.classList.remove('theme-dark')
+  await post('/getnote/settings', { themeColor: null, uiMode: null })
+  await clickTab('笔记')
+})
 })

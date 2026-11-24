@@ -809,6 +809,13 @@ async function saveFile(url, filename) {
         'theme.previewLeft': '左栏',
         'theme.previewMid': '中栏',
         'theme.previewRight': '右栏',
+        // 明暗开关：默认「跟着宿主」，想固定一种的在这儿选。
+        'appearance.title': '明暗',
+        'appearance.desc': '面板默认跟着宿主的主题走。想让它自己固定一种，就在这儿选；选「跟着宿主」就还是原来的行为。',
+        'appearance.auto': '跟着宿主',
+        'appearance.light': '浅色',
+        'appearance.dark': '深色',
+        'appearance.saved': '明暗已保存',
         'error.prefix': '出错了',
         // 报错条以前只能等下一次操作把它顶掉：用户已经看明白那句话、也决定
         // 先不管它，它还是杵在顶上占一行。给一颗明摆着的收起键。
@@ -1491,6 +1498,12 @@ async function saveFile(url, filename) {
         'theme.previewLeft': 'Left',
         'theme.previewMid': 'Middle',
         'theme.previewRight': 'Right',
+        'appearance.title': 'Light or dark',
+        'appearance.desc': 'The panel follows your Obsidian theme by default. Pin it to one here if you prefer — choosing Follow Obsidian keeps the old behaviour.',
+        'appearance.auto': 'Follow Obsidian',
+        'appearance.light': 'Light',
+        'appearance.dark': 'Dark',
+        'appearance.saved': 'Appearance saved',
         'error.prefix': 'Error',
         'error.dismiss': 'Dismiss this message',
         'capture.title': 'Clipping',
@@ -2146,6 +2159,12 @@ async function saveFile(url, filename) {
         'theme.previewLeft': 'Links',
         'theme.previewMid': 'Midden',
         'theme.previewRight': 'Rechts',
+        'appearance.title': 'Licht of donker',
+        'appearance.desc': 'Het paneel volgt standaard het thema van Obsidian. Zet het hier vast als je dat liever hebt — bij Volg Obsidian blijft alles zoals het was.',
+        'appearance.auto': 'Volg Obsidian',
+        'appearance.light': 'Licht',
+        'appearance.dark': 'Donker',
+        'appearance.saved': 'Weergave opgeslagen',
         'error.prefix': 'Fout',
         'error.dismiss': 'Deze melding sluiten',
         'capture.title': 'Knipsel',
@@ -2979,10 +2998,23 @@ async function saveFile(url, filename) {
       }
       return null
     }
-    function isDarkTheme() {
+    /** 宿主当前是不是深色主题：只看它挂在 body 上的类名。 */
+    function hostIsDark() {
       const doc = panelDocument()
       if (doc === null || !doc.body) return false
       return doc.body.classList.contains('theme-dark')
+    }
+    /**
+     * 面板实际该用哪套配色。
+     *
+     * 用户在设置里钉死了 'light' / 'dark' 就照那个来——哪怕宿主换了主题也不动，
+     * 那正是「我不想让它跟着变」的意思；选「跟着宿主」（null）时才去问 body 的类名。
+     * 传参而不是读全局，是为了让设置页的预览条也能按「即将保存的那个模式」算。
+     */
+    function isDarkTheme(mode = null) {
+      if (mode === 'dark') return true
+      if (mode === 'light') return false
+      return hostIsDark()
     }
     function themeVars(input, dark = false) {
       // 没选主题色时：浅色返回 null 让 CSS 默认值生效（那是手调过的浅色板）；
@@ -5274,9 +5306,16 @@ async function saveFile(url, filename) {
     // ── 样式（只用 --dsw-* token，跟随主题）─────────────────────────────────────
 
     const CSS = `
-.dshgn_root{box-sizing:border-box;display:flex;flex-direction:column;height:100%;min-height:0;
+.dshgn_root{
+  /* 字体只有两套：正文一套、等宽一套。
+     以前 17 处各写一遍字体栈（有的带 Consolas、有的不带、逐字稿还硬编码了
+     一长串中文字体名），换宿主字体或加一种语言就得挨个找。收敛成两个变量后，
+     想调只改这里；面板里任何地方要字体也只认这两个名字。 */
+  --dshgn-fontText:var(--font-text,var(--dsw-font-sans,var(--font-interface,inherit)));
+  --dshgn-fontMono:var(--font-monospace,var(--dsw-font-mono,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace));
+  box-sizing:border-box;display:flex;flex-direction:column;height:100%;min-height:0;
   background:var(--dsw-alias-bg-base,transparent);color:var(--dsw-alias-label-primary);
-  font-family:var(--font-interface,var(--dsw-font-sans,inherit));font-size:var(--font-ui-small,13px)}
+  font-family:var(--dshgn-fontText);font-size:var(--font-ui-small,13px)}
 .dshgn_head{flex:none;display:flex;align-items:center;gap:10px;padding:10px 14px;
   border-bottom:0.5px solid var(--dsw-alias-border-l2)}
 .dshgn_headMain{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
@@ -5767,7 +5806,7 @@ async function saveFile(url, filename) {
   background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);
   border-bottom:0.5px solid var(--dsw-alias-border-l1)}
 .dshgn_diffBody{flex:1;min-height:0;margin:0;padding:10px 12px;overflow:auto;
-  font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);font-size:11.5px;
+  font-family:var(--dshgn-fontMono);font-size:11.5px;
   line-height:1.65;white-space:pre-wrap;word-break:break-word;
   color:var(--dsw-alias-label-primary)}
 /* 渲染模式：沿用 .dshgn_md 的排版规则（标题层级/表格/引用/围栏），
@@ -5824,7 +5863,7 @@ async function saveFile(url, filename) {
   border-right:0.5px solid var(--dsw-alias-border-l2);overflow-y:auto;overflow-x:hidden;padding:8px 6px}
 .dshgn_treeHead{display:flex;align-items:center;justify-content:space-between;gap:6px;
   padding:4px 6px;font-size:11px;color:var(--dsw-alias-label-tertiary);user-select:none}
-.dshgn_treeRow{display:flex;align-items:center;gap:6px;height:26px;padding:0 7px;border-radius:7px;
+.dshgn_treeRow{display:flex;align-items:center;gap:6px;height:26px;padding:0 9px;border-radius:7px;
   color:var(--dsw-alias-label-secondary);cursor:pointer;white-space:nowrap;overflow:hidden;
   text-overflow:ellipsis;user-select:none}
 .dshgn_treeRow:hover{background:var(--dsw-alias-interactive-bg-hover)}
@@ -5981,7 +6020,7 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
    左右边距走，别缩进成列表卡片那样——它说的是搜索本身，不是结果。 */
 .dshgn_searchMoreRow{padding:0 10px 7px;margin:0}
 .dshgn_moreBtn{display:block;width:100%;margin:6px 0 2px;justify-content:center}
-.dshgn_card{display:flex;flex-direction:column;gap:2px;padding:7px 8px;border-radius:8px;cursor:pointer;
+.dshgn_card{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border-radius:8px;cursor:pointer;
   border-left:2px solid transparent;user-select:none}
 .dshgn_card:hover{background:var(--dsw-alias-interactive-bg-hover)}
 .dshgn_card[data-on="true"]{background:var(--dsw-alias-interactive-bg-hover-accent);
@@ -6032,7 +6071,7 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
   outline-offset:1px;border-radius:3px}
 .dshgn_scroll{flex:1;overflow-y:auto;padding:16px clamp(16px,3vw,32px) 48px}
 .dshgn_md{max-width:760px;margin:0 auto;color:var(--dsw-alias-label-primary);
-  font-family:var(--font-text,var(--dsw-font-sans,inherit));font-size:var(--font-text-size,13px);
+  font-family:var(--dshgn-fontText);font-size:var(--font-text-size,13px);
   line-height:var(--line-height-normal,1.75)}
 .dshgn_h{font-size:1em;margin:18px 0 8px;line-height:1.4;font-weight:600;color:var(--dsw-alias-label-primary)}
 /* 标题用 em 而不是 px：字号三档只改 .dshgn_md 的基准字号，标题按比例跟着放大，
@@ -6050,10 +6089,10 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 .dshgn_del{text-decoration:line-through;opacity:.72}
 .dshgn_mark{padding:0 2px;border-radius:3px;background:rgba(255,208,0,.34);color:inherit}
 .dshgn_code{padding:1px 5px;border-radius:4px;background:var(--dsw-alias-interactive-bg-hover);
-  font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);font-size:12px}
+  font-family:var(--dshgn-fontMono);font-size:12px}
 .dshgn_pre{position:relative;margin:10px 0;padding:11px 12px;border-radius:9px;overflow-x:auto;
   background:var(--dsw-alias-interactive-bg-hover);border:0.5px solid var(--dsw-alias-border-l1)}
-.dshgn_pre code{font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);font-size:12px;
+.dshgn_pre code{font-family:var(--dshgn-fontMono);font-size:12px;
   line-height:1.65;white-space:pre;color:var(--dsw-alias-label-primary)}
 .dshgn_preLang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--dsw-alias-label-dimmed)}
 /* 有「复制」按钮时把语言标签让开一点，两个都挤在右上角会叠在一起 */
@@ -6063,16 +6102,16 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 /* 逐字稿单独一套排版：它是一段段中文口语，不是代码。
    以前复用 .dshgn_pre 的等宽字体，中文全部回落到宋体/雅黑，等宽对中文毫无作用，
    加上 white-space:pre 不折行，长句在窄栏里被横向裁掉，只能拖滚动条看——这就是「字体太丑」的由来。
-   现在换成正文字体栈、放大字号、放宽行距，并允许自动折行；每段之间用细分隔线，
-   方便对着时间戳找位置。 */
+   现在跟正文一样认 --dshgn-fontText（宿主设的正文字体，中文落到苹方/雅黑也好看），
+   放大字号、放宽行距，并允许自动折行；每段之间用细分隔线，方便对着时间戳找位置。 */
 .dshgn_transcript{margin:10px 0;padding:2px 0 2px 0;border:0;background:transparent;
-  font-family:var(--dsw-font-sans,"PingFang SC","Microsoft YaHei","Noto Sans CJK SC","Source Han Sans SC",system-ui,-apple-system,"Segoe UI",sans-serif);
+  font-family:var(--dshgn-fontText);
   font-size:13px;line-height:1.9;color:var(--dsw-alias-label-primary);white-space:pre-wrap;
   word-break:break-word;overflow-wrap:anywhere}
 .dshgn_transcript p{margin:0;padding:5px 0;border-bottom:0.5px solid var(--dsw-alias-border-l1)}
 .dshgn_transcript p:last-child{border-bottom:0}
 .dshgn_transcript .dshgn_ts{display:inline-block;min-width:56px;margin-right:8px;
-  font-family:var(--dsw-font-mono,var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace));
+  font-family:var(--dshgn-fontMono);
   font-size:11px;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary);
   user-select:none}
 .dshgn_transcript .dshgn_speaker{color:var(--dsw-alias-brand-primary);font-weight:600;margin-right:6px}
@@ -6080,7 +6119,7 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
    却只能自己拖进度条去找位置。样式上仍保持「一列小字」的观感，只在悬停
    和聚焦时露出可点的线索，免得整段逐字稿变成一片蓝色按钮。 */
 .dshgn_transcript .dshgn_tsBtn{background:none;border:0;padding:1px 4px;margin-left:-4px;border-radius:4px;
-  font:inherit;font-family:var(--dsw-font-mono,var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace));
+  font:inherit;font-family:var(--dshgn-fontMono);
   font-size:11px;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary);
   cursor:pointer;text-align:left;user-select:none}
 .dshgn_transcript .dshgn_tsBtn:hover{background:var(--dsw-alias-interactive-bg-hover);
@@ -6152,7 +6191,7 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
   background:var(--dsw-alias-interactive-bg-hover)}
 .dshgn_editor{flex:1;width:100%;box-sizing:border-box;resize:none;border:0;outline:none;padding:16px clamp(16px,3vw,32px);
   background:transparent;color:var(--dsw-alias-label-primary);
-  font-family:var(--font-text,var(--dsw-font-sans,inherit));font-size:var(--font-text-size,13px);
+  font-family:var(--dshgn-fontText);font-size:var(--font-text-size,13px);
   line-height:var(--line-height-normal,1.7)}
 .dshgn_editorFoot{display:flex;align-items:center;gap:10px;padding:5px clamp(16px,3vw,32px);
   border-top:0.5px solid var(--dsw-alias-border-l1);font-size:10.5px;
@@ -6252,7 +6291,7 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
   box-shadow:inset 0 0 0 0.5px var(--dsw-alias-state-warn-primary)}
 .dshgn_badgeErr{color:var(--dsw-alias-state-error-primary)}
 .dshgn_log{max-height:220px;overflow-y:auto;padding:8px 10px;border-radius:8px;
-  background:var(--dsw-alias-interactive-bg-hover);font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,monospace);
+  background:var(--dsw-alias-interactive-bg-hover);font-family:var(--dshgn-fontMono);
   font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary);white-space:pre-wrap}
 .dshgn_error{padding:8px 10px;border-radius:8px;font-size:11.5px;line-height:1.6;
   display:flex;align-items:center;gap:8px;flex-wrap:wrap;
@@ -6288,7 +6327,7 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
   overflow:auto;background:var(--dsw-alias-interactive-bg-hover);
   border:0.5px solid var(--dsw-alias-border-l1);font-size:11.5px;line-height:1.6;
   color:var(--dsw-alias-label-secondary);
-  font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);white-space:pre-wrap}
+  font-family:var(--dshgn-fontMono);white-space:pre-wrap}
 /* ── 音频播放器 ── */
 .dshgn_audioCard{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-radius:10px;
   border:0.5px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-overlay)}
@@ -6348,13 +6387,13 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 /* 摊开全文那一块：保留换行、自己滚，不把设置页撑长。 */
 .dshgn_tplFull{margin:2px 0 0;max-height:220px;overflow:auto;padding:7px 8px;border-radius:6px;
   background:var(--dsw-alias-bg-base,#0000);border:0.5px solid var(--dsw-alias-border-l1);
-  font-family:var(--font-monospace,monospace);font-size:11px;line-height:1.65;
+  font-family:var(--dshgn-fontMono);font-size:11px;line-height:1.65;
   color:var(--dsw-alias-label-secondary);white-space:pre-wrap;word-break:break-word}
 .dshgn_tplForm{display:flex;flex-direction:column;gap:6px}
 .dshgn_btnRow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .dshgn_textarea{width:100%;box-sizing:border-box;min-height:180px;resize:vertical;padding:9px 10px;
   border:0.5px solid var(--dsw-alias-border-l2);border-radius:8px;background:transparent;
-  color:var(--dsw-alias-label-primary);font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);
+  color:var(--dsw-alias-label-primary);font-family:var(--dshgn-fontMono);
   font-size:12px;line-height:1.65;outline:none}
 .dshgn_textarea:focus{border-color:var(--dsw-alias-brand-primary)}
 .dshgn_btn{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 11px;border-radius:7px;
@@ -6742,7 +6781,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
 .dshgn_helpKeys{flex:none;min-width:104px;display:inline-flex;flex-wrap:wrap;gap:3px}
 .dshgn_helpKey{display:inline-block;padding:0 5px;border:0.5px solid var(--dsw-alias-border-l2);
   border-radius:4px;background:var(--dsw-alias-interactive-bg-hover);
-  font-family:var(--font-monospace,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);
+  font-family:var(--dshgn-fontMono);
   font-size:10px;line-height:1.7;color:var(--dsw-alias-label-secondary);white-space:nowrap}
 .dshgn_helpWhat{min-width:0;font-size:12px;line-height:1.6;color:var(--dsw-alias-label-secondary)}
 
@@ -7059,7 +7098,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 宿主的明暗主题会随用户切换（设置里改、或者按日出日落自动切），而 Obsidian
       // 只改 `<body>` 上的类名，不通知视图。盯这个类名，切换后立刻重算配色，
       // 否则面板会一直停在打开那一刻的配色上。
-      const [darkTheme, setDarkTheme] = React.useState(() => isDarkTheme())
+      // 这里存的是「宿主是不是深色」，不是面板最终用哪套：面板用哪套还要
+      // 看用户在设置里有没有钉死（status.uiMode），两者合起来才算得出来。
+      const [hostDark, setHostDark] = React.useState(() => isDarkTheme())
       React.useEffect(() => {
         // 有的环境（测试里的 jsdom）把 MutationObserver 挂在 window 上而不是全局，
         // 两处都找一遍。
@@ -7070,7 +7111,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
               ? window.MutationObserver
               : undefined
         if (typeof Observer !== 'function') return undefined
-        const sync = () => setDarkTheme(isDarkTheme())
+        const sync = () => setHostDark(isDarkTheme())
         const observer = new Observer(sync)
         // popout 窗口是另一个 document，各盯一份；窗口是后开的，所以
         // 「盯上它」这一步要能在新根节点出现时重放。
@@ -10982,9 +11023,14 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // var(--dshgn-*) 用法自动跟随，不用挨个组件传参。
       // 预览优先级：选色器里的草稿 > 已保存的值。这样用户拖色轮时整面板
       // 实时跟着变，点「应用」才落盘。
+      // 明暗：用户在设置里钉死就听他的，否则跟着宿主走。
+      // 没钉死时读的是 hostDark 这个 state 而不是现问 DOM——那个 state 被
+      // MutationObserver 盯着 body 的类名，宿主切主题时才会触发重渲染；
+      // 这里直接调 hostIsDark() 的话值虽然对，但没有 state 变化就不会重画。
+      const uiMode = status !== null && (status.uiMode === 'light' || status.uiMode === 'dark') ? status.uiMode : null
       const themeStyle = themeVars(
         themePreview !== null ? themePreview : status !== null ? status.themeColor : null,
-        darkTheme,
+        uiMode !== null ? isDarkTheme(uiMode) : hostDark,
       )
 
       // 栏宽也走 CSS 变量：三栏的 width 全在样式表里写死会没法拖，
@@ -19483,6 +19529,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
 
     function SettingsPane(props) {
       const { t, status, onSaved, onError, onThemePreview, showToast, locale, onLocaleChange, onSyncChanged } = props
+      // 明暗钉死值（null = 跟着宿主）。面板根节点与预览条都按它算配色。
+      const uiMode = status !== null && (status.uiMode === 'light' || status.uiMode === 'dark') ? status.uiMode : null
       const [input, setInput] = React.useState('')
       const [busy, setBusy] = React.useState(false)
       const [touched, setTouched] = React.useState(false)
@@ -19571,7 +19619,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           // 通道连云端」，这里说「多久自动拉一次」。中间隔着主题色/语言会让这层
           // 关系看不出来。
           h(SyncPane, { t, status, onChanged: onSyncChanged, onError, showToast }),
-          h(ThemeCard, { t, themeColor: status !== null ? status.themeColor : null, onSaved, onError, onPreview: onThemePreview }),
+          h(ThemeCard, { t, themeColor: status !== null ? status.themeColor : null, uiMode, onSaved, onError, onPreview: onThemePreview }),
+          // 明暗紧跟主题色：两张都在说「面板长什么样」，隔着语言会看不出关系。
+          h(AppearanceCard, { t, uiMode, onSaved, onError }),
           h(LanguageCard, { t, locale, onSaved, onError, onLocaleChange }),
           // 跟随卡片紧跟在语言之后：它和「面板长什么样」属于同一类设置（怎么跟
           // 宿主配合），而不是「库里有什么」。
@@ -19625,8 +19675,74 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
      *   3. 改完立刻预览（draft 覆盖 status 里的 themeColor），但只有点「应用」
      *      才落盘。不然用户试了三个颜色，磁盘就写了三次。
      */
+    /**
+     * 明暗开关：把面板钉死成浅色或深色，或者交还给宿主。
+     *
+     * 默认是 null（跟着宿主），所以这个卡片出现之前老用户看到的观感一点没变；
+     * 只有主动点了「浅色」或「深色」才会脱离宿主主题。
+     */
+    function AppearanceCard(props) {
+      const { t, uiMode, onSaved, onError } = props
+      const [busy, setBusy] = React.useState(false)
+      const active = uiMode === 'light' || uiMode === 'dark' ? uiMode : null
+
+      const pick = React.useCallback(
+        async (next) => {
+          if (busy) return
+          setBusy(true)
+          try {
+            // next 为 null 时是「跟着宿主」：JSON.stringify 会把 null 原样发过去，
+            // 服务端用 in 判断，所以 null 能被认成「恢复自动」而不是「没传」。
+            await api('/settings', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ uiMode: next }),
+            })
+            await onSaved(t('appearance.saved'))
+          } catch (err) {
+            onError(err && err.message ? err.message : String(err))
+          } finally {
+            setBusy(false)
+          }
+        },
+        [busy, onError, onSaved, t],
+      )
+
+      const options = [
+        { id: null, label: t('appearance.auto') },
+        { id: 'light', label: t('appearance.light') },
+        { id: 'dark', label: t('appearance.dark') },
+      ]
+
+      return h(
+        'div',
+        { className: 'dshgn_section' },
+        h('div', { className: 'dshgn_sectionHead' }, h('span', null, t('appearance.title'))),
+        h('div', { className: 'dshgn_sectionDesc' }, t('appearance.desc')),
+        h(
+          'div',
+          { className: 'dshgn_langRow' },
+          options.map((option) =>
+            h(
+              'button',
+              {
+                key: option.id === null ? 'auto' : option.id,
+                type: 'button',
+                className: active === option.id ? 'dshgn_chip dshgn_chipOn' : 'dshgn_chip',
+                'aria-pressed': active === option.id ? 'true' : 'false',
+                'data-mode': option.id === null ? 'auto' : option.id,
+                disabled: busy,
+                onClick: () => void pick(option.id),
+              },
+              option.label,
+            ),
+          ),
+        ),
+      )
+    }
+
     function ThemeCard(props) {
-      const { t, themeColor, onSaved, onError, onPreview } = props
+      const { t, themeColor, uiMode, onSaved, onError, onPreview } = props
       const [draft, setDraft] = React.useState(null)
       const [busy, setBusy] = React.useState(false)
       const [custom, setCustom] = React.useState(false)
@@ -19715,7 +19831,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         // 三栏效果预览条：设置页主体是白卡片，用户在这儿看不到目录树/列表/正文，
         // 光靠点色块没法判断「左深中浅右白」到底长什么样，所以直接画一条出来。
         (() => {
-          const preview = themeVars(active, isDarkTheme())
+          const preview = themeVars(active, isDarkTheme(uiMode === undefined ? null : uiMode))
           if (preview === null) return null
           return h(
             'div',

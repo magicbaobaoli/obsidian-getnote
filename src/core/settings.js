@@ -156,6 +156,23 @@ export function normalizeThemeColor(input) {
   return /^#[0-9a-f]{6}$/.test(raw) ? raw : null
 }
 
+/**
+ * 面板明暗：'light' / 'dark' 是用户自己钉死的，null 表示「跟着宿主走」。
+ *
+ * 为什么不直接读宿主的 theme-dark 就完事：宿主的主题是全局的，而面板是三栏
+ * 深蓝→浅蓝的固定配色，有些人白天想要浅色面板、晚上宿主是深色也不介意；
+ * 也有人反过来，宿主浅色但就想让这块暗下去。给一个自己的开关，默认仍然是
+ * 「跟着宿主」——不选的人观感和以前完全一样。
+ */
+export const UI_MODES = ['light', 'dark']
+
+export function normalizeUiMode(input) {
+  if (typeof input !== 'string') return null
+  const raw = input.trim().toLowerCase()
+  if (raw === 'light' || raw === 'dark') return raw
+  return null
+}
+
 /** 面板界面语言：只认这三本字典，其他一律当「自动」。 */
 export const SUPPORTED_LOCALES = ['zh', 'en', 'nl']
 
@@ -206,6 +223,7 @@ export async function readSettings() {
     autoSyncForegroundOnly: auto.foregroundOnly,
     themeColor: normalizeThemeColor(data.themeColor),
     uiLocale: normalizeLocale(data.uiLocale),
+    uiMode: normalizeUiMode(data.uiMode),
     templates: normalizeTemplates(data.templates),
     subfolder: typeof data.subfolder === 'string' && data.subfolder.trim() !== '' ? data.subfolder.trim() : null,
     // Obsidian 版专有：本地回环服务的端口。固定端口才能让 OAuth 的
@@ -239,6 +257,8 @@ export async function updateSettings(patch = {}) {
     autoSyncForegroundOnly: patch.autoSyncForegroundOnly !== undefined ? patch.autoSyncForegroundOnly === true : cur.autoSyncForegroundOnly,
     themeColor: 'themeColor' in patch ? normalizeThemeColor(patch.themeColor) : cur.themeColor,
     uiLocale: 'uiLocale' in patch ? normalizeLocale(patch.uiLocale) : cur.uiLocale,
+    // 明暗同理：null 是「跟着宿主」这个真实选项，所以用 in 判断而不是 !== undefined
+    uiMode: 'uiMode' in patch ? normalizeUiMode(patch.uiMode) : cur.uiMode,
     templates: 'templates' in patch ? normalizeTemplates(patch.templates) : cur.templates,
     subfolder: patch.subfolder !== undefined ? toSubfolder(patch.subfolder) : cur.subfolder,
     localPort: patch.localPort !== undefined ? patch.localPort : cur.localPort,
