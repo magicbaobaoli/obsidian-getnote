@@ -11497,6 +11497,16 @@ function toTopVisible(scrollTop) {
   if (!Number.isFinite(top)) return false;
   return top > TO_TOP_AFTER;
 }
+var LIST_NEAR_BOTTOM = 120;
+function nearListBottom(scrollTop, clientHeight, scrollHeight, slack = LIST_NEAR_BOTTOM) {
+  const top = Number(scrollTop);
+  const view = Number(clientHeight);
+  const full = Number(scrollHeight);
+  const gap = Number(slack);
+  if (!Number.isFinite(top) || !Number.isFinite(view) || !Number.isFinite(full)) return false;
+  if (view <= 0 || full <= 0) return false;
+  return top + view >= full - (Number.isFinite(gap) ? gap : LIST_NEAR_BOTTOM);
+}
 function outlineScrollDelta(hostRect, rowRect) {
   if (!hostRect || !rowRect) return 0;
   const top = Number(hostRect.top) || 0;
@@ -14614,7 +14624,7 @@ function GetnotePage() {
     (event) => {
       const el = event && event.currentTarget;
       if (!el) return;
-      if (el.scrollTop + el.clientHeight < el.scrollHeight - 120) return;
+      if (!nearListBottom(el.scrollTop, el.clientHeight, el.scrollHeight)) return;
       setListLimit((prev) => prev >= shown.length ? prev : prev + LIST_PAGE_SIZE);
     },
     [shown.length]
@@ -17858,6 +17868,7 @@ function CloudPane(props) {
   const [newBody, setNewBody] = h2("");
   const [playhead, setPlayhead] = h2(0);
   const [seekRequest, setSeekRequest] = h2(null);
+  const listRef = A2(null);
   const loadFirst = q2(async () => {
     if (!configured) return;
     setLoading(true);
@@ -17867,6 +17878,7 @@ function CloudPane(props) {
       setList(Array.isArray(page.notes) ? page.notes : []);
       setCursor(page.cursor ?? null);
       setHasMore(page.hasMore === true);
+      if (listRef.current) listRef.current.scrollTop = 0;
     } catch (err) {
       onError(err && err.message ? err.message : String(err));
     } finally {
@@ -17888,6 +17900,16 @@ function CloudPane(props) {
       setLoading(false);
     }
   }, [cursor, hasMore, loading, onError]);
+  const onListScroll = q2(
+    (event) => {
+      const el = event && event.currentTarget;
+      if (!el) return;
+      if (!hasMore || loading || recallHits !== null) return;
+      if (!nearListBottom(el.scrollTop, el.clientHeight, el.scrollHeight)) return;
+      void loadMore();
+    },
+    [hasMore, loading, loadMore, recallHits]
+  );
   y2(() => {
     void loadFirst();
   }, [loadFirst]);
@@ -17920,6 +17942,7 @@ function CloudPane(props) {
         setList(Array.isArray(page.notes) ? page.notes : []);
         setCursor(null);
         setHasMore(false);
+        if (listRef.current) listRef.current.scrollTop = 0;
       } catch (err) {
         onError(err && err.message ? err.message : String(err));
       } finally {
@@ -18251,7 +18274,7 @@ ${t4("cloud.pushHint")}`)) return;
     ),
     h4(
       "div",
-      { className: "dshgn_listBody" },
+      { className: "dshgn_listBody", ref: listRef, onScroll: onListScroll },
       loading && shown.length === 0 ? h4("div", { className: "dshgn_empty" }, h4("span", { className: "dshgn_spin" }), h4("span", null, t4("cloud.loading"))) : shown.length === 0 ? h4("div", { className: "dshgn_empty" }, h4("div", { className: "dshgn_emptyTitle" }, t4("cloud.empty"))) : shown.map(
         (note) => h4(
           "div",

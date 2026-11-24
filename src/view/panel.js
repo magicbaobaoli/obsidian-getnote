@@ -3430,6 +3430,24 @@ async function saveFile(url, filename) {
     }
 
     /**
+     * 列表滚到离底还有多近，就该续一页了。
+     *
+     * 留 120px 的余量：等真滚到底再加载，用户会先看见一截空白，网慢的时候
+     * 更明显。数字读不出来（还没排版、容器是 0 高）时一律当作「还早」，
+     * 免得一挂载就把整库都拉下来。
+     */
+    const LIST_NEAR_BOTTOM = 120
+    function nearListBottom(scrollTop, clientHeight, scrollHeight, slack = LIST_NEAR_BOTTOM) {
+      const top = Number(scrollTop)
+      const view = Number(clientHeight)
+      const full = Number(scrollHeight)
+      const gap = Number(slack)
+      if (!Number.isFinite(top) || !Number.isFinite(view) || !Number.isFinite(full)) return false
+      if (view <= 0 || full <= 0) return false
+      return top + view >= full - (Number.isFinite(gap) ? gap : LIST_NEAR_BOTTOM)
+    }
+
+    /**
      * 大纲列表要滚多少，才让亮着的那一条落进可见区。
      *
      * 传进来的是两边的视口坐标（getBoundingClientRect 那套），返回「相对现在
@@ -7280,7 +7298,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         (event) => {
           const el = event && event.currentTarget
           if (!el) return
-          if (el.scrollTop + el.clientHeight < el.scrollHeight - 120) return
+          if (!nearListBottom(el.scrollTop, el.clientHeight, el.scrollHeight)) return
           setListLimit((prev) => (prev >= shown.length ? prev : prev + LIST_PAGE_SIZE))
         },
         [shown.length],
@@ -11217,6 +11235,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       const [playhead, setPlayhead] = React.useState(0)
       const [seekRequest, setSeekRequest] = React.useState(null)
 
+      const listRef = React.useRef(null)
+
       const loadFirst = React.useCallback(async () => {
         if (!configured) return
         setLoading(true)
@@ -11226,6 +11246,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           setList(Array.isArray(page.notes) ? page.notes : [])
           setCursor(page.cursor ?? null)
           setHasMore(page.hasMore === true)
+          // 换回第一页就回到顶上：不然新的一批从刚才那个高度开始铺，头几条被跳过。
+          if (listRef.current) listRef.current.scrollTop = 0
         } catch (err) {
           onError(err && err.message ? err.message : String(err))
         } finally {
@@ -11248,6 +11270,19 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           setLoading(false)
         }
       }, [cursor, hasMore, loading, onError])
+
+      // 滚到底附近就自己续一页，和中栏列表一个口径——那颗「加载更多」按钮
+      // 留着当兜底（触控板、键盘用户），不用非得找到它才看得见后面的。
+      const onListScroll = React.useCallback(
+        (event) => {
+          const el = event && event.currentTarget
+          if (!el) return
+          if (!hasMore || loading || recallHits !== null) return
+          if (!nearListBottom(el.scrollTop, el.clientHeight, el.scrollHeight)) return
+          void loadMore()
+        },
+        [hasMore, loading, loadMore, recallHits],
+      )
 
       React.useEffect(() => {
         void loadFirst()
@@ -11286,6 +11321,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             setList(Array.isArray(page.notes) ? page.notes : [])
             setCursor(null)
             setHasMore(false)
+            if (listRef.current) listRef.current.scrollTop = 0
           } catch (err) {
             onError(err && err.message ? err.message : String(err))
           } finally {
@@ -11655,7 +11691,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         ),
         h(
           'div',
-          { className: 'dshgn_listBody' },
+          { className: 'dshgn_listBody', ref: listRef, onScroll: onListScroll },
           loading && shown.length === 0
             ? h('div', { className: 'dshgn_empty' }, h('span', { className: 'dshgn_spin' }), h('span', null, t('cloud.loading')))
             : shown.length === 0
@@ -19760,6 +19796,8 @@ export const __internals = {
   isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote, scrollToFootnoteRef, parseImageSize, renderParagraph, blockTextOf, markdownLinkTarget,
   tagBodyOf, ZoomOverlay, continueListLine, indentLines, wrapInline, linkPaste, wikilinkQueryAt, wikilinkMatches, tagQueryAt, tagMatches, findInBody, findAllBodyMatches, countTextMatches, findInBodyMatch, findInText, textHasParts,
       outlineScrollDelta,
+    nearListBottom,
+    LIST_NEAR_BOTTOM,
       toTopVisible,
       TO_TOP_AFTER,
       readScrollMarks, writeScrollMark, scrollMarkOf, SCROLL_KEY,

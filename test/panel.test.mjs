@@ -16426,3 +16426,40 @@ test('换了目录或者搜索词，中栏列表的滚动位置回到顶上', as
   }
 })
 
+/**
+ * 列表滚到离底多近就该续一页。
+ *
+ * 中栏列表和云端列表共用这一份数学：等真滚到底再加载，用户先看见一截空白，
+ * 网慢的时候更明显。数字读不出来时一律当作「还早」——容器还没排版（0 高）
+ * 就当成滚到底的话，一挂载就会把整库都拉下来。
+ */
+test('离底多近才续一页：留一百二十像素余量，量不出来就当还早', () => {
+  const near = panel.__internals.nearListBottom
+  const slack = panel.__internals.LIST_NEAR_BOTTOM
+  assert.equal(typeof near, 'function', '要能单独验这份数学')
+  assert.equal(slack, 120, '余量就是 120px')
+
+  // 一屏 600、内容 2000：滚到 1280 时离底正好 120，算到了；1279 还差一点。
+  assert.equal(near(1280, 600, 2000), true, '正好压着余量就算到了')
+  assert.equal(near(1279, 600, 2000), false, '还差一像素就再等等')
+  assert.equal(near(1400, 600, 2000), true, '已经到底了当然算')
+  assert.equal(near(0, 600, 2000), false, '刚进来还没滚，不该续页')
+
+  // 内容还没铺满一屏（scrollHeight === clientHeight）时滚不动，本来就在底部附近。
+  assert.equal(near(0, 600, 600), true, '一屏就装下了')
+
+  // 量不出来的情形：还没排版（0 高）、NaN、undefined、字符串。
+  assert.equal(near(0, 0, 0), false, '没有高度就当还早')
+  assert.equal(near(100, 0, 2000), false, '视口 0 高量不出来')
+  assert.equal(near(100, 600, 0), false, '内容 0 高量不出来')
+  assert.equal(near(Number.NaN, 600, 2000), false, 'NaN 当还早')
+  assert.equal(near(undefined, 600, 2000), false, 'undefined 当还早')
+  assert.equal(near(1300, undefined, 2000), false, '缺一个参数当还早')
+  assert.equal(near('1300', '600', '2000'), true, '数字字符串照样算得出来')
+  assert.equal(near('不是数字', 600, 2000), false, '读不成数字就当还早')
+
+  // 余量可以调：传 0 就是真滚到底才算。
+  assert.equal(near(1400, 600, 2000, 0), true, '刚好到底')
+  assert.equal(near(1399, 600, 2000, 0), false, '差一像素不算')
+})
+
