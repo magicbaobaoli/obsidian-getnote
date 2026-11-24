@@ -12210,6 +12210,104 @@ test('回收站里能就地看一眼删掉的那篇写的是什么，不用先�
 
   await clickTab('笔记')
 })
+test('回收站里摊开的开头一段不够看时，就地摊全，再点回开头', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+  await clickTab('笔记')
+
+  const post = async (path, body) => {
+    const res = await realFetch(server.origin + path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify(body),
+    })
+    return res.json()
+  }
+  const longBody = '这一篇摊全验收的正文。'.repeat(60)
+  const longPath = '回收站摊全验收/回收站摊全-很长的一篇.md'
+  await post('/getnote/create', {
+    dir: '回收站摊全验收',
+    title: '回收站摊全-很长的一篇',
+    content: ['# 回收站摊全-很长的一篇', '', longBody, ''].join(String.fromCharCode(10)),
+    withDatePrefix: false,
+    requestId: 'seed-trash-expand-a',
+  })
+
+  // 退回空态，免得带着上一篇的阅读态进来
+  const backBtn = () => window.document.querySelector('.dshgn_noteBack')
+  panel.setConfirmDialog(async () => true)
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = backBtn()
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(220)
+    }
+    await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(600)
+
+  const deleted = await post('/getnote/delete', { path: longPath })
+  assert.equal(deleted.ok, true, '删进回收站失败：' + JSON.stringify(deleted))
+
+  await clickTab('回收站')
+  const rowOf = (title) =>
+    Array.from(window.document.querySelectorAll('.dshgn_cardBox .dshgn_rowLine')).find((el) => {
+      const label = el.querySelector('.dshgn_cardTitle')
+      return label !== null && (label.textContent || '').trim() === title
+    }) || null
+  const row = await waitFor(() => rowOf('回收站摊全-很长的一篇'), 8000, '回收站里出现这一篇')
+  row.querySelector('.dshgn_trashPeekBtn').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+
+  const bodyEl = () => window.document.querySelector('.dshgn_trashPreviewBody')
+  const bodyText = () => {
+    const node = bodyEl()
+    return node === null ? '' : node.textContent || ''
+  }
+  await waitFor(() => bodyText() !== '', 8000, '读到正文')
+  assert.ok(bodyText().length <= 320, '一开始只摆开头一段，实际：' + bodyText().length)
+  assert.ok(bodyText().includes('这一篇摊全验收的正文'), '开头一段里该有正文')
+
+  const moreBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_trashPeekMore'))[0] || null
+  const more = await waitFor(moreBtn, 5000, '截断时该给一颗「在这儿看全」')
+  assert.equal((more.textContent || '').trim(), '在这儿看全', '按钮上要写明是看全')
+  assert.equal(more.getAttribute('aria-expanded'), 'false', '没摊全时 aria-expanded 是 false')
+
+  // 按一下：整篇就地摊开，不再有「后面还有 N 个字」
+  more.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => bodyText().length > 320, 5000, '按了就该摊全')
+  assert.equal(bodyText().replace(/\s+$/, '').endsWith('这一篇摊全验收的正文。'), true, '摊全之后要到正文最后一句')
+  assert.equal(bodyEl().getAttribute('data-all'), 'true', '摊全之后别再拿高度卡着')
+  const all = moreBtn()
+  assert.equal((all.textContent || '').trim(), '只看开头', '摊全之后按钮该说「只看开头」')
+  assert.equal(all.getAttribute('aria-expanded'), 'true', '摊全之后 aria-expanded 是 true')
+  const hintText = Array.from(window.document.querySelectorAll('.dshgn_trashPreviewHint'))
+    .map((el) => el.textContent || '')
+    .join(' ')
+  assert.equal(hintText.includes('后面还有'), false, '摊全之后不该还留着「后面还有 N 个字」，实际：' + hintText)
+
+  // 再按一下：收回开头一段
+  all.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => bodyText().length <= 320, 5000, '再按一下收回开头一段')
+  assert.equal(bodyEl().getAttribute('data-all'), 'false', '收回去之后 data-all 回到 false')
+  assert.equal((moreBtn().textContent || '').trim(), '在这儿看全', '收回去之后按钮回到「在这儿看全」')
+
+  // 换一篇重新从开头一段开始，不继承上一篇摊开的姿势
+  row.querySelector('.dshgn_trashPeekBtn').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => window.document.querySelector('.dshgn_trashPreview') === null, 5000, '收回去')
+  row.querySelector('.dshgn_trashPeekBtn').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => bodyText() !== '', 8000, '再摊开一次')
+  assert.equal(bodyText().length <= 320, true, '重新摊开要从开头一段开始')
+
+  await clickTab('笔记')
+})
 test('待办页里每一篇都能收起来，收起来之后组头和条数还留着', async () => {
   const rootNode = () => window.document.querySelector('.dshgn_root')
   await waitFor(() => rootNode() !== null, 5000, '根节点渲染')

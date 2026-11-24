@@ -1074,6 +1074,9 @@ async function saveFile(url, filename) {
         'trash.previewFailed': '这一篇读不出来了',
         'trash.previewLong': '后面还有 {n} 个字没展开，恢复回去就能看全',
         'trash.previewEmpty': '这一篇删的时候就是空的',
+        // 开头一段不够用时，就地摊全——不必为了看全先恢复出来再删回去
+        'trash.previewMore': '在这儿看全',
+        'trash.previewLess': '只看开头',
         'cloud.newNote': '新建云端笔记',
         'cloud.newNoteTitle': '标题',
         'cloud.newNoteBody': '正文',
@@ -1712,6 +1715,8 @@ async function saveFile(url, filename) {
         'trash.previewFailed': 'This one cannot be read',
         'trash.previewLong': '{n} more characters not shown; restore it to read it all',
         'trash.previewEmpty': 'This one was already empty when it was deleted',
+        'trash.previewMore': 'Show it all here',
+        'trash.previewLess': 'Back to the opening',
         'cloud.newNote': 'New cloud note',
         'cloud.newNoteTitle': 'Title',
         'cloud.newNoteBody': 'Body',
@@ -2349,6 +2354,8 @@ async function saveFile(url, filename) {
         'trash.previewFailed': 'Deze kan niet gelezen worden',
         'trash.previewLong': 'Nog {n} tekens niet getoond; herstel hem om alles te lezen',
         'trash.previewEmpty': 'Deze was al leeg toen hij werd verwijderd',
+        'trash.previewMore': 'Hier alles tonen',
+        'trash.previewLess': 'Alleen het begin',
         'cloud.newNote': 'Nieuwe cloudnotitie',
         'cloud.newNoteTitle': 'Titel',
         'cloud.newNoteBody': 'Tekst',
@@ -6117,6 +6124,11 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 .dshgn_trashPreview{display:flex;flex-direction:column;gap:4px;margin:0 0 8px;padding:8px 10px;border-radius:7px;background:var(--dsw-alias-interactive-bg-hover);min-width:0}
 .dshgn_trashPreviewBody{font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary);white-space:pre-wrap;word-break:break-word;max-height:160px;overflow:hidden}
 .dshgn_trashPreviewHint{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--dsw-alias-label-tertiary)}
+/* 摊全之后别再拿 160px 卡着——那等于换了个地方继续截 */
+.dshgn_trashPreviewBody[data-all="true"]{max-height:none;overflow:visible}
+.dshgn_trashPeekMore{appearance:none;flex:none;margin-left:auto;padding:1px 7px;border:0.5px dashed var(--dsw-alias-border-l2);border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:10px;line-height:16px;cursor:pointer}
+.dshgn_trashPeekMore:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-brand-primary)}
+.dshgn_trashPeekMore:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dshgn_pane{flex:1;overflow-y:auto;padding:18px clamp(16px,3vw,28px) 40px}
 .dshgn_cardBox{max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
 .dshgn_section{display:flex;flex-direction:column;gap:8px;padding:14px 15px;border-radius:10px;
@@ -14350,6 +14362,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 再看，看错了还得再删一次。这里就地读一眼，读的是 .trash 里那份原文。
       const [peekPath, setPeekPath] = React.useState('')
       const [peek, setPeek] = React.useState(null)
+      // 开头一段只够认出是哪一篇；要确认删对了、或者想看那一段被截掉的话，
+      // 就地摊全比「恢复出来—看完—再删回去」省事得多。只对当前摊开的那篇生效。
+      const [peekAll, setPeekAll] = React.useState(false)
       // 回收站里攒够十几个文件之后，一行行点「恢复」是纯体力活，而「放回哪个
       // 目录」这件事本来就得一次说清——分开点等于把同一个目录名敲十遍。
       // 选中的用路径记，恢复/清空之后按新列表对一遍，不认识的自动落掉。
@@ -14364,10 +14379,13 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           if (peekPath === item.path) {
             setPeekPath('')
             setPeek(null)
+            setPeekAll(false)
             return
           }
           setPeekPath(item.path)
           setPeek({ loading: true })
+          // 换一篇就从开头一段重新开始，不继承上一篇摊开的姿势
+          setPeekAll(false)
           try {
             const note = await api(`/read?path=${encodeURIComponent(item.path)}`)
             const body = String(note && note.body !== undefined && note.body !== null ? note.body : note && note.content ? note.content : '')
@@ -14871,16 +14889,33 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                                     return h('div', { className: 'dshgn_trashPreviewHint' }, t('trash.previewEmpty'))
                                   }
                                   const cut = full.length > TRASH_PREVIEW_CHARS
-                                  const shownText = cut ? full.slice(0, TRASH_PREVIEW_CHARS) : full
+                                  const shownText = cut && !peekAll ? full.slice(0, TRASH_PREVIEW_CHARS) : full
                                   return h(
                                     React.Fragment,
                                     null,
-                                    h('div', { className: 'dshgn_trashPreviewBody' }, shownText),
+                                    h(
+                                      'div',
+                                      { className: 'dshgn_trashPreviewBody', 'data-all': cut && peekAll ? 'true' : 'false' },
+                                      shownText,
+                                    ),
                                     cut
                                       ? h(
                                           'div',
                                           { className: 'dshgn_trashPreviewHint' },
-                                          t('trash.previewLong').replace('{n}', String(full.length - TRASH_PREVIEW_CHARS)),
+                                          peekAll
+                                            ? null
+                                            : t('trash.previewLong').replace('{n}', String(full.length - TRASH_PREVIEW_CHARS)),
+                                          h(
+                                            'button',
+                                            {
+                                              type: 'button',
+                                              className: 'dshgn_trashPeekMore',
+                                              'aria-expanded': peekAll ? 'true' : 'false',
+                                              title: peekAll ? t('trash.previewLess') : t('trash.previewMore'),
+                                              onClick: () => setPeekAll((prev) => !prev),
+                                            },
+                                            peekAll ? t('trash.previewLess') : t('trash.previewMore'),
+                                          ),
                                         )
                                       : null,
                                   )

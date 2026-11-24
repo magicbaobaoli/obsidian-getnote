@@ -9436,6 +9436,9 @@ var LEX = {
     "trash.previewFailed": "\u8FD9\u4E00\u7BC7\u8BFB\u4E0D\u51FA\u6765\u4E86",
     "trash.previewLong": "\u540E\u9762\u8FD8\u6709 {n} \u4E2A\u5B57\u6CA1\u5C55\u5F00\uFF0C\u6062\u590D\u56DE\u53BB\u5C31\u80FD\u770B\u5168",
     "trash.previewEmpty": "\u8FD9\u4E00\u7BC7\u5220\u7684\u65F6\u5019\u5C31\u662F\u7A7A\u7684",
+    // 开头一段不够用时，就地摊全——不必为了看全先恢复出来再删回去
+    "trash.previewMore": "\u5728\u8FD9\u513F\u770B\u5168",
+    "trash.previewLess": "\u53EA\u770B\u5F00\u5934",
     "cloud.newNote": "\u65B0\u5EFA\u4E91\u7AEF\u7B14\u8BB0",
     "cloud.newNoteTitle": "\u6807\u9898",
     "cloud.newNoteBody": "\u6B63\u6587",
@@ -10069,6 +10072,8 @@ var LEX = {
     "trash.previewFailed": "This one cannot be read",
     "trash.previewLong": "{n} more characters not shown; restore it to read it all",
     "trash.previewEmpty": "This one was already empty when it was deleted",
+    "trash.previewMore": "Show it all here",
+    "trash.previewLess": "Back to the opening",
     "cloud.newNote": "New cloud note",
     "cloud.newNoteTitle": "Title",
     "cloud.newNoteBody": "Body",
@@ -10702,6 +10707,8 @@ var LEX = {
     "trash.previewFailed": "Deze kan niet gelezen worden",
     "trash.previewLong": "Nog {n} tekens niet getoond; herstel hem om alles te lezen",
     "trash.previewEmpty": "Deze was al leeg toen hij werd verwijderd",
+    "trash.previewMore": "Hier alles tonen",
+    "trash.previewLess": "Alleen het begin",
     "cloud.newNote": "Nieuwe cloudnotitie",
     "cloud.newNoteTitle": "Titel",
     "cloud.newNoteBody": "Tekst",
@@ -13629,6 +13636,11 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 .dshgn_trashPreview{display:flex;flex-direction:column;gap:4px;margin:0 0 8px;padding:8px 10px;border-radius:7px;background:var(--dsw-alias-interactive-bg-hover);min-width:0}
 .dshgn_trashPreviewBody{font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary);white-space:pre-wrap;word-break:break-word;max-height:160px;overflow:hidden}
 .dshgn_trashPreviewHint{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--dsw-alias-label-tertiary)}
+/* \u644A\u5168\u4E4B\u540E\u522B\u518D\u62FF 160px \u5361\u7740\u2014\u2014\u90A3\u7B49\u4E8E\u6362\u4E86\u4E2A\u5730\u65B9\u7EE7\u7EED\u622A */
+.dshgn_trashPreviewBody[data-all="true"]{max-height:none;overflow:visible}
+.dshgn_trashPeekMore{appearance:none;flex:none;margin-left:auto;padding:1px 7px;border:0.5px dashed var(--dsw-alias-border-l2);border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:10px;line-height:16px;cursor:pointer}
+.dshgn_trashPeekMore:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-brand-primary)}
+.dshgn_trashPeekMore:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dshgn_pane{flex:1;overflow-y:auto;padding:18px clamp(16px,3vw,28px) 40px}
 .dshgn_cardBox{max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
 .dshgn_section{display:flex;flex-direction:column;gap:8px;padding:14px 15px;border-radius:10px;
@@ -20513,6 +20525,7 @@ function TrashPane(props) {
   }, []);
   const [peekPath, setPeekPath] = h2("");
   const [peek, setPeek] = h2(null);
+  const [peekAll, setPeekAll] = h2(false);
   const [picked, setPicked] = h2(() => /* @__PURE__ */ new Set());
   const pickedCount = picked.size;
   const [filter, setFilter] = h2("");
@@ -20522,10 +20535,12 @@ function TrashPane(props) {
       if (peekPath === item.path) {
         setPeekPath("");
         setPeek(null);
+        setPeekAll(false);
         return;
       }
       setPeekPath(item.path);
       setPeek({ loading: true });
+      setPeekAll(false);
       try {
         const note = await api(`/read?path=${encodeURIComponent(item.path)}`);
         const body = String(note && note.body !== void 0 && note.body !== null ? note.body : note && note.content ? note.content : "");
@@ -20976,15 +20991,30 @@ function TrashPane(props) {
                 return h4("div", { className: "dshgn_trashPreviewHint" }, t4("trash.previewEmpty"));
               }
               const cut = full.length > TRASH_PREVIEW_CHARS;
-              const shownText = cut ? full.slice(0, TRASH_PREVIEW_CHARS) : full;
+              const shownText = cut && !peekAll ? full.slice(0, TRASH_PREVIEW_CHARS) : full;
               return h4(
                 b,
                 null,
-                h4("div", { className: "dshgn_trashPreviewBody" }, shownText),
+                h4(
+                  "div",
+                  { className: "dshgn_trashPreviewBody", "data-all": cut && peekAll ? "true" : "false" },
+                  shownText
+                ),
                 cut ? h4(
                   "div",
                   { className: "dshgn_trashPreviewHint" },
-                  t4("trash.previewLong").replace("{n}", String(full.length - TRASH_PREVIEW_CHARS))
+                  peekAll ? null : t4("trash.previewLong").replace("{n}", String(full.length - TRASH_PREVIEW_CHARS)),
+                  h4(
+                    "button",
+                    {
+                      type: "button",
+                      className: "dshgn_trashPeekMore",
+                      "aria-expanded": peekAll ? "true" : "false",
+                      title: peekAll ? t4("trash.previewLess") : t4("trash.previewMore"),
+                      onClick: () => setPeekAll((prev) => !prev)
+                    },
+                    peekAll ? t4("trash.previewLess") : t4("trash.previewMore")
+                  )
                 ) : null
               );
             })()
