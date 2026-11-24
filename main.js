@@ -9209,6 +9209,10 @@ var LEX = {
     "note.outlineFilterNone": "\u6CA1\u6709\u5BF9\u5F97\u4E0A\u7684\u5C0F\u8282",
     "note.openImage": "\u5728 Obsidian \u91CC\u6253\u5F00\u8FD9\u5F20\u56FE",
     "note.zoomImage": "\u70B9\u5F00\u770B\u5927\u56FE",
+    // 录音卡同步下来的那篇 `_transcript.md` 从前在笔记页完全没有出口：
+    // 只筛了 audio / image，用户手里明明有一份逐字稿却看不见。
+    "note.transcript": "\u8F6C\u5199\u7A3F",
+    "note.transcriptOpen": "\u5728\u9762\u677F\u91CC\u6253\u5F00\u8FD9\u4EFD\u8F6C\u5199",
     "zoom.prev": "\u4E0A\u4E00\u5F20",
     "zoom.next": "\u4E0B\u4E00\u5F20",
     "zoom.count": "{n} / {total}",
@@ -9876,6 +9880,8 @@ var LEX = {
     "note.outlineFilterNone": "No section matches",
     "note.openImage": "Open this image in Obsidian",
     "note.zoomImage": "Click to enlarge",
+    "note.transcript": "Transcript",
+    "note.transcriptOpen": "Open this transcript in the panel",
     "zoom.prev": "Previous image",
     "zoom.next": "Next image",
     "zoom.count": "{n} / {total}",
@@ -10525,6 +10531,8 @@ var LEX = {
     "note.outlineFilterNone": "Geen kopje gevonden",
     "note.openImage": "Open deze afbeelding in Obsidian",
     "note.zoomImage": "Klik om te vergroten",
+    "note.transcript": "Transcriptie",
+    "note.transcriptOpen": "Deze transcriptie in het paneel openen",
     "zoom.prev": "Vorige afbeelding",
     "zoom.next": "Volgende afbeelding",
     "zoom.count": "{n} / {total}",
@@ -13937,6 +13945,15 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
   color:var(--dsw-alias-label-primary-foreground);font-weight:500}
 /* \u56FE\u7247\u9644\u4EF6\uFF1A\u4E00\u884C\u6A2A\u5411\u6392\uFF0C\u5355\u5F20\u6700\u9AD8 200px\uFF0C\u907F\u514D\u4E00\u5F20\u7AD6\u6784\u56FE\u624B\u673A\u622A\u56FE\u628A\u6574\u7BC7\u6587\u7AE0\u63A8\u5230\u5C4F\u5E55\u5916\u3002 */
 .dshgn_imgRow{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+/* \u9644\u4EF6\u91CC\u7684\u9010\u5B57\u7A3F\uFF1A\u4E00\u884C\u5C0F\u6807\u7B7E\uFF0C\u70B9\u4E00\u4E0B\u5728\u9762\u677F\u91CC\u6253\u5F00\u90A3\u4E00\u4EFD */
+.dshgn_assetRow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:8px 0;
+  font-size:11px;color:var(--dsw-alias-label-secondary)}
+.dshgn_assetLabel{flex:none;opacity:.8}
+.dshgn_assetChip{appearance:none;flex:none;max-width:240px;padding:1px 8px;border:0.5px solid var(--dsw-alias-border-l2);
+  border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;
+  font-size:11px;line-height:1.7;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_assetChip:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dshgn_assetChip:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dshgn_imgOpen{cursor:zoom-in}
 /* \u5199\u4E86\u5C3A\u5BF8\u7684\u56FE\u6309\u5199\u7684\u6765\uFF1Aobject-fit \u4FDD\u6301\u6BD4\u4F8B\uFF0C\u4E0D\u8981\u88AB\u7F29\u7565\u56FE\u90A3\u6761 max-height \u538B\u6241\u3002 */
 .dshgn_imgSized{object-fit:contain}
@@ -17607,6 +17624,8 @@ ${insert}
         // 用户会以为是自己敲错了词，接着反复按回车。
         showToast,
         onOpenWikiLink: openWikiLink,
+        // 附件里的转写稿胶囊：按路径直接打开那一份 .md
+        onOpenPath: openNote,
         onSyncOne: syncCurrent,
         onRestored: async () => {
           await openNote(current.path);
@@ -22644,6 +22663,7 @@ function NotePane(props) {
   const onCreateFromText = typeof props.onCreateFromText === "function" ? props.onCreateFromText : null;
   const onCreateNew = typeof props.onCreateNew === "function" ? props.onCreateNew : null;
   const onDuplicate = typeof props.onDuplicate === "function" ? props.onDuplicate : null;
+  const onOpenPath = typeof props.onOpenPath === "function" ? props.onOpenPath : null;
   const onCopyHeadingLink = typeof props.onCopyHeadingLink === "function" ? props.onCopyHeadingLink : null;
   const anchorRequest = props.anchor;
   const onAnchorDone = props.onAnchorDone;
@@ -24247,6 +24267,30 @@ ${t4("tree.menuReveal")}` : absolute,
             }
           });
         })
+      ) : null,
+      // 附件里的逐字稿也得有个出口。从前只筛 audio / image，`.md` 的转写稿
+      // 在笔记页完全看不见——用户手里明明有一份转写，却以为没同步下来。
+      // 点一下就在面板里打开它（它自己在 asset/ 里，不会混进笔记列表）。
+      (current.assets || []).some((asset) => asset.kind === "transcript") ? h4(
+        "div",
+        { className: "dshgn_assetRow" },
+        h4(Icon, { name: "note", size: 12 }),
+        h4("span", { className: "dshgn_assetLabel" }, t4("note.transcript")),
+        (current.assets || []).filter((asset) => asset.kind === "transcript").map(
+          (asset, index) => h4(
+            "button",
+            {
+              key: `${asset.path}-${index}`,
+              type: "button",
+              className: "dshgn_assetChip",
+              title: `${t4("note.transcriptOpen")} \xB7 ${asset.name}`,
+              onClick: () => {
+                if (onOpenPath !== null) void onOpenPath(asset.path);
+              }
+            },
+            assetLabel(asset.name)
+          )
+        )
       ) : null,
       // 阅读时只渲染正文：`content` 带 YAML frontmatter，直接 renderBlocks 会把
       // `title: xxx` / `note_id: "..."` 当成正文段落一条条铺出来。编辑时仍用

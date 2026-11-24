@@ -843,6 +843,10 @@ async function saveFile(url, filename) {
         'note.outlineFilterNone': '没有对得上的小节',
         'note.openImage': '在 Obsidian 里打开这张图',
         'note.zoomImage': '点开看大图',
+        // 录音卡同步下来的那篇 `_transcript.md` 从前在笔记页完全没有出口：
+        // 只筛了 audio / image，用户手里明明有一份逐字稿却看不见。
+        'note.transcript': '转写稿',
+        'note.transcriptOpen': '在面板里打开这份转写',
         'zoom.prev': '上一张',
         'zoom.next': '下一张',
         'zoom.count': '{n} / {total}',
@@ -1515,6 +1519,8 @@ async function saveFile(url, filename) {
         'note.outlineFilterNone': 'No section matches',
         'note.openImage': 'Open this image in Obsidian',
         'note.zoomImage': 'Click to enlarge',
+        'note.transcript': 'Transcript',
+        'note.transcriptOpen': 'Open this transcript in the panel',
         'zoom.prev': 'Previous image',
         'zoom.next': 'Next image',
         'zoom.count': '{n} / {total}',
@@ -2168,6 +2174,8 @@ async function saveFile(url, filename) {
         'note.outlineFilterNone': 'Geen kopje gevonden',
         'note.openImage': 'Open deze afbeelding in Obsidian',
         'note.zoomImage': 'Klik om te vergroten',
+        'note.transcript': 'Transcriptie',
+        'note.transcriptOpen': 'Deze transcriptie in het paneel openen',
         'zoom.prev': 'Vorige afbeelding',
         'zoom.next': 'Volgende afbeelding',
         'zoom.count': '{n} / {total}',
@@ -6434,6 +6442,15 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
   color:var(--dsw-alias-label-primary-foreground);font-weight:500}
 /* 图片附件：一行横向排，单张最高 200px，避免一张竖构图手机截图把整篇文章推到屏幕外。 */
 .dshgn_imgRow{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+/* 附件里的逐字稿：一行小标签，点一下在面板里打开那一份 */
+.dshgn_assetRow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:8px 0;
+  font-size:11px;color:var(--dsw-alias-label-secondary)}
+.dshgn_assetLabel{flex:none;opacity:.8}
+.dshgn_assetChip{appearance:none;flex:none;max-width:240px;padding:1px 8px;border:0.5px solid var(--dsw-alias-border-l2);
+  border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;
+  font-size:11px;line-height:1.7;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_assetChip:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dshgn_assetChip:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dshgn_imgOpen{cursor:zoom-in}
 /* 写了尺寸的图按写的来：object-fit 保持比例，不要被缩略图那条 max-height 压扁。 */
 .dshgn_imgSized{object-fit:contain}
@@ -10889,6 +10906,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             // 用户会以为是自己敲错了词，接着反复按回车。
             showToast,
             onOpenWikiLink: openWikiLink,
+            // 附件里的转写稿胶囊：按路径直接打开那一份 .md
+            onOpenPath: openNote,
             onSyncOne: syncCurrent,
             onRestored: async () => {
               // 恢复历史后重新读一遍：面板上还显示着恢复前的正文，
@@ -16904,6 +16923,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 既然话说到这儿了，就地给一颗按钮——不然用户得先抬头找一遍顶栏。
       const onCreateNew = typeof props.onCreateNew === 'function' ? props.onCreateNew : null
     const onDuplicate = typeof props.onDuplicate === 'function' ? props.onDuplicate : null
+      // 附件里的转写稿（.md）点一下要在面板里打开它本身：按路径打开，不走
+      // 双链那套「名字→路径」的解析。没接上就不摆那颗胶囊。
+      const onOpenPath = typeof props.onOpenPath === 'function' ? props.onOpenPath : null
       // 大纲里那一节点一下就抄一条链接过去；没接上就不摆那颗按钮
       const onCopyHeadingLink = typeof props.onCopyHeadingLink === 'function' ? props.onCopyHeadingLink : null
       const anchorRequest = props.anchor
@@ -18914,6 +18936,34 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                           },
                         })
                       }),
+                  )
+                : null,
+              // 附件里的逐字稿也得有个出口。从前只筛 audio / image，`.md` 的转写稿
+              // 在笔记页完全看不见——用户手里明明有一份转写，却以为没同步下来。
+              // 点一下就在面板里打开它（它自己在 asset/ 里，不会混进笔记列表）。
+              (current.assets || []).some((asset) => asset.kind === 'transcript')
+                ? h(
+                    'div',
+                    { className: 'dshgn_assetRow' },
+                    h(Icon, { name: 'note', size: 12 }),
+                    h('span', { className: 'dshgn_assetLabel' }, t('note.transcript')),
+                    (current.assets || [])
+                      .filter((asset) => asset.kind === 'transcript')
+                      .map((asset, index) =>
+                        h(
+                          'button',
+                          {
+                            key: `${asset.path}-${index}`,
+                            type: 'button',
+                            className: 'dshgn_assetChip',
+                            title: `${t('note.transcriptOpen')} · ${asset.name}`,
+                            onClick: () => {
+                              if (onOpenPath !== null) void onOpenPath(asset.path)
+                            },
+                          },
+                          assetLabel(asset.name),
+                        ),
+                      ),
                   )
                 : null,
               // 阅读时只渲染正文：`content` 带 YAML frontmatter，直接 renderBlocks 会把

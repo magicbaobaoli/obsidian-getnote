@@ -16889,11 +16889,23 @@ test('最近搜过那一排里，每一条都能单独去掉，别的照旧留�
   await sleep(600)
 
   // 先搜 A、再搜 B：B 排在前面
+  // 等「真的记下来了」再搜下一个——rememberSearch 是 1.2 秒防抖，整套测试并行跑
+  // 的时候机器忙，死等一个固定时长会在慢机上把第一条漏掉。
+  const storedWords = () => {
+    const raw = window.localStorage.getItem('dshgn.recentSearches')
+    if (raw === null) return []
+    try {
+      const parsed = JSON.parse(raw)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  }
   await typeIn(wordA)
   await waitFor(() => window.document.querySelector('.dshgn_card') !== null, 8000, '搜到那一篇')
-  await sleep(1800)
+  await waitFor(() => storedWords().includes(wordA), 15000, '第一个词记下来了')
   await typeIn(wordB)
-  await sleep(1800)
+  await waitFor(() => storedWords().includes(wordB), 15000, '第二个词也记下来了')
   await typeIn('')
 
   await waitFor(() => chipTexts().length >= 2, 6000, '两条记录都摆出来了')
@@ -16932,6 +16944,101 @@ test('最近搜过那一排里，每一条都能单独去掉，别的照旧留�
   dropOf(wordB).dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
   await waitFor(() => window.document.querySelector('.dshgn_recent') === null, 4000, '最后一条去掉之后整排收起来')
   assert.equal(window.localStorage.getItem('dshgn.recentSearches'), null, '落盘那份要删干净')
+
+  await clickTab('笔记')
+})
+
+// 录音卡同步下来的那篇 `_transcript.md` 从前在笔记页完全没有出口：
+// 附件区只筛了 audio / image，用户手里明明有一份转写稿却看不见。
+test('附件里的转写稿在笔记页能看见，点一下就在面板里打开它', async () => {
+  const { mkdir, writeFile } = await import('node:fs/promises')
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  const box = () => window.document.querySelector('.dshgn_search')
+
+  panel.setConfirmDialog(async () => true)
+  try {
+    for (let i = 0; i < 4; i += 1) {
+      const back = window.document.querySelector('.dshgn_noteBack')
+      if (!back) break
+      back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await sleep(200)
+    }
+  } finally {
+    panel.setConfirmDialog(null)
+  }
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+  if (box() !== null) {
+    setter.call(box(), '')
+    box().dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(300)
+  }
+
+  const notePath = '转写稿验收/转写稿验收.md'
+  const createRes = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '转写稿验收',
+      title: '转写稿验收',
+      content: ['# 转写稿验收', '', '这一篇带着一份转写稿。', ''].join('\n'),
+      withDatePrefix: false,
+      requestId: 'seed-transcript-a',
+    }),
+  })
+  assert.equal(createRes.status, 200, '建笔记要成功')
+
+  // 直接落到盘上：附件目录的形状是 <笔记目录>/asset/<主干>_<note_id>_transcript.md
+  const vaultRoot = join(vaultBase, '得到大脑')
+  const assetDir = join(vaultRoot, '转写稿验收', 'asset')
+  await mkdir(assetDir, { recursive: true })
+  await writeFile(
+    join(assetDir, '转写稿验收_1200000000000000009_transcript.md'),
+    ['# 转写稿', '', '这份转写稿里有句只有它才有的暗号。', ''].join('\n'),
+    'utf8',
+  )
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(600)
+
+  const card = await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_card')).find(
+        (el) => el.getAttribute('title') === notePath,
+      ) || null,
+    8000,
+    '笔记出现在列表里',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(
+    () => ((window.document.querySelector('.dshgn_note') || {}).textContent || '').includes('这一篇带着一份转写稿'),
+    8000,
+    '笔记打开了',
+  )
+
+  const row = await waitFor(
+    () => window.document.querySelector('.dshgn_assetRow'),
+    6000,
+    '转写稿那一行要摆出来',
+  )
+  assert.ok((row.textContent || '').includes('转写稿'), '这一行要说清它是转写稿：' + row.textContent)
+  const chip = row.querySelector('.dshgn_assetChip')
+  assert.ok(chip !== null, '每一份转写稿要有一颗可点的胶囊')
+  assert.ok((chip.textContent || '').includes('转写稿验收.md'), '胶囊上写的是去掉长串之后的文件名：' + chip.textContent)
+  assert.ok(
+    String(chip.getAttribute('title') || '').includes('在面板里打开这份转写'),
+    '悬停要说清点下去会发生什么：' + chip.getAttribute('title'),
+  )
+
+  chip.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(
+    () => ((window.document.querySelector('.dshgn_note') || {}).textContent || '').includes('只有它才有的暗号'),
+    8000,
+    '点一下就在面板里打开这份转写',
+  )
 
   await clickTab('笔记')
 })
