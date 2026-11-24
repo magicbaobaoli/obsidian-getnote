@@ -322,6 +322,17 @@ try {
   const badJson = await call('/save', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{oops' })
   check('POST 坏 JSON → 400', badJson.status === 400, `status=${badJson.status} ${JSON.stringify(badJson.json)}`)
 
+  // 17b. 正文超过单篇上限 → 413，而且服务还活着
+  // readBody 累加到上限就 reject，但不能 req.destroy()（那样 413 到不了客户端，
+  // 客户端只会看到 connection reset）。这里连打两次：先撞上限，再存一篇正常大小，
+  // 第二次还成功才说明上一个连接没把服务带崩。
+  const tooBigBody = JSON.stringify({ path: '随手记/太大的一篇', content: 'x'.repeat(2 * 1024 * 1024 + 128 * 1024), requestId: 'host-413' })
+  const tooBig = await call('/save', { method: 'POST', headers: { 'content-type': 'application/json' }, body: tooBigBody })
+  check('POST 超大正文 → 413', tooBig.status === 413, `status=${tooBig.status} ${JSON.stringify(tooBig.json)}`)
+  check('413 里说清是请求体太大', String(tooBig.json && tooBig.json.error).includes('too large'), tooBig.json && tooBig.json.error)
+  const afterTooBig = await call('/create', postJson('/create', { dir: '随手记', title: '撞过上限之后还能建', withDatePrefix: false }))
+  check('撞过上限之后服务照常能用', afterTooBig.status === 200 && typeof afterTooBig.json.path === 'string', `status=${afterTooBig.status} ${JSON.stringify(afterTooBig.json)}`)
+
   // 18. 空 body 的 POST /create 不炸
   const emptyCreate = await call('/create', postJson('/create', {}))
   check('POST /create 空参数仍能建笔记', emptyCreate.status === 200, emptyCreate.json && emptyCreate.json.path)

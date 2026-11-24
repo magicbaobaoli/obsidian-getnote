@@ -15972,3 +15972,128 @@ test('大纲小节一多，顶上那行筛能筛到想找的那一节，Esc 清�
     await sleep(300)
   }
 })
+
+/**
+ * 单篇太大时，别让用户写完几千字才在保存那一步发现存不进去。
+ *
+ * 服务端对正文有 2MB 的硬上限（vault 的 MAX_WRITE、HTTP 层的 readBody 都是这个数），
+ * 超了只回一句英文的 request body too large。这里守两件事：字节数算得对（按 UTF-8，
+ * 不是按字符数——中文一个字三字节），以及超了之后面板说的是人话。
+ */
+test('单篇字节数按 UTF-8 算，超了编辑态脚下就说，保存被 413 打回也说人话', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const { noteBodyBytes, NOTE_MAX_BYTES } = panel.__internals
+  assert.equal(NOTE_MAX_BYTES, 2 * 1024 * 1024, '上限跟服务端一样是 2MB')
+  assert.equal(noteBodyBytes(''), 0, '空正文 0 字节')
+  assert.equal(noteBodyBytes('abc'), 3, '纯 ASCII 一个字符一个字节')
+  assert.equal(noteBodyBytes('中'), 3, '中文一个字三个字节')
+  assert.equal(noteBodyBytes('a中'), 4, '混着也算得对')
+  assert.equal(noteBodyBytes(null), 0, '没正文当 0')
+
+  panel.setConfirmDialog(() => Promise.resolve(true))
+  for (let i = 0; i < 4; i += 1) {
+    const back0 = window.document.querySelector('.dshgn_noteBack')
+    if (back0 === null) break
+    back0.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(250)
+  }
+  const search = rootNode().querySelector('.dshgn_search')
+  if (search !== null && String(search.value || '') !== '') {
+    search.value = ''
+    search.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(300)
+  }
+  const res = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '太大验收',
+      content: '# 太大验收' + String.fromCharCode(10) + '正文一句。' + String.fromCharCode(10),
+      withDatePrefix: false,
+      requestId: 'seed-too-big',
+    }),
+  })
+  assert.equal(res.ok, true, '造数据：太大验收')
+
+  const allRow = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find(
+      (el) => (el.querySelector('.dshgn_treeName') || {}).textContent === '全部笔记',
+    )
+  if (allRow() !== undefined) {
+    allRow().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(250)
+  }
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  const card = await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) =>
+        (el.textContent || '').includes('太大验收'),
+      ) || null,
+    8000,
+    '列表里的那一篇：太大验收',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 8000, '笔记打开')
+
+  const editBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '编辑')
+  editBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const area = await waitFor(() => window.document.querySelector('.dshgn_editor'), 5000, '进入编辑态')
+  assert.equal(window.document.querySelector('.dshgn_editorBig'), null, '正常大小时脚下不摆警告')
+
+  // 2MB + 一点点：刚好越过上限。全用 ASCII，省得每字三字节把内存撑爆。
+  area.value = 'x'.repeat(NOTE_MAX_BYTES + 1024)
+  area.dispatchEvent(new window.Event('input', { bubbles: true }))
+  const big = await waitFor(
+    () => window.document.querySelector('.dshgn_editorBig'),
+    10000,
+    '超过上限时脚下要说一句',
+  )
+  const bigText = String(big.textContent || '')
+  assert.equal(bigText.includes('超过单篇'), true, '说清是超过单篇上限：' + bigText)
+  assert.equal(bigText.includes('2.0 MB'), true, '把上限报出来：' + bigText)
+
+  // 保存：真打一次会被服务端 413 打回，但要的是面板说人话。
+  // 用替身顶掉 fetch，省得真搬 2MB 过去；行为完全一样（非 ok + 413 + 那句英文）。
+  const before = globalThis.fetch
+  globalThis.fetch = async (input, init) => {
+    const url = typeof input === 'string' ? input : String(input && input.url)
+    if (url.includes('/getnote/save')) {
+      return { ok: false, status: 413, json: async () => ({ error: 'request body too large' }) }
+    }
+    return before(input, init)
+  }
+  try {
+    // 整套测试并行跑时机器很吃紧，一次按键的处理器要排一会儿队才轮到；
+    // 重按几次（真的坏了仍然会失败，只是不会因为慢就判红）。
+    const errBar = () => window.document.querySelector('.dshgn_error')
+    for (let attempt = 0; attempt < 4 && errBar() === null; attempt += 1) {
+      window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 's', ctrlKey: true, metaKey: true, bubbles: true }))
+      await sleep(400)
+    }
+    const bar = await waitFor(errBar, 15000, '存不下时要弹错误条')
+    const barText = String(bar.textContent || '')
+    assert.equal(barText.includes('request body too large'), false, '不该把英文原文甩给用户：' + barText)
+    assert.equal(barText.includes('拆成两篇'), true, '要给出路：' + barText)
+  } finally {
+    globalThis.fetch = before
+  }
+
+  // 退出编辑态，别把 2MB 的草稿留给下一条用例
+  window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+  await sleep(300)
+  const back3 = window.document.querySelector('.dshgn_noteBack')
+  if (back3) {
+    back3.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+  if (allRow() !== undefined) {
+    allRow().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+})

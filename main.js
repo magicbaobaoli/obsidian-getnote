@@ -9291,6 +9291,8 @@ var LEX = {
     "callout.expand": "\u5C55\u5F00",
     "editor.words": "{n} \u5B57",
     "editor.saveHint": "Ctrl+S \u4FDD\u5B58 \xB7 Ctrl+E \u5B58\u597D\u9000\u51FA \xB7 Esc \u53D6\u6D88 \xB7 Ctrl+B \u52A0\u7C97 \xB7 Ctrl+I \u659C\u4F53 \xB7 Ctrl+F \u67E5\u627E",
+    "editor.tooBig": "\u8FD9\u4E00\u7BC7 {size}\uFF0C\u8D85\u8FC7\u5355\u7BC7 {max} \u7684\u4E0A\u9650\uFF0C\u5B58\u4E0D\u8FDB\u53BB\u2014\u2014\u62C6\u6210\u4E24\u7BC7\u518D\u5B58",
+    "note.tooBig": "\u8FD9\u4E00\u7BC7\u592A\u5927\u5B58\u4E0D\u4E0B\uFF1A\u5355\u7BC7\u4E0A\u9650 {max}\uFF0C\u73B0\u5728 {size}\u3002\u62C6\u6210\u4E24\u7BC7\u518D\u5B58",
     "callout.collapse": "\u6536\u8D77",
     "note.image": "\u56FE\u7247",
     "action.close": "\u5173\u95ED",
@@ -9929,6 +9931,8 @@ var LEX = {
     "callout.expand": "Expand",
     "editor.words": "{n} words",
     "editor.saveHint": "Ctrl+S to save \xB7 Ctrl+E to save and leave \xB7 Esc to cancel \xB7 Ctrl+B bold \xB7 Ctrl+I italic \xB7 Ctrl+F find",
+    "editor.tooBig": "This note is {size}, over the {max} per-note limit \u2014 split it in two before saving",
+    "note.tooBig": "This note is too big to save: the per-note limit is {max} and this one is {size}. Split it in two",
     "callout.collapse": "Collapse",
     "note.image": "Image",
     "action.close": "Close",
@@ -10555,6 +10559,8 @@ var LEX = {
     "callout.expand": "Uitvouwen",
     "editor.words": "{n} woorden",
     "editor.saveHint": "Ctrl+S om op te slaan \xB7 Ctrl+E om op te slaan en te verlaten \xB7 Esc om te annuleren \xB7 Ctrl+B vet \xB7 Ctrl+I cursief \xB7 Ctrl+F zoeken",
+    "editor.tooBig": "Deze notitie is {size}, boven de limiet van {max} per notitie \u2014 splits hem eerst",
+    "note.tooBig": "Deze notitie is te groot om op te slaan: de limiet is {max} en deze is {size}. Splits hem in twee\xEBn",
     "callout.collapse": "Invouwen",
     "note.image": "Afbeelding",
     "action.close": "Sluiten",
@@ -12084,6 +12090,21 @@ function readingMinutes(words) {
   if (!Number.isFinite(n2) || n2 <= 0) return 0;
   return Math.max(1, Math.round(n2 / 300));
 }
+var NOTE_MAX_BYTES = 2 * 1024 * 1024;
+function noteBodyBytes(text) {
+  const source = String(text === null || text === void 0 ? "" : text);
+  if (source === "") return 0;
+  if (typeof TextEncoder === "function") return new TextEncoder().encode(source).length;
+  let bytes = 0;
+  for (const ch of source) {
+    const code = ch.codePointAt(0);
+    if (code < 128) bytes += 1;
+    else if (code < 2048) bytes += 2;
+    else if (code < 65536) bytes += 3;
+    else bytes += 4;
+  }
+  return bytes;
+}
 function diffLineCounts(fromText, toText) {
   const split = (value) => String(value === null || value === void 0 ? "" : value).replace(/\r\n/g, "\n").split("\n");
   const from = split(fromText);
@@ -13526,6 +13547,8 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
   border-top:0.5px solid var(--dsw-alias-border-l1);font-size:10.5px;
   color:var(--dsw-alias-label-tertiary);flex:0 0 auto}
 .dshgn_editorHint{margin-left:auto;opacity:.75}
+/* \u8349\u7A3F\u8D85\u8FC7\u5355\u7BC7\u4E0A\u9650\uFF1A\u6DF7\u5728\u8FD9\u6761\u7070\u5B57\u91CC\uFF0C\u522B\u62A2\u4E86\u5B57\u6570\uFF0C\u4F46\u8981\u4E00\u773C\u770B\u5F97\u89C1 */
+.dshgn_editorBig{flex:none;color:var(--dsw-alias-state-error-primary)}
 .dshgn_readFoot{color:var(--dsw-alias-label-tertiary)}
 .dshgn_readPos{flex:none;font-size:10px;color:var(--dsw-alias-label-dimmed)}
 /* \u6B63\u6587\u6EDA\u4E0B\u53BB\u4E4B\u540E\u6D6E\u5728\u53F3\u4E0B\u89D2\u90A3\u9897\uFF1A\u53EA\u5360\u4E00\u5C0F\u5757\uFF0C\u4E0D\u6321\u5B57\u4E5F\u4E0D\u6324\u6392\u7248 */
@@ -14865,6 +14888,12 @@ function GetnotePage() {
         dropDraft(current.path);
         showToast(t4("note.conflictTheirDone"));
         void refresh();
+        return;
+      }
+      if (err !== null && typeof err === "object" && err.status === 413) {
+        setError(
+          t4("note.tooBig").replace("{max}", formatBytes2(NOTE_MAX_BYTES)).replace("{size}", formatBytes2(noteBodyBytes(draft)))
+        );
         return;
       }
       setError(err && err.message ? err.message : String(err));
@@ -22848,6 +22877,7 @@ function NotePane(props) {
     const body = current.body !== void 0 && current.body !== null ? current.body : current.content;
     return countWords(body);
   }, [current]);
+  const draftBytes = T2(() => noteBodyBytes(draft === null ? "" : draft), [draft]);
   const outlineNeedle = outlineFilter.trim().toLowerCase();
   const outlineShown = T2(() => {
     const all = current !== null && current !== void 0 && Array.isArray(current.outline) ? current.outline : [];
@@ -23600,6 +23630,12 @@ ${t4("tree.menuReveal")}` : absolute,
         "div",
         { className: "dshgn_editorFoot" },
         h4("span", null, t4("editor.words").replace("{n}", String(countWords(draft)))),
+        // 超过单篇上限时当场说一句：这颗保存按钮按下去也只会换回 413。
+        draftBytes > NOTE_MAX_BYTES ? h4(
+          "span",
+          { className: "dshgn_editorBig" },
+          t4("editor.tooBig").replace("{max}", formatBytes2(NOTE_MAX_BYTES)).replace("{size}", formatBytes2(draftBytes))
+        ) : null,
         h4("span", { className: "dshgn_editorHint" }, t4("editor.saveHint"))
       )
     ) : historyOpen ? h4(

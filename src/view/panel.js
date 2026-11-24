@@ -929,6 +929,8 @@ async function saveFile(url, filename) {
         'callout.expand': '展开',
  'editor.words': '{n} 字',
  'editor.saveHint': 'Ctrl+S 保存 · Ctrl+E 存好退出 · Esc 取消 · Ctrl+B 加粗 · Ctrl+I 斜体 · Ctrl+F 查找',
+ 'editor.tooBig': '这一篇 {size}，超过单篇 {max} 的上限，存不进去——拆成两篇再存',
+ 'note.tooBig': '这一篇太大存不下：单篇上限 {max}，现在 {size}。拆成两篇再存',
         'callout.collapse': '收起',
         'note.image': '图片',
         'action.close': '关闭',
@@ -1572,6 +1574,8 @@ async function saveFile(url, filename) {
         'callout.expand': 'Expand',
  'editor.words': '{n} words',
  'editor.saveHint': 'Ctrl+S to save · Ctrl+E to save and leave · Esc to cancel · Ctrl+B bold · Ctrl+I italic · Ctrl+F find',
+ 'editor.tooBig': 'This note is {size}, over the {max} per-note limit — split it in two before saving',
+ 'note.tooBig': 'This note is too big to save: the per-note limit is {max} and this one is {size}. Split it in two',
         'callout.collapse': 'Collapse',
         'note.image': 'Image',
         'action.close': 'Close',
@@ -2202,6 +2206,8 @@ async function saveFile(url, filename) {
         'callout.expand': 'Uitvouwen',
  'editor.words': '{n} woorden',
  'editor.saveHint': 'Ctrl+S om op te slaan · Ctrl+E om op te slaan en te verlaten · Esc om te annuleren · Ctrl+B vet · Ctrl+I cursief · Ctrl+F zoeken',
+ 'editor.tooBig': 'Deze notitie is {size}, boven de limiet van {max} per notitie — splits hem eerst',
+ 'note.tooBig': 'Deze notitie is te groot om op te slaan: de limiet is {max} en deze is {size}. Splits hem in tweeën',
         'callout.collapse': 'Invouwen',
         'note.image': 'Afbeelding',
         'action.close': 'Sluiten',
@@ -4352,6 +4358,27 @@ async function saveFile(url, filename) {
       return Math.max(1, Math.round(n / 300))
     }
 
+    // 一篇笔记能有多大：服务端 readBody 的上限是 2MB + 64KB，vault 写盘那边
+    // 也是 2MB——超过这个数，保存只会换回一句英文的 413。在编辑器脚下提前
+    // 说一声，比「点了保存才被告知存不下」有用得多。
+    const NOTE_MAX_BYTES = 2 * 1024 * 1024
+
+    /** 正文的 UTF-8 字节数；没有 TextEncoder（很老的宿主）就按码点自己估。 */
+    function noteBodyBytes(text) {
+      const source = String(text === null || text === undefined ? '' : text)
+      if (source === '') return 0
+      if (typeof TextEncoder === 'function') return new TextEncoder().encode(source).length
+      let bytes = 0
+      for (const ch of source) {
+        const code = ch.codePointAt(0)
+        if (code < 0x80) bytes += 1
+        else if (code < 0x800) bytes += 2
+        else if (code < 0x10000) bytes += 3
+        else bytes += 4
+      }
+      return bytes
+    }
+
     /**
      * 版本历史里「这一版和现在差多少」。
      *
@@ -6008,6 +6035,8 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
   border-top:0.5px solid var(--dsw-alias-border-l1);font-size:10.5px;
   color:var(--dsw-alias-label-tertiary);flex:0 0 auto}
 .dshgn_editorHint{margin-left:auto;opacity:.75}
+/* 草稿超过单篇上限：混在这条灰字里，别抢了字数，但要一眼看得见 */
+.dshgn_editorBig{flex:none;color:var(--dsw-alias-state-error-primary)}
 .dshgn_readFoot{color:var(--dsw-alias-label-tertiary)}
 .dshgn_readPos{flex:none;font-size:10px;color:var(--dsw-alias-label-dimmed)}
 /* 正文滚下去之后浮在右下角那颗：只占一小块，不挡字也不挤排版 */
@@ -7658,6 +7687,17 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             dropDraft(current.path)
             showToast(t('note.conflictTheirDone'))
             void refresh()
+            return
+          }
+          // 太大了：服务端只会回一句英文的 request body too large（或者 vault 那边
+          // 的「内容超过 2MB 上限」）。把上限和现在多大一起说清，并告诉用户怎么办，
+          // 否则他只会以为「保存坏了」。
+          if (err !== null && typeof err === 'object' && err.status === 413) {
+            setError(
+              t('note.tooBig')
+                .replace('{max}', formatBytes(NOTE_MAX_BYTES))
+                .replace('{size}', formatBytes(noteBodyBytes(draft))),
+            )
             return
           }
           setError(err && err.message ? err.message : String(err))
@@ -17279,6 +17319,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         return countWords(body)
       }, [current])
 
+      // 草稿现在多大（UTF-8 字节）。只在编辑态用：脚下提前说一句「已经超了」，
+      // 别等按了保存、被 413 弹回来才知道这一篇根本存不下。
+      const draftBytes = React.useMemo(() => noteBodyBytes(draft === null ? '' : draft), [draft])
+
       // 大纲筛出来的那几节：留下的是「原来第几节」，跳转还得按原序号算，
       // 所以这里不把序号重排，筛完照样能跳到正确的那一节。
       const outlineNeedle = outlineFilter.trim().toLowerCase()
@@ -18148,6 +18192,16 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
               'div',
               { className: 'dshgn_editorFoot' },
               h('span', null, t('editor.words').replace('{n}', String(countWords(draft)))),
+              // 超过单篇上限时当场说一句：这颗保存按钮按下去也只会换回 413。
+              draftBytes > NOTE_MAX_BYTES
+                ? h(
+                    'span',
+                    { className: 'dshgn_editorBig' },
+                    t('editor.tooBig')
+                      .replace('{max}', formatBytes(NOTE_MAX_BYTES))
+                      .replace('{size}', formatBytes(draftBytes)),
+                  )
+                : null,
               h('span', { className: 'dshgn_editorHint' }, t('editor.saveHint')),
             ),
           )
@@ -19535,6 +19589,7 @@ export const __internals = {
   themeVars, parseHex, rgbToHsl, hslToHex, ConflictPane, ArchiveCard, CardPane,
   TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale, HistoryCard,
   reportSync, dailyTemplateOf, frontmatterText, bodyOfSnapshot, isTagKey, FollowCard, parseTable, countWords, readingMinutes, diffLineCounts,
+  noteBodyBytes, NOTE_MAX_BYTES,
   isBlockAnchor, blockIdIn, stripBlockId, scrollToBlock, scrollToFootnote, scrollToFootnoteRef, parseImageSize, renderParagraph, blockTextOf, markdownLinkTarget,
   tagBodyOf, ZoomOverlay, continueListLine, indentLines, wrapInline, linkPaste, wikilinkQueryAt, wikilinkMatches, tagQueryAt, tagMatches, findInBody, findAllBodyMatches, countTextMatches, findInBodyMatch, findInText, textHasParts,
       outlineScrollDelta,
