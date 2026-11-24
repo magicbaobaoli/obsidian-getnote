@@ -17041,6 +17041,7 @@ test('附件里的转写稿在笔记页能看见，点一下就在面板里打�
   )
 
   await clickTab('笔记')
+})
 
 /**
  * 设置页里的明暗开关。
@@ -17145,5 +17146,4 @@ test('设置页里能把面板钉成浅色或深色，钉住之后宿主的主�
   window.document.body.classList.remove('theme-dark')
   await post('/getnote/settings', { themeColor: null, uiMode: null })
   await clickTab('笔记')
-})
 })
