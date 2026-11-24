@@ -4792,6 +4792,74 @@ test('搜索卡片上把用户敲的词标出来，tag:/dir: 限定词不去染�
   await sleep(260)
 })
 
+test('一篇里命中好几处时，卡片上先摆两行，点「还有几处」就地摊全，再点收回去', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const allRow = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
+      const name = el.querySelector('.dshgn_treeName')
+      return name !== null && (name.textContent || '').trim() === '全部笔记'
+    })
+
+  const back0 = window.document.querySelector('.dshgn_noteBack')
+  if (back0) {
+    back0.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+
+  // 正文里写五行都带这个词：一篇命中五处，卡片上只该先摆两行。
+  const lines = []
+  for (let i = 1; i <= 5; i += 1) lines.push('第 ' + i + ' 行提到 八角 一次。')
+  const res = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '命中行摊开验收',
+      content: '# 命中行摊开验收' + String.fromCharCode(10) + String.fromCharCode(10) + lines.join(String.fromCharCode(10)) + String.fromCharCode(10),
+      withDatePrefix: false,
+      requestId: 'seed-match-fold',
+    }),
+  })
+  assert.equal(res.status, 200, '种下这一篇')
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+
+  const searchBox = await waitFor(() => window.document.querySelector('.dshgn_search'), 5000, '搜索框')
+  const setInput = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  setInput.call(searchBox, '八角')
+  searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+
+  const matchLines = () => Array.from(window.document.querySelectorAll('.dshgn_matchLine'))
+  await waitFor(() => (matchLines().length >= 2 ? true : null), 10000, '搜索卡片上摆出命中行')
+  assert.equal(matchLines().length, 2, '没摊开之前只摆前两行，实际 ' + matchLines().length)
+
+  const more = await waitFor(() => window.document.querySelector('.dshgn_matchMore'), 5000, '多出来的几处要有入口')
+  assert.equal(String(more.textContent || '').trim(), '+3', '五处命中减去摆出来的两行，还剩三处：' + more.textContent)
+  assert.equal(more.getAttribute('aria-expanded'), 'false', '还没摊开')
+
+  more.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => (matchLines().length === 5 ? true : null), 5000, '点一下就摊全五处')
+  const less = window.document.querySelector('.dshgn_matchMore')
+  assert.equal(String(less.textContent || '').trim(), '只看前两处', '摊开之后按钮改口')
+  assert.equal(less.getAttribute('aria-expanded'), 'true', '摊开了')
+  assert.equal(less.title, '只看前两处', '悬停也说清再点会怎样')
+
+  less.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => (matchLines().length === 2 ? true : null), 5000, '再点一下收回前两行')
+
+  setInput.call(searchBox, '')
+  searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+  await sleep(300)
+  if (allRow() !== undefined) {
+    allRow().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await sleep(300)
+  }
+})
+
 test('编辑区里敲 [[ 就把库里的笔记名摆出来，挑一条补成双链', async () => {
   const { wikilinkQueryAt, wikilinkMatches } = panel.__internals
   const rootNode = () => window.document.querySelector('.dshgn_root')

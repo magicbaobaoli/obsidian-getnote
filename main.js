@@ -6495,7 +6495,10 @@ function createHandler(config) {
     const { root, missing } = await currentRoot();
     const q4 = url.searchParams.get("q") || "";
     if (missing) return send(res, 200, { query: q4, hits: [], scanned: 0, truncated: false });
-    const result = await searchNotes(root, q4, { limit: Math.min(Number(url.searchParams.get("limit")) || 60, 300) });
+    const result = await searchNotes(root, q4, {
+      limit: Math.min(Number(url.searchParams.get("limit")) || 60, 300),
+      perFile: 50
+    });
     send(res, 200, result);
   }
   async function handleSyncPullOne(req, res) {
@@ -8950,6 +8953,12 @@ var LEX = {
     "search.bits": "\u8FD9\u6B21\u6309\u8FD9\u4E9B\u7B5B",
     "search.bitsClear": "\u5168\u6E05\u6389",
     "search.bitDrop": "\u70B9\u6389\u8FD9\u4E00\u6BB5",
+    // 一篇里命中七八处时，卡片上只摆两行，剩下的没入口。
+    "search.moreLines": "\u8FD8\u6709 {n} \u5904\uFF0C\u70B9\u5F00\u770B\u5168\u90E8",
+    "search.lessLines": "\u53EA\u770B\u524D\u4E24\u5904",
+    // 一篇里命中七八处时，卡片上只摆两行，剩下的没入口。
+    "search.moreLines": "\u8FD8\u6709 {n} \u5904\uFF0C\u70B9\u5F00\u770B\u5168\u90E8",
+    "search.lessLines": "\u53EA\u770B\u524D\u4E24\u5904",
     "search.jumpToLine": "\u8DF3\u5230\u8FD9\u4E00\u884C",
     "batch.pick": "\u9009\u62E9\u8FD9\u7BC7",
     "batch.picked": "\u7BC7\u5DF2\u9009",
@@ -9629,6 +9638,8 @@ var LEX = {
     "search.bits": "Filtering by",
     "search.bitsClear": "Clear all",
     "search.bitDrop": "Drop this part",
+    "search.moreLines": "{n} more matches, click to see them all",
+    "search.lessLines": "Show the first two",
     "search.hint": "Narrow it down: tag:voice \xB7 dir:notes \xB7 #private. All words must match; quote a phrase to keep it together, put - in front to exclude it.",
     "search.jumpToLine": "Jump to this line",
     "batch.pick": "Select this note",
@@ -10265,6 +10276,8 @@ var LEX = {
     "search.bits": "Gefilterd op",
     "search.bitsClear": "Alles wissen",
     "search.bitDrop": "Dit stuk weghalen",
+    "search.moreLines": "Nog {n} treffers, klik om ze allemaal te zien",
+    "search.lessLines": "Alleen de eerste twee",
     "search.jumpToLine": "Naar deze regel",
     "batch.pick": "Deze notitie selecteren",
     "batch.picked": "geselecteerd",
@@ -13021,6 +13034,11 @@ var CSS = `
   color:var(--dsw-alias-label-dimmed);font-size:10px;padding-top:1px}
 .dshgn_matchText{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_matchHit{padding:0 1px;border-radius:3px;background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-label-primary);font-weight:600}
+/* \u547D\u4E2D\u884C\u644A\u5F00\u4E4B\u540E\u4F1A\u957F\u51FA\u597D\u51E0\u884C\uFF0C\u5361\u7247\u8DDF\u7740\u53D8\u9AD8\uFF0C\u8FD9\u91CC\u7ED9\u90A3\u9897\u300C\u8FD8\u6709 N \u5904\u300D
+   \u4E00\u4E2A\u6BD4\u547D\u4E2D\u884C\u66F4\u6DE1\u7684\u6837\u5B50\uFF1A\u5B83\u662F\u5165\u53E3\uFF0C\u4E0D\u662F\u4E00\u6761\u547D\u4E2D\u3002 */
+.dshgn_matchMore{align-self:flex-start;appearance:none;margin:1px 0 0 21px;padding:0 6px;border:0.5px dashed var(--dsw-alias-border-l2);border-radius:999px;background:transparent;color:var(--dsw-alias-label-dimmed);font:inherit;font-size:10px;line-height:1.6;cursor:pointer;white-space:nowrap}
+.dshgn_matchMore:hover{color:var(--dsw-alias-label-secondary)}
+.dshgn_matchMore:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dshgn_cardLinks{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
 .dshgn_cardLinks[data-open="true"]{overflow:visible}
 .dshgn_cardLinkChip{appearance:none;border:0;background:rgba(var(--dshgn-tintRgb),.08);
@@ -15494,6 +15512,7 @@ ${insert}
   const [picked, setPicked] = h2(() => /* @__PURE__ */ new Set());
   const [openTags, setOpenTags] = h2(() => /* @__PURE__ */ new Set());
   const [openLinks, setOpenLinks] = h2(() => /* @__PURE__ */ new Set());
+  const [openMatches, setOpenMatches] = h2(() => /* @__PURE__ */ new Set());
   const [batchTag, setBatchTag] = h2("");
   const [batchDir, setBatchDir] = h2("");
   const [batchDirAt, setBatchDirAt] = h2(null);
@@ -17289,8 +17308,11 @@ ${insert}
                 // 搜索态优先显示正文命中行（带行号），比摘要更能说明为什么它被搜出来
                 searchMode && Array.isArray(entry.matches) && entry.matches.length > 0 ? h4(
                   "div",
-                  { className: "dshgn_cardMatches" },
-                  entry.matches.slice(0, 2).map(
+                  {
+                    className: "dshgn_cardMatches",
+                    "data-open": openMatches.has(entry.path) ? "true" : "false"
+                  },
+                  (openMatches.has(entry.path) ? entry.matches : entry.matches.slice(0, 2)).map(
                     (match, index) => h4(
                       "button",
                       {
@@ -17306,7 +17328,28 @@ ${insert}
                       h4("span", { className: "dshgn_matchNo" }, String(match.line)),
                       h4("span", { className: "dshgn_matchText" }, highlightTerms(match.text, searchTerms))
                     )
-                  )
+                  ),
+                  // 一篇里命中七八处时只摆两行，剩下几处得有个入口：
+                  // 点一下就地摊开全部命中行，再点收回前两行。
+                  entry.matches.length > 2 ? h4(
+                    "button",
+                    {
+                      type: "button",
+                      className: "dshgn_matchMore",
+                      title: openMatches.has(entry.path) ? t4("search.lessLines") : t4("search.moreLines").replace("{n}", String(entry.matches.length - 2)),
+                      "aria-expanded": openMatches.has(entry.path) ? "true" : "false",
+                      onClick: (event) => {
+                        event.stopPropagation();
+                        setOpenMatches((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(entry.path)) next.delete(entry.path);
+                          else next.add(entry.path);
+                          return next;
+                        });
+                      }
+                    },
+                    openMatches.has(entry.path) ? t4("search.lessLines") : `+${entry.matches.length - 2}`
+                  ) : null
                 ) : entry.excerpt ? h4("div", { className: "dshgn_cardExcerpt" }, highlightTerms(entry.excerpt, searchTerms)) : null,
                 // 搜索态再补一行「它引用了谁」：只给命中次数的话，用户还得点进去
                 // 才知道这篇讲的是哪几篇。点胶囊直接跳过去。

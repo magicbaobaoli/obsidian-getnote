@@ -586,6 +586,12 @@ async function saveFile(url, filename) {
   'search.bits': '这次按这些筛',
   'search.bitsClear': '全清掉',
   'search.bitDrop': '点掉这一段',
+  // 一篇里命中七八处时，卡片上只摆两行，剩下的没入口。
+  'search.moreLines': '还有 {n} 处，点开看全部',
+  'search.lessLines': '只看前两处',
+  // 一篇里命中七八处时，卡片上只摆两行，剩下的没入口。
+  'search.moreLines': '还有 {n} 处，点开看全部',
+  'search.lessLines': '只看前两处',
         'search.jumpToLine': '跳到这一行',
         'batch.pick': '选择这篇',
         'batch.picked': '篇已选',
@@ -1270,6 +1276,8 @@ async function saveFile(url, filename) {
   'search.bits': 'Filtering by',
   'search.bitsClear': 'Clear all',
   'search.bitDrop': 'Drop this part',
+  'search.moreLines': '{n} more matches, click to see them all',
+  'search.lessLines': 'Show the first two',
   'search.hint': 'Narrow it down: tag:voice · dir:notes · #private. All words must match; quote a phrase to keep it together, put - in front to exclude it.',
         'search.jumpToLine': 'Jump to this line',
         'batch.pick': 'Select this note',
@@ -1911,6 +1919,8 @@ async function saveFile(url, filename) {
         'search.bits': 'Gefilterd op',
         'search.bitsClear': 'Alles wissen',
         'search.bitDrop': 'Dit stuk weghalen',
+        'search.moreLines': 'Nog {n} treffers, klik om ze allemaal te zien',
+        'search.lessLines': 'Alleen de eerste twee',
         'search.jumpToLine': 'Naar deze regel',
         'batch.pick': 'Deze notitie selecteren',
         'batch.picked': 'geselecteerd',
@@ -5509,6 +5519,11 @@ async function saveFile(url, filename) {
   color:var(--dsw-alias-label-dimmed);font-size:10px;padding-top:1px}
 .dshgn_matchText{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_matchHit{padding:0 1px;border-radius:3px;background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-label-primary);font-weight:600}
+/* 命中行摊开之后会长出好几行，卡片跟着变高，这里给那颗「还有 N 处」
+   一个比命中行更淡的样子：它是入口，不是一条命中。 */
+.dshgn_matchMore{align-self:flex-start;appearance:none;margin:1px 0 0 21px;padding:0 6px;border:0.5px dashed var(--dsw-alias-border-l2);border-radius:999px;background:transparent;color:var(--dsw-alias-label-dimmed);font:inherit;font-size:10px;line-height:1.6;cursor:pointer;white-space:nowrap}
+.dshgn_matchMore:hover{color:var(--dsw-alias-label-secondary)}
+.dshgn_matchMore:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dshgn_cardLinks{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
 .dshgn_cardLinks[data-open="true"]{overflow:visible}
 .dshgn_cardLinkChip{appearance:none;border:0;background:rgba(var(--dshgn-tintRgb),.08);
@@ -8443,6 +8458,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 搜索态卡片底下那行「它引用了谁」也只摆四颗，多的收成 +N。和标签那颗
       // 一样：点一下就地摊开，不跳走、也不筛。同样按 path 记。
       const [openLinks, setOpenLinks] = React.useState(() => new Set())
+      // 搜索卡片上那两行命中行也是：一篇里命中七八处时，卡片上只摆前两行，
+      // 剩下几处根本没有入口，用户只能点进去自己找。点「还有 N 处」就地摊开。
+      const [openMatches, setOpenMatches] = React.useState(() => new Set())
       const [batchTag, setBatchTag] = React.useState('')
       const [batchDir, setBatchDir] = React.useState('')
       // 移目录的目标原来是个空输入框，全靠记忆手打：打错一个字不是「没找到」，
@@ -10532,8 +10550,11 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                       searchMode && Array.isArray(entry.matches) && entry.matches.length > 0
                         ? h(
                             'div',
-                            { className: 'dshgn_cardMatches' },
-                            entry.matches.slice(0, 2).map((match, index) =>
+                            {
+                              className: 'dshgn_cardMatches',
+                              'data-open': openMatches.has(entry.path) ? 'true' : 'false',
+                            },
+                            (openMatches.has(entry.path) ? entry.matches : entry.matches.slice(0, 2)).map((match, index) =>
                               h(
                                 'button',
                                 {
@@ -10553,6 +10574,32 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                                 h('span', { className: 'dshgn_matchText' }, highlightTerms(match.text, searchTerms)),
                               ),
                             ),
+                            // 一篇里命中七八处时只摆两行，剩下几处得有个入口：
+                            // 点一下就地摊开全部命中行，再点收回前两行。
+                            entry.matches.length > 2
+                              ? h(
+                                  'button',
+                                  {
+                                    type: 'button',
+                                    className: 'dshgn_matchMore',
+                                    title: openMatches.has(entry.path)
+                                      ? t('search.lessLines')
+                                      : t('search.moreLines').replace('{n}', String(entry.matches.length - 2)),
+                                    'aria-expanded': openMatches.has(entry.path) ? 'true' : 'false',
+                                    onClick: (event) => {
+                                      // 摊开命中行不跳走、也不打开这一篇
+                                      event.stopPropagation()
+                                      setOpenMatches((prev) => {
+                                        const next = new Set(prev)
+                                        if (next.has(entry.path)) next.delete(entry.path)
+                                        else next.add(entry.path)
+                                        return next
+                                      })
+                                    },
+                                  },
+                                  openMatches.has(entry.path) ? t('search.lessLines') : `+${entry.matches.length - 2}`,
+                                )
+                              : null,
                           )
                         : entry.excerpt
                           ? h('div', { className: 'dshgn_cardExcerpt' }, highlightTerms(entry.excerpt, searchTerms))

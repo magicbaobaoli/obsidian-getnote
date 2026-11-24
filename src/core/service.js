@@ -1586,7 +1586,12 @@ export function createHandler(config) {
     const { root, missing } = await currentRoot()
     const q = url.searchParams.get('q') || ''
     if (missing) return send(res, 200, { query: q, hits: [], scanned: 0, truncated: false })
-    const result = await searchNotes(root, q, { limit: Math.min(Number(url.searchParams.get('limit')) || 60, 300) })
+    // perFile 放到 50：卡片上先摆两行，剩下的靠「还有 N 处」就地摊开。
+    // 只给 3 条的话，摊开也摊不出什么，那句「还有 N 处」就成了空话。
+    const result = await searchNotes(root, q, {
+      limit: Math.min(Number(url.searchParams.get('limit')) || 60, 300),
+      perFile: 50,
+    })
     send(res, 200, result)
   }
 
