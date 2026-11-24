@@ -16735,3 +16735,99 @@ test('附件超过单个体积上限时，在本地就拦下来、说人话，�
   await clickTab('笔记')
 })
 
+// 报错条以前只能等下一次操作把它顶掉：用户看明白了、也决定先不管它，它还是杵在顶上。
+test('报错条上那颗叉：点一下就收起来，连「写一篇」那颗按钮一起走', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  await waitFor(() => rootNode() !== null, 5000, '根节点渲染')
+
+  const backBtn = window.document.querySelector('.dshgn_noteBack')
+  if (backBtn) {
+    panel.setConfirmDialog(() => Promise.resolve(true))
+    try {
+      backBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+      await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
+    } finally {
+      panel.setConfirmDialog(null)
+    }
+  }
+
+  const searchBox = window.document.querySelector('.dshgn_search')
+  if (searchBox !== null && searchBox.value !== '') {
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(searchBox, '')
+    searchBox.dispatchEvent(new window.Event('input', { bubbles: true }))
+    await sleep(300)
+  }
+
+  // 造一篇正文里带着死链的笔记：点它就会冒一句「库里找不到」，并摆出「写一篇」。
+  const createRes = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '报错条收起验收',
+      content: '正文里指向 [[报错条验收-根本没写过的那一篇]]。',
+      withDatePrefix: false,
+      requestId: 'seed-error-dismiss',
+    }),
+  })
+  assert.equal(createRes.ok, true, '造数据：报错条收起验收')
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(300)
+
+  const card = await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_card')).find((el) =>
+        (el.textContent || '').includes('报错条收起验收'),
+      ) || null,
+    8000,
+    '列表里的那一篇：报错条收起验收',
+  )
+  card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'true', 8000, '笔记打开')
+
+  const dead = await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_wikilinkDead')).find((el) =>
+        (el.textContent || '').includes('报错条验收-根本没写过的那一篇'),
+      ) || null,
+    8000,
+    '正文里那颗暗掉的双链',
+  )
+  dead.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+
+  const bar = await waitFor(
+    () => {
+      const el = window.document.querySelector('.dshgn_error')
+      return el !== null && (el.textContent || '').includes('找不到') ? el : null
+    },
+    8000,
+    '点了死链要冒一句',
+  )
+  // 那一刻顶上摆着两颗补救件：那颗「写一篇」，以及新加的收起叉。
+  assert.ok(bar.querySelector('.dshgn_errorBtn') !== null, '「写一篇」那颗还在')
+  const close = bar.querySelector('.dshgn_errorClose')
+  assert.ok(close !== null, '报错条上要有一颗收起的叉')
+  assert.equal(close.getAttribute('title'), '收起这条提示', '悬停要说清这颗是干嘛的')
+  assert.equal(close.getAttribute('aria-label'), '收起这条提示', '读屏也要读得出来')
+
+  close.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(
+    () => window.document.querySelector('.dshgn_error') === null,
+    5000,
+    '点一下那条提示就该收起来',
+  )
+
+  // 收起的是这一条，不是把这一篇也一起关掉
+  assert.equal(rootNode().getAttribute('data-has-note'), 'true', '笔记还开着')
+  assert.ok(
+    ((window.document.querySelector('.dshgn_note') || {}).textContent || '').includes('报错条收起验收'),
+     '正文还在',
+  )
+
+  await clickTab('笔记')
+})
+

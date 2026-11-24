@@ -9174,6 +9174,9 @@ var LEX = {
     "theme.previewMid": "\u4E2D\u680F",
     "theme.previewRight": "\u53F3\u680F",
     "error.prefix": "\u51FA\u9519\u4E86",
+    // 报错条以前只能等下一次操作把它顶掉：用户已经看明白那句话、也决定
+    // 先不管它，它还是杵在顶上占一行。给一颗明摆着的收起键。
+    "error.dismiss": "\u6536\u8D77\u8FD9\u6761\u63D0\u793A",
     "capture.title": "\u901F\u8BB0",
     "capture.saved": "\u5DF2\u5B58\u4E3A\u7B14\u8BB0",
     "note.created": "\u5DF2\u65B0\u5EFA",
@@ -9843,6 +9846,7 @@ var LEX = {
     "theme.previewMid": "Middle",
     "theme.previewRight": "Right",
     "error.prefix": "Error",
+    "error.dismiss": "Dismiss this message",
     "capture.title": "Clipping",
     "capture.saved": "Saved as a note",
     "note.created": "Created",
@@ -10490,6 +10494,7 @@ var LEX = {
     "theme.previewMid": "Midden",
     "theme.previewRight": "Rechts",
     "error.prefix": "Fout",
+    "error.dismiss": "Deze melding sluiten",
     "capture.title": "Knipsel",
     "capture.saved": "Opgeslagen als notitie",
     "note.created": "Aangemaakt",
@@ -13737,6 +13742,10 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 /* \u62A5\u9519\u884C\u91CC\u90A3\u9897\u8865\u6551\u6309\u94AE\uFF1A\u6587\u6848\u7528\u4E3B\u8272\u800C\u4E0D\u662F\u9519\u8BEF\u8272\uFF0C\u5B83\u662F\u4E00\u6761\u51FA\u8DEF\u4E0D\u662F\u53C8\u4E00\u53E5\u574F\u6D88\u606F */
 .dshgn_errorBtn{flex:none;height:24px;padding:0 9px;font-size:11px;
   color:var(--dsw-alias-brand-primary);box-shadow:inset 0 0 0 0.5px var(--dsw-alias-brand-primary)}
+/* \u6536\u8D77\u952E\u8D34\u7740\u53F3\u8FB9\uFF1A\u62A5\u9519\u884C\u662F flex + wrap\uFF0Cmargin-left:auto \u8BA9\u5B83\u81EA\u5DF1\u8DD1\u5230\u884C\u5C3E */
+.dshgn_errorClose{flex:none;margin-left:auto;width:22px;height:22px;opacity:.7;
+  color:var(--dsw-alias-state-error-primary)}
+.dshgn_errorClose:hover{opacity:1;background:var(--dsw-alias-interactive-bg-hover)}
 .dshgn_toast{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);z-index:20;
   display:flex;align-items:center;gap:6px;padding:7px 13px;border-radius:9px;
   background:var(--dsw-alias-toast-bg);color:var(--dsw-alias-toast-label);
@@ -17651,6 +17660,22 @@ ${insert}
           },
           h4(Icon, { name: "plus", size: 12 }),
           t4("note.createMissing").replace("{name}", missingRef)
+        ),
+        // 收起键放最右边：这条提示已经看明白了、想先把这一行让出来时用。
+        // 顺手把「写一篇」那颗的锚也清掉——那句话和那颗按钮是一起的。
+        h4(
+          "button",
+          {
+            type: "button",
+            className: "dshgn_iconBtn dshgn_errorClose",
+            title: t4("error.dismiss"),
+            "aria-label": t4("error.dismiss"),
+            onClick: () => {
+              setError(null);
+              setMissingRef("");
+            }
+          },
+          h4(Icon, { name: "close", size: 12 })
         )
       ) : null,
       // key 用 tab：切换页签时 React 会换掉整个节点，动画才会从头播一遍。

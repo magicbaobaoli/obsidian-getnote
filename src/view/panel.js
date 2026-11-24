@@ -808,6 +808,9 @@ async function saveFile(url, filename) {
         'theme.previewMid': '中栏',
         'theme.previewRight': '右栏',
         'error.prefix': '出错了',
+        // 报错条以前只能等下一次操作把它顶掉：用户已经看明白那句话、也决定
+        // 先不管它，它还是杵在顶上占一行。给一颗明摆着的收起键。
+        'error.dismiss': '收起这条提示',
         'capture.title': '速记',
         'capture.saved': '已存为笔记',
         'note.created': '已新建',
@@ -1482,6 +1485,7 @@ async function saveFile(url, filename) {
         'theme.previewMid': 'Middle',
         'theme.previewRight': 'Right',
         'error.prefix': 'Error',
+        'error.dismiss': 'Dismiss this message',
         'capture.title': 'Clipping',
         'capture.saved': 'Saved as a note',
         'note.created': 'Created',
@@ -2133,6 +2137,7 @@ async function saveFile(url, filename) {
         'theme.previewMid': 'Midden',
         'theme.previewRight': 'Rechts',
         'error.prefix': 'Fout',
+        'error.dismiss': 'Deze melding sluiten',
         'capture.title': 'Knipsel',
         'capture.saved': 'Opgeslagen als notitie',
         'note.created': 'Aangemaakt',
@@ -6234,6 +6239,10 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 /* 报错行里那颗补救按钮：文案用主色而不是错误色，它是一条出路不是又一句坏消息 */
 .dshgn_errorBtn{flex:none;height:24px;padding:0 9px;font-size:11px;
   color:var(--dsw-alias-brand-primary);box-shadow:inset 0 0 0 0.5px var(--dsw-alias-brand-primary)}
+/* 收起键贴着右边：报错行是 flex + wrap，margin-left:auto 让它自己跑到行尾 */
+.dshgn_errorClose{flex:none;margin-left:auto;width:22px;height:22px;opacity:.7;
+  color:var(--dsw-alias-state-error-primary)}
+.dshgn_errorClose:hover{opacity:1;background:var(--dsw-alias-interactive-bg-hover)}
 .dshgn_toast{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);z-index:20;
   display:flex;align-items:center;gap:6px;padding:7px 13px;border-radius:9px;
   background:var(--dsw-alias-toast-bg);color:var(--dsw-alias-toast-label);
@@ -10955,6 +10964,22 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                       h(Icon, { name: 'plus', size: 12 }),
                       t('note.createMissing').replace('{name}', missingRef),
                     ),
+                // 收起键放最右边：这条提示已经看明白了、想先把这一行让出来时用。
+                // 顺手把「写一篇」那颗的锚也清掉——那句话和那颗按钮是一起的。
+                h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'dshgn_iconBtn dshgn_errorClose',
+                    title: t('error.dismiss'),
+                    'aria-label': t('error.dismiss'),
+                    onClick: () => {
+                      setError(null)
+                      setMissingRef('')
+                    },
+                  },
+                  h(Icon, { name: 'close', size: 12 }),
+                ),
               )
             : null,
           // key 用 tab：切换页签时 React 会换掉整个节点，动画才会从头播一遍。
