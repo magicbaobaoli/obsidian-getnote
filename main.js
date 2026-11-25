@@ -9925,6 +9925,9 @@ var LEX = {
     // 报错条以前只能等下一次操作把它顶掉：用户已经看明白那句话、也决定
     // 先不管它，它还是杵在顶上占一行。给一颗明摆着的收起键。
     "error.dismiss": "\u6536\u8D77\u8FD9\u6761\u63D0\u793A",
+    "boundary.title": "\u5F97\u5230\u5927\u8111\u9762\u677F\u6E32\u67D3\u51FA\u9519",
+    "boundary.noteTitle": "\u8FD9\u4E00\u7BC7\u7684\u6B63\u6587\u6CA1\u80FD\u6E32\u67D3\u51FA\u6765",
+    "boundary.retry": "\u91CD\u8BD5",
     "capture.title": "\u901F\u8BB0",
     "capture.saved": "\u5DF2\u5B58\u4E3A\u7B14\u8BB0",
     "note.created": "\u5DF2\u65B0\u5EFA",
@@ -10610,6 +10613,9 @@ var LEX = {
     "appearance.saved": "Appearance saved",
     "error.prefix": "Error",
     "error.dismiss": "Dismiss this message",
+    "boundary.title": "The Getnote Brain panel failed to render",
+    "boundary.noteTitle": "This note could not be rendered",
+    "boundary.retry": "Try again",
     "capture.title": "Clipping",
     "capture.saved": "Saved as a note",
     "note.created": "Created",
@@ -11271,6 +11277,9 @@ var LEX = {
     "appearance.saved": "Weergave opgeslagen",
     "error.prefix": "Fout",
     "error.dismiss": "Deze melding sluiten",
+    "boundary.title": "Het Getnote Brain-paneel kon niet worden weergegeven",
+    "boundary.noteTitle": "Deze notitie kon niet worden weergegeven",
+    "boundary.retry": "Opnieuw proberen",
     "capture.title": "Knipsel",
     "capture.saved": "Opgeslagen als notitie",
     "note.created": "Aangemaakt",
@@ -14146,9 +14155,14 @@ var CSS = `
 .dshgn_body{flex:1;display:flex;min-height:0;min-width:0;overflow:hidden}
 .dshgn_tree{flex:none;width:var(--dshgn-treeW,204px);display:flex;flex-direction:column;min-height:0;
   border-right:0.5px solid var(--dsw-alias-border-l2);overflow-y:auto;overflow-x:hidden;padding:8px 6px}
-.dshgn_treeHead{display:flex;align-items:center;justify-content:space-between;gap:6px;
+/* \u5DE6\u680F\u662F\u7EB5\u5411 flex \u5BB9\u5668\uFF0C\u884C\u53C8\u5199\u6B7B\u4E86 height\u2014\u2014flex \u5B50\u9879\u9ED8\u8BA4 flex-shrink:1\uFF0C
+   \u884C\u6570\u4E00\u591A\uFF08\u76EE\u5F55\u4E8C\u5341\u51E0\u4E2A\u3001\u6807\u7B7E\u51E0\u5341\u4E2A\uFF09\u5B83\u4EEC\u4F1A\u5148\u88AB\u538B\u6241\u3001\u800C\u4E0D\u662F\u8BA9\u5BB9\u5668\u6EDA\u8D77\u6765\u3002
+   \u538B\u6241\u4E4B\u540E 26px \u7684\u884C\u53EA\u5269\u51E0\u50CF\u7D20\uFF0C\u4E2D\u6587\u5C31\u53E0\u5728\u4E00\u8D77\uFF0C\u770B\u8D77\u6765\u50CF\u300C\u5B57\u7AD6\u7740\u6392\u3001\u4E92\u76F8
+   \u76D6\u4F4F\u300D\u3002\u8FD9\u91CC\u4E00\u5F8B\u4E0D\u8BB8\u6536\u7F29\uFF1A\u88C5\u4E0D\u4E0B\u5C31\u8BA9 .dshgn_tree \u81EA\u5DF1\u6EDA\u3002 */
+.dshgn_tree>*{flex-shrink:0}
+.dshgn_treeHead{flex:none;display:flex;align-items:center;justify-content:space-between;gap:6px;
   padding:4px 6px;font-size:11px;color:var(--dsw-alias-label-tertiary);user-select:none}
-.dshgn_treeRow{display:flex;align-items:center;gap:6px;height:26px;padding:0 9px;border-radius:7px;
+.dshgn_treeRow{flex:none;display:flex;align-items:center;gap:6px;height:26px;padding:0 9px;border-radius:7px;
   color:var(--dsw-alias-label-secondary);cursor:pointer;white-space:nowrap;overflow:hidden;
   text-overflow:ellipsis;user-select:none}
 .dshgn_treeRow:hover{background:var(--dsw-alias-interactive-bg-hover)}
@@ -14310,7 +14324,7 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
    \u5DE6\u53F3\u8FB9\u8DDD\u8D70\uFF0C\u522B\u7F29\u8FDB\u6210\u5217\u8868\u5361\u7247\u90A3\u6837\u2014\u2014\u5B83\u8BF4\u7684\u662F\u641C\u7D22\u672C\u8EAB\uFF0C\u4E0D\u662F\u7ED3\u679C\u3002 */
 .dshgn_searchMoreRow{padding:0 9px 7px;margin:0}
 .dshgn_moreBtn{display:block;width:100%;margin:6px 0 2px;justify-content:center}
-.dshgn_card{display:flex;flex-direction:column;gap:3px;padding:9px 9px;border-radius:8px;cursor:pointer;
+.dshgn_card{flex:none;display:flex;flex-direction:column;gap:3px;padding:9px 9px;border-radius:8px;cursor:pointer;
   border-left:2px solid transparent;user-select:none}
 .dshgn_card:hover{background:var(--dsw-alias-interactive-bg-hover)}
 .dshgn_card[data-on="true"]{background:var(--dsw-alias-interactive-bg-hover-accent);
@@ -14619,6 +14633,19 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
   border:0.5px solid var(--dsw-alias-border-l1);font-size:11.5px;line-height:1.6;
   color:var(--dsw-alias-label-secondary);
   font-family:var(--dshgn-fontMono);white-space:pre-wrap}
+/* \u6B63\u6587\u8FD9\u4E00\u5C42\u7684\u8FB9\u754C\uFF1A\u574F\u6389\u7684\u53EA\u662F\u4E00\u7BC7\u7B14\u8BB0\u7684\u6B63\u6587\uFF0C\u4E0D\u8BE5\u628A\u6574\u4E2A\u9762\u677F\u6362\u6389\u3002
+   \u4E00\u884C\u641E\u5B9A\u2014\u2014\u6807\u9898\uFF08\u300C\u8FD9\u4E00\u7BC7\u7684\u6B63\u6587\u6CA1\u80FD\u6E32\u67D3\u51FA\u6765\u300D\uFF09+ \u9519\u8BEF\u539F\u6587\uFF08\u53EF\u60AC\u505C\u770B\u5168\uFF0C
+   \u8D85\u957F\u81EA\u52A8\u7701\u7565\uFF09+ \u91CD\u8BD5\u3002\u4E0D\u6446\u6808\uFF1A\u8FD9\u4E00\u5C42\u662F\u7ED9\u666E\u901A\u7528\u6237\u770B\u7684\uFF0C\u6808\u7559\u7ED9\u63A7\u5236\u53F0\u3002 */
+.dshgn_boundaryInline{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  margin:8px 0;padding:9px 11px;border-radius:8px;
+  border:0.5px solid var(--dsw-alias-state-error-primary);
+  background:var(--dsw-alias-interactive-bg-hover);
+  color:var(--dsw-alias-state-error-primary);font-size:12px;line-height:1.6}
+.dshgn_boundaryInlineRow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%}
+.dshgn_boundaryInlineMsg{flex:none;font-weight:500}
+.dshgn_boundaryInlineDetail{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;color:var(--dsw-alias-label-secondary);
+  font-family:var(--dshgn-fontMono);font-size:11px}
 /* \u2500\u2500 \u97F3\u9891\u64AD\u653E\u5668 \u2500\u2500 */
 .dshgn_audioCard{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-radius:10px;
   border:0.5px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-overlay)}
@@ -25173,38 +25200,47 @@ ${t4("tree.menuReveal")}` : absolute,
       // 阅读时只渲染正文：`content` 带 YAML frontmatter，直接 renderBlocks 会把
       // `title: xxx` / `note_id: "..."` 当成正文段落一条条铺出来。编辑时仍用
       // `content`，这样保存不会把 frontmatter 丢掉。
+      // 正文渲染单独包一层边界：一篇笔记的正文（含 ![[嵌入]]、表格、
+      // 代码块）里只要有一处抛异常，整块面板就会被最外层那个边界换掉——
+      // 左栏、列表、其它笔记全都跟着消失，用户只能点「重试」然后祈祷。
+      // 包在正文这一层，坏的就只是这一篇的正文：换一篇看、切回列表都还正常。
+      // key 用笔记路径：换一篇时边界跟着重建，上一篇的错误状态不会带过来。
       h4(
-        "div",
-        { className: "dshgn_md" + (scaleNow === "s" ? " dshgn_mdS" : scaleNow === "l" ? " dshgn_mdL" : "") },
-        renderMarkdown(
-          current.body !== void 0 && current.body !== null ? current.body : current.content,
-          // 编辑态不给 onToggleTodo：那时显示的是可编辑 textarea，正文里的
-          // 方框根本不该响应点击（改内容要走保存）。只有阅读态才可点。
-          {
-            assets: current.assets || [],
-            sourcePath: vaultPathOf(current),
-            // 点 [[双链]]：先交给 Obsidian 在编辑器里打开（这是 Obsidian
-            // 用户的直觉），没注入宿主时退回面板自己的「在面板里打开」。
-            onOpenLink: (target) => {
-              if (openLinkInVault(target, vaultPathOf(current))) return;
-              onOpenWikiLink2(target);
-            },
-            onOpenWikiLink: onOpenWikiLink2,
-            onToggleTodo: editing ? void 0 : onToggleTodo,
-            // ![[另一篇笔记]]：把那一篇的正文嵌进来。解析口径与点双链
-            // 共用一套，否则会出现「点得过去、嵌不进来」。
-            resolveNote,
-            embedDepth: 0,
-            // 正文里的 #标签：点一下就在左栏筛这个标签，与笔记头属性区
-            // 那几颗胶囊同一个动作。卡片摘要那边不给，那里点了会跳走。
-            onPickTag,
-            // 代码块右上角的「复制」：只给阅读态，编辑态看到的本来就是原文
-            onCopyText: editing ? void 0 : onCopyText,
-            // 图片点一下放大：面板里只有 200px 高的缩略图，扫描件看不清楚。
-            // 编辑态不给——那时看到的是原文，点图也不该盖住编辑区。
-            onPreviewImage: editing ? void 0 : (item) => openZoom({ ...item, path: currentPathOf }),
-            t: t4
-          }
+        PanelBoundary,
+        { inline: true, key: "md-" + currentPathOf },
+        h4(
+          "div",
+          { className: "dshgn_md" + (scaleNow === "s" ? " dshgn_mdS" : scaleNow === "l" ? " dshgn_mdL" : "") },
+          renderMarkdown(
+            current.body !== void 0 && current.body !== null ? current.body : current.content,
+            // 编辑态不给 onToggleTodo：那时显示的是可编辑 textarea，正文里的
+            // 方框根本不该响应点击（改内容要走保存）。只有阅读态才可点。
+            {
+              assets: current.assets || [],
+              sourcePath: vaultPathOf(current),
+              // 点 [[双链]]：先交给 Obsidian 在编辑器里打开（这是 Obsidian
+              // 用户的直觉），没注入宿主时退回面板自己的「在面板里打开」。
+              onOpenLink: (target) => {
+                if (openLinkInVault(target, vaultPathOf(current))) return;
+                onOpenWikiLink2(target);
+              },
+              onOpenWikiLink: onOpenWikiLink2,
+              onToggleTodo: editing ? void 0 : onToggleTodo,
+              // ![[另一篇笔记]]：把那一篇的正文嵌进来。解析口径与点双链
+              // 共用一套，否则会出现「点得过去、嵌不进来」。
+              resolveNote,
+              embedDepth: 0,
+              // 正文里的 #标签：点一下就在左栏筛这个标签，与笔记头属性区
+              // 那几颗胶囊同一个动作。卡片摘要那边不给，那里点了会跳走。
+              onPickTag,
+              // 代码块右上角的「复制」：只给阅读态，编辑态看到的本来就是原文
+              onCopyText: editing ? void 0 : onCopyText,
+              // 图片点一下放大：面板里只有 200px 高的缩略图，扫描件看不清楚。
+              // 编辑态不给——那时看到的是原文，点图也不该盖住编辑区。
+              onPreviewImage: editing ? void 0 : (item) => openZoom({ ...item, path: currentPathOf }),
+              t: t4
+            }
+          )
         )
       ),
       // 关联笔记（反向链接）：用户写了很多 [[双链]]，但双链只有「点进去」
@@ -26034,17 +26070,40 @@ var PanelBoundary = class extends ErrorBoundaryBase {
     if (this.state.error) {
       const message = String(this.state.error && this.state.error.message || this.state.error);
       const stack = String(this.state.error && this.state.error.stack || "").split("\n").slice(0, 6).join("\n");
+      const inline = this.props.inline === true;
+      const t4 = getT();
       return h4(
         "div",
-        { className: "dshgn_root dshgn_boundary", role: "alert" },
-        h4("div", { className: "dshgn_boundaryTitle" }, "\u5F97\u5230\u5927\u8111\u9762\u677F\u6E32\u67D3\u51FA\u9519"),
-        h4("div", { className: "dshgn_boundaryMsg" }, message),
-        h4("pre", { className: "dshgn_boundaryStack" }, stack),
-        h4(
-          "button",
-          { type: "button", className: "dshgn_btn dshgn_btnPrimary", onClick: this.retry },
-          "\u91CD\u8BD5"
-        )
+        {
+          className: inline ? "dshgn_boundaryInline" : "dshgn_root dshgn_boundary",
+          role: "alert"
+        },
+        inline ? h4(
+          "div",
+          { className: "dshgn_boundaryInlineRow" },
+          h4(Icon, { name: "warn", size: 13 }),
+          h4("span", { className: "dshgn_boundaryInlineMsg" }, t4("boundary.noteTitle")),
+          h4("span", { className: "dshgn_boundaryInlineDetail", title: message }, message),
+          h4(
+            "button",
+            { type: "button", className: "dshgn_btn dshgn_btnSoft", onClick: this.retry },
+            t4("boundary.retry")
+          )
+        ) : [
+          h4("div", { key: "title", className: "dshgn_boundaryTitle" }, t4("boundary.title")),
+          h4("div", { key: "msg", className: "dshgn_boundaryMsg" }, message),
+          h4("pre", { key: "stack", className: "dshgn_boundaryStack" }, stack),
+          h4(
+            "button",
+            {
+              key: "retry",
+              type: "button",
+              className: "dshgn_btn dshgn_btnPrimary",
+              onClick: this.retry
+            },
+            t4("boundary.retry")
+          )
+        ]
       );
     }
     return this.props.children;

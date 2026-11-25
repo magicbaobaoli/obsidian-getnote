@@ -820,6 +820,9 @@ async function saveFile(url, filename) {
         // 报错条以前只能等下一次操作把它顶掉：用户已经看明白那句话、也决定
         // 先不管它，它还是杵在顶上占一行。给一颗明摆着的收起键。
         'error.dismiss': '收起这条提示',
+        'boundary.title': '得到大脑面板渲染出错',
+        'boundary.noteTitle': '这一篇的正文没能渲染出来',
+        'boundary.retry': '重试',
         'capture.title': '速记',
         'capture.saved': '已存为笔记',
         'note.created': '已新建',
@@ -1510,6 +1513,9 @@ async function saveFile(url, filename) {
         'appearance.saved': 'Appearance saved',
         'error.prefix': 'Error',
         'error.dismiss': 'Dismiss this message',
+        'boundary.title': 'The Getnote Brain panel failed to render',
+        'boundary.noteTitle': 'This note could not be rendered',
+        'boundary.retry': 'Try again',
         'capture.title': 'Clipping',
         'capture.saved': 'Saved as a note',
         'note.created': 'Created',
@@ -2175,6 +2181,9 @@ async function saveFile(url, filename) {
         'appearance.saved': 'Weergave opgeslagen',
         'error.prefix': 'Fout',
         'error.dismiss': 'Deze melding sluiten',
+        'boundary.title': 'Het Getnote Brain-paneel kon niet worden weergegeven',
+        'boundary.noteTitle': 'Deze notitie kon niet worden weergegeven',
+        'boundary.retry': 'Opnieuw proberen',
         'capture.title': 'Knipsel',
         'capture.saved': 'Opgeslagen als notitie',
         'note.created': 'Aangemaakt',
@@ -5948,9 +5957,14 @@ async function saveFile(url, filename) {
 .dshgn_body{flex:1;display:flex;min-height:0;min-width:0;overflow:hidden}
 .dshgn_tree{flex:none;width:var(--dshgn-treeW,204px);display:flex;flex-direction:column;min-height:0;
   border-right:0.5px solid var(--dsw-alias-border-l2);overflow-y:auto;overflow-x:hidden;padding:8px 6px}
-.dshgn_treeHead{display:flex;align-items:center;justify-content:space-between;gap:6px;
+/* 左栏是纵向 flex 容器，行又写死了 height——flex 子项默认 flex-shrink:1，
+   行数一多（目录二十几个、标签几十个）它们会先被压扁、而不是让容器滚起来。
+   压扁之后 26px 的行只剩几像素，中文就叠在一起，看起来像「字竖着排、互相
+   盖住」。这里一律不许收缩：装不下就让 .dshgn_tree 自己滚。 */
+.dshgn_tree>*{flex-shrink:0}
+.dshgn_treeHead{flex:none;display:flex;align-items:center;justify-content:space-between;gap:6px;
   padding:4px 6px;font-size:11px;color:var(--dsw-alias-label-tertiary);user-select:none}
-.dshgn_treeRow{display:flex;align-items:center;gap:6px;height:26px;padding:0 9px;border-radius:7px;
+.dshgn_treeRow{flex:none;display:flex;align-items:center;gap:6px;height:26px;padding:0 9px;border-radius:7px;
   color:var(--dsw-alias-label-secondary);cursor:pointer;white-space:nowrap;overflow:hidden;
   text-overflow:ellipsis;user-select:none}
 .dshgn_treeRow:hover{background:var(--dsw-alias-interactive-bg-hover)}
@@ -6112,7 +6126,7 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
    左右边距走，别缩进成列表卡片那样——它说的是搜索本身，不是结果。 */
 .dshgn_searchMoreRow{padding:0 9px 7px;margin:0}
 .dshgn_moreBtn{display:block;width:100%;margin:6px 0 2px;justify-content:center}
-.dshgn_card{display:flex;flex-direction:column;gap:3px;padding:9px 9px;border-radius:8px;cursor:pointer;
+.dshgn_card{flex:none;display:flex;flex-direction:column;gap:3px;padding:9px 9px;border-radius:8px;cursor:pointer;
   border-left:2px solid transparent;user-select:none}
 .dshgn_card:hover{background:var(--dsw-alias-interactive-bg-hover)}
 .dshgn_card[data-on="true"]{background:var(--dsw-alias-interactive-bg-hover-accent);
@@ -6421,6 +6435,19 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
   border:0.5px solid var(--dsw-alias-border-l1);font-size:11.5px;line-height:1.6;
   color:var(--dsw-alias-label-secondary);
   font-family:var(--dshgn-fontMono);white-space:pre-wrap}
+/* 正文这一层的边界：坏掉的只是一篇笔记的正文，不该把整个面板换掉。
+   一行搞定——标题（「这一篇的正文没能渲染出来」）+ 错误原文（可悬停看全，
+   超长自动省略）+ 重试。不摆栈：这一层是给普通用户看的，栈留给控制台。 */
+.dshgn_boundaryInline{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  margin:8px 0;padding:9px 11px;border-radius:8px;
+  border:0.5px solid var(--dsw-alias-state-error-primary);
+  background:var(--dsw-alias-interactive-bg-hover);
+  color:var(--dsw-alias-state-error-primary);font-size:12px;line-height:1.6}
+.dshgn_boundaryInlineRow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%}
+.dshgn_boundaryInlineMsg{flex:none;font-weight:500}
+.dshgn_boundaryInlineDetail{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;color:var(--dsw-alias-label-secondary);
+  font-family:var(--dshgn-fontMono);font-size:11px}
 /* ── 音频播放器 ── */
 .dshgn_audioCard{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-radius:10px;
   border:0.5px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-overlay)}
@@ -19169,10 +19196,18 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
               // 阅读时只渲染正文：`content` 带 YAML frontmatter，直接 renderBlocks 会把
               // `title: xxx` / `note_id: "..."` 当成正文段落一条条铺出来。编辑时仍用
               // `content`，这样保存不会把 frontmatter 丢掉。
+              // 正文渲染单独包一层边界：一篇笔记的正文（含 ![[嵌入]]、表格、
+              // 代码块）里只要有一处抛异常，整块面板就会被最外层那个边界换掉——
+              // 左栏、列表、其它笔记全都跟着消失，用户只能点「重试」然后祈祷。
+              // 包在正文这一层，坏的就只是这一篇的正文：换一篇看、切回列表都还正常。
+              // key 用笔记路径：换一篇时边界跟着重建，上一篇的错误状态不会带过来。
               h(
-                'div',
-                { className: 'dshgn_md' + (scaleNow === 's' ? ' dshgn_mdS' : scaleNow === 'l' ? ' dshgn_mdL' : '') },
-                renderMarkdown(
+                PanelBoundary,
+                { inline: true, key: 'md-' + currentPathOf },
+                h(
+                  'div',
+                  { className: 'dshgn_md' + (scaleNow === 's' ? ' dshgn_mdS' : scaleNow === 'l' ? ' dshgn_mdL' : '') },
+                  renderMarkdown(
                   current.body !== undefined && current.body !== null ? current.body : current.content,
                   // 编辑态不给 onToggleTodo：那时显示的是可编辑 textarea，正文里的
                   // 方框根本不该响应点击（改内容要走保存）。只有阅读态才可点。
@@ -19201,6 +19236,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                     onPreviewImage: editing ? undefined : (item) => openZoom({ ...item, path: currentPathOf }),
                     t,
                   },
+                ),
                 ),
               ),
               // 关联笔记（反向链接）：用户写了很多 [[双链]]，但双链只有「点进去」
@@ -20214,17 +20250,45 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             .split('\n')
             .slice(0, 6)
             .join('\n')
+          // 内嵌在正文里的那一层（inline）：只把这一段换成一行提示 + 重试，
+          // 不要把整个面板换掉——一篇笔记的渲染炸了，左栏、列表、其它笔记都还是好的，
+          // 用户应该还能换一篇看，而不是整块区域变成错误页。
+          const inline = this.props.inline === true
+          const t = getT()
           return h(
             'div',
-            { className: 'dshgn_root dshgn_boundary', role: 'alert' },
-            h('div', { className: 'dshgn_boundaryTitle' }, '得到大脑面板渲染出错'),
-            h('div', { className: 'dshgn_boundaryMsg' }, message),
-            h('pre', { className: 'dshgn_boundaryStack' }, stack),
-            h(
-              'button',
-              { type: 'button', className: 'dshgn_btn dshgn_btnPrimary', onClick: this.retry },
-              '重试',
-            ),
+            {
+              className: inline ? 'dshgn_boundaryInline' : 'dshgn_root dshgn_boundary',
+              role: 'alert',
+            },
+            inline
+              ? h(
+                  'div',
+                  { className: 'dshgn_boundaryInlineRow' },
+                  h(Icon, { name: 'warn', size: 13 }),
+                  h('span', { className: 'dshgn_boundaryInlineMsg' }, t('boundary.noteTitle')),
+                  h('span', { className: 'dshgn_boundaryInlineDetail', title: message }, message),
+                  h(
+                    'button',
+                    { type: 'button', className: 'dshgn_btn dshgn_btnSoft', onClick: this.retry },
+                    t('boundary.retry'),
+                  ),
+                )
+              : [
+                  h('div', { key: 'title', className: 'dshgn_boundaryTitle' }, t('boundary.title')),
+                  h('div', { key: 'msg', className: 'dshgn_boundaryMsg' }, message),
+                  h('pre', { key: 'stack', className: 'dshgn_boundaryStack' }, stack),
+                  h(
+                    'button',
+                    {
+                      key: 'retry',
+                      type: 'button',
+                      className: 'dshgn_btn dshgn_btnPrimary',
+                      onClick: this.retry,
+                    },
+                    t('boundary.retry'),
+                  ),
+                ],
           )
         }
         return this.props.children

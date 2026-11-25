@@ -17435,3 +17435,40 @@ test('左栏与中栏的同级元素站在同一条竖线上，热力图的格�
   const alpha = /rgba\(255,255,255,\.([0-9]+)\)/.exec(lv1)
   assert.ok(alpha !== null && Number('0.' + alpha[1]) >= 0.3, '最浅一档的格子该比原来亮，实际 ' + lv1)
 })
+
+test('左栏装不下时让栏自己滚，而不是把每一行压扁到字叠在一起', () => {
+  // 真实的线上问题：目录二十几个、标签几十个时，左栏（纵向 flex 容器）会把
+  // 写死 26px 的行压扁——flex 子项默认 flex-shrink:1。行被压到几像素高，中文
+  // 就上下叠在一起，看着像「字竖着排、互相盖住」。
+  const css = document.getElementById('dshgn-style').textContent
+  const ruleOf = (selector) => {
+    const re = new RegExp('(?:^|\\n)' + selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\{([^}]*)\\}')
+    const m = re.exec(css)
+    return m === null ? '' : m[1]
+  }
+  // 把一条规则拆成声明，再单独看 flex / flex-shrink 的第一个值——
+  // 直接用正则抓 \S+ 会把后面整串无空格的声明一起吞掉（这些规则都是压成一行的）。
+  const shrinkOf = (decl) => {
+    for (const part of decl.split(';')) {
+      const at = part.indexOf(':')
+      if (at < 0) continue
+      const prop = part.slice(0, at).trim()
+      if (prop !== 'flex' && prop !== 'flex-shrink') continue
+      const value = part.slice(at + 1).trim().split(/\s+/)[0]
+      if (prop === 'flex-shrink') return value
+      if (value === 'none') return 'none'
+      if (value === '0') return '0'
+    }
+    return null
+  }
+
+  for (const selector of ['.dshgn_treeRow', '.dshgn_card', '.dshgn_treeHead']) {
+    const decl = ruleOf(selector)
+    assert.ok(decl !== '', selector + ' 的样式该在')
+    assert.equal(shrinkOf(decl), 'none', selector + ' 该写 flex:none，别让它被压扁')
+  }
+
+  const child = ruleOf('.dshgn_tree>*')
+  assert.ok(child !== '', '左栏该有一条「子元素不许收缩」的兜底规则')
+  assert.equal(shrinkOf(child), '0', '左栏的子元素该写 flex-shrink:0')
+})
