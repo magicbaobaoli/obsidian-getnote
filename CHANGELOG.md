@@ -1,5 +1,16 @@
 # 更新日志
 
+## 0.1.2
+
+### 修复
+
+- **插件显示名改成纯英文**：`manifest.json` 的 `name` 从「得到大脑 Get笔记」改成
+  `Getnote Brain`。社区目录的命名规则只收 Basic Latin，带中文的名字提交时会被直接打回
+  （`This name is not allowed in the directory`）；目录里一万多个插件的 name 里没有一个
+  非 ASCII 字符，中文只能写在 `description` 里，那边不受影响。
+  `scripts/check-market.mjs` 与 `test/market.test.mjs` 各补了一条自检，以后本地就能拦住。
+- 插件的 `id`（`getnote-brain`）与安装目录没变，已经装好的库不用重新搬。
+
 ## 0.1.1
 
 0.1.0 之后的这一批全在「用得下去」上：长列表、长文档、大批量操作原来一多就不好使的地方，

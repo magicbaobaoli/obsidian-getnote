@@ -1,4 +1,4 @@
-# 得到大脑 Get笔记 · Obsidian 插件
+# Getnote Brain · Obsidian 插件
 
 把「得到大脑（Get笔记）」搬进 Obsidian。**本地优先**：笔记就是你自己库里的 Markdown 文件，
 浏览、搜索、编辑、删除全部离线可用；云端同步、录音卡导入是需要时再打开的增强项。
@@ -781,14 +781,14 @@
 
 ### 从社区市场安装
 
-Obsidian 设置 → 第三方插件 → 浏览 → 搜「得到大脑」。目录里的条目还在审核队列里时，
+Obsidian 设置 → 第三方插件 → 浏览 → 搜「Getnote Brain」。目录里的条目还在审核队列里时，
 用下面的手动方式。
 
 ### 手动安装
 
 1. 下载 `main.js`、`manifest.json`、`styles.css`，以及 `card/`、`locale/` 两个目录。
 2. 放进 `<你的库>/.obsidian/plugins/getnote-brain/`。
-3. Obsidian 设置 → 第三方插件 → 关闭安全模式 → 启用「得到大脑 Get笔记」。
+3. Obsidian 设置 → 第三方插件 → 关闭安全模式 → 启用「Getnote Brain」。
 
 > `card/` 是录音卡用的 Python 桥脚本，`locale/` 是界面文案。**这两个目录必须一起放**，
 > 缺了不影响本地笔记功能，但录音卡与多语言会不可用。
@@ -812,7 +812,7 @@ npm run check:market  # 上架条件自检：id/name/description 的规矩、版
 Obsidian 且必须以标点收尾、版本三处一致、仓库里没有个人信息与真凭证）在提交时就查一遍，
 免得等到目录审核驳回再重走一轮。
 
-打标签即发布（`.github/workflows/release.yml`）：`git tag 0.1.1 && git push --tags`
+打标签即发布（`.github/workflows/release.yml`）：`git tag 0.1.2 && git push --tags`
 会重跑测试、打包出 `getnote-brain-<tag>.zip`（含 `main.js` / `manifest.json` /
 `styles.css` / `card/` / `locale/`）挂到 Release 上，可以直接下载解压进插件目录；
 **tag 名必须和 `manifest.json` 里的 `version` 一字不差**——社区目录和 Obsidian 的自动更新

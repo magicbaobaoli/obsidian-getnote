@@ -45,6 +45,10 @@ check('id 不以 plugin 结尾', !/plugin$/i.test(id), id)
 check('name 不含 Obsidian', !/obsidian/i.test(name), name)
 check('name 不以 Plugin 结尾', !/plugin$/i.test(name), name)
 check('name 不以 Obsi 开头、不以 dian 结尾', !/^obsi/i.test(name) && !/dian$/i.test(name), name)
+// 目录只收 Basic Latin：中文名会被门户直接打回「This name is not allowed in the
+// directory」。本地 eslint 查不出这条（它只看 obsidian / plugin 这些词），所以自己查。
+check('name 只用 Basic Latin（中文名会被门户打回）', /^[\x20-\x7e]+$/.test(name), name)
+check('name 不含标点（连字符、加号、括号除外）', !/[^\x20-\x7eA-Za-z0-9+()\-]/.test(name), name)
 check('description 不含 Obsidian', !/obsidian/i.test(description))
 check(
   'description 不以「This plugin」这类空话开头',

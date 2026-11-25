@@ -33,6 +33,8 @@ check('自检报告里没有 FAIL', !/^FAIL/m.test(output))
 const manifest = JSON.parse(await readFile(join(ROOT, 'manifest.json'), 'utf8'))
 check('id 是 getnote-brain（社区目录里没被占用）', manifest.id === 'getnote-brain', manifest.id)
 check('name 里没有 Obsidian', !/obsidian/i.test(manifest.name), manifest.name)
+// 门户只收 Basic Latin：带中文的名字会被直接打回，而本地 eslint 查不出这条。
+check('name 只用 Basic Latin', /^[\x20-\x7e]+$/.test(manifest.name), manifest.name)
 check('description 以句点收尾（目录页按句子排版）', manifest.description.trim().endsWith('.'))
 check('description 不含 Obsidian', !/obsidian/i.test(manifest.description))
 
