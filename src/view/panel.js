@@ -1226,7 +1226,11 @@ async function saveFile(url, filename) {
         'card.desc': '绕过云端，直接通过蓝牙从录音卡上把音频拉进笔记库。卡片要开机、在 3 米内，并且手机 App 先断开（关掉手机蓝牙即可，不用解绑）。',
         'card.envOk': '环境就绪',
         'card.envMissing': '缺少运行环境',
-        'card.envHint': '录音卡直连需要电脑上有 Python 3.10+ 和 bleak 包。装一下：pip install bleak',
+        'card.envHint': '录音卡直连需要电脑上有 Python 3.10+ 和 bleak 包。不装也能用别的——笔记库、云端同步、界面都不受影响，只是这一页连不上卡。点下面那颗「一键装依赖」，装好就自动认。',
+        'card.installDeps': '一键装依赖',
+        'card.installing': '正在装，可能要一两分钟…',
+        'card.installOk': '依赖装好了，可以扫描了',
+        'card.installFail': '没装上。下面这段是 pip 的原话，照着它排查：',
         'card.envBridge': '协议桥',
         'card.scan': '扫描录音卡',
         'card.scanning': '正在扫描…',
@@ -1888,7 +1892,11 @@ async function saveFile(url, filename) {
         'card.desc': 'Skip the cloud — pull audio straight off the recorder card over Bluetooth. The card must be on, within about 3 metres, and the phone app disconnected (just turn off phone Bluetooth; no need to unbind).',
         'card.envOk': 'Ready',
         'card.envMissing': 'Runtime missing',
-        'card.envHint': 'Direct card access needs Python 3.10+ and the bleak package on this computer. Install with: pip install bleak',
+        'card.envHint': 'Direct card access needs Python 3.10+ and the bleak package on this computer. Everything else — the vault, cloud sync, the whole panel — works fine without it; only this page needs the card. Press Install dependencies below and it will pick them up automatically.',
+        'card.installDeps': 'Install dependencies',
+        'card.installing': 'Installing, this can take a minute or two…',
+        'card.installOk': 'Dependencies installed — you can scan now',
+        'card.installFail': 'Install failed. This is what pip said:',
         'card.envBridge': 'Protocol bridge',
         'card.scan': 'Scan for card',
         'card.scanning': 'Scanning…',
@@ -2544,7 +2552,11 @@ async function saveFile(url, filename) {
         'card.desc': 'Sla de cloud over — haal audio rechtstreeks via bluetooth van de recordercard. De kaart moet aan staan, binnen ongeveer 3 meter, en de telefoon-app moet losgekoppeld zijn (zet gewoon bluetooth op je telefoon uit; ontkoppelen is niet nodig).',
         'card.envOk': 'Klaar voor gebruik',
         'card.envMissing': 'Runtime ontbreekt',
-        'card.envHint': 'Directe toegang tot de kaart vereist Python 3.10+ en het bleak-pakket op deze computer. Installeren met: pip install bleak',
+        'card.envHint': 'Directe toegang tot de kaart vereist Python 3.10+ en het bleak-pakket op deze computer. Al het andere — de kluis, cloudsynchronisatie, het hele paneel — werkt ook zonder; alleen deze pagina heeft de kaart nodig. Klik hieronder op Afhankelijkheden installeren en het wordt vanzelf opgepikt.',
+        'card.installDeps': 'Afhankelijkheden installeren',
+        'card.installing': 'Bezig met installeren, dit kan een minuut of twee duren…',
+        'card.installOk': 'Afhankelijkheden geïnstalleerd — je kunt nu scannen',
+        'card.installFail': 'Installeren mislukt. Dit zei pip:',
         'card.envBridge': 'Protocolbrug',
         'card.scan': 'Kaart zoeken',
         'card.scanning': 'Bezig met zoeken…',
@@ -5925,12 +5937,14 @@ async function saveFile(url, filename) {
 .dshgn_note .dshgn_md.dshgn_mdS{font-size:12px !important;line-height:1.7}
 .dshgn_note .dshgn_md.dshgn_mdL{font-size:15px !important;line-height:1.9}
 .dshgn_btn{appearance:none;display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 11px;
-  border:0.5px solid var(--dsw-alias-border-l2);border-radius:8px;background:transparent;
+  border:0.5px solid var(--dsw-alias-border-l2);border-radius:7px;background:transparent;
   color:var(--dsw-alias-label-primary);cursor:pointer;font:inherit;font-size:12px;white-space:nowrap}
 .dshgn_btn:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
 .dshgn_btn:disabled{opacity:.5;cursor:default}
-.dshgn_btnPrimary{border:0;background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-foreground)}
-.dshgn_btnPrimary:hover:not(:disabled){background:var(--dsw-alias-button-primary-hover)}
+/* 键盘走到哪一颗，哪一颗亮一圈。文件里另外 40 来颗小按钮各自写了这条，
+   偏偏最常用的 .dshgn_btn / .dshgn_chip / 左栏目录行漏了——Tab 过去什么都看不见。 */
+.dshgn_btn:focus-visible,.dshgn_chip:focus-visible{
+  outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dshgn_btnDanger{color:var(--dsw-alias-state-error-primary)}
 /* overflow:hidden 是承重的：三栏各自内部滚动，外层绝不能滚。
    少了它，正文里一块超宽的代码表格会把整个 .dshgn_body 撑出横向滚动条，
@@ -5957,10 +5971,10 @@ async function saveFile(url, filename) {
   box-shadow:inset 0 0 0 1px var(--dsw-alias-brand-primary)}
 /* 左栏自己的筛：细一号的输入框，压在「全部笔记」下面、热力图上面。
    min-width:0 是承重的——输入框默认有自己的最小宽度，不写会把左栏撑破。 */
-.dshgn_treeFilter{flex:none;display:flex;align-items:center;gap:4px;margin:2px 4px 4px;padding:0 6px;
+.dshgn_treeFilter{flex:none;display:flex;align-items:center;gap:4px;height:26px;margin:2px 0 4px;padding:0 9px;
   border-radius:7px;background:var(--dsw-alias-interactive-bg-hover)}
-.dshgn_treeFilterInput{flex:1;min-width:0;height:22px;padding:0;border:0;background:transparent;
-  color:var(--dsw-alias-label-secondary);font:inherit;font-size:11px;outline:none}
+.dshgn_treeFilterInput{flex:1;min-width:0;height:24px;padding:0;border:0;background:transparent;
+  color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;outline:none}
 .dshgn_treeFilterInput::placeholder{color:var(--dsw-alias-label-tertiary)}
 .dshgn_treeFilterClear{appearance:none;flex:none;display:inline-flex;align-items:center;justify-content:center;
   width:16px;height:16px;padding:0;border:0;border-radius:50%;background:transparent;
@@ -6046,9 +6060,11 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
   .dshgn_tabs{overflow-x:auto;scrollbar-width:none}
   .dshgn_tabs::-webkit-scrollbar{display:none}
 }
-.dshgn_searchWrap{flex:none;display:flex;align-items:center;gap:6px;padding:8px 10px;
+/* 左右 6px 与左栏 .dshgn_tree 的 padding 一致：「全部笔记」那一行和这个搜索框
+   在各自的栏里都从同一条竖线起头，两边宽度也一样，不再一宽一窄。 */
+.dshgn_searchWrap{flex:none;display:flex;align-items:center;gap:6px;padding:8px 6px;
   border-bottom:0.5px solid var(--dsw-alias-border-l2)}
-.dshgn_search{flex:1;min-width:0;height:26px;padding:0 8px;border:0.5px solid var(--dsw-alias-border-l2);
+.dshgn_search{flex:1;min-width:0;height:26px;padding:0 9px;border:0.5px solid var(--dsw-alias-border-l2);
   border-radius:7px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;
   font-size:12px;outline:none}
 .dshgn_search:focus{border-color:var(--dsw-alias-brand-primary)}
@@ -6473,14 +6489,14 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
   color:var(--dsw-alias-label-primary);font-family:var(--dshgn-fontMono);
   font-size:12px;line-height:1.65;outline:none}
 .dshgn_textarea:focus{border-color:var(--dsw-alias-brand-primary)}
-.dshgn_btn{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 11px;border-radius:7px;
-  border:0.5px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-primary);
-  font:inherit;font-size:12px;cursor:pointer}
-.dshgn_btn:hover{background:var(--dsw-alias-interactive-bg-hover)}
-.dshgn_btn:disabled{opacity:.5;cursor:default}
-.dshgn_btnPri{border-color:transparent;background:var(--dsw-alias-button-primary-fill);
+/* .dshgn_btn 的底子在文件更上面那一段（一份就够）。这里以前又写了一遍，
+   圆角 7px 对 8px、hover 一个带 :not(:disabled) 一个不带——同一个类名两份定义，
+   后一份把前一份的圆角悄悄改掉，47 颗按钮里哪颗是 7px 取决于它渲染在哪个区块。
+   现在只留上面那一份。 */
+.dshgn_btnPri,.dshgn_btnPrimary{border-color:transparent;background:var(--dsw-alias-button-primary-fill);
   color:var(--dsw-alias-label-primary-foreground)}
-.dshgn_btnPri:hover{background:var(--dsw-alias-button-primary-hover)}
+.dshgn_btnPri:hover:not(:disabled),.dshgn_btnPrimary:hover:not(:disabled){
+  background:var(--dsw-alias-button-primary-hover)}
 /* 淡一档的强调按钮：给「用我的本地版 / 用云端版」这种二选一用。
    满饱和的主色在这两个按钮上会抢掉比对正文的注意力——用户是来读差异的，
    不是来看按钮的。这里改用柔和的填充 + 同色系深字，选中感还在但不刺眼。 */
@@ -6509,7 +6525,15 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 /* 录音卡面板：卡片上的文件列表与危险开关。
    「导入后删原件」那一行刻意做成普通 checkbox 而不是花哨开关——它旁边写着
    「永久删除」，越朴素越好，别让人误以为是某种推荐设置。 */
-.dshgn_paneInner{display:flex;flex-direction:column;gap:12px;padding:18px 20px;max-width:720px;overflow-y:auto}
+/* margin:0 auto 是承重的：录音卡这一页只有 720px 宽，不居中时整页贴在左边，
+   右边空出一大片，看着像没加载完。滚动交给外层 .dshgn_pane，这里再套一层
+   overflow 会出现「滚到一半卡住」的双层滚动条。
+   padding 必须是 0：外层的 .dshgn_pane 已经有 18px/40px 的留白，这里再垫一遍
+   就变成标题上方空 36px、末尾空 80px，整页看着像被挤在中间一小条。 */
+.dshgn_paneInner{display:flex;flex-direction:column;gap:12px;padding:0;max-width:720px;margin:0 auto}
+/* 大标题自带 margin-top:18px，外层已经有 18px 留白，叠起来标题离顶 36px，
+   整页像被往下推了一截。首个子元素把这段让出去。 */
+.dshgn_paneInner > .dshgn_h:first-child{margin-top:0}
 .dshgn_paneDesc{font-size:12px;line-height:1.7;color:var(--dsw-alias-label-tertiary)}
 .dshgn_row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px}
 .dshgn_fileList{display:flex;flex-direction:column;gap:2px;margin-top:8px;max-height:260px;overflow-y:auto}
@@ -12869,6 +12893,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       const { t, status, showToast, onError, onChanged } = props
       const [env, setEnv] = React.useState(null)
       const [envBusy, setEnvBusy] = React.useState(false)
+      // 一键装依赖：pip 跑起来要一两分钟，得有个独立的 busy 和一段可读的输出，
+      // 否则用户点完只看到按钮灰着，不知道是在装还是卡死了。
+      const [installing, setInstalling] = React.useState(false)
+      const [installLog, setInstallLog] = React.useState(null)
       const [scanning, setScanning] = React.useState(false)
       const [found, setFound] = React.useState(null)
       const [files, setFiles] = React.useState(null)
@@ -12898,6 +12926,27 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           setEnvBusy(false)
         }
       }, [])
+
+      /**
+       * 一键装 bleak。装完立刻重新自检——成功与否以 doctor 说的为准，
+       * 不以 pip 的退出码为准（pip 有时 exit 0 但装的不是我们要的那个解释器）。
+       */
+      const installDeps = React.useCallback(async () => {
+        setInstalling(true)
+        setInstallLog(null)
+        try {
+          const json = await api('/card/install', { method: 'POST' })
+          setEnv(json)
+          setInstallLog(json)
+          if (json && json.ok === true) showToast(t('card.installOk'))
+        } catch (err) {
+          const message = err && err.message ? err.message : String(err)
+          setInstallLog({ ok: false, log: message })
+          onError(message)
+        } finally {
+          setInstalling(false)
+        }
+      }, [onError, showToast, t])
 
       React.useEffect(() => {
         void checkEnv()
@@ -13121,6 +13170,32 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                 ),
             !ready && env !== null && env.error
               ? h('pre', { className: 'dshgn_log' }, String(env.error))
+              : null,
+            // 没就绪时把「一键装依赖」摆在最前面：用户看到「缺少运行环境」之后
+            // 第一件想做的事就是把它补上，不该让他先去猜 pip 怎么敲。
+            !ready
+              ? h(
+                  'div',
+                  { className: 'dshgn_row' },
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'dshgn_btn dshgn_btnPrimary',
+                      onClick: () => void installDeps(),
+                      disabled: installing,
+                    },
+                    installing ? t('card.installing') : t('card.installDeps'),
+                  ),
+                )
+              : null,
+            installLog !== null && installLog.ok !== true
+              ? h(
+                  'div',
+                  null,
+                  h('div', { className: 'dshgn_sectionDesc' }, t('card.installFail')),
+                  h('pre', { className: 'dshgn_log' }, String(installLog.log || '')),
+                )
               : null,
             h(
               'div',

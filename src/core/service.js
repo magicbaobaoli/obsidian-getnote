@@ -20,6 +20,7 @@ import {
   checkCardEnvironment,
   deleteCardFiles,
   importCardRecordings,
+  installCardDeps,
   listCardFiles,
   scanCard,
   wifiActivate,
@@ -2344,6 +2345,17 @@ export function createHandler(config) {
     return send(res, 200, { ok: true, ...env, running: cardState.running })
   }
 
+  /**
+   * 一键装依赖（python -m pip install bleak）。
+   *
+   * 这条路会跑几分钟，但面板点完就转圈等结果——不像导入那样需要轮询，
+   * 因为装完必须立刻知道成没成，用户才好决定下一步。
+   */
+  async function handleCardInstall(_req, res) {
+    const result = await installCardDeps()
+    return send(res, 200, { ok: true, ...result })
+  }
+
   /** 扫描附近的录音卡（广播名 Get-XXXXXX）。 */
   async function handleCardScan(res, url) {
     const timeout = Number(url.searchParams.get('timeout') || 8)
@@ -2652,6 +2664,7 @@ export function createHandler(config) {
         // 整库导入（C1）
         if (action === 'archive' && parts[2] === 'import') return await handleArchiveImport(req, res)
         // 录音卡直连：导入 / 删除卡片文件
+        if (action === 'card' && parts[2] === 'install') return await handleCardInstall(req, res)
         if (action === 'card' && parts[2] === 'import') return await handleCardImport(req, res)
         if (action === 'card' && parts[2] === 'delete') return await handleCardDelete(req, res)
         // 热点快传：激活 / 连接 / 退出。三者分开，是因为「激活失败」和

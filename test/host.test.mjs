@@ -1176,6 +1176,24 @@ try {
       else process.env.DSH_GETNOTE_PYTHON = previousPython
     }
 
+    // 一键装依赖：这台机器可能真有 Python，真跑一次 pip 会去装包、动用户环境。
+    // 所以同样用 DSH_GETNOTE_PYTHON 指一个不存在的解释器，把「找不到 Python」
+    // 这条分支钉死——它必须回 200 + ok:false + 一段人话，而不是抛 500。
+    process.env.DSH_GETNOTE_PYTHON = 'definitely-not-a-python-binary-xyz'
+    try {
+      const inst = await call('/card/install', postJson('/card/install', {}))
+      check('POST /card/install 路由在（不是 404）', inst.status === 200, `status=${inst.status} ${inst.text.slice(0, 200)}`)
+      check('POST /card/install 没装成时 ok 是 false', inst.json && inst.json.ok === false, JSON.stringify(inst.json && inst.json.ok))
+      check(
+        'POST /card/install 说清缺的是 Python',
+        typeof inst.json.error === 'string' && /Python/.test(inst.json.error),
+        JSON.stringify(inst.json && inst.json.error),
+      )
+    } finally {
+      if (previousPython === undefined) delete process.env.DSH_GETNOTE_PYTHON
+      else process.env.DSH_GETNOTE_PYTHON = previousPython
+    }
+
     const del = await call('/card/delete', postJson('/card/delete', {}))
     check('POST /card/delete 空 names 回 400', del.status === 400, `status=${del.status}`)
     const del2 = await call('/card/delete', postJson('/card/delete', { names: '   ' }))

@@ -182,6 +182,101 @@ function runBridge(args, { timeoutMs = DEFAULT_TIMEOUT_MS, python = null, script
   })
 }
 
+/**
+ * 跑一段「裸」Python（不带脚本路径），用来装依赖。
+ *
+ * 和 runBridge 的区别只有一处：runBridge 的第一段参数永远是桥脚本路径，
+ * 而 `python -m pip install bleak` 要的是模块名。超时给得长——pip 在国内
+ * 拉包常常要一两分钟，给短了会让人以为「点了没反应」。
+ */
+function runPythonModule(moduleArgs, { timeoutMs = 5 * 60 * 1000 } = {}) {
+  const interpreters = pythonCandidates()
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const finish = (fn, value) => {
+      if (settled) return
+      settled = true
+      fn(value)
+    }
+    const attempt = (index) => {
+      if (index >= interpreters.length) {
+        finish(
+          reject,
+          Object.assign(
+            new Error('这台电脑上没找到 Python。录音卡直连需要 Python 3.10+，装好之后再回来点一次。'),
+            { status: 503, reason: 'no-python' },
+          ),
+        )
+        return
+      }
+      const child = spawn(interpreters[index], moduleArgs, {
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+      })
+      let out = ''
+      let err = ''
+      const timer = setTimeout(() => {
+        try {
+          child.kill()
+        } catch {
+          /* 已经退出了 */
+        }
+      }, timeoutMs)
+      child.stdout.setEncoding('utf8')
+      child.stderr.setEncoding('utf8')
+      child.stdout.on('data', (chunk) => {
+        out += chunk
+      })
+      child.stderr.on('data', (chunk) => {
+        err += chunk
+      })
+      child.on('error', (error) => {
+        clearTimeout(timer)
+        if (error && error.code === 'ENOENT') {
+          attempt(index + 1)
+          return
+        }
+        finish(reject, Object.assign(error, { status: 502 }))
+      })
+      child.on('close', (code) => {
+        clearTimeout(timer)
+        finish(resolve, { code, out, err })
+      })
+    }
+    attempt(0)
+  })
+}
+
+/**
+ * 一键把录音卡要的依赖装上（`python -m pip install bleak`）。
+ *
+ * 为什么值得做成一键：装插件的人多半不是开发者，「打开终端 → 找到对的那个
+ * Python → pip install bleak」这三步里任何一步都可能卡住，而卡住之后面板
+ * 只会显示「缺少运行环境」，用户不知道该敲什么。这里直接替他把命令跑掉，
+ * 失败时把 pip 的原始输出原样带回去——那几行比任何包装过的提示都有用。
+ */
+export async function installCardDeps() {
+  let result
+  try {
+    result = await runPythonModule(['-m', 'pip', 'install', '--upgrade', 'bleak'])
+  } catch (error) {
+    // 没 Python 这种失败不该抛 500：面板要的是一句能读懂的话 + 一段可以照着
+    // 排查的输出，不是栈。所以这里收成和「pip 跑完但没装上」一样的形状。
+    const message = error && error.message ? error.message : String(error)
+    const env = await checkCardEnvironment()
+    return { ok: false, code: null, log: message, ...env }
+  }
+  const text = `${result.out}\n${result.err}`.trim()
+  const env = await checkCardEnvironment()
+  return {
+    ok: env.ready === true,
+    code: result.code,
+    log: text.slice(-4000),
+    ...env,
+  }
+}
+
 /** 环境自检：Python 在不在、bleak 装没装。不碰蓝牙，所以很快。 */
 export async function checkCardEnvironment() {
   try {

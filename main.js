@@ -3431,6 +3431,82 @@ function runBridge(args, { timeoutMs = DEFAULT_TIMEOUT_MS, python = null, script
     attempt(0);
   });
 }
+function runPythonModule(moduleArgs, { timeoutMs = 5 * 60 * 1e3 } = {}) {
+  const interpreters = pythonCandidates();
+  return new Promise((resolve5, reject) => {
+    let settled = false;
+    const finish = (fn2, value) => {
+      if (settled) return;
+      settled = true;
+      fn2(value);
+    };
+    const attempt = (index) => {
+      if (index >= interpreters.length) {
+        finish(
+          reject,
+          Object.assign(
+            new Error("\u8FD9\u53F0\u7535\u8111\u4E0A\u6CA1\u627E\u5230 Python\u3002\u5F55\u97F3\u5361\u76F4\u8FDE\u9700\u8981 Python 3.10+\uFF0C\u88C5\u597D\u4E4B\u540E\u518D\u56DE\u6765\u70B9\u4E00\u6B21\u3002"),
+            { status: 503, reason: "no-python" }
+          )
+        );
+        return;
+      }
+      const child = (0, import_node_child_process.spawn)(interpreters[index], moduleArgs, {
+        windowsHide: true,
+        stdio: ["ignore", "pipe", "pipe"],
+        env: { ...process.env, PYTHONIOENCODING: "utf-8" }
+      });
+      let out = "";
+      let err = "";
+      const timer = setTimeout(() => {
+        try {
+          child.kill();
+        } catch {
+        }
+      }, timeoutMs);
+      child.stdout.setEncoding("utf8");
+      child.stderr.setEncoding("utf8");
+      child.stdout.on("data", (chunk) => {
+        out += chunk;
+      });
+      child.stderr.on("data", (chunk) => {
+        err += chunk;
+      });
+      child.on("error", (error2) => {
+        clearTimeout(timer);
+        if (error2 && error2.code === "ENOENT") {
+          attempt(index + 1);
+          return;
+        }
+        finish(reject, Object.assign(error2, { status: 502 }));
+      });
+      child.on("close", (code) => {
+        clearTimeout(timer);
+        finish(resolve5, { code, out, err });
+      });
+    };
+    attempt(0);
+  });
+}
+async function installCardDeps() {
+  let result;
+  try {
+    result = await runPythonModule(["-m", "pip", "install", "--upgrade", "bleak"]);
+  } catch (error2) {
+    const message = error2 && error2.message ? error2.message : String(error2);
+    const env2 = await checkCardEnvironment();
+    return { ok: false, code: null, log: message, ...env2 };
+  }
+  const text = `${result.out}
+${result.err}`.trim();
+  const env = await checkCardEnvironment();
+  return {
+    ok: env.ready === true,
+    code: result.code,
+    log: text.slice(-4e3),
+    ...env
+  };
+}
 async function checkCardEnvironment() {
   try {
     const info = await runBridge(["doctor"], { timeoutMs: 20 * 1e3 });
@@ -7713,6 +7789,10 @@ function createHandler(config) {
     const env = await checkCardEnvironment();
     return send(res, 200, { ok: true, ...env, running: cardState.running });
   }
+  async function handleCardInstall(_req, res) {
+    const result = await installCardDeps();
+    return send(res, 200, { ok: true, ...result });
+  }
   async function handleCardScan(res, url) {
     const timeout = Number(url.searchParams.get("timeout") || 8);
     const safeTimeout = Number.isFinite(timeout) ? Math.min(20, Math.max(4, Math.round(timeout))) : 8;
@@ -7931,6 +8011,7 @@ function createHandler(config) {
         if (action === "conflict" && parts[2] === "unresolve") return await handleConflictUnresolve(req, res);
         if (action === "history" && parts[2] === "restore") return await handleHistoryRestore(req, res);
         if (action === "archive" && parts[2] === "import") return await handleArchiveImport(req, res);
+        if (action === "card" && parts[2] === "install") return await handleCardInstall(req, res);
         if (action === "card" && parts[2] === "import") return await handleCardImport(req, res);
         if (action === "card" && parts[2] === "delete") return await handleCardDelete(req, res);
         if (action === "card" && parts[2] === "wifi-activate") return await handleCardWifiActivate(req, res);
@@ -10245,7 +10326,11 @@ var LEX = {
     "card.desc": "\u7ED5\u8FC7\u4E91\u7AEF\uFF0C\u76F4\u63A5\u901A\u8FC7\u84DD\u7259\u4ECE\u5F55\u97F3\u5361\u4E0A\u628A\u97F3\u9891\u62C9\u8FDB\u7B14\u8BB0\u5E93\u3002\u5361\u7247\u8981\u5F00\u673A\u3001\u5728 3 \u7C73\u5185\uFF0C\u5E76\u4E14\u624B\u673A App \u5148\u65AD\u5F00\uFF08\u5173\u6389\u624B\u673A\u84DD\u7259\u5373\u53EF\uFF0C\u4E0D\u7528\u89E3\u7ED1\uFF09\u3002",
     "card.envOk": "\u73AF\u5883\u5C31\u7EEA",
     "card.envMissing": "\u7F3A\u5C11\u8FD0\u884C\u73AF\u5883",
-    "card.envHint": "\u5F55\u97F3\u5361\u76F4\u8FDE\u9700\u8981\u7535\u8111\u4E0A\u6709 Python 3.10+ \u548C bleak \u5305\u3002\u88C5\u4E00\u4E0B\uFF1Apip install bleak",
+    "card.envHint": "\u5F55\u97F3\u5361\u76F4\u8FDE\u9700\u8981\u7535\u8111\u4E0A\u6709 Python 3.10+ \u548C bleak \u5305\u3002\u4E0D\u88C5\u4E5F\u80FD\u7528\u522B\u7684\u2014\u2014\u7B14\u8BB0\u5E93\u3001\u4E91\u7AEF\u540C\u6B65\u3001\u754C\u9762\u90FD\u4E0D\u53D7\u5F71\u54CD\uFF0C\u53EA\u662F\u8FD9\u4E00\u9875\u8FDE\u4E0D\u4E0A\u5361\u3002\u70B9\u4E0B\u9762\u90A3\u9897\u300C\u4E00\u952E\u88C5\u4F9D\u8D56\u300D\uFF0C\u88C5\u597D\u5C31\u81EA\u52A8\u8BA4\u3002",
+    "card.installDeps": "\u4E00\u952E\u88C5\u4F9D\u8D56",
+    "card.installing": "\u6B63\u5728\u88C5\uFF0C\u53EF\u80FD\u8981\u4E00\u4E24\u5206\u949F\u2026",
+    "card.installOk": "\u4F9D\u8D56\u88C5\u597D\u4E86\uFF0C\u53EF\u4EE5\u626B\u63CF\u4E86",
+    "card.installFail": "\u6CA1\u88C5\u4E0A\u3002\u4E0B\u9762\u8FD9\u6BB5\u662F pip \u7684\u539F\u8BDD\uFF0C\u7167\u7740\u5B83\u6392\u67E5\uFF1A",
     "card.envBridge": "\u534F\u8BAE\u6865",
     "card.scan": "\u626B\u63CF\u5F55\u97F3\u5361",
     "card.scanning": "\u6B63\u5728\u626B\u63CF\u2026",
@@ -10902,7 +10987,11 @@ var LEX = {
     "card.desc": "Skip the cloud \u2014 pull audio straight off the recorder card over Bluetooth. The card must be on, within about 3 metres, and the phone app disconnected (just turn off phone Bluetooth; no need to unbind).",
     "card.envOk": "Ready",
     "card.envMissing": "Runtime missing",
-    "card.envHint": "Direct card access needs Python 3.10+ and the bleak package on this computer. Install with: pip install bleak",
+    "card.envHint": "Direct card access needs Python 3.10+ and the bleak package on this computer. Everything else \u2014 the vault, cloud sync, the whole panel \u2014 works fine without it; only this page needs the card. Press Install dependencies below and it will pick them up automatically.",
+    "card.installDeps": "Install dependencies",
+    "card.installing": "Installing, this can take a minute or two\u2026",
+    "card.installOk": "Dependencies installed \u2014 you can scan now",
+    "card.installFail": "Install failed. This is what pip said:",
     "card.envBridge": "Protocol bridge",
     "card.scan": "Scan for card",
     "card.scanning": "Scanning\u2026",
@@ -11556,7 +11645,11 @@ var LEX = {
     "card.desc": "Sla de cloud over \u2014 haal audio rechtstreeks via bluetooth van de recordercard. De kaart moet aan staan, binnen ongeveer 3 meter, en de telefoon-app moet losgekoppeld zijn (zet gewoon bluetooth op je telefoon uit; ontkoppelen is niet nodig).",
     "card.envOk": "Klaar voor gebruik",
     "card.envMissing": "Runtime ontbreekt",
-    "card.envHint": "Directe toegang tot de kaart vereist Python 3.10+ en het bleak-pakket op deze computer. Installeren met: pip install bleak",
+    "card.envHint": "Directe toegang tot de kaart vereist Python 3.10+ en het bleak-pakket op deze computer. Al het andere \u2014 de kluis, cloudsynchronisatie, het hele paneel \u2014 werkt ook zonder; alleen deze pagina heeft de kaart nodig. Klik hieronder op Afhankelijkheden installeren en het wordt vanzelf opgepikt.",
+    "card.installDeps": "Afhankelijkheden installeren",
+    "card.installing": "Bezig met installeren, dit kan een minuut of twee duren\u2026",
+    "card.installOk": "Afhankelijkheden ge\xEFnstalleerd \u2014 je kunt nu scannen",
+    "card.installFail": "Installeren mislukt. Dit zei pip:",
     "card.envBridge": "Protocolbrug",
     "card.scan": "Kaart zoeken",
     "card.scanning": "Bezig met zoeken\u2026",
@@ -14045,12 +14138,14 @@ var CSS = `
 .dshgn_note .dshgn_md.dshgn_mdS{font-size:12px !important;line-height:1.7}
 .dshgn_note .dshgn_md.dshgn_mdL{font-size:15px !important;line-height:1.9}
 .dshgn_btn{appearance:none;display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 11px;
-  border:0.5px solid var(--dsw-alias-border-l2);border-radius:8px;background:transparent;
+  border:0.5px solid var(--dsw-alias-border-l2);border-radius:7px;background:transparent;
   color:var(--dsw-alias-label-primary);cursor:pointer;font:inherit;font-size:12px;white-space:nowrap}
 .dshgn_btn:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
 .dshgn_btn:disabled{opacity:.5;cursor:default}
-.dshgn_btnPrimary{border:0;background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-foreground)}
-.dshgn_btnPrimary:hover:not(:disabled){background:var(--dsw-alias-button-primary-hover)}
+/* \u952E\u76D8\u8D70\u5230\u54EA\u4E00\u9897\uFF0C\u54EA\u4E00\u9897\u4EAE\u4E00\u5708\u3002\u6587\u4EF6\u91CC\u53E6\u5916 40 \u6765\u9897\u5C0F\u6309\u94AE\u5404\u81EA\u5199\u4E86\u8FD9\u6761\uFF0C
+   \u504F\u504F\u6700\u5E38\u7528\u7684 .dshgn_btn / .dshgn_chip / \u5DE6\u680F\u76EE\u5F55\u884C\u6F0F\u4E86\u2014\u2014Tab \u8FC7\u53BB\u4EC0\u4E48\u90FD\u770B\u4E0D\u89C1\u3002 */
+.dshgn_btn:focus-visible,.dshgn_chip:focus-visible{
+  outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dshgn_btnDanger{color:var(--dsw-alias-state-error-primary)}
 /* overflow:hidden \u662F\u627F\u91CD\u7684\uFF1A\u4E09\u680F\u5404\u81EA\u5185\u90E8\u6EDA\u52A8\uFF0C\u5916\u5C42\u7EDD\u4E0D\u80FD\u6EDA\u3002
    \u5C11\u4E86\u5B83\uFF0C\u6B63\u6587\u91CC\u4E00\u5757\u8D85\u5BBD\u7684\u4EE3\u7801\u8868\u683C\u4F1A\u628A\u6574\u4E2A .dshgn_body \u6491\u51FA\u6A2A\u5411\u6EDA\u52A8\u6761\uFF0C
@@ -14077,10 +14172,10 @@ var CSS = `
   box-shadow:inset 0 0 0 1px var(--dsw-alias-brand-primary)}
 /* \u5DE6\u680F\u81EA\u5DF1\u7684\u7B5B\uFF1A\u7EC6\u4E00\u53F7\u7684\u8F93\u5165\u6846\uFF0C\u538B\u5728\u300C\u5168\u90E8\u7B14\u8BB0\u300D\u4E0B\u9762\u3001\u70ED\u529B\u56FE\u4E0A\u9762\u3002
    min-width:0 \u662F\u627F\u91CD\u7684\u2014\u2014\u8F93\u5165\u6846\u9ED8\u8BA4\u6709\u81EA\u5DF1\u7684\u6700\u5C0F\u5BBD\u5EA6\uFF0C\u4E0D\u5199\u4F1A\u628A\u5DE6\u680F\u6491\u7834\u3002 */
-.dshgn_treeFilter{flex:none;display:flex;align-items:center;gap:4px;margin:2px 4px 4px;padding:0 6px;
+.dshgn_treeFilter{flex:none;display:flex;align-items:center;gap:4px;height:26px;margin:2px 0 4px;padding:0 9px;
   border-radius:7px;background:var(--dsw-alias-interactive-bg-hover)}
-.dshgn_treeFilterInput{flex:1;min-width:0;height:22px;padding:0;border:0;background:transparent;
-  color:var(--dsw-alias-label-secondary);font:inherit;font-size:11px;outline:none}
+.dshgn_treeFilterInput{flex:1;min-width:0;height:24px;padding:0;border:0;background:transparent;
+  color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;outline:none}
 .dshgn_treeFilterInput::placeholder{color:var(--dsw-alias-label-tertiary)}
 .dshgn_treeFilterClear{appearance:none;flex:none;display:inline-flex;align-items:center;justify-content:center;
   width:16px;height:16px;padding:0;border:0;border-radius:50%;background:transparent;
@@ -14166,9 +14261,11 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
   .dshgn_tabs{overflow-x:auto;scrollbar-width:none}
   .dshgn_tabs::-webkit-scrollbar{display:none}
 }
-.dshgn_searchWrap{flex:none;display:flex;align-items:center;gap:6px;padding:8px 10px;
+/* \u5DE6\u53F3 6px \u4E0E\u5DE6\u680F .dshgn_tree \u7684 padding \u4E00\u81F4\uFF1A\u300C\u5168\u90E8\u7B14\u8BB0\u300D\u90A3\u4E00\u884C\u548C\u8FD9\u4E2A\u641C\u7D22\u6846
+   \u5728\u5404\u81EA\u7684\u680F\u91CC\u90FD\u4ECE\u540C\u4E00\u6761\u7AD6\u7EBF\u8D77\u5934\uFF0C\u4E24\u8FB9\u5BBD\u5EA6\u4E5F\u4E00\u6837\uFF0C\u4E0D\u518D\u4E00\u5BBD\u4E00\u7A84\u3002 */
+.dshgn_searchWrap{flex:none;display:flex;align-items:center;gap:6px;padding:8px 6px;
   border-bottom:0.5px solid var(--dsw-alias-border-l2)}
-.dshgn_search{flex:1;min-width:0;height:26px;padding:0 8px;border:0.5px solid var(--dsw-alias-border-l2);
+.dshgn_search{flex:1;min-width:0;height:26px;padding:0 9px;border:0.5px solid var(--dsw-alias-border-l2);
   border-radius:7px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;
   font-size:12px;outline:none}
 .dshgn_search:focus{border-color:var(--dsw-alias-brand-primary)}
@@ -14593,14 +14690,14 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
   color:var(--dsw-alias-label-primary);font-family:var(--dshgn-fontMono);
   font-size:12px;line-height:1.65;outline:none}
 .dshgn_textarea:focus{border-color:var(--dsw-alias-brand-primary)}
-.dshgn_btn{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 11px;border-radius:7px;
-  border:0.5px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-primary);
-  font:inherit;font-size:12px;cursor:pointer}
-.dshgn_btn:hover{background:var(--dsw-alias-interactive-bg-hover)}
-.dshgn_btn:disabled{opacity:.5;cursor:default}
-.dshgn_btnPri{border-color:transparent;background:var(--dsw-alias-button-primary-fill);
+/* .dshgn_btn \u7684\u5E95\u5B50\u5728\u6587\u4EF6\u66F4\u4E0A\u9762\u90A3\u4E00\u6BB5\uFF08\u4E00\u4EFD\u5C31\u591F\uFF09\u3002\u8FD9\u91CC\u4EE5\u524D\u53C8\u5199\u4E86\u4E00\u904D\uFF0C
+   \u5706\u89D2 7px \u5BF9 8px\u3001hover \u4E00\u4E2A\u5E26 :not(:disabled) \u4E00\u4E2A\u4E0D\u5E26\u2014\u2014\u540C\u4E00\u4E2A\u7C7B\u540D\u4E24\u4EFD\u5B9A\u4E49\uFF0C
+   \u540E\u4E00\u4EFD\u628A\u524D\u4E00\u4EFD\u7684\u5706\u89D2\u6084\u6084\u6539\u6389\uFF0C47 \u9897\u6309\u94AE\u91CC\u54EA\u9897\u662F 7px \u53D6\u51B3\u4E8E\u5B83\u6E32\u67D3\u5728\u54EA\u4E2A\u533A\u5757\u3002
+   \u73B0\u5728\u53EA\u7559\u4E0A\u9762\u90A3\u4E00\u4EFD\u3002 */
+.dshgn_btnPri,.dshgn_btnPrimary{border-color:transparent;background:var(--dsw-alias-button-primary-fill);
   color:var(--dsw-alias-label-primary-foreground)}
-.dshgn_btnPri:hover{background:var(--dsw-alias-button-primary-hover)}
+.dshgn_btnPri:hover:not(:disabled),.dshgn_btnPrimary:hover:not(:disabled){
+  background:var(--dsw-alias-button-primary-hover)}
 /* \u6DE1\u4E00\u6863\u7684\u5F3A\u8C03\u6309\u94AE\uFF1A\u7ED9\u300C\u7528\u6211\u7684\u672C\u5730\u7248 / \u7528\u4E91\u7AEF\u7248\u300D\u8FD9\u79CD\u4E8C\u9009\u4E00\u7528\u3002
    \u6EE1\u9971\u548C\u7684\u4E3B\u8272\u5728\u8FD9\u4E24\u4E2A\u6309\u94AE\u4E0A\u4F1A\u62A2\u6389\u6BD4\u5BF9\u6B63\u6587\u7684\u6CE8\u610F\u529B\u2014\u2014\u7528\u6237\u662F\u6765\u8BFB\u5DEE\u5F02\u7684\uFF0C
    \u4E0D\u662F\u6765\u770B\u6309\u94AE\u7684\u3002\u8FD9\u91CC\u6539\u7528\u67D4\u548C\u7684\u586B\u5145 + \u540C\u8272\u7CFB\u6DF1\u5B57\uFF0C\u9009\u4E2D\u611F\u8FD8\u5728\u4F46\u4E0D\u523A\u773C\u3002 */
@@ -14629,7 +14726,15 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 /* \u5F55\u97F3\u5361\u9762\u677F\uFF1A\u5361\u7247\u4E0A\u7684\u6587\u4EF6\u5217\u8868\u4E0E\u5371\u9669\u5F00\u5173\u3002
    \u300C\u5BFC\u5165\u540E\u5220\u539F\u4EF6\u300D\u90A3\u4E00\u884C\u523B\u610F\u505A\u6210\u666E\u901A checkbox \u800C\u4E0D\u662F\u82B1\u54E8\u5F00\u5173\u2014\u2014\u5B83\u65C1\u8FB9\u5199\u7740
    \u300C\u6C38\u4E45\u5220\u9664\u300D\uFF0C\u8D8A\u6734\u7D20\u8D8A\u597D\uFF0C\u522B\u8BA9\u4EBA\u8BEF\u4EE5\u4E3A\u662F\u67D0\u79CD\u63A8\u8350\u8BBE\u7F6E\u3002 */
-.dshgn_paneInner{display:flex;flex-direction:column;gap:12px;padding:18px 20px;max-width:720px;overflow-y:auto}
+/* margin:0 auto \u662F\u627F\u91CD\u7684\uFF1A\u5F55\u97F3\u5361\u8FD9\u4E00\u9875\u53EA\u6709 720px \u5BBD\uFF0C\u4E0D\u5C45\u4E2D\u65F6\u6574\u9875\u8D34\u5728\u5DE6\u8FB9\uFF0C
+   \u53F3\u8FB9\u7A7A\u51FA\u4E00\u5927\u7247\uFF0C\u770B\u7740\u50CF\u6CA1\u52A0\u8F7D\u5B8C\u3002\u6EDA\u52A8\u4EA4\u7ED9\u5916\u5C42 .dshgn_pane\uFF0C\u8FD9\u91CC\u518D\u5957\u4E00\u5C42
+   overflow \u4F1A\u51FA\u73B0\u300C\u6EDA\u5230\u4E00\u534A\u5361\u4F4F\u300D\u7684\u53CC\u5C42\u6EDA\u52A8\u6761\u3002
+   padding \u5FC5\u987B\u662F 0\uFF1A\u5916\u5C42\u7684 .dshgn_pane \u5DF2\u7ECF\u6709 18px/40px \u7684\u7559\u767D\uFF0C\u8FD9\u91CC\u518D\u57AB\u4E00\u904D
+   \u5C31\u53D8\u6210\u6807\u9898\u4E0A\u65B9\u7A7A 36px\u3001\u672B\u5C3E\u7A7A 80px\uFF0C\u6574\u9875\u770B\u7740\u50CF\u88AB\u6324\u5728\u4E2D\u95F4\u4E00\u5C0F\u6761\u3002 */
+.dshgn_paneInner{display:flex;flex-direction:column;gap:12px;padding:0;max-width:720px;margin:0 auto}
+/* \u5927\u6807\u9898\u81EA\u5E26 margin-top:18px\uFF0C\u5916\u5C42\u5DF2\u7ECF\u6709 18px \u7559\u767D\uFF0C\u53E0\u8D77\u6765\u6807\u9898\u79BB\u9876 36px\uFF0C
+   \u6574\u9875\u50CF\u88AB\u5F80\u4E0B\u63A8\u4E86\u4E00\u622A\u3002\u9996\u4E2A\u5B50\u5143\u7D20\u628A\u8FD9\u6BB5\u8BA9\u51FA\u53BB\u3002 */
+.dshgn_paneInner > .dshgn_h:first-child{margin-top:0}
 .dshgn_paneDesc{font-size:12px;line-height:1.7;color:var(--dsw-alias-label-tertiary)}
 .dshgn_row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px}
 .dshgn_fileList{display:flex;flex-direction:column;gap:2px;margin-top:8px;max-height:260px;overflow-y:auto}
@@ -19871,6 +19976,8 @@ function CardPane(props) {
   const { t: t4, status, showToast, onError, onChanged } = props;
   const [env, setEnv] = h2(null);
   const [envBusy, setEnvBusy] = h2(false);
+  const [installing, setInstalling] = h2(false);
+  const [installLog, setInstallLog] = h2(null);
   const [scanning, setScanning] = h2(false);
   const [found, setFound] = h2(null);
   const [files, setFiles] = h2(null);
@@ -19896,6 +20003,22 @@ function CardPane(props) {
       setEnvBusy(false);
     }
   }, []);
+  const installDeps = q2(async () => {
+    setInstalling(true);
+    setInstallLog(null);
+    try {
+      const json = await api("/card/install", { method: "POST" });
+      setEnv(json);
+      setInstallLog(json);
+      if (json && json.ok === true) showToast(t4("card.installOk"));
+    } catch (err) {
+      const message = err && err.message ? err.message : String(err);
+      setInstallLog({ ok: false, log: message });
+      onError(message);
+    } finally {
+      setInstalling(false);
+    }
+  }, [onError, showToast, t4]);
   y2(() => {
     void checkEnv();
   }, [checkEnv]);
@@ -20091,6 +20214,28 @@ function CardPane(props) {
           ready ? `Python ${env.python || "?"} \xB7 bleak ${env.bleak || "?"}` : t4("card.envHint")
         ),
         !ready && env !== null && env.error ? h4("pre", { className: "dshgn_log" }, String(env.error)) : null,
+        // 没就绪时把「一键装依赖」摆在最前面：用户看到「缺少运行环境」之后
+        // 第一件想做的事就是把它补上，不该让他先去猜 pip 怎么敲。
+        !ready ? h4(
+          "div",
+          { className: "dshgn_row" },
+          h4(
+            "button",
+            {
+              type: "button",
+              className: "dshgn_btn dshgn_btnPrimary",
+              onClick: () => void installDeps(),
+              disabled: installing
+            },
+            installing ? t4("card.installing") : t4("card.installDeps")
+          )
+        ) : null,
+        installLog !== null && installLog.ok !== true ? h4(
+          "div",
+          null,
+          h4("div", { className: "dshgn_sectionDesc" }, t4("card.installFail")),
+          h4("pre", { className: "dshgn_log" }, String(installLog.log || ""))
+        ) : null,
         h4(
           "div",
           { className: "dshgn_row" },

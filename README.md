@@ -75,8 +75,12 @@ Two channels, either one, with automatic fallback:
 - Imported files are named by date and title, written into the vault, and turned into Markdown
   notes. "Delete from the card after import" is opt-in.
 
-> Direct card access needs **Python 3.10+** and the `bleak` package (`pip install bleak`).
-> The settings page checks the environment and tells you what is missing. Bluetooth access is
+> Direct card access needs **Python 3.10+** and the `bleak` package. The recorder page checks the
+> environment and tells you what is missing; when something is, it offers a **Install dependencies**
+> button that runs `python -m pip install --upgrade bleak` for you and re-checks with the bridge
+> afterwards — success is judged by the bridge's own report, not by pip's exit code. Without Python
+> nothing else breaks: the vault, cloud sync and the whole panel keep working, only the recorder page
+> stays disconnected. Bluetooth access is
 > **read-only**: the plugin never sends the "clean transferred files" command on its own, and only
 > deletes by file name when you explicitly tick "delete after import".
 
@@ -143,7 +147,7 @@ Obsidian → Settings → Community plugins → Browse → search for **Getnote 
 ```bash
 npm install
 npm run build         # produces main.js and copies card/ + locale/ into the plugin root
-npm test              # 1001 offline tests (needs Node >= 22; jsdom 31 uses Node 22's zstd API)
+npm test              # 1006 offline tests (needs Node >= 22; jsdom 31 uses Node 22's zstd API)
 npm run check:market  # community-directory self-check: id/name/description rules, version
                       # consistency across three files, leaked credentials
 ```
@@ -203,7 +207,9 @@ The automated directory review reports a few behaviors; here is what each one is
   content itself never goes through `node:fs`.
 - **Shell execution** — `node:child_process` runs the bundled Python bridge
   (`card/getcard_bridge.py`) for voice-recorder import, and only when you start a scan or an
-  import. Nothing else spawns a process.
+  import. The one exception is the **Install dependencies** button on the recorder page, which runs
+  `python -m pip install --upgrade bleak` — and only when you press it. Nothing else spawns a
+  process.
 - **Clipboard** — write-only, and only when you press a copy action (copy a link, copy the body,
   copy a batch of references, copy a share URL). The plugin never reads the clipboard; paste
   handling uses the paste event the browser already gives it.
@@ -260,11 +266,11 @@ npm test
 ```
 
 Coverage: vault algorithms (196), archive bundles (64), history snapshots (51), sync merging (66),
-**9 filesystem-adapter checks** (`app.vault.adapter` vs `node:fs` semantics), **274 HTTP route
+**9 filesystem-adapter checks** (`app.vault.adapter` vs `node:fs` semantics), **277 HTTP route
 checks** (a real server, real requests, real files: Range 206/416, path-escape rejection, masked
 credentials, sync boundaries, recorder environment probing, attachment upload rules, broken-link
 checks, todo lists), **37 startup checks** (the built `main.js` is really `require`d with a fake
-`obsidian` module and an in-memory adapter, then `onload` is driven), **183 panel render checks**
+`obsidian` module and an in-memory adapter, then `onload` is driven), **185 panel render checks**
 (jsdom renders the real panel, every tab, dark/light themes, keyboard handling, drag and drop,
 selection clipping, image zoom, search highlighting, conflict and trash panes), **9 view-layer
 checks**, **8 markdown render checks**, **8 transcript checks** and **4 external integration
@@ -278,6 +284,9 @@ Everything is offline: no network, and never your real vault.
 
 - **Desktop only** — recorder import spawns a Python child process, so mobile is out.
 - **Recorder import needs a system Python**, and `bleak` must support your Bluetooth stack.
+  When either is missing the recorder page offers an **Install dependencies** button instead of
+  sending you off to a terminal; without Python at all, only that page is unavailable — the vault,
+  cloud sync and the rest of the panel keep working.
 - Wi-Fi transfer's IP probing uses `netsh` on Windows and falls back to the system routing table
   elsewhere.
 - The cloud API is Getnote's non-public API and may change on their side; credentials stay local.

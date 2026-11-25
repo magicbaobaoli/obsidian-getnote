@@ -17206,3 +17206,172 @@ test('界面偏好写在宿主给的存储里，不再往 localStorage 里塞', 
     window.localStorage.removeItem('dshgn.probeKey')
   }
 })
+
+/**
+ * 录音卡这一页从前只告诉用户「缺少运行环境，去装 Python 和 bleak」，然后就没有下文了——
+ * 不会敲 pip 的人到这一步只能放弃。现在没就绪时摆一颗「一键装依赖」：
+ * 点一下替他把 bleak 装上，装完自己重新自检。
+ *
+ * 这里替身的是 /card/env 与 /card/install 两个响应：真去跑 pip 会动这台机器的环境，
+ * 而且装没装成还取决于网络，测不稳定。考的是面板——按钮在不在、点完会不会把
+ * pip 的原话摊出来、装成之后那颗按钮收不收起来。
+ */
+test('录音卡缺环境时有一颗「一键装依赖」，装没成会把 pip 的原话摊出来', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const wrapped = window.fetch
+  let installCalls = 0
+  window.fetch = globalThis.fetch = async (input, init) => {
+    const url = typeof input === 'string' ? input : String(input && input.url)
+    if (url.includes('/getnote/card/env')) {
+      // 先报「没就绪」，装完那一次仍报没就绪：要走的是失败那条路。
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          ready: false,
+          python: '',
+          bleak: '',
+          bridge: '/tmp/card/getcard_bridge.py',
+          error: '没找到可用的 Python。',
+        }),
+      }
+    }
+    if (url.includes('/getnote/card/install')) {
+      installCalls += 1
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          ok: false,
+          code: 1,
+          log: 'ERROR: Could not find a version that satisfies the requirement bleak',
+          ready: false,
+          python: '',
+          bleak: '',
+          error: '没找到可用的 Python。',
+        }),
+      }
+    }
+    return wrapped(input, init)
+  }
+
+  try {
+    await clickTab('录音卡')
+    await waitFor(
+      () => window.document.querySelector('.dshgn_badgeWarn') !== null,
+      8000,
+      '环境自检要报「缺东西」',
+    )
+
+    const installBtn = await waitFor(
+      () =>
+        Array.from(window.document.querySelectorAll('.dshgn_btn.dshgn_btnPrimary')).find(
+          (el) => (el.textContent || '').trim() === '一键装依赖',
+        ),
+      5000,
+      '缺环境时应该有一颗「一键装依赖」',
+    )
+    assert.equal(installBtn.disabled, false, '没在装的时候按钮该能点')
+    // 装之前不该有失败输出块
+    const before = window.document.querySelectorAll('.dshgn_log').length
+
+    installBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+
+    const failNote = await waitFor(
+      () => {
+        const nodes = Array.from(window.document.querySelectorAll('.dshgn_sectionDesc'))
+        return nodes.find((el) => (el.textContent || '').includes('没装上')) || null
+      },
+      8000,
+      '装失败要把「没装上」说出来',
+    )
+    assert.ok(failNote, '没成的时候应该有一段说明')
+    assert.equal(installCalls, 1, '点一下只该发一次 /card/install')
+
+    // pip 的原话要原样摊出来，用户照着它才能自己排查
+    const logs = Array.from(window.document.querySelectorAll('.dshgn_log'))
+    assert.ok(logs.length > before, '装失败后应该多出一块输出')
+    assert.ok(
+      logs.some((el) => (el.textContent || '').includes('Could not find a version')),
+      '要把 pip 的原话摊出来，实际：' + logs.map((el) => el.textContent).join(' | '),
+    )
+
+    // 失败之后按钮还要能再点一次（换网络、换镜像都能重试）
+    const again = Array.from(window.document.querySelectorAll('.dshgn_btn.dshgn_btnPrimary')).find(
+      (el) => (el.textContent || '').trim() === '一键装依赖',
+    )
+    assert.ok(again, '装失败之后按钮该留着，让人能再试一次')
+    assert.equal(again.disabled, false, '失败之后不该一直灰着')
+  } finally {
+    window.fetch = globalThis.fetch = wrapped
+    await clickTab('笔记')
+  }
+})
+
+test('依赖装好之后那颗「一键装依赖」就收起来了，只留一句可以扫描了', async () => {
+  const wrapped = window.fetch
+  window.fetch = globalThis.fetch = async (input, init) => {
+    const url = typeof input === 'string' ? input : String(input && input.url)
+    if (url.includes('/getnote/card/env')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          ready: false,
+          python: '',
+          bleak: '',
+          bridge: '/tmp/card/getcard_bridge.py',
+          error: '还没装 bleak。',
+        }),
+      }
+    }
+    if (url.includes('/getnote/card/install')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, code: 0, log: 'Successfully installed bleak-0.22.3', ready: true, python: '3.12.1', bleak: '0.22.3', error: null }),
+      }
+    }
+    return wrapped(input, init)
+  }
+
+  try {
+    await clickTab('录音卡')
+    const installBtn = await waitFor(
+      () =>
+        Array.from(window.document.querySelectorAll('.dshgn_btn.dshgn_btnPrimary')).find(
+          (el) => (el.textContent || '').trim() === '一键装依赖',
+        ),
+      8000,
+      '缺环境时应该有那颗按钮',
+    )
+    installBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+
+    await waitFor(
+      () => {
+        const nodes = Array.from(window.document.querySelectorAll('.dshgn_btn.dshgn_btnPrimary'))
+        return !nodes.some((el) => (el.textContent || '').trim() === '一键装依赖')
+      },
+      8000,
+      '装好之后按钮要收起来',
+    )
+    // 也不该出现「没装上」那一段
+    const descs = Array.from(window.document.querySelectorAll('.dshgn_sectionDesc')).map(
+      (el) => el.textContent || '',
+    )
+    assert.equal(
+      descs.some((text) => text.includes('没装上')),
+      false,
+      '装成了就别再摆失败说明，实际：' + descs.join(' | '),
+    )
+    // 成功时展示的是 Python 与 bleak 的版本
+    assert.ok(
+      descs.some((text) => text.includes('Python') && text.includes('bleak')),
+      '装好之后要报出 Python 与 bleak 的版本，实际：' + descs.join(' | '),
+    )
+  } finally {
+    window.fetch = globalThis.fetch = wrapped
+    await clickTab('笔记')
+  }
+})
+
