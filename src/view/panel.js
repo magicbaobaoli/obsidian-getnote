@@ -2611,6 +2611,83 @@ async function saveFile(url, filename) {
       hostLocale = raw === 'zh' || raw === 'en' || raw === 'nl' ? raw : null
     }
 
+    /**
+     * 宿主提供的键值存储，由 main.js 注入（Obsidian 的 app.loadLocalStorage /
+     * app.saveLocalStorage）。
+     *
+     * 面板里那些纯界面偏好（最近搜过的词、栏宽、上次开着哪一篇、草稿…）原来是
+     * 直接写 window.localStorage 的。在 Obsidian 里渲染进程的 localStorage 是
+     * 整个应用共用的一份，既不在库里也不跟着库走；换台机器打开同一个库，这些
+     * 偏好全丢，而插件自己的数据目录又只有它自己认。社区目录的自动审核会把这
+     * 一条标成「没有用插件数据 API」，宿主这边正好有现成的键值接口。
+     *
+     * 注入的是三个同步函数；没注入（离线测试、纯浏览器预览）就退回
+     * window.localStorage，语义完全一样。
+     */
+    let hostStorage = null
+
+    /** 注入宿主的键值存储；传 null 退回 window.localStorage。 */
+    export function setHostStorage(store) {
+      const usable =
+        store !== null &&
+        typeof store === 'object' &&
+        typeof store.get === 'function' &&
+        typeof store.set === 'function' &&
+        typeof store.remove === 'function'
+      hostStorage = usable ? store : null
+    }
+
+    /** 读一个键；读不到或存储不可用时返回 null。 */
+    function storeGet(key) {
+      if (hostStorage !== null) {
+        try {
+          const value = hostStorage.get(key)
+          return typeof value === 'string' ? value : value === null || value === undefined ? null : String(value)
+        } catch {
+          return null
+        }
+      }
+      try {
+        return window.localStorage.getItem(key)
+      } catch {
+        return null
+      }
+    }
+
+    /** 写一个键；写不进去就算了（隐私模式、配额满）。 */
+    function storeSet(key, value) {
+      if (hostStorage !== null) {
+        try {
+          hostStorage.set(key, value)
+        } catch {
+          // 存不了就这次先记在内存里
+        }
+        return
+      }
+      try {
+        window.localStorage.setItem(key, value)
+      } catch {
+        // 存不了就这次先记在内存里
+      }
+    }
+
+    /** 删一个键；删不掉也当它没了。 */
+    function storeRemove(key) {
+      if (hostStorage !== null) {
+        try {
+          hostStorage.remove(key)
+        } catch {
+          // 删不掉就当这次只在内存里没了
+        }
+        return
+      }
+      try {
+        window.localStorage.removeItem(key)
+      } catch {
+        // 删不掉就当这次只在内存里没了
+      }
+    }
+
     /** 设置面板语言；传 null 恢复「跟随宿主」。非法值一律当 null。 */
     function setUiLocale(value) {
       uiLocale = value === 'zh' || value === 'en' || value === 'nl' ? value : null
@@ -6988,7 +7065,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       const clearRecentSearches = React.useCallback(() => {
         setRecentSearches([])
         try {
-          window.localStorage.removeItem(RECENT_KEY)
+          storeRemove(RECENT_KEY)
         } catch {
           // 存不了也删不了，那就这次先清空着
         }
@@ -7003,7 +7080,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           if (next.length === prev.length) return prev
           if (next.length === 0) {
             try {
-              window.localStorage.removeItem(RECENT_KEY)
+              storeRemove(RECENT_KEY)
             } catch {
               // 删不掉就当这次只在内存里没了
             }
@@ -7028,7 +7105,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       const makeSortPref = (key) => {
         const read = () => {
           try {
-            const saved = window.localStorage.getItem(key)
+            const saved = storeGet(key)
             if (saved === 'name' || saved === 'count' || saved === 'time') return saved
           } catch {
             // 隐私模式 / 存储被禁用：用默认值
@@ -7037,7 +7114,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         }
         const write = (next) => {
           try {
-            window.localStorage.setItem(key, next)
+            storeSet(key, next)
           } catch {
             // 隐私模式下存不了，下次打开回落默认值，不影响本次使用
           }
@@ -15711,7 +15788,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
 
     function readRecentSearches() {
       try {
-        const raw = window.localStorage.getItem(RECENT_KEY)
+        const raw = storeGet(RECENT_KEY)
         if (raw === null) return []
         const parsed = JSON.parse(raw)
         if (!Array.isArray(parsed)) return []
@@ -15731,7 +15808,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
 
     function writeRecentSearches(list) {
       try {
-        window.localStorage.setItem(RECENT_KEY, JSON.stringify(list))
+        storeSet(RECENT_KEY, JSON.stringify(list))
       } catch {
         // 隐私模式下存不了，这次先记在内存里，下次打开就没了
       }
@@ -15746,7 +15823,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
     function readColWidths() {
       const fallback = { tree: 204, list: 260 }
       try {
-        const raw = window.localStorage.getItem(COL_WIDTH_KEY)
+        const raw = storeGet(COL_WIDTH_KEY)
         if (raw === null) return fallback
         const parsed = JSON.parse(raw)
         const num = (value, min, max, def) => {
@@ -15764,7 +15841,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
 
     function writeColWidths(widths) {
       try {
-        window.localStorage.setItem(COL_WIDTH_KEY, JSON.stringify(widths))
+        storeSet(COL_WIDTH_KEY, JSON.stringify(widths))
       } catch {
         // 存不了就这次先用着，下次打开回落默认值
       }
@@ -15785,7 +15862,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
     function readSession() {
       const empty = { tab: '', dir: '', tag: '', path: '' }
       try {
-        const raw = window.localStorage.getItem(SESSION_KEY)
+        const raw = storeGet(SESSION_KEY)
         if (raw === null) return empty
         const parsed = JSON.parse(raw)
         if (parsed === null || typeof parsed !== 'object') return empty
@@ -15806,7 +15883,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
     function writeSession(patch) {
       try {
         const prev = readSession()
-        window.localStorage.setItem(SESSION_KEY, JSON.stringify({ ...prev, ...patch }))
+        storeSet(SESSION_KEY, JSON.stringify({ ...prev, ...patch }))
       } catch {
         // 存不了就这次先用着
       }
@@ -15823,7 +15900,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
 
     function readScrollMarks() {
       try {
-        const raw = window.localStorage.getItem(SCROLL_KEY)
+        const raw = storeGet(SCROLL_KEY)
         if (raw === null) return []
         const parsed = JSON.parse(raw)
         if (!Array.isArray(parsed)) return []
@@ -15849,7 +15926,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       const value = Math.max(0, Math.round(Number(top) || 0))
       try {
         const rest = readScrollMarks().filter((item) => item.path !== rel)
-        window.localStorage.setItem(SCROLL_KEY, JSON.stringify([{ path: rel, top: value }, ...rest].slice(0, SCROLL_KEEP)))
+        storeSet(SCROLL_KEY, JSON.stringify([{ path: rel, top: value }, ...rest].slice(0, SCROLL_KEEP)))
       } catch {
         // 存不了就这次先用着
       }
@@ -15867,7 +15944,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
 
     function readNoteScales() {
       try {
-        const raw = window.localStorage.getItem(NOTE_SCALE_KEY)
+        const raw = storeGet(NOTE_SCALE_KEY)
         if (raw === null) return {}
         const parsed = JSON.parse(raw)
         if (!Array.isArray(parsed)) return {}
@@ -15903,8 +15980,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         const list = Object.keys(next)
           .slice(0, NOTE_SCALE_KEEP)
           .map((key) => ({ path: key, scale: next[key] }))
-        if (list.length === 0) window.localStorage.removeItem(NOTE_SCALE_KEY)
-        else window.localStorage.setItem(NOTE_SCALE_KEY, JSON.stringify(list))
+        if (list.length === 0) storeRemove(NOTE_SCALE_KEY)
+        else storeSet(NOTE_SCALE_KEY, JSON.stringify(list))
       } catch {
         // 存不了就这次先用着
       }
@@ -15924,7 +16001,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
 
     function readDrafts() {
       try {
-        const raw = window.localStorage.getItem(DRAFT_KEY)
+        const raw = storeGet(DRAFT_KEY)
         if (raw === null) return []
         const parsed = JSON.parse(raw)
         if (!Array.isArray(parsed)) return []
@@ -15952,7 +16029,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       try {
         const rest = readDrafts().filter((item) => item.path !== rel)
         const next = [{ path: rel, content, at: Date.now() }, ...rest].slice(0, DRAFT_KEEP)
-        window.localStorage.setItem(DRAFT_KEY, JSON.stringify(next))
+        storeSet(DRAFT_KEY, JSON.stringify(next))
       } catch {
         // 配额满了 / 隐私模式：这次没救回来也不该拦住用户继续写
       }
@@ -15963,8 +16040,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       if (rel === '') return
       try {
         const rest = readDrafts().filter((item) => item.path !== rel)
-        if (rest.length === 0) window.localStorage.removeItem(DRAFT_KEY)
-        else window.localStorage.setItem(DRAFT_KEY, JSON.stringify(rest))
+        if (rest.length === 0) storeRemove(DRAFT_KEY)
+        else storeSet(DRAFT_KEY, JSON.stringify(rest))
       } catch {
         // 存不了就下次再说
       }
@@ -17019,7 +17096,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       // 这是纯本机观感偏好，没必要走一趟 host 写配置文件。
       const [textScale, setTextScale] = React.useState(() => {
         try {
-          const saved = window.localStorage.getItem('dshgn.textScale')
+          const saved = storeGet('dshgn.textScale')
           return saved === 's' || saved === 'l' ? saved : 'm'
         } catch {
           return 'm'
@@ -17492,7 +17569,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           if (path === '') {
             setTextScale(next)
             try {
-              window.localStorage.setItem('dshgn.textScale', next)
+              storeSet('dshgn.textScale', next)
             } catch {
               // 隐私模式下 localStorage 会抛，档位不记住而已，不影响阅读
             }
@@ -20105,6 +20182,7 @@ export const __internals = {
   TrashPane, TodoPane, renderEmbed, assetLabel, ThemeCard, readSession, writeSession, SESSION_KEY,
   themeVars, parseHex, rgbToHsl, hslToHex, ConflictPane, ArchiveCard, CardPane,
   TemplateCard, SkeletonPane, HeatmapStrip, LanguageCard, setUiLocale, activeUiLocale, HistoryCard,
+  setHostStorage, storeGet, storeSet, storeRemove,
   reportSync, dailyTemplateOf, frontmatterText, bodyOfSnapshot, isTagKey, FollowCard, parseTable, countWords, readingMinutes, diffLineCounts,
   noteBodyBytes, NOTE_MAX_BYTES,
   ATTACH_MAX_BYTES,

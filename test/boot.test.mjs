@@ -10,7 +10,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import Module from 'node:module'
 import { createRequire } from 'node:module'
-import { mkdtemp, copyFile, rm, access, readdir } from 'node:fs/promises'
+import { mkdtemp, copyFile, rm, access, readdir, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -437,6 +437,30 @@ test('onload 能把插件拉起来', async () => {
   assert.equal(calls.statusBar.length, 1, '应该加了一个状态栏项')
   assert.equal(calls.statusBar[0].text, '得到大脑')
   assert.match(calls.statusBar[0].title, /127\.0\.0\.1:\d+/, '状态栏要显示服务端口')
+})
+
+test('录音卡的桥脚本跟着 main.js 一起进来，落在插件数据目录里', async () => {
+  // 社区目录装插件只下载 main.js / manifest.json / styles.css 三个文件，Release 里
+  // 挂的 card/ 目录它一个都不取。所以脚本必须在构建期以字符串打进 main.js，启动时
+  // 解到 <插件数据目录>/card/ —— 否则目录用户一导入录音卡就报找不到脚本。
+  const dataDir = join(BASE, '.obsidian', 'plugins', 'getnote-brain')
+  const bridge = join(dataDir, 'card', 'getcard_bridge.py')
+  const source = await readFile(new URL('../src/card/getcard_bridge.py', import.meta.url), 'utf8')
+  assert.equal(await readFile(bridge, 'utf8'), source, '解出来的桥脚本要和源码一字不差')
+  for (const name of ['wifi_transfer.py', 'wifi_probe.py', 'wifi_fetch.py']) {
+    await access(join(dataDir, 'card', name))
+  }
+  // 解出来的东西不该跑到库里（.obsidian 之外）
+  const stray = (await readdir(BASE, { recursive: true }).catch(() => []))
+    .map((p) => String(p).replace(/\\/g, '/'))
+    .filter((p) => p.endsWith('.py') && !p.startsWith('.obsidian/'))
+  assert.deepEqual(stray, [], '桥脚本只该待在插件数据目录，不往库里撒野')
+
+  // 四个脚本都要解出来，且和源码一字不差——少一个就是「导入录音卡报找不到脚本」
+  for (const name of ['getcard_bridge.py', 'wifi_transfer.py', 'wifi_probe.py', 'wifi_fetch.py']) {
+    const want = await readFile(new URL('../src/card/' + name, import.meta.url), 'utf8')
+    assert.equal(await readFile(join(dataDir, 'card', name), 'utf8'), want, name + ' 要和源码一致')
+  }
 })
 
 test('状态栏文案跟着面板走：库大小、当前笔记、超长截断', async () => {

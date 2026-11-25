@@ -17147,3 +17147,62 @@ test('设置页里能把面板钉成浅色或深色，钉住之后宿主的主�
   await post('/getnote/settings', { themeColor: null, uiMode: null })
   await clickTab('笔记')
 })
+
+test('界面偏好写在宿主给的存储里，不再往 localStorage 里塞', async () => {
+  // 社区目录的自动审核会看「是不是用了插件数据 API」。面板的偏好（最近搜过的词、
+  // 栏宽、会话、滚动位置、每篇字号、草稿、文字档位）现在走注入进来的 store：
+  // 宿主给 app.loadLocalStorage / saveLocalStorage 就用它，没有才退回 localStorage。
+  const { setHostStorage, storeGet, storeSet, storeRemove } = panel.__internals
+  const host = new Map()
+  const touched = []
+  setHostStorage({
+    get: (key) => { touched.push(['get', key]); return host.has(key) ? host.get(key) : null },
+    set: (key, value) => { touched.push(['set', key]); host.set(key, value) },
+    remove: (key) => { touched.push(['remove', key]); host.delete(key) },
+  })
+  try {
+    // ① 写进去的读得回来，而且落在宿主那份里，localStorage 一点没动
+    window.localStorage.removeItem('dshgn.probeKey')
+    storeSet('dshgn.probeKey', '宿主里的值')
+    assert.equal(storeGet('dshgn.probeKey'), '宿主里的值', '该从宿主那份读回来')
+    assert.equal(window.localStorage.getItem('dshgn.probeKey'), null, '不该再往 localStorage 里塞')
+    assert.ok(host.has('dshgn.probeKey'), '宿主那份里该有')
+
+    // ② 删掉之后两边都没有
+    storeRemove('dshgn.probeKey')
+    assert.equal(storeGet('dshgn.probeKey'), null)
+    assert.equal(host.has('dshgn.probeKey'), false)
+
+    // ③ 宿主抛错时不炸：读回 null、写和删都静默吞掉（隐私模式下也是这个行为）
+    setHostStorage({
+      get: () => { throw new Error('宿主不给') },
+      set: () => { throw new Error('宿主不给') },
+      remove: () => { throw new Error('宿主不给') },
+    })
+    assert.equal(storeGet('dshgn.probeKey'), null, '读不到就回 null，不抛')
+    assert.doesNotThrow(() => storeSet('dshgn.probeKey', 'x'))
+    assert.doesNotThrow(() => storeRemove('dshgn.probeKey'))
+
+    // ④ 传 null 就退回 localStorage（老宿主没这两个方法时走这条）
+    setHostStorage(null)
+    window.localStorage.setItem('dshgn.probeKey', '本地里的值')
+    assert.equal(storeGet('dshgn.probeKey'), '本地里的值', '没宿主存储时退回 localStorage')
+    window.localStorage.removeItem('dshgn.probeKey')
+
+    // ⑤ 最近搜过的词这种真偏好也走宿主那份
+    setHostStorage({
+      get: (key) => (host.has(key) ? host.get(key) : null),
+      set: (key, value) => host.set(key, value),
+      remove: (key) => host.delete(key),
+    })
+    const RECENT = 'dshgn.recentSearches'
+    window.localStorage.removeItem(RECENT)
+    storeSet(RECENT, JSON.stringify(['宿主偏好验收']))
+    assert.deepEqual(JSON.parse(host.get(RECENT)), ['宿主偏好验收'])
+    assert.equal(window.localStorage.getItem(RECENT), null, '最近搜过的词不该留在 localStorage')
+    host.delete(RECENT)
+  } finally {
+    setHostStorage(null)
+    window.localStorage.removeItem('dshgn.probeKey')
+  }
+})

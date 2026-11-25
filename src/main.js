@@ -27,6 +27,7 @@ import {
   writeFile as vfsWrite,
 } from './core/vfs.js'
 import { configureCardScripts } from './core/card.js'
+import { ensureCardScripts } from './core/bundled.js'
 import { setDebugLogging } from './core/log.js'
 import {
   backlinkSnippets,
@@ -46,6 +47,7 @@ import {
   setSaveFile,
   setNoteMenu,
   setHostLocale,
+  setHostStorage,
   requestIntent,
   setSyncReport,
   setConfirmDialog,
@@ -112,6 +114,26 @@ export default class GetnoteObsidianPlugin extends Plugin {
       setHostLocale(null)
     }
 
+    // 面板里的纯界面偏好（最近搜过的词、栏宽、上次开着哪一篇、草稿…）走宿主的
+    // 键值存储，而不是渲染进程的 window.localStorage——后者是整个 Obsidian 共用
+    // 的一份，既不进库也不跟库走，社区目录的自动审核也会把它标成「没用插件数据
+    // API」。宿主没有这两个方法时（老版本）面板自己退回 localStorage。
+    const appStore = this.app
+    if (
+      appStore !== null &&
+      typeof appStore === 'object' &&
+      typeof appStore.loadLocalStorage === 'function' &&
+      typeof appStore.saveLocalStorage === 'function'
+    ) {
+      setHostStorage({
+        get: (key) => appStore.loadLocalStorage(key),
+        set: (key, value) => appStore.saveLocalStorage(key, value),
+        remove: (key) => appStore.saveLocalStorage(key, null),
+      })
+    } else {
+      setHostStorage(null)
+    }
+
     settingsStore.configure({ dataDir, vaultBase: basePath, subfolder: DEFAULT_SUBFOLDER })
     configureVfs({ adapter, basePath })
 
@@ -121,7 +143,13 @@ export default class GetnoteObsidianPlugin extends Plugin {
     // 不会去翻。所以在最早能拿到 adapter 的地方写一行，之后每推进一层再追加一行。
     this.probe('onload 开始')
 
-    // 录音卡的 Python 桥脚本跟 main.js 一起装在插件目录里（构建时复制到 card/）。
+    // 录音卡的 Python 桥脚本是打进 main.js 的（社区目录只下载三个文件，挂在 Release
+    // 里的 card/ 目录不会被取走），这里解到插件数据目录，之后按相对路径去读。
+    const cardScripts = await ensureCardScripts(dataDir)
+    if (cardScripts.written.length > 0) this.probe(`桥脚本解出 ${cardScripts.written.join('、')}`)
+    if (cardScripts.failed.length > 0) {
+      this.probe(`桥脚本解不出来：${cardScripts.failed.map((item) => `${item.name} ${item.error}`).join('；')}`)
+    }
     configureCardScripts({ baseDir: dataDir })
 
     // OAuth 授权必须落到系统浏览器：渲染进程里的 window.open 在 Electron 里

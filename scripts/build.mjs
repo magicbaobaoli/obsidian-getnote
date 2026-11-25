@@ -30,6 +30,9 @@ const options = {
   // 这里把 NODE_ENV 钉成字面量，分支在打包期就折叠掉，开发版整份消失。
   // （早前用的 react-dom 更夸张：光它的开发版就 890KB，占了整个插件的半壁。）
   define: { 'process.env.NODE_ENV': '"production"' },
+  // 录音卡的 .py 桥脚本当成字符串打进 bundle：社区目录只下载 main.js / manifest.json /
+  // styles.css 三个文件，挂在 Release 里的 card/ 目录不会被取走。加载时再解到插件目录。
+  loader: { '.py': 'text' },
   logLevel: 'info',
 }
 

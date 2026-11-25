@@ -567,12 +567,12 @@ __export(vault_exports, {
   writeNote: () => writeNote
 });
 function toPosix(p3) {
-  return p3.split(import_node_path4.sep).join("/");
+  return p3.split(import_node_path5.sep).join("/");
 }
 function normalizeRel(input) {
   if (typeof input !== "string") return "";
   const raw = input.replace(/\\/g, "/").replace(/^\/+/, "");
-  const normalized = import_node_path4.posix.normalize(raw);
+  const normalized = import_node_path5.posix.normalize(raw);
   if (normalized === "." || normalized === "./") return "";
   if (normalized.startsWith("../") || normalized === "..") {
     throw Object.assign(new Error("path escapes vault root"), { status: 400 });
@@ -581,9 +581,9 @@ function normalizeRel(input) {
 }
 function resolveInside(root, rel, { create = false } = {}) {
   const normalized = normalizeRel(rel);
-  const abs = normalized === "" ? (0, import_node_path4.resolve)(root) : (0, import_node_path4.resolve)(root, normalized.split("/").join(import_node_path4.sep));
-  const relCheck = (0, import_node_path4.relative)((0, import_node_path4.resolve)(root), abs);
-  if (relCheck.startsWith("..") || relCheck !== "" && (0, import_node_path4.resolve)(root, relCheck) !== abs) {
+  const abs = normalized === "" ? (0, import_node_path5.resolve)(root) : (0, import_node_path5.resolve)(root, normalized.split("/").join(import_node_path5.sep));
+  const relCheck = (0, import_node_path5.relative)((0, import_node_path5.resolve)(root), abs);
+  if (relCheck.startsWith("..") || relCheck !== "" && (0, import_node_path5.resolve)(root, relCheck) !== abs) {
     throw Object.assign(new Error("path escapes vault root"), { status: 400 });
   }
   return { abs, rel: normalized, create };
@@ -637,12 +637,12 @@ function unquote(s3) {
 function deriveTitle(body, relPath) {
   const m3 = /^#{1,3}\s+(.+)$/m.exec(body || "");
   if (m3) return m3[1].trim();
-  const base = import_node_path4.posix.basename(relPath || "", NOTE_EXT);
+  const base = import_node_path5.posix.basename(relPath || "", NOTE_EXT);
   const stripped = base.replace(/^\d{4}-\d{2}-\d{2}-/, "");
   return stripped || base || "\u672A\u547D\u540D";
 }
 function deriveDate(relPath, data, statMs) {
-  const base = import_node_path4.posix.basename(relPath || "", NOTE_EXT);
+  const base = import_node_path5.posix.basename(relPath || "", NOTE_EXT);
   const m3 = /^(\d{4}-\d{2}-\d{2})/.exec(base);
   if (m3) return m3[1];
   for (const key of ["\u5F52\u6863", "\u65E5\u671F", "date", "created", "\u521B\u5EFA\u65F6\u95F4"]) {
@@ -696,14 +696,14 @@ async function fingerprintVault(root) {
       const name = dirent2.name;
       if (dirent2.isDirectory()) {
         if (IGNORED_DIRS.has(name)) continue;
-        await walk((0, import_node_path4.join)(dir, name), relDir === "" ? name : `${relDir}/${name}`, depth + 1);
+        await walk((0, import_node_path5.join)(dir, name), relDir === "" ? name : `${relDir}/${name}`, depth + 1);
         continue;
       }
       if (!dirent2.isFile()) continue;
-      if ((0, import_node_path4.extname)(name).toLowerCase() !== NOTE_EXT) continue;
+      if ((0, import_node_path5.extname)(name).toLowerCase() !== NOTE_EXT) continue;
       const rel = relDir === "" ? name : `${relDir}/${name}`;
       try {
-        const st = await stat2((0, import_node_path4.join)(dir, name));
+        const st = await stat2((0, import_node_path5.join)(dir, name));
         names.push(`${rel}:${st.mtimeMs}:${st.size}`);
       } catch {
         names.push(`${rel}:?`);
@@ -751,14 +751,14 @@ async function scanVault(root, options = {}) {
         if (IGNORED_DIRS.has(name)) continue;
         const childRel = relDir === "" ? name : `${relDir}/${name}`;
         allDirs.add(childRel);
-        await walk((0, import_node_path4.join)(dir, name), childRel, depth + 1);
+        await walk((0, import_node_path5.join)(dir, name), childRel, depth + 1);
         continue;
       }
       if (!dirent2.isFile()) continue;
-      if ((0, import_node_path4.extname)(name).toLowerCase() !== NOTE_EXT) continue;
+      if ((0, import_node_path5.extname)(name).toLowerCase() !== NOTE_EXT) continue;
       const rel = relDir === "" ? name : `${relDir}/${name}`;
       filled.add(relDir);
-      const abs = (0, import_node_path4.join)(dir, name);
+      const abs = (0, import_node_path5.join)(dir, name);
       try {
         const st = await stat2(abs);
         if (st.size > MAX_READ) {
@@ -895,8 +895,8 @@ async function readNote(root, rel) {
 }
 async function listAssets(root, rel, noteId = "") {
   const { abs, rel: normalized } = resolveInside(root, rel);
-  const dir = import_node_path4.posix.dirname(normalized);
-  const stem = import_node_path4.posix.basename(normalized, NOTE_EXT);
+  const dir = import_node_path5.posix.dirname(normalized);
+  const stem = import_node_path5.posix.basename(normalized, NOTE_EXT);
   const assetRel = dir === "." || dir === "" ? "asset" : `${dir}/asset`;
   const assetAbs = resolveInside(root, assetRel).abs;
   let names;
@@ -945,8 +945,8 @@ async function saveAsset(root, relNote, name, data) {
   if (!Buffer.isBuffer(data) || data.length === 0) {
     throw Object.assign(new Error("\u6587\u4EF6\u662F\u7A7A\u7684"), { status: 400 });
   }
-  const dir = import_node_path4.posix.dirname(normalized);
-  const stem = import_node_path4.posix.basename(normalized, NOTE_EXT);
+  const dir = import_node_path5.posix.dirname(normalized);
+  const stem = import_node_path5.posix.basename(normalized, NOTE_EXT);
   const assetRel = dir === "." || dir === "" ? "asset" : `${dir}/asset`;
   const raw = String(name || "").replace(/\\/g, "/");
   const base = raw.slice(raw.lastIndexOf("/") + 1);
@@ -1004,7 +1004,7 @@ async function writeNote(root, rel, content, options = {}) {
       throw err;
     }
   }
-  await mkdir2((0, import_node_path4.dirname)(abs), { recursive: true });
+  await mkdir2((0, import_node_path5.dirname)(abs), { recursive: true });
   if (backup) {
     try {
       await copyFile2(abs, `${abs}.bak`);
@@ -1054,16 +1054,16 @@ async function createNote(root, { dir = "", title = "", content = "", date, with
 async function trashNote(root, rel) {
   const { abs, rel: normalized } = resolveInside(root, rel);
   if (normalized === "") throw Object.assign(new Error("\u4E0D\u80FD\u5220\u9664\u5E93\u6839"), { status: 400 });
-  const trashDir = (0, import_node_path4.join)(root, ".trash");
+  const trashDir = (0, import_node_path5.join)(root, ".trash");
   const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
-  const target = (0, import_node_path4.join)(trashDir, `${stamp}__${(0, import_node_path4.basename)(abs)}`);
+  const target = (0, import_node_path5.join)(trashDir, `${stamp}__${(0, import_node_path5.basename)(abs)}`);
   await mkdir2(trashDir, { recursive: true });
   await rename2(abs, target);
-  const fromDir = import_node_path4.posix.dirname(normalized);
+  const fromDir = import_node_path5.posix.dirname(normalized);
   const originalDir = fromDir === "." ? "" : fromDir;
-  await rememberTrashOrigin(root, (0, import_node_path4.basename)(target), originalDir);
+  await rememberTrashOrigin(root, (0, import_node_path5.basename)(target), originalDir);
   invalidateScan(root);
-  return { path: normalized, trashedTo: toPosix((0, import_node_path4.relative)(root, target)), originalDir };
+  return { path: normalized, trashedTo: toPosix((0, import_node_path5.relative)(root, target)), originalDir };
 }
 function parseTrashName(name) {
   const m3 = TRASH_NAME_RE.exec(String(name || ""));
@@ -1082,7 +1082,7 @@ function queueTrashIndex(task) {
 }
 async function readTrashOrigins(root) {
   try {
-    const text = await readFile2((0, import_node_path4.join)(root, TRASH_DIR, TRASH_INDEX), "utf8");
+    const text = await readFile2((0, import_node_path5.join)(root, TRASH_DIR, TRASH_INDEX), "utf8");
     const parsed = JSON.parse(text);
     if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return {};
     return parsed;
@@ -1091,12 +1091,12 @@ async function readTrashOrigins(root) {
   }
 }
 async function writeTrashOrigins(root, map) {
-  const dir = (0, import_node_path4.join)(root, TRASH_DIR);
+  const dir = (0, import_node_path5.join)(root, TRASH_DIR);
   await mkdir2(dir, { recursive: true });
   const keys = Object.keys(map).slice(-TRASH_INDEX_MAX);
   const trimmed = {};
   for (const key of keys) trimmed[key] = map[key];
-  await writeFile2((0, import_node_path4.join)(dir, TRASH_INDEX), JSON.stringify(trimmed), "utf8");
+  await writeFile2((0, import_node_path5.join)(dir, TRASH_INDEX), JSON.stringify(trimmed), "utf8");
 }
 async function rememberTrashOrigin(root, trashName, dir) {
   const key = String(trashName || "");
@@ -1124,7 +1124,7 @@ async function forgetTrashOrigin(root, trashName) {
   }
 }
 async function listTrash(root) {
-  const trashDir = (0, import_node_path4.join)(root, TRASH_DIR);
+  const trashDir = (0, import_node_path5.join)(root, TRASH_DIR);
   let dirents;
   try {
     dirents = await readdir2(trashDir, { withFileTypes: true });
@@ -1135,8 +1135,8 @@ async function listTrash(root) {
   const items = [];
   for (const dirent2 of dirents) {
     if (!dirent2.isFile()) continue;
-    if ((0, import_node_path4.extname)(dirent2.name).toLowerCase() !== NOTE_EXT) continue;
-    const abs = (0, import_node_path4.join)(trashDir, dirent2.name);
+    if ((0, import_node_path5.extname)(dirent2.name).toLowerCase() !== NOTE_EXT) continue;
+    const abs = (0, import_node_path5.join)(trashDir, dirent2.name);
     let st;
     try {
       st = await stat2(abs);
@@ -1148,7 +1148,7 @@ async function listTrash(root) {
     const originalDir = remembered !== null && typeof remembered === "object" && typeof remembered.dir === "string" ? remembered.dir : "";
     items.push({
       name: dirent2.name,
-      path: toPosix((0, import_node_path4.join)(TRASH_DIR, dirent2.name)),
+      path: toPosix((0, import_node_path5.join)(TRASH_DIR, dirent2.name)),
       originalName: meta.originalName,
       title: meta.originalName.replace(/\.md$/i, "").replace(/^\d{4}-\d{2}-\d{2}-/, ""),
       trashedAt: meta.trashedAt,
@@ -1176,12 +1176,12 @@ async function restoreNote(root, trashPath, targetRel) {
     throw Object.assign(new Error("\u56DE\u6536\u7AD9\u91CC\u6CA1\u6709\u8FD9\u4E2A\u6587\u4EF6"), { status: 404 });
   }
   if (!st.isFile()) throw Object.assign(new Error("\u4E0D\u662F\u6587\u4EF6"), { status: 400 });
-  const meta = parseTrashName((0, import_node_path4.basename)(absTrash));
+  const meta = parseTrashName((0, import_node_path5.basename)(absTrash));
   const wanted = typeof targetRel === "string" && targetRel.trim() !== "" ? normalizeRel(targetRel.trim()) : "";
   let rel = wanted;
   if (rel === "") {
     const origins = await readTrashOrigins(root);
-    const remembered = origins[(0, import_node_path4.basename)(absTrash)];
+    const remembered = origins[(0, import_node_path5.basename)(absTrash)];
     const dir = remembered !== null && typeof remembered === "object" && typeof remembered.dir === "string" ? normalizeRel(remembered.dir) : "";
     rel = dir === "" ? meta.originalName : `${dir}/${meta.originalName}`;
   }
@@ -1196,20 +1196,20 @@ async function restoreNote(root, trashPath, targetRel) {
       await stat2(resolveInside(root, candidate).abs);
       counter += 1;
       if (counter > 99) throw Object.assign(new Error("\u540C\u540D\u7B14\u8BB0\u8FC7\u591A"), { status: 409 });
-      const dir = import_node_path4.posix.dirname(rel);
-      const stem = (0, import_node_path4.basename)(rel, (0, import_node_path4.extname)(rel));
-      const ext = (0, import_node_path4.extname)(rel);
+      const dir = import_node_path5.posix.dirname(rel);
+      const stem = (0, import_node_path5.basename)(rel, (0, import_node_path5.extname)(rel));
+      const ext = (0, import_node_path5.extname)(rel);
       const next = `${stem}-${counter}${ext}`;
-      candidate = dir === "." || dir === "" ? next : import_node_path4.posix.join(dir, next);
+      candidate = dir === "." || dir === "" ? next : import_node_path5.posix.join(dir, next);
     } catch (error2) {
       if (error2 && error2.status === 409) throw error2;
       break;
     }
   }
   const { abs: absFinal } = resolveInside(root, candidate, { create: true });
-  await mkdir2((0, import_node_path4.dirname)(absFinal), { recursive: true });
+  await mkdir2((0, import_node_path5.dirname)(absFinal), { recursive: true });
   await rename2(absTrash, absFinal);
-  await forgetTrashOrigin(root, (0, import_node_path4.basename)(absTrash));
+  await forgetTrashOrigin(root, (0, import_node_path5.basename)(absTrash));
   invalidateScan(root);
   return { path: candidate, restoredFrom: trashRel, title: meta.originalName };
 }
@@ -1247,14 +1247,14 @@ async function purgeTrashMany(root, trashPaths) {
   return { purged, failed, total: wanted.length };
 }
 async function purgeTrash(root, trashPath) {
-  const trashDir = (0, import_node_path4.join)(root, TRASH_DIR);
+  const trashDir = (0, import_node_path5.join)(root, TRASH_DIR);
   if (typeof trashPath === "string" && trashPath.trim() !== "") {
     const { abs, rel } = resolveInside(root, trashPath);
     if (!rel.startsWith(`${TRASH_DIR}/`)) {
       throw Object.assign(new Error("\u53EA\u80FD\u6E05\u7A7A .trash \u91CC\u7684\u6587\u4EF6"), { status: 400 });
     }
     await rm2(abs, { force: true });
-    await forgetTrashOrigin(root, (0, import_node_path4.basename)(abs));
+    await forgetTrashOrigin(root, (0, import_node_path5.basename)(abs));
     return { purged: [rel] };
   }
   let dirents;
@@ -1267,12 +1267,12 @@ async function purgeTrash(root, trashPath) {
   for (const dirent2 of dirents) {
     if (!dirent2.isFile()) continue;
     if (dirent2.name === TRASH_INDEX) continue;
-    await rm2((0, import_node_path4.join)(trashDir, dirent2.name), { force: true });
-    purged.push(toPosix((0, import_node_path4.join)(TRASH_DIR, dirent2.name)));
+    await rm2((0, import_node_path5.join)(trashDir, dirent2.name), { force: true });
+    purged.push(toPosix((0, import_node_path5.join)(TRASH_DIR, dirent2.name)));
   }
   if (purged.length > 0) {
     try {
-      await rm2((0, import_node_path4.join)(trashDir, TRASH_INDEX), { force: true });
+      await rm2((0, import_node_path5.join)(trashDir, TRASH_INDEX), { force: true });
     } catch {
     }
     invalidateScan(root);
@@ -1339,10 +1339,10 @@ async function searchNotes(root, query, { limit = 60, perFile = 3, sort = "relev
       const name = dirent2.name;
       if (dirent2.isDirectory()) {
         if (IGNORED_DIRS.has(name) || name === ".trash") continue;
-        await walk((0, import_node_path4.join)(dir, name), relDir === "" ? name : `${relDir}/${name}`, depth + 1);
+        await walk((0, import_node_path5.join)(dir, name), relDir === "" ? name : `${relDir}/${name}`, depth + 1);
         continue;
       }
-      if (!dirent2.isFile() || (0, import_node_path4.extname)(name).toLowerCase() !== NOTE_EXT) continue;
+      if (!dirent2.isFile() || (0, import_node_path5.extname)(name).toLowerCase() !== NOTE_EXT) continue;
       const rel = relDir === "" ? name : `${relDir}/${name}`;
       if (dirNeedles.length > 0) {
         const relLower = rel.toLowerCase();
@@ -1358,7 +1358,7 @@ async function searchNotes(root, query, { limit = 60, perFile = 3, sort = "relev
       scanned += 1;
       let text;
       try {
-        text = await readFile2((0, import_node_path4.join)(dir, name), "utf8");
+        text = await readFile2((0, import_node_path5.join)(dir, name), "utf8");
       } catch {
         continue;
       }
@@ -1768,12 +1768,12 @@ function conflictArchiveName(relPath, options = {}) {
   const rel = normalizeRel(relPath);
   const when = options.at === void 0 ? /* @__PURE__ */ new Date() : new Date(options.at);
   const stamp = (Number.isNaN(when.getTime()) ? /* @__PURE__ */ new Date() : when).toISOString().replace(/[:.]/g, "-");
-  const name = (0, import_node_path4.basename)(rel) || "note.md";
+  const name = (0, import_node_path5.basename)(rel) || "note.md";
   return `${CONFLICT_DIR}/${stamp}__${conflictPathHash(rel)}__${options.cloud === true ? "cloud-" : ""}${name}`;
 }
 async function readConflictState(root) {
   try {
-    const text = await readFile2((0, import_node_path4.join)(root, CONFLICT_DIR, CONFLICT_STATE_FILE), "utf8");
+    const text = await readFile2((0, import_node_path5.join)(root, CONFLICT_DIR, CONFLICT_STATE_FILE), "utf8");
     const data = JSON.parse(text);
     if (data === null || typeof data !== "object" || Array.isArray(data)) return {};
     return data;
@@ -1782,9 +1782,9 @@ async function readConflictState(root) {
   }
 }
 async function writeConflictState(root, state) {
-  const dir = (0, import_node_path4.join)(root, CONFLICT_DIR);
+  const dir = (0, import_node_path5.join)(root, CONFLICT_DIR);
   await mkdir2(dir, { recursive: true });
-  const target = (0, import_node_path4.join)(dir, CONFLICT_STATE_FILE);
+  const target = (0, import_node_path5.join)(dir, CONFLICT_STATE_FILE);
   const tmp = `${target}.${(0, import_node_crypto3.randomBytes)(4).toString("hex")}.tmp`;
   await writeFile2(tmp, JSON.stringify(state, null, 2), "utf8");
   await rename2(tmp, target);
@@ -1803,7 +1803,7 @@ function parseConflictName(name) {
   };
 }
 async function listConflicts(root) {
-  const dir = (0, import_node_path4.join)(root, CONFLICT_DIR);
+  const dir = (0, import_node_path5.join)(root, CONFLICT_DIR);
   let names;
   try {
     names = await readdir2(dir);
@@ -1813,11 +1813,11 @@ async function listConflicts(root) {
   const state = await readConflictState(root);
   const items = [];
   for (const name of names) {
-    if ((0, import_node_path4.extname)(name).toLowerCase() !== NOTE_EXT) continue;
+    if ((0, import_node_path5.extname)(name).toLowerCase() !== NOTE_EXT) continue;
     if (name.endsWith(".bak")) continue;
     let st;
     try {
-      st = await stat2((0, import_node_path4.join)(dir, name));
+      st = await stat2((0, import_node_path5.join)(dir, name));
     } catch {
       continue;
     }
@@ -1961,7 +1961,7 @@ async function removeDir(root, dirInput) {
   } catch {
     throw Object.assign(new Error("\u8FD9\u4E2A\u76EE\u5F55\u4E0D\u5B58\u5728"), { status: 404 });
   }
-  const notes = dirents.filter((d3) => d3.isFile() && (0, import_node_path4.extname)(d3.name).toLowerCase() === NOTE_EXT);
+  const notes = dirents.filter((d3) => d3.isFile() && (0, import_node_path5.extname)(d3.name).toLowerCase() === NOTE_EXT);
   if (notes.length > 0) {
     throw Object.assign(new Error(`\u8FD9\u4E2A\u76EE\u5F55\u91CC\u8FD8\u6709 ${notes.length} \u7BC7\u7B14\u8BB0\uFF0C\u5148\u628A\u5B83\u4EEC\u79FB\u8D70\u518D\u5220\u76EE\u5F55`), {
       status: 409,
@@ -2007,11 +2007,11 @@ async function removeDirTree(root, dirInput) {
       if (dirent2.isDirectory()) {
         if (IGNORED_DIRS.has(dirent2.name)) continue;
         dirCount += 1;
-        await walk((0, import_node_path4.join)(dirAbs, dirent2.name), childRel);
+        await walk((0, import_node_path5.join)(dirAbs, dirent2.name), childRel);
         continue;
       }
       if (!dirent2.isFile()) continue;
-      if ((0, import_node_path4.extname)(dirent2.name).toLowerCase() !== NOTE_EXT) continue;
+      if ((0, import_node_path5.extname)(dirent2.name).toLowerCase() !== NOTE_EXT) continue;
       notes.push(childRel);
     }
   };
@@ -2069,7 +2069,7 @@ async function renameDir(root, fromInput, toInput) {
     if (error2 && error2.status === 409) throw error2;
   }
   try {
-    await mkdir2((0, import_node_path4.dirname)(dstAbs), { recursive: true });
+    await mkdir2((0, import_node_path5.dirname)(dstAbs), { recursive: true });
     await rename2(srcAbs, dstAbs);
   } catch (error2) {
     throw Object.assign(new Error(`\u6539\u76EE\u5F55\u540D\u5931\u8D25\uFF1A${error2 && error2.message ? error2.message : error2}`), {
@@ -2513,7 +2513,7 @@ async function vaultStats(root, entries) {
   const dirs = /* @__PURE__ */ new Set();
   for (const entry of entries) {
     bytes += entry.bytes || 0;
-    const d3 = import_node_path4.posix.dirname(entry.path);
+    const d3 = import_node_path5.posix.dirname(entry.path);
     if (d3 !== "." && d3 !== "") dirs.add(d3);
   }
   return { notes: entries.length, dirs: dirs.size, bytes };
@@ -2538,13 +2538,13 @@ function listDirs(entries, emptyDirs = []) {
   }
   return [...dirs].sort((a3, b3) => a3.localeCompare(b3, "zh"));
 }
-var import_node_crypto3, import_node_path4, NOTE_EXT, MAX_READ, MAX_WRITE, MAX_SCAN, MAX_DEPTH, IGNORED_DIRS, scanCache, SCAN_CACHE_MAX, entryMemo, ENTRY_MEMO_MAX, TRASH_DIR, TRASH_NAME_RE, TRASH_INDEX, TRASH_INDEX_MAX, trashIndexQueue, linkMemo, LINK_MEMO_MAX, CONFLICT_DIR, CONFLICT_NAME_RE, CONFLICT_STATE_FILE, TAG_TOKEN_RE;
+var import_node_crypto3, import_node_path5, NOTE_EXT, MAX_READ, MAX_WRITE, MAX_SCAN, MAX_DEPTH, IGNORED_DIRS, scanCache, SCAN_CACHE_MAX, entryMemo, ENTRY_MEMO_MAX, TRASH_DIR, TRASH_NAME_RE, TRASH_INDEX, TRASH_INDEX_MAX, trashIndexQueue, linkMemo, LINK_MEMO_MAX, CONFLICT_DIR, CONFLICT_NAME_RE, CONFLICT_STATE_FILE, TAG_TOKEN_RE;
 var init_vault = __esm({
   "src/core/vault.js"() {
     init_vfs();
     import_node_crypto3 = require("node:crypto");
     init_history();
-    import_node_path4 = require("node:path");
+    import_node_path5 = require("node:path");
     NOTE_EXT = ".md";
     MAX_READ = 2 * 1024 * 1024;
     MAX_WRITE = 2 * 1024 * 1024;
@@ -2977,9 +2977,9 @@ __export(main_exports, {
 });
 module.exports = __toCommonJS(main_exports);
 var import_obsidian2 = require("obsidian");
-var import_promises2 = require("node:fs/promises");
+var import_promises3 = require("node:fs/promises");
 var import_node_os2 = require("node:os");
-var import_node_path7 = require("node:path");
+var import_node_path8 = require("node:path");
 
 // src/core/settings.js
 var import_promises = require("node:fs/promises");
@@ -3624,11 +3624,11 @@ async function cardPendingCount() {
 async function wifiScan() {
   return runBridge(["scan"], { script: WIFI(), timeoutMs: 60 * 1e3 });
 }
-async function wifiActivate({ cmd = null, body = null, join: join8 = true, keep = false, wait = 3 } = {}) {
+async function wifiActivate({ cmd = null, body = null, join: join9 = true, keep = false, wait = 3 } = {}) {
   const args = ["activate"];
   if (cmd) args.push("--cmd", String(cmd));
   if (body) args.push("--body", String(body));
-  if (join8) args.push("--join");
+  if (join9) args.push("--join");
   if (keep) args.push("--keep");
   if (wait) args.push("--wait", String(wait));
   return runBridge(args, { script: WIFI(), timeoutMs: 4 * 60 * 1e3 });
@@ -3644,6 +3644,650 @@ async function wifiJoin({ ssid, password = null, keep = false, timeout = 30 } = 
 }
 async function wifiLeave() {
   return runBridge(["leave"], { script: WIFI(), timeoutMs: 60 * 1e3 });
+}
+
+// src/core/bundled.js
+var import_promises2 = require("node:fs/promises");
+var import_node_path4 = require("node:path");
+
+// src/card/getcard_bridge.py
+var getcard_bridge_default = '#!/usr/bin/env python3\n# -*- coding: utf-8 -*-\n"""\u5F97\u5230\u5F55\u97F3\u5361\uFF08GetSeed / GSC10\uFF09\u7535\u8111\u76F4\u8FDE\u6865\u3002\n\n\u8FD9\u662F\u4E00\u4E2A\u300C\u53EA\u505A\u534F\u8BAE\u3001\u4E0D\u505A\u4E1A\u52A1\u300D\u7684\u5C0F\u7A0B\u5E8F\uFF1ADSH \u63D2\u4EF6\u7528\u5B50\u8FDB\u7A0B\u8C03\u7528\u5B83\uFF0C\n\u5B83\u5728 stdout \u4E0A\u8F93\u51FA**\u4E00\u4E2A** JSON \u5BF9\u8C61\uFF0C\u6240\u6709\u8FC7\u7A0B\u65E5\u5FD7\u8D70 stderr\u3002\n\n\u534F\u8BAE\u6765\u6E90\uFF1A\u5BF9\u5B98\u65B9 App \u6293\u5305 + \u56FA\u4EF6\u9006\u5411\u5F97\u51FA\u7684 BLE \u660E\u6587\u534F\u8BAE\n\uFF08\u63A7\u5236\u901A\u9053 00009100 / \u5199 9101 / \u901A\u77E5 9102\uFF0C\u5E27\u5934 FCFCFCFC + CRC32\uFF09\u3002\n\u5F55\u97F3\u6587\u4EF6\u672C\u8EAB\u662F Ogg Opus \u660E\u6587\uFF0C\u4E0D\u9700\u8981\u4EFB\u4F55\u5BC6\u94A5\uFF0C\u4E5F\u4E0D\u9700\u8981\u8D26\u53F7\u3002\n\n\u26A0\uFE0F \u5B89\u5168\u7EA6\u5B9A\uFF08\u523B\u610F\u5199\u6B7B\uFF0C\u4E0D\u7ED9\u8C03\u7528\u65B9\u7559\u540E\u95E8\uFF09\uFF1A\n    \u672C\u7A0B\u5E8F**\u6C38\u8FDC\u4E0D\u53D1\u9001 0x0041\uFF08\u6E05\u7406\u5DF2\u4F20\u8F93\u6587\u4EF6\uFF09**\u3002\n    \u90A3\u6761\u547D\u4EE4\u4F1A\u628A\u5361\u7247\u4E0A\u300C\u5DF2\u540C\u6B65\u300D\u7684\u5F55\u97F3\u6C38\u4E45\u5220\u6389\uFF0C\u5B98\u65B9 App \u6BCF\u6B21\u8FDE\u63A5\u90FD\u4F1A\u5148\u53D1\u5B83\u3002\n    \u8FD9\u91CC\u53EA\u63D0\u4F9B 0x0044\uFF08\u6309\u6587\u4EF6\u540D\u5220\u9664\u5355\u4E2A\uFF09\uFF0C\u800C\u4E14\u8981\u663E\u5F0F\u4F20 --delete-after\u3002\n    \u9ED8\u8BA4\u884C\u4E3A\u662F\u7EAF\u53EA\u8BFB\uFF1A\u53EA\u4E0B\u8F7D\uFF0C\u4E0D\u52A8\u5361\u7247\u4E0A\u7684\u4EFB\u4F55\u6587\u4EF6\u3002\n\n\u7528\u6CD5\uFF08\u7531\u63D2\u4EF6\u8C03\u7528\uFF0C\u4E00\u822C\u4E0D\u624B\u52A8\u8DD1\uFF09\uFF1A\n    python getcard_bridge.py scan  [--timeout 8]\n    python getcard_bridge.py info\n    python getcard_bridge.py list\n    python getcard_bridge.py pull  --out DIR [--names a.ogg,b.ogg] [--all] [--delete-after]\n    python getcard_bridge.py doctor            # \u53EA\u68C0\u67E5\u73AF\u5883\uFF0C\u4E0D\u78B0\u84DD\u7259\n"""\n\nimport argparse\nimport asyncio\nimport json\nimport os\nimport struct\nimport sys\nimport time\nimport zlib\nfrom datetime import datetime\n\n# ---------------------------------------------------------------- \u534F\u8BAE\u5E38\u91CF\n\nSVC_CTL = "00009100-0000-1000-8000-57616c6b697a"\nCH_CTL_W = "00009101-0000-1000-8000-57616c6b697a"\nCH_CTL_N = "00009102-0000-1000-8000-57616c6b697a"\n\nC_QUERY = 0x0050\nC_LIST = 0x0043\nC_DELETE = 0x0044\nC_STORAGE = 0x0042\nC_DEV_TIME = 0x0046\nC_MTU_RPT = 0x0047\nC_DOWNLOAD = 0x0145\nC_FILE_INFO = 0x0245\nC_DATA = 0x0345\nC_DONE = 0x0445\nC_ERR = 0x0545\nC_TIME_SYNC = 0x0146\nC_DEV_UP = 0x0140\n\nERR_NOT_FOUND = 0x5A\nMAGIC = b"\\xfc\\xfc\\xfc\\xfc"\n\n\ndef ctrl_frame(cmd, body=b""):\n    """\u63A7\u5236\u901A\u9053\u5E27\uFF1Amagic(4) + cmd(2LE) + len(2LE) + body + crc32(4LE)\u3002"""\n    pkt = MAGIC + struct.pack("<H", cmd) + struct.pack("<H", len(body)) + body\n    return pkt + struct.pack("<I", zlib.crc32(pkt) & 0xFFFFFFFF)\n\n\ndef parse_ctrl(v):\n    if len(v) < 8 or v[:4] != MAGIC:\n        return None\n    ln = struct.unpack("<H", v[6:8])[0]\n    if len(v) < 8 + ln:\n        return None\n    return struct.unpack("<H", v[4:6])[0], v[8 : 8 + ln]\n\n\ndef log(*a):\n    print(*a, file=sys.stderr, flush=True)\n\n\n# ---------------------------------------------------------------- \u4F1A\u8BDD\n\n\nclass CardSession:\n    def __init__(self, addr=None):\n        self.addr = addr\n        self.client = None\n        self.device = None\n        self.list_buf = None\n        self.dl = None\n        self.mtu = None\n        self.storage = None\n        self.dev_time = None\n        self.del_ack = None\n        self.err = None\n\n    async def connect(self, retries=3):\n        from bleak import BleakClient, BleakScanner\n\n        log("[\u8FDE\u63A5] \u626B\u63CF\u5361\u7247\u2026")\n        if self.addr:\n            dev = await BleakScanner.find_device_by_address(self.addr, timeout=15.0)\n        else:\n            dev = await BleakScanner.find_device_by_filter(\n                lambda d, ad: (d.name or ad.local_name or "").startswith("Get-"),\n                timeout=15.0,\n            )\n        if not dev:\n            raise RuntimeError(\n                "\u6CA1\u627E\u5230\u5F55\u97F3\u5361\u3002\u8BF7\u786E\u8BA4\uFF1A\u5361\u7247\u5DF2\u5F00\u673A\u3001\u5728 3 \u7C73\u5185\u3001"\n                "\u5E76\u4E14\u624B\u673A\u4E0A\u7684\u5F97\u5230\u5927\u8111 App \u5DF2\u65AD\u5F00\u8FDE\u63A5\uFF08\u84DD\u7259\u4E00\u6B21\u53EA\u80FD\u88AB\u4E00\u4E2A\u8BBE\u5907\u5360\u7528\uFF09\u3002"\n            )\n        self.device = dev\n        log("[\u8FDE\u63A5] %s (%s)" % (dev.name, dev.address))\n\n        last = None\n        for i in range(retries):\n            try:\n                cli = BleakClient(dev, timeout=40.0)\n                await cli.connect()\n                self.client = cli\n                break\n            except Exception as e:  # noqa: BLE001\n                last = e\n                log("[\u91CD\u8BD5 %d/%d] %s" % (i + 1, retries, e))\n                await asyncio.sleep(1.5)\n        else:\n            raise RuntimeError("\u8FDE\u63A5\u5931\u8D25\uFF1A%s" % last)\n\n        log("[\u8FDE\u63A5] \u6210\u529F mtu=%d" % self.client.mtu_size)\n        await self.client.start_notify(CH_CTL_N, self._on_notify)\n        await asyncio.sleep(0.4)\n        return self\n\n    async def close(self):\n        if not self.client:\n            return\n        try:\n            await self.client.stop_notify(CH_CTL_N)\n        except Exception:  # noqa: BLE001\n            pass\n        try:\n            await self.client.disconnect()\n        except Exception:  # noqa: BLE001\n            pass\n\n    def _on_notify(self, _s, data):\n        p = parse_ctrl(bytes(data))\n        if not p:\n            return\n        cmd, body = p\n        if cmd == C_LIST:\n            self.list_buf = body.decode("utf-8", "replace")\n        elif cmd == C_DATA and self.dl is not None and len(body) >= 4:\n            off = struct.unpack("<I", body[0:4])[0]\n            self.dl["chunks"].append((off, body[4:]))\n            self.dl["got"] = max(self.dl["got"], off)\n            self.dl["n"] += 1\n        elif cmd == C_FILE_INFO and self.dl is not None and len(body) >= 4:\n            self.dl["size"] = struct.unpack("<I", body[0:4])[0]\n            log("    \u6587\u4EF6\u5927\u5C0F %d B" % self.dl["size"])\n        elif cmd == C_DONE and self.dl is not None:\n            self.dl["done"] = True\n            if len(body) >= 4:\n                self.dl["done_size"] = struct.unpack("<I", body[0:4])[0]\n        elif cmd == C_ERR:\n            self.err = body[:1]\n            if body[:1] and body[0] == ERR_NOT_FOUND:\n                log("    !! \u8BBE\u5907\u56DE\uFF1A\u6587\u4EF6\u4E0D\u5B58\u5728 (0x5a)")\n        elif cmd in (C_MTU_RPT, 0x0147) and len(body) >= 5:\n            self.mtu = struct.unpack("<H", body[3:5])[0]\n        elif cmd == C_DEV_TIME:\n            self.dev_time = body.decode("utf-8", "replace")\n        elif cmd == C_STORAGE and len(body) >= 8:\n            self.storage = {\n                "raw": body.hex(),\n                "free_kb": struct.unpack("<I", body[4:8])[0],\n            }\n        elif cmd == C_DELETE:\n            self.del_ack = body[:1]\n\n    async def _send(self, cmd, body=b""):\n        await self.client.write_gatt_char(CH_CTL_W, ctrl_frame(cmd, body), response=False)\n\n    async def time_sync(self):\n        ts = datetime.now().strftime("%Y%m%d%H%M%S").encode()\n        await self._send(C_TIME_SYNC, ts)\n        await asyncio.sleep(0.4)\n\n    async def get_list(self, timeout=5.0):\n        self.list_buf = None\n        await self._send(C_QUERY, b"")\n        await asyncio.sleep(0.3)\n        await self._send(C_LIST, bytes.fromhex("0100000005000000"))\n        t0 = time.time()\n        while self.list_buf is None and time.time() - t0 < timeout:\n            await asyncio.sleep(0.1)\n        return self.parse_list(self.list_buf or "")\n\n    @staticmethod\n    def parse_list(txt):\n        """\u8BBE\u5907\u56DE\u7684\u662F\u660E\u6587 CSV\uFF1A\u5E8F\u53F7,\u6587\u4EF6\u540D,YYYY-MM-DD HH:MM:SS,\u5B57\u8282\u6570; \u9010\u6761\u4EE5 ; \u5206\u9694\u3002"""\n        out = []\n        for seg in (txt or "").split(";"):\n            seg = seg.strip()\n            if not seg:\n                continue\n            p = seg.split(",")\n            if len(p) < 4:\n                continue\n            out.append(\n                {\n                    "index": p[0],\n                    "name": p[1],\n                    "time": p[2],\n                    "size": int(p[3]) if p[3].isdigit() else 0,\n                }\n            )\n        return out\n\n    async def download(self, name, timeout_s=180):\n        self.dl = {"chunks": [], "got": 0, "n": 0, "size": 0, "done": False}\n        self.err = None\n        await self._send(C_DOWNLOAD, b"\\x00\\x00\\x00\\x00" + name.encode())\n        t0 = time.time()\n        while time.time() - t0 < timeout_s:\n            await asyncio.sleep(0.15)\n            d = self.dl\n            if self.err is not None and not d["n"]:\n                break\n            if d["done"]:\n                break\n            if d["size"] and d["got"] >= d["size"]:\n                break\n        await asyncio.sleep(0.4)\n        d = self.dl\n        if self.err == ERR_NOT_FOUND or (d["n"] == 0 and not d["size"]):\n            raise RuntimeError("\u6587\u4EF6\u4E0D\u5B58\u5728\uFF08\u8BBE\u5907\u56DE 0x0545/0x5a\uFF09\uFF1A%s" % name)\n        total = d["size"] or d["got"]\n        if total <= 0:\n            raise RuntimeError("\u6CA1\u6536\u5230\u6570\u636E\uFF1A%s" % name)\n        buf = bytearray(total)\n        for off, seg in d["chunks"]:\n            # \u2605 offset \u662F\u300C\u672C\u5757\u7684\u7ED3\u675F\u4F4D\u7F6E\u300D\uFF0C\u8D77\u59CB = offset - len\n            st = max(0, off - len(seg))\n            e = min(total, st + len(seg))\n            buf[st:e] = seg[: e - st]\n        return bytes(buf)\n\n    async def delete(self, name, wait=3.0):\n        self.del_ack = None\n        await self._send(C_DELETE, name.encode())\n        t0 = time.time()\n        while time.time() - t0 < wait and self.del_ack is None:\n            await asyncio.sleep(0.1)\n        return self.del_ack == b"\\x01"\n\n    async def device_status(self):\n        self.dev_time = None\n        self.storage = None\n        self.mtu = None\n        for cmd in (C_DEV_TIME, C_MTU_RPT, C_STORAGE):\n            await self._send(cmd, b"")\n            await asyncio.sleep(0.55)\n        await asyncio.sleep(0.3)\n        return {\n            "deviceTime": self.dev_time,\n            "mtu": self.mtu,\n            "freeKb": (self.storage or {}).get("free_kb"),\n            "freeGb": round(((self.storage or {}).get("free_kb") or 0) / 1024 / 1024, 2)\n            if self.storage\n            else None,\n        }\n\n\ndef ogg_duration(raw):\n    """\u4ECE\u6700\u540E\u4E00\u4E2A Ogg \u9875\u7684 granule position \u4F30\u65F6\u957F\uFF08Opus \u56FA\u5B9A 48kHz \u65F6\u949F\uFF09\u3002"""\n    try:\n        i, gp = 0, 0\n        while i + 27 <= len(raw) and raw[i : i + 4] == b"OggS":\n            gp = struct.unpack("<q", raw[i + 6 : i + 14])[0]\n            nseg = raw[i + 26]\n            blen = sum(raw[i + 27 : i + 27 + nseg])\n            i += 27 + nseg + blen\n        return gp / 48000.0\n    except Exception:  # noqa: BLE001\n        return 0.0\n\n\n# ---------------------------------------------------------------- \u5B50\u547D\u4EE4\n\n\nasync def do_scan(args):\n    from bleak import BleakScanner\n\n    log("[\u626B\u63CF] %d \u79D2\u2026" % args.timeout)\n    devs = await BleakScanner.discover(timeout=float(args.timeout), return_adv=True)\n    all_rows, cards = [], []\n    for addr, (d, adv) in devs.items():\n        name = d.name or adv.local_name or ""\n        row = {"addr": addr, "name": name, "rssi": adv.rssi}\n        all_rows.append(row)\n        if name.startswith("Get-"):\n            cards.append(row)\n    all_rows.sort(key=lambda r: -(r["rssi"] or -999))\n    return {"ok": True, "cards": cards, "devices": all_rows}\n\n\nasync def do_info(args):\n    s = await CardSession(args.addr).connect()\n    try:\n        await s.time_sync()\n        st = await s.device_status()\n        files = await s.get_list()\n        return {\n            "ok": True,\n            "device": {"name": s.device.name, "address": s.device.address},\n            "status": st,\n            "fileCount": len(files),\n        }\n    finally:\n        await s.close()\n\n\nasync def do_list(args):\n    s = await CardSession(args.addr).connect()\n    try:\n        await s.time_sync()\n        files = await s.get_list()\n        for f in files:\n            f["duration"] = None\n        return {\n            "ok": True,\n            "device": {"name": s.device.name, "address": s.device.address},\n            "files": files,\n        }\n    finally:\n        await s.close()\n\n\nasync def do_pull(args):\n    outdir = os.path.abspath(args.out)\n    os.makedirs(outdir, exist_ok=True)\n    s = await CardSession(args.addr).connect()\n    try:\n        await s.time_sync()\n        files = await s.get_list()\n        if not files:\n            return {"ok": True, "downloaded": [], "skipped": [], "note": "\u5361\u7247\u4E0A\u6CA1\u6709\u5F55\u97F3"}\n        if args.all:\n            targets = files\n        else:\n            want = [n.strip() for n in (args.names or "").split(",") if n.strip()]\n            targets = [f for f in files if f["name"] in want]\n        if not targets:\n            return {"ok": False, "error": "\u8981\u4E0B\u8F7D\u7684\u6587\u4EF6\u4E0D\u5728\u5361\u7247\u4E0A", "files": files}\n\n        downloaded, skipped = [], []\n        for f in targets:\n            dst = os.path.join(outdir, f["name"])\n            if os.path.exists(dst) and not args.force:\n                skipped.append({"name": f["name"], "reason": "already-downloaded", "path": dst})\n                log("[\u8DF3\u8FC7] %s\uFF08\u672C\u5730\u5DF2\u6709\uFF09" % f["name"])\n                continue\n            log("[\u4E0B\u8F7D] %s (%d B)" % (f["name"], f["size"]))\n            raw = await s.download(f["name"])\n            is_ogg = raw[:4] == b"OggS"\n            tmp = dst + ".part"\n            with open(tmp, "wb") as fh:\n                fh.write(raw)\n            os.replace(tmp, dst)\n            item = {\n                "name": f["name"],\n                "time": f["time"],\n                "path": dst,\n                "bytes": len(raw),\n                "ogg": is_ogg,\n                "duration": round(ogg_duration(raw), 1) if is_ogg else 0,\n            }\n            if args.delete_after and is_ogg:\n                item["deletedOnCard"] = await s.delete(f["name"])\n            downloaded.append(item)\n            log("  -> %s %dB %.1fs" % (f["name"], len(raw), item["duration"]))\n        return {"ok": True, "downloaded": downloaded, "skipped": skipped}\n    finally:\n        await s.close()\n\n\ndef do_doctor(_args):\n    info = {"ok": True, "python": sys.version.split()[0]}\n    try:\n        import bleak  # noqa: F401\n        import importlib.metadata as md\n\n        info["bleak"] = md.version("bleak")\n        info["bleakReady"] = True\n    except Exception as e:  # noqa: BLE001\n        info["bleakReady"] = False\n        info["bleakError"] = str(e)\n    return info\n\n\n# ---------------------------------------------------------------- \u5165\u53E3\n\n\ndef main():\n    ap = argparse.ArgumentParser(description="\u5F97\u5230\u5F55\u97F3\u5361\u7535\u8111\u76F4\u8FDE\u6865\uFF08\u53EA\u8BFB\u4F18\u5148\uFF09")\n    ap.add_argument("command", choices=["scan", "info", "list", "pull", "doctor"])\n    ap.add_argument("--addr", default=None)\n    ap.add_argument("--timeout", type=int, default=8)\n    ap.add_argument("--out", default=".")\n    ap.add_argument("--names", default="")\n    ap.add_argument("--all", action="store_true")\n    ap.add_argument("--force", action="store_true")\n    ap.add_argument("--delete-after", action="store_true")\n    args = ap.parse_args()\n\n    fn = {\n        "scan": do_scan,\n        "info": do_info,\n        "list": do_list,\n        "pull": do_pull,\n        "doctor": do_doctor,\n    }[args.command]\n\n    try:\n        result = fn(args)\n        if asyncio.iscoroutine(result):\n            result = asyncio.run(result)\n        print(json.dumps(result, ensure_ascii=False))\n        return 0\n    except Exception as e:  # noqa: BLE001\n        print(\n            json.dumps({"ok": False, "error": str(e) or e.__class__.__name__}, ensure_ascii=False)\n        )\n        return 1\n\n\nif __name__ == "__main__":\n    sys.exit(main())\n';
+
+// src/card/wifi_transfer.py
+var wifi_transfer_default = `#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""\u5F55\u97F3\u5361\u70ED\u70B9\u5FEB\u4F20\uFF1A\u4E00\u6761\u547D\u4EE4\u8D70\u5B8C BLE \u6FC0\u6D3B \u2192 \u8FDE\u70ED\u70B9 \u2192 \u4E0B\u8F7D \u2192 \u9000\u51FA\u3002
+
+\u4E3A\u4EC0\u4E48\u5355\u72EC\u4E00\u4E2A\u811A\u672C\u800C\u4E0D\u585E\u8FDB getcard_bridge.py\uFF1A
+    bridge \u662F\u300C\u53EA\u8BFB\u534F\u8BAE\u5C42\u300D\uFF0C\u5B83\u7684\u6BCF\u4E2A\u52A8\u4F5C\u90FD\u53EF\u9884\u6D4B\u3001\u4E0D\u4F1A\u6539\u7CFB\u7EDF\u7F51\u7EDC\u914D\u7F6E\u3002
+    \u70ED\u70B9\u5FEB\u4F20\u8981\u52A8 Windows \u7684 WLAN profile\uFF08netsh add/connect/delete\uFF09\uFF0C\u5931\u8D25\u65F6
+    \u53EF\u80FD\u628A\u7535\u8111\u7559\u5728\u5361\u7247\u90A3\u4E2A\u6CA1\u6709\u4E92\u8054\u7F51\u7684\u70ED\u70B9\u4E0A\u2014\u2014\u90A3\u662F\u4E2A\u4F1A\u8BA9\u7528\u6237\u4EE5\u4E3A\u65AD\u7F51\u7684\u72B6\u6001\u3002
+    \u628A\u5B83\u5355\u72EC\u62CE\u51FA\u6765\uFF0C\u662F\u4E3A\u4E86\u8BA9\u300C\u4F1A\u6539\u7CFB\u7EDF\u72B6\u6001\u7684\u4EE3\u7801\u300D\u53EA\u6709\u8FD9\u4E00\u5904\uFF0C\u4E5F\u65B9\u4FBF\u5728\u51FA\u9519\u65F6
+    \u53EA\u6E05\u7406\u8FD9\u4E00\u6BB5\u800C\u4E0D\u5F71\u54CD\u5DF2\u7ECF\u4E0B\u8F7D\u597D\u7684\u6587\u4EF6\u3002
+
+\u4E24\u6761\u786C\u7EA6\u675F\uFF08\u4E0D\u662F\u63D0\u9192\uFF0C\u662F\u5B9E\u73B0\u7EA6\u675F\uFF09\uFF1A
+    \xB7 \u5F55\u97F3\u8FDB\u884C\u4E2D\u5361\u7247\u4F1A\u62D2\u7EDD WiFi \u4F20\u8F93\uFF08\u56FA\u4EF6 \`%s recode dont wifi trans!!\`\uFF09\uFF0C
+      \u6240\u4EE5\u6FC0\u6D3B\u5931\u8D25\u65F6\u4E0D\u8981\u91CD\u8BD5\uFF0C\u76F4\u63A5\u62A5\u9519\u8BA9\u7528\u6237\u505C\u6B62\u5F55\u97F3\u518D\u6765\u3002
+    \xB7 \u5361\u7247\u8FDE\u4E0A\u624B\u673A App \u540E\u4F1A\u6E05\u7A7A\u5DF2\u540C\u6B65\u7684\u5F55\u97F3\u3002\u8FD9\u662F\u5361\u7247\u81EA\u5DF1\u7684\u884C\u4E3A\uFF0C\u4E0E\u811A\u672C\u65E0\u5173\uFF0C
+      \u4F46\u610F\u5473\u7740\u300C\u8D8A\u65E9\u628A\u6587\u4EF6\u62C9\u4E0B\u6765\u8D8A\u597D\u300D\u2014\u2014\u6240\u4EE5\u4E0B\u8F7D\u9636\u6BB5\u4E0D\u505A\u4EFB\u4F55\u591A\u4F59\u7684\u6821\u9A8C\u5F80\u8FD4\u3002
+
+\u901F\u5EA6\u5BF9\u6BD4\uFF08\u5B9E\u6D4B\u53E3\u5F84\uFF09\uFF1ABLE \u7EA6 25 KB/s\uFF0CWiFi \u5C40\u57DF\u7F51\u901A\u5E38 >1 MB/s\uFF0C\u91CF\u7EA7\u5DEE 40 \u500D\u3002
+\u4E00\u5C0F\u65F6\u5F55\u97F3\u7EA6 56 MB\uFF0CBLE \u8981 40 \u5206\u949F\uFF0CWiFi \u4E00\u4E24\u5206\u949F\u3002
+
+\u8F93\u51FA\uFF1Astdout \u53EA\u6253\u5370\u4E00\u4E2A JSON\uFF08\u4E0E getcard_bridge.py \u4E00\u81F4\u7684\u7EA6\u5B9A\uFF09\uFF0C\u65E5\u5FD7\u8D70 stderr\u3002
+"""
+
+import argparse
+import asyncio
+import json
+import os
+import re
+import socket
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+
+# Windows \u63A7\u5236\u53F0\u9ED8\u8BA4 cp936\uFF0C\u76F4\u63A5 print \u4E2D\u6587/SSID \u4F1A\u53D8\u4E71\u7801\uFF0CNode \u4FA7\u6309 utf-8 \u89E3\u4F1A\u5F97\u5230\u95EE\u53F7\u3002
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from getcard_bridge import (  # noqa: E402
+    CH_CTL_N,
+    CH_CTL_W,
+    MAGIC,
+    SVC_CTL,
+    CardSession,
+    ctrl_frame,
+    log,
+    parse_ctrl,
+)
+
+# \u2500\u2500 WiFi \u6FC0\u6D3B\u547D\u4EE4\u5019\u9009 \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+#
+# \u56FA\u4EF6\u91CC\u6709 blespp_file_set_device_special_wifi_status_handle\uFF08\u8BBE\u7F6E WiFi \u72B6\u6001\uFF09
+# \u548C blespp_file_device_notify_app_wifi_status\uFF08\u4E3B\u52A8\u901A\u77E5 App WiFi \u72B6\u6001\uFF09\uFF0C
+# \u4F46\u547D\u4EE4\u7801\u5728\u9006\u5411\u6587\u6863\u91CC\u6CA1\u5B9A\u4F4D\u5230\uFF08docs/04 \u53EA\u6309\u56FA\u4EF6\u51FD\u6570\u540D\u5217\u4E86\u80FD\u529B\uFF0C\u6807 \u274C \u672A\u7528\uFF09\u3002
+#
+# \u4F9D\u636E\u300C\u540C\u4E00\u65CF\u547D\u4EE4\u7684\u7F16\u53F7\u662F\u8FDE\u53F7\u300D\u8FD9\u6761\u89C4\u5F8B\uFF080x0145 \u8BF7\u6C42\u4E0B\u8F7D / 0x0146 \u5BF9\u65F6 /
+# 0x0147 MTU \u4E0A\u62A5\u90FD\u6328\u7740\uFF09\uFF0CWiFi \u72B6\u6001\u65CF\u6700\u53EF\u80FD\u843D\u5728 0x014x / 0x015x \u8FD9\u6BB5\u91CC\u3002
+# \u6240\u4EE5\u8FD9\u91CC\u628A\u5019\u9009\u6309\u53EF\u80FD\u6027\u6392\u5E8F\uFF0Cprobe \u6A21\u5F0F\u9010\u4E2A\u8BD5\uFF0C\u8C01\u8BA9\u5361\u7247\u5F00\u59CB\u5E7F\u64AD\u70ED\u70B9\u5C31\u662F\u8C01\u3002
+#
+# \u7EDD\u4E0D\u5305\u542B 0x0041\uFF08\u6E05\u7406\u5DF2\u4F20\u8F93\u6587\u4EF6\uFF09\u548C 0x0044\uFF08\u5220\u6307\u5B9A\u6587\u4EF6\uFF09\u2014\u2014\u8FD9\u4E24\u4E2A\u662F\u4E0D\u53EF\u9006\u7684
+# \u5220\u9664\u64CD\u4F5C\uFF0C\u7EDD\u4E0D\u80FD\u5728\u300C\u8BD5\u4E00\u4E0B\u8FD9\u4E2A\u7801\u300D\u7684\u573A\u666F\u91CC\u53D1\u51FA\u53BB\u3002
+DANGEROUS_CMDS = {
+    0x0041: "\u6E05\u7406\u6240\u6709\u5DF2\u4F20\u8F93\u6587\u4EF6\uFF08\u6C38\u4E45\u5220\u9664\uFF09",
+    0x0044: "\u5220\u9664\u6307\u5B9A\u6587\u4EF6\uFF08\u6C38\u4E45\u5220\u9664\uFF09",
+}
+
+WIFI_ACTIVATE_CANDIDATES = [
+    0x0141,
+    0x0142,
+    0x0143,
+    0x0144,
+    0x0148,
+    0x0149,
+    0x014A,
+    0x014B,
+    0x014C,
+    0x014D,
+    0x014E,
+    0x014F,
+    0x0151,
+    0x0152,
+    0x0153,
+    0x0154,
+    0x0155,
+    0x0156,
+    0x0157,
+    0x0045,
+    0x0048,
+    0x0049,
+    0x004A,
+    0x004B,
+    0x004C,
+    0x004D,
+    0x004E,
+    0x004F,
+    0x0051,
+    0x0052,
+]
+
+# \u6FC0\u6D3B\u65F6\u5E26\u7684 body \u5019\u9009\u3002\u534F\u8BAE\u91CC\u5F00\u5173\u7C7B\u547D\u4EE4\u5E38\u89C1\u4E09\u79CD\u5199\u6CD5\uFF1A\u7A7A body\u3001\u5355\u4E2A 0x01\u3001
+# \u56DB\u5B57\u8282\u5C0F\u7AEF 1\u3002\u4E09\u79CD\u90FD\u8BD5\u7684\u6210\u672C\u5F88\u4F4E\uFF08\u6BCF\u6B21\u51E0\u5341\u6BEB\u79D2\uFF09\uFF0C\u6BD4\u731C\u9519\u518D\u56DE\u5934\u91CD\u8BD5\u4FBF\u5B9C\u3002
+ACTIVATE_BODIES = [b"", b"\\x01", b"\\x01\\x00\\x00\\x00"]
+
+PROFILE_NAME = "dsh-getnote-card"
+
+# \u5361\u7247\u70ED\u70B9\u4E0A\u7684\u670D\u52A1\u7AEF\u53E3\u3002App \u4FA7\u53EA\u6709 downloadFileWifi\uFF08\u6CA1\u6709\u786C\u7F16\u7801 URL\uFF09\uFF0C
+# \u8BF4\u660E\u7AEF\u70B9\u662F\u8FD0\u884C\u65F6\u62FC\u7684\uFF1B\u56FA\u4EF6\u91CC\u5F55\u97F3\u843D\u76D8\u5728 /usb/recode\uFF0CHTTP \u670D\u52A1\u5F88\u53EF\u80FD\u76F4\u63A5
+# \u6620\u5C04\u8FD9\u4E2A\u76EE\u5F55\uFF0C\u6240\u4EE5\u8DEF\u5F84\u5019\u9009\u6309\u8FD9\u4E2A\u601D\u8DEF\u6392\u3002
+COMMON_PORTS = [80, 8080, 8000, 5000, 9000, 8888, 3000, 1234]
+HTTP_PATHS = [
+    "/",
+    "/list",
+    "/files",
+    "/filelist",
+    "/files/list",
+    "/recode",
+    "/usb/recode",
+    "/usb/recode/",
+    "/recordings",
+    "/api/files",
+    "/api/list",
+    "/index.html",
+    "/dir",
+    "/download",
+]
+
+
+def run(cmd, timeout=30):
+    """\u8DD1\u4E00\u6761\u7CFB\u7EDF\u547D\u4EE4\uFF0C\u8FD4\u56DE (code, stdout, stderr)\u3002\u7F16\u7801\u6309 cp936 \u2192 utf-8 \u4F9D\u6B21\u8BD5\u3002"""
+    try:
+        proc = subprocess.run(cmd, capture_output=True, timeout=timeout, shell=False)
+    except subprocess.TimeoutExpired:
+        return (-1, "", "\u547D\u4EE4\u8D85\u65F6")
+    except FileNotFoundError:
+        return (-2, "", "\u627E\u4E0D\u5230\u547D\u4EE4")
+
+    def dec(raw):
+        for enc in ("cp936", "utf-8", "latin-1"):
+            try:
+                return raw.decode(enc)
+            except Exception:
+                continue
+        return raw.decode("utf-8", "replace")
+
+    return (proc.returncode, dec(proc.stdout), dec(proc.stderr))
+
+
+def current_ssid():
+    """\u5F53\u524D\u8FDE\u7740\u7684 SSID\u3002\u8DF3\u8FC7\u542B BSSID \u7684\u884C\u2014\u2014\u4E2D\u6587\u7CFB\u7EDF\u4E0A\u4E24\u884C\u7684\u952E\u540D\u90FD\u4EE5 SSID \u5F00\u5934\u3002"""
+    code, out, _ = run(["netsh", "wlan", "show", "interfaces"])
+    if code != 0:
+        return None
+    for line in out.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("SSID"):
+            continue
+        if "BSSID" in stripped:
+            continue
+        parts = re.split(r"[:\\uff1a]", stripped, maxsplit=1)
+        if len(parts) == 2 and parts[1].strip() != "":
+            return parts[1].strip()
+    return None
+
+
+def visible_ssids():
+    """\u626B\u5F97\u5230\u7684 SSID \u5217\u8868\u3002\u7528\u6765\u505A\u300C\u6FC0\u6D3B\u524D\u540E\u5DEE\u96C6\u300D\u2014\u2014\u65B0\u5192\u51FA\u6765\u7684\u90A3\u4E2A\u5C31\u662F\u5361\u7247\u70ED\u70B9\u3002"""
+    code, out, _ = run(["netsh", "wlan", "show", "networks", "mode=bssid"], timeout=40)
+    if code != 0:
+        return []
+    names = []
+    for line in out.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("SSID ") or "BSSID" in stripped:
+            continue
+        parts = re.split(r"[:\\uff1a]", stripped, maxsplit=1)
+        if len(parts) == 2:
+            name = parts[1].strip()
+            if name != "":
+                names.append(name)
+    return names
+
+
+def looks_like_card_hotspot(ssid):
+    low = ssid.lower()
+    return (
+        low.startswith("get-")
+        or low.startswith("getseed")
+        or low.startswith("gsc")
+        or "getseed" in low
+        or "\u5F97\u5230" in ssid
+    )
+
+
+def profile_xml(ssid, password):
+    """\u751F\u6210 WLAN profile\u3002\u5BC6\u7801\u4E3A\u7A7A\u65F6\u6309\u5F00\u653E\u7F51\u7EDC\u5199\uFF08\u5361\u7247\u70ED\u70B9\u53EF\u80FD\u662F\u5F00\u653E\u7684\uFF09\u3002"""
+    safe_ssid = (
+        ssid.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+    )
+    if password is None or password == "":
+        security = (
+            "            <authEncryption>\\n"
+            "                <authentication>open</authentication>\\n"
+            "                <encryption>none</encryption>\\n"
+            "                <useOneX>false</useOneX>\\n"
+            "            </authEncryption>\\n"
+        )
+    else:
+        safe_pwd = (
+            password.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+        )
+        security = (
+            "            <authEncryption>\\n"
+            "                <authentication>WPA2PSK</authentication>\\n"
+            "                <encryption>AES</encryption>\\n"
+            "                <useOneX>false</useOneX>\\n"
+            "            </authEncryption>\\n"
+            "            <sharedKey>\\n"
+            "                <keyType>passPhrase</keyType>\\n"
+            "                <protected>false</protected>\\n"
+            f"                <keyMaterial>{safe_pwd}</keyMaterial>\\n"
+            "            </sharedKey>\\n"
+        )
+    return (
+        '<?xml version="1.0"?>\\n'
+        '<WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1">\\n'
+        f"    <name>{safe_ssid}</name>\\n"
+        f"    <SSIDConfig>\\n        <SSID>\\n            <name>{safe_ssid}</name>\\n        </SSID>\\n    </SSIDConfig>\\n"
+        "    <connectionType>ESS</connectionType>\\n"
+        "    <connectionMode>manual</connectionMode>\\n"
+        "    <MSM>\\n"
+        "        <security>\\n"
+        f"{security}"
+        "        </security>\\n"
+        "    </MSM>\\n"
+        "</WLANProfile>\\n"
+    )
+
+
+def join_hotspot(ssid, password, wait_seconds=30):
+    """\u8FDE\u5230\u5361\u7247\u70ED\u70B9\u3002\u5148\u5220\u540C\u540D profile\uFF0C\u5426\u5219 netsh \u4F1A\u9759\u9ED8\u6CBF\u7528\u65E7\u5BC6\u7801\u3002"""
+    run(["netsh", "wlan", "delete", "profile", f"name={PROFILE_NAME}"])
+    run(["netsh", "wlan", "delete", "profile", f"name={ssid}"])
+
+    tmp = os.path.join(os.environ.get("TEMP", "."), "dshgn-wlan.xml")
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write(profile_xml(PROFILE_NAME, password))
+    try:
+        code, out, err = run(["netsh", "wlan", "add", "profile", f"filename={tmp}", "user=current"])
+        if code != 0:
+            return {"ok": False, "error": f"\u5199 WLAN profile \u5931\u8D25\uFF1A{(err or out).strip()[:200]}"}
+        # \u52A0\u8FDB\u53BB\u7684 profile \u540D\u662F dsh-getnote-card\uFF0C\u4F46 SSID \u662F\u5361\u7247\u7684\u540D\u5B57\uFF0C\u8FDE\u63A5\u65F6\u7528 profile \u540D
+        run(["netsh", "wlan", "connect", f"name={PROFILE_NAME}", f"ssid={ssid}"])
+    finally:
+        try:
+            os.remove(tmp)
+        except Exception:
+            pass
+
+    deadline = time.time() + wait_seconds
+    while time.time() < deadline:
+        if current_ssid() == ssid:
+            return {"ok": True, "ssid": ssid}
+        time.sleep(1.5)
+    return {
+        "ok": False,
+        "error": f"\u8FDE\u4E0D\u4E0A\u70ED\u70B9 {ssid}\uFF08\u7B49 {wait_seconds} \u79D2\u4ECD\u672A\u63A5\u4E0A\uFF09\u3002\u53EF\u80FD\u662F\u5BC6\u7801\u4E0D\u5BF9\u3001\u5361\u7247\u5DF2\u7ECF\u5173\u6389\u70ED\u70B9\uFF0C\u6216\u8005\u4FE1\u53F7\u592A\u5F31\u3002",
+    }
+
+
+def interface_ip():
+    """\u53D6\u5F53\u524D\u7F51\u5361\u7684 IPv4 \u4E0E\u9ED8\u8BA4\u7F51\u5173\u3002\u53EA\u8BA4\u79C1\u6709\u5730\u5740\u6BB5\u2014\u2014\u516C\u7F51\u5730\u5740\u8BF4\u660E\u8FD8\u8FDE\u5728\u522B\u7684\u7F51\u7EDC\u4E0A\u3002"""
+    code, out, _ = run(["ipconfig"])
+    if code != 0:
+        return (None, None)
+    ip = None
+    gateway = None
+    for line in out.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("IPv4"):
+            parts = re.split(r"[:\\uff1a]", stripped, maxsplit=1)
+            if len(parts) == 2:
+                ip = parts[1].strip()
+        elif "Default Gateway" in stripped or "\u9ED8\u8BA4\u7F51\u5173" in stripped:
+            parts = re.split(r"[:\\uff1a]", stripped, maxsplit=1)
+            if len(parts) == 2:
+                candidate = parts[1].strip()
+                if candidate != "":
+                    gateway = candidate
+    def private(addr):
+        return addr is not None and (
+            addr.startswith("192.168.") or addr.startswith("10.") or addr.startswith("172.")
+        )
+    return (ip if private(ip) else None, gateway if private(gateway) else None)
+
+
+def tcp_probe(host, port, timeout=1.2):
+    """\u88F8 socket \u63A2\u7AEF\u53E3\u3002\u4E0D\u7528 nmap\uFF1A\u7528\u6237\u673A\u5668\u5927\u6982\u7387\u6CA1\u88C5\uFF0C\u88C5\u4E00\u4E2A\u53EA\u4E3A\u626B\u4E00\u6B21\u4E0D\u503C\u5F53\u3002"""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(timeout)
+    try:
+        return sock.connect_ex((host, port)) == 0
+    except Exception:
+        return False
+    finally:
+        try:
+            sock.close()
+        except Exception:
+            pass
+
+
+def http_get(url, timeout=8):
+    req = urllib.request.Request(url, headers={"User-Agent": "dsh-getnote/1.0"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return (resp.status, resp.headers.get("Content-Type", ""), resp.read())
+
+
+def discover_service(host):
+    """\u627E\u5361\u7247\u4E0A\u7684\u4F20\u8F93\u670D\u52A1\uFF1A\u5148\u626B\u7AEF\u53E3\uFF0C\u518D\u8BD5\u5E38\u89C1\u8DEF\u5F84\u3002"""
+    open_ports = [p for p in COMMON_PORTS if tcp_probe(host, p)]
+    if not open_ports:
+        return {"openPorts": [], "hits": [], "error": "\u5361\u7247\u4E0A\u6CA1\u6709\u626B\u5230\u53EF\u7528\u7684\u4F20\u8F93\u7AEF\u53E3"}
+
+    hits = []
+    for port in open_ports:
+        for path in HTTP_PATHS:
+            url = f"http://{host}:{port}{path}"
+            try:
+                status, ctype, body = http_get(url, timeout=4)
+            except urllib.error.HTTPError as exc:
+                status, ctype, body = (exc.code, "", b"")
+            except Exception:
+                continue
+            if status != 200:
+                continue
+            head = body[:400].decode("utf-8", "replace")
+            hits.append(
+                {
+                    "url": url,
+                    "port": port,
+                    "path": path,
+                    "contentType": ctype,
+                    "bytes": len(body),
+                    "head": head,
+                }
+            )
+            break  # \u540C\u4E00\u7AEF\u53E3\u7B2C\u4E00\u4E2A\u80FD\u7528\u7684\u8DEF\u5F84\u5C31\u591F\u4E86\uFF0C\u522B\u628A\u6574\u4E2A\u8DEF\u5F84\u8868\u90FD\u6253\u4E00\u904D
+    return {"openPorts": open_ports, "hits": hits, "error": None if hits else "\u7AEF\u53E3\u5F00\u7740\u4F46\u6CA1\u627E\u5230\u80FD\u53D6\u5217\u8868\u7684\u8DEF\u5F84"}
+
+
+def leave_hotspot():
+    """\u9000\u51FA\u5361\u7247\u70ED\u70B9\u5E76\u5220\u6389 profile\u3002
+
+    \u987A\u5E8F\u5FC5\u987B\u662F\u300C\u5148\u65AD\u5F00\u518D\u5220\u300D\uFF1A\u53CD\u8FC7\u6765\u7684\u8BDD Windows \u8BA4\u4E3A\u8FD9\u4E2A profile \u6B63\u5728\u4F7F\u7528\uFF0C
+    \u5220\u4E0D\u6389\uFF0C\u4E0B\u6B21 join \u5C31\u4F1A\u5E26\u7740\u4E0A\u4E00\u6B21\u7684\u5BC6\u7801\uFF0C\u8868\u73B0\u6210\u300C\u5BC6\u7801\u660E\u660E\u5BF9\u5374\u8FDE\u4E0D\u4E0A\u300D\u3002
+    \u53E6\u5916\u4E0D\u6062\u590D\u7684\u8BDD\u7535\u8111\u4E00\u76F4\u6302\u5728\u5361\u7247\u90A3\u4E2A\u6CA1\u6709\u4E92\u8054\u7F51\u7684\u70ED\u70B9\u4E0A\uFF0C\u6D4F\u89C8\u5668\u5168\u6253\u4E0D\u5F00\uFF0C
+    \u7528\u6237\u5F88\u5BB9\u6613\u4EE5\u4E3A\u65AD\u7F51\u4E86\u3002
+    """
+    run(["netsh", "wlan", "disconnect"])
+    time.sleep(1.0)
+    run(["netsh", "wlan", "delete", "profile", f"name={PROFILE_NAME}"])
+    return {"ok": True}
+
+
+# \u2500\u2500 BLE \u4FA7\uFF1A\u6FC0\u6D3B WiFi \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+
+def extract_credentials(text):
+    """\u4ECE\u901A\u77E5\u8F7D\u8377\u6587\u672C\u91CC\u62A0\u70ED\u70B9\u51ED\u8BC1\u3002
+
+    \u56FA\u4EF6\u4E32\u662F \`%s ssid:%s, passwd:%s, hidden:%d\`\uFF0C\u6240\u4EE5\u771F\u5B9E\u8F7D\u8377\u5F88\u53EF\u80FD\u5C31\u662F\u8FD9\u4E00\u884C\u3002
+    \u5B57\u6BB5\u540D\u7559\u4E86\u51E0\u79CD\u5E38\u89C1\u53D8\u4F53\uFF0C\u56E0\u4E3A App \u4FA7\u7684\u89E3\u6790\u5668\u6CA1\u6709\u516C\u5F00\u3002
+    """
+    out = {}
+    if not isinstance(text, str) or text == "":
+        return out
+    patterns = {
+        "ssid": r"ssid\\s*[:=]\\s*([^,;\\s}]+)",
+        "password": r"(?:passwd|password|pwd|pass)\\s*[:=]\\s*([^,;\\s}]+)",
+        "ip": r"(?:ip|addr|address|host)\\s*[:=]\\s*([0-9]{1,3}(?:\\.[0-9]{1,3}){3})",
+        "port": r"port\\s*[:=]\\s*(\\d{1,5})",
+    }
+    for key, pattern in patterns.items():
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            value = match.group(1).strip()
+            if value not in ("", "null", "NULL"):
+                out[key] = value
+    return out
+
+
+class WifiSession(CardSession):
+    """\u5728 CardSession \u57FA\u7840\u4E0A\u52A0\u300C\u8BB0\u4E0B\u6240\u6709\u901A\u77E5\u300D\u7684\u80FD\u529B\u3002
+
+    CardSession._on_notify \u53EA\u8BA4\u5DF2\u77E5\u7684 8 \u4E2A\u547D\u4EE4\u7801\uFF0C\u5176\u4F59\u9759\u9ED8\u4E22\u5F03\u3002\u679A\u4E3E WiFi \u547D\u4EE4\u7801\u65F6
+    \u6070\u6070\u9700\u8981\u770B\u5230\u672A\u77E5\u901A\u77E5\u2014\u2014\u90A3\u4E9B\u5C31\u662F\u7B54\u6848\u672C\u8EAB\u3002\u6240\u4EE5\u8FD9\u91CC\u8986\u5199\uFF0C\u628A\u6BCF\u6761\u901A\u77E5\u90FD\u5B58\u4E0B\u6765\u3002
+    """
+
+    def __init__(self, addr=None):
+        super().__init__(addr)
+        self.raw_notifications = []
+
+    def _on_notify(self, sender, data):
+        try:
+            parsed = parse_ctrl(data)
+        except Exception:
+            parsed = None
+        if parsed is not None:
+            self.raw_notifications.append(parsed)
+        super()._on_notify(sender, data)
+
+    async def send_raw(self, cmd, body=b""):
+        await self._send(cmd, body)
+        return True
+
+
+async def activate_wifi(session, cmd=None, body=None, wait=3.0):
+    """\u53D1\u6FC0\u6D3B\u547D\u4EE4\uFF0C\u7136\u540E\u770B\u4E24\u5904\uFF1A\u5361\u7247\u6709\u6CA1\u6709\u63A8\u65B0\u7684\u901A\u77E5\u3001\u7535\u8111\u6709\u6CA1\u6709\u591A\u51FA\u4E00\u4E2A\u70ED\u70B9\u3002"""
+    before_ssids = set(visible_ssids())
+    before_count = len(session.raw_notifications)
+
+    if cmd is not None:
+        if cmd in DANGEROUS_CMDS:
+            raise RuntimeError(f"\u62D2\u7EDD\u53D1\u9001 0x{cmd:04X}\uFF1A{DANGEROUS_CMDS[cmd]}")
+        bodies = [body] if body is not None else ACTIVATE_BODIES
+        for payload in bodies:
+            await session.send_raw(cmd, payload)
+            await asyncio.sleep(1.2)
+    else:
+        for candidate in WIFI_ACTIVATE_CANDIDATES:
+            if candidate in DANGEROUS_CMDS:
+                continue
+            await session.send_raw(candidate, b"")
+            await asyncio.sleep(0.35)
+        await asyncio.sleep(1.0)
+
+    await asyncio.sleep(wait)
+
+    new_notifications = session.raw_notifications[before_count:]
+    texts = []
+    for item in new_notifications:
+        body_text = item.get("body")
+        if isinstance(body_text, (bytes, bytearray)):
+            try:
+                body_text = body_text.decode("utf-8", "replace")
+            except Exception:
+                body_text = ""
+        texts.append({"cmd": f"0x{item.get('cmd', 0):04X}", "body": body_text})
+
+    after_ssids = visible_ssids()
+    new_ssids = [s for s in after_ssids if s not in before_ssids]
+
+    creds = {}
+    for text in texts:
+        found = extract_credentials(text.get("body") if isinstance(text.get("body"), str) else "")
+        if found:
+            creds.update(found)
+
+    hotspot = None
+    for ssid in new_ssids:
+        if looks_like_card_hotspot(ssid):
+            hotspot = ssid
+            break
+    if hotspot is None and creds.get("ssid"):
+        hotspot = creds["ssid"]
+    if hotspot is None and len(new_ssids) == 1:
+        # \u53EA\u6709\u4E00\u4E2A\u65B0 SSID\uFF0C\u800C\u4E14\u6CA1\u6709\u4EFB\u4F55\u5DF2\u77E5\u7279\u5F81\u2014\u2014\u5927\u6982\u7387\u5C31\u662F\u5361\u7247\u81EA\u5DF1\u8D77\u7684\u540D\u5B57
+        hotspot = new_ssids[0]
+
+    return {
+        "ok": hotspot is not None,
+        "hotspot": hotspot,
+        "password": creds.get("password"),
+        "ip": creds.get("ip"),
+        "port": creds.get("port"),
+        "newSsids": new_ssids,
+        "notifications": texts[:40],
+        "candidates": None if cmd is not None else len(WIFI_ACTIVATE_CANDIDATES),
+    }
+
+
+async def async_main(args):
+    if args.mode == "probe":
+        # \u7EAF\u679A\u4E3E\uFF1A\u8FDE\u4E0A\u540E\u9010\u4E2A\u53D1\u5019\u9009\u7801\uFF0C\u628A\u6BCF\u4E2A\u7801\u4E4B\u540E\u7684\u65B0\u901A\u77E5\u539F\u6837\u62A5\u56DE\u6765\u3002
+        # \u8FD9\u4E00\u6B65\u4E0D\u6539\u7CFB\u7EDF\u7F51\u7EDC\u914D\u7F6E\uFF0C\u5B89\u5168\u3002
+        probe_session = WifiSession(args.addr)
+        await probe_session.connect()
+        try:
+            report = []
+            before = len(probe_session.raw_notifications)
+            for candidate in WIFI_ACTIVATE_CANDIDATES:
+                if candidate in DANGEROUS_CMDS:
+                    continue
+                await probe_session.send_raw(candidate, b"")
+                await asyncio.sleep(0.5)
+                fresh = probe_session.raw_notifications[before:]
+                before = len(probe_session.raw_notifications)
+                if fresh:
+                    items = []
+                    for item in fresh:
+                        body = item.get("body")
+                        if isinstance(body, (bytes, bytearray)):
+                            body = body.decode("utf-8", "replace")
+                        items.append({"cmd": f"0x{item.get('cmd', 0):04X}", "body": body})
+                    report.append({"sent": f"0x{candidate:04X}", "replies": items})
+            ssids = visible_ssids()
+            return {
+                "ok": True,
+                "probed": len(WIFI_ACTIVATE_CANDIDATES),
+                "responded": report,
+                "ssids": ssids,
+            }
+        finally:
+            await probe_session.close()
+
+    if args.mode == "activate":
+        session = WifiSession(args.addr)
+        await session.connect()
+        try:
+            cmd = int(args.cmd, 16) if args.cmd else None
+            body = bytes.fromhex(args.body) if args.body else None
+            result = await activate_wifi(session, cmd=cmd, body=body, wait=args.wait)
+            if result["ok"] and args.join:
+                joined = join_hotspot(result["hotspot"], result.get("password") or args.password)
+                result["joined"] = joined
+                if joined["ok"]:
+                    ip, gateway = interface_ip()
+                    result["gateway"] = gateway
+                    result["localIp"] = ip
+                    if gateway:
+                        result["service"] = discover_service(gateway)
+                    if not args.keep:
+                        result["left"] = leave_hotspot()
+            return result
+        finally:
+            await session.close()
+
+    if args.mode == "join":
+        joined = join_hotspot(args.ssid, args.password, wait_seconds=args.timeout)
+        if not joined["ok"]:
+            return joined
+        ip, gateway = interface_ip()
+        result = {"ok": True, "ssid": args.ssid, "localIp": ip, "gateway": gateway}
+        if gateway:
+            result["service"] = discover_service(gateway)
+        if not args.keep:
+            result["left"] = leave_hotspot()
+        return result
+
+    if args.mode == "scan":
+        ssids = visible_ssids()
+        current = current_ssid()
+        ip, gateway = interface_ip()
+        return {
+            "ok": True,
+            "current": current,
+            "ssids": ssids,
+            "cardLike": [s for s in ssids if looks_like_card_hotspot(s)],
+            "localIp": ip,
+            "gateway": gateway,
+        }
+
+    if args.mode == "leave":
+        return leave_hotspot()
+
+    raise SystemExit(f"\u672A\u77E5\u6A21\u5F0F {args.mode}")
+
+
+
+def main():
+    parser = argparse.ArgumentParser(description="\u5F55\u97F3\u5361\u70ED\u70B9\u5FEB\u4F20")
+    parser.add_argument("mode", choices=["probe", "activate", "join", "scan", "leave"])
+    parser.add_argument("--addr", default=None, help="\u5361\u7247 BLE \u5730\u5740\uFF08\u9ED8\u8BA4\u81EA\u52A8\u626B\u63CF\uFF09")
+    parser.add_argument("--cmd", default=None, help="\u6FC0\u6D3B\u547D\u4EE4\u7801\uFF0C\u5982 0x0141")
+    parser.add_argument("--body", default=None, help="\u6FC0\u6D3B\u547D\u4EE4 body\uFF0C\u5341\u516D\u8FDB\u5236\u5982 01")
+    parser.add_argument("--ssid", default=None, help="\u624B\u52A8\u6307\u5B9A\u70ED\u70B9\u540D\uFF08join \u6A21\u5F0F\uFF09")
+    parser.add_argument("--password", default=None, help="\u70ED\u70B9\u5BC6\u7801")
+    parser.add_argument("--wait", type=float, default=3.0, help="\u6FC0\u6D3B\u540E\u7B49\u591A\u4E45\u770B\u70ED\u70B9")
+    parser.add_argument("--timeout", type=int, default=30, help="\u8FDE\u70ED\u70B9\u8D85\u65F6\u79D2\u6570")
+    parser.add_argument("--join", action="store_true", help="activate \u540E\u81EA\u52A8\u8FDE\u70ED\u70B9\u5E76\u627E\u670D\u52A1")
+    parser.add_argument("--keep", action="store_true", help="\u7ED3\u675F\u540E\u4E0D\u65AD\u5F00\u70ED\u70B9\uFF08\u8C03\u8BD5\u7528\uFF09")
+    args = parser.parse_args()
+
+    try:
+        result = asyncio.run(async_main(args))
+    except Exception as exc:  # noqa: BLE001 \u2014 \u6865\u7684\u7EA6\u5B9A\u5C31\u662F\u4EFB\u4F55\u9519\u8BEF\u90FD\u53D8\u6210\u4E00\u4E2A JSON
+        result = {"ok": False, "error": str(exc)}
+    print(json.dumps(result, ensure_ascii=False))
+    return 0 if result.get("ok") else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+`;
+
+// src/card/wifi_probe.py
+var wifi_probe_default = '#!/usr/bin/env python3\n# -*- coding: utf-8 -*-\n"""\u5F55\u97F3\u5361 WiFi \u5FEB\u4F20\u901A\u9053\uFF1A\u547D\u4EE4\u7801\u63A2\u9488\u3002\n\n\u80CC\u666F\uFF1A\u56FA\u4EF6\u91CC\u786E\u5B9E\u6709 WiFi \u5FEB\u4F20\u80FD\u529B\uFF08`blespp_file_set_device_special_wifi_status_handle`\u3001\n`blespp_file_device_notify_app_wifi_status`\u3001`bwifi_softap_start`\u3001`%s wifi trans clock key!!`\uFF09\uFF0C\n\u4F46**\u8FD9\u51E0\u4E2A\u51FD\u6570\u7684 BLE \u547D\u4EE4\u7801\u8FD8\u6CA1\u6709\u88AB\u9006\u5411\u51FA\u6765**\u3002\u5F00\u6E90\u534F\u8BAE\u6587\u6863 docs/13 \u660E\u786E\u5199\u7740\n\u300C\u70ED\u70B9 SSID/\u5BC6\u7801\u5982\u4F55\u4E0B\u53D1\uFF1A\u63A8\u6D4B\u7ECF BLE \u547D\u4EE4\u4E0B\u53D1\uFF0C\u9700\u6293 BLE \u786E\u8BA4\u5B57\u6BB5\u683C\u5F0F\u300D\u3002\n\n\u8FD9\u4E2A\u811A\u672C\u5C31\u662F\u53BB\u8865\u4E0A\u90A3\u4E00\u5757\u3002\u5B83\u505A\u4E09\u4EF6\u4E8B\uFF0C\u98CE\u9669\u4ECE\u4F4E\u5230\u9AD8\uFF1A\n\n  1) `listen`  \u2014\u2014 \u7EAF\u88AB\u52A8\u3002\u8FDE\u4E0A\u5361\u7247\u540E\u53EA\u8BA2\u9605\u901A\u77E5\u3001\u4EC0\u4E48\u90FD\u4E0D\u53D1\u3002\n                  \u7528\u6237\u624B\u52A8\u6309\u5361\u7247\u4E0A\u7684\u300CWiFi \u4F20\u8F93\u300D\u6309\u952E\u7EC4\u5408\uFF0C\u6211\u4EEC\u628A\u5B83\u4E3B\u52A8\u63A8\u4E0A\u6765\u7684\n                  \u901A\u77E5\u539F\u6837\u6253\u51FA\u6765\u3002**\u8FD9\u4E00\u6B65\u5C31\u80FD\u62FF\u5230\u901A\u77E5\u7528\u7684\u547D\u4EE4\u7801\u548C\u8F7D\u8377\u683C\u5F0F**\uFF0C\n                  \u800C\u8BF7\u6C42\u65B9\u5411\uFF08\u624B\u673A\u2192\u5361\u7247\uFF09\u7684\u547D\u4EE4\u7801\u901A\u5E38\u5C31\u5728\u5B83\u65C1\u8FB9\u4E00\u4E24\u4E2A\u53F7\u3002\n                  \u96F6\u98CE\u9669\uFF0C\u5148\u8DD1\u8FD9\u4E2A\u3002\n\n  2) `probe`   \u2014\u2014 \u4E3B\u52A8\u679A\u4E3E\u3002\u53EA\u5728**\u5019\u9009\u7A97\u53E3**\u91CC\u9010\u4E2A\u53D1\u547D\u4EE4\uFF0C\u6BCF\u53D1\u4E00\u4E2A\u5C31\u770B\uFF1A\n                  \u5361\u7247\u6709\u6CA1\u6709\u63A8\u65B0\u901A\u77E5\uFF1F\u7535\u8111\u8FD9\u8FB9\u6709\u6CA1\u6709\u5192\u51FA\u65B0\u70ED\u70B9\uFF1F\n                  \u9ED8\u8BA4\u5019\u9009\u7A97\u53E3\u5C31\u662F WiFi \u901A\u77E5\u7801\u9644\u8FD1\u7684\u51E0\u4E2A\u53F7\uFF0C\u4E0D\u662F\u5168\u7A7A\u95F4\u626B\u3002\n                  \u4EFB\u4F55\u5DF2\u77E5\u5371\u9669\u7801\u4E00\u5F8B\u62D2\u7EDD\u53D1\u9001\uFF08\u89C1 DANGEROUS\uFF09\u3002\n\n  3) `activate` \u2014\u2014 \u5DF2\u7ECF\u786E\u8BA4\u547D\u4EE4\u7801\u4E4B\u540E\uFF0C\u76F4\u63A5\u53D1\u90A3\u4E00\u6761\u628A WiFi \u6253\u5F00\uFF0C\n                  \u5E76\u7B49\u5361\u7247\u628A SSID / \u5BC6\u7801 / IP \u63A8\u4E0A\u6765\u3002\n\n\u26A0\uFE0F \u5B89\u5168\u7EA6\u5B9A\uFF08\u548C getcard_bridge.py \u540C\u4E00\u5957\uFF0C\u5199\u6B7B\u4E0D\u7ED9\u540E\u95E8\uFF09\uFF1A\n    \u672C\u7A0B\u5E8F**\u6C38\u8FDC\u4E0D\u53D1\u9001 0x0041**\uFF08\u6E05\u7406\u5DF2\u4F20\u8F93\u6587\u4EF6\uFF1D\u6C38\u4E45\u5220\u9664\uFF09\u3002\n    \u4E5F\u4E0D\u53D1\u9001 0x0044\uFF08\u5220\u6307\u5B9A\u6587\u4EF6\uFF09\u2014\u2014 \u63A2\u9488\u4E0D\u9700\u8981\u5220\u4EFB\u4F55\u4E1C\u897F\u3002\n    \u9664 WiFi \u6FC0\u6D3B\u5916\uFF0C\u4E0D\u78B0\u5361\u7247\u4E0A\u7684\u6587\u4EF6\u3002\n\n\u7528\u6CD5\uFF1A\n    python wifi_probe.py listen --seconds 45\n    python wifi_probe.py probe\n    python wifi_probe.py probe --cmds 0x0048,0x0049,0x0051\n    python wifi_probe.py activate --cmd 0x0048 --body 01\n    python wifi_probe.py ssids                 # \u53EA\u770B\u7535\u8111\u73B0\u5728\u80FD\u626B\u5230\u54EA\u4E9B\u70ED\u70B9\uFF08\u4E0D\u78B0\u84DD\u7259\uFF09\n"""\n\nimport argparse\nimport asyncio\nimport json\nimport os\nimport subprocess\nimport sys\nimport time\n\nsys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))\n\nfrom getcard_bridge import (  # noqa: E402  \u590D\u7528\u534F\u8BAE\u5E38\u91CF\uFF0C\u907F\u514D\u4E24\u4EFD\u5B9A\u4E49\u6F02\u79FB\n    CH_CTL_N,\n    CH_CTL_W,\n    MAGIC,\n    SVC_CTL,\n    ctrl_frame,\n    parse_ctrl,\n)\n\n# \u7EDD\u5BF9\u4E0D\u53D1\u7684\u547D\u4EE4\u7801\uFF1A0x0041 \u4F1A\u6C38\u4E45\u5220\u6389\u5361\u7247\u4E0A\u300C\u5DF2\u4F20\u8F93\u300D\u7684\u5F55\u97F3\uFF0C0x0044 \u5220\u5355\u4E2A\u6587\u4EF6\u3002\n# \u63A2\u9488\u7684\u76EE\u7684\u53EA\u662F\u627E WiFi \u547D\u4EE4\uFF0C\u6CA1\u6709\u4EFB\u4F55\u7406\u7531\u78B0\u8FD9\u4E24\u4E2A\u3002\nDANGEROUS = {0x0041: "\u6E05\u7406\u6240\u6709\u5DF2\u4F20\u8F93\u6587\u4EF6\uFF08\u6C38\u4E45\u5220\u9664\uFF09", 0x0044: "\u5220\u9664\u6307\u5B9A\u6587\u4EF6\uFF08\u6C38\u4E45\u5220\u9664\uFF09"}\n\n# \u9ED8\u8BA4\u5019\u9009\u7A97\u53E3\u3002\u4F9D\u636E\uFF1A\u5361\u7247\u628A\u300C\u8BBE\u7F6E\u7C7B\u300D\u547D\u4EE4\u653E\u5728 0x00xx\uFF0C\u628A\u300C\u4F20\u8F93\u7C7B\u300D\u653E\u5728 0x01xx\uFF1B\n# \u5DF2\u77E5 0x0040 \u67E5\u8BE2 / 0x0042 \u5B58\u50A8 / 0x0043 \u5217\u8868 / 0x0045 \u4E0B\u8F7D\u56DE\u6267 / 0x0046 \u8BBE\u5907\u65F6\u95F4 /\n# 0x0047 MTU / 0x0050 \u72B6\u6001\uFF0C\u90A3\u4E48 set_wifi \u6781\u53EF\u80FD\u843D\u5728 0x0048~0x005F \u8FD9\u6BB5\u7A7A\u6863\u91CC\u3002\n# \u7B2C\u4E8C\u7EC4 0x0141~0x0152 \u8986\u76D6\u4F20\u8F93\u65CF\uFF080x0140 \u4E0A\u7EBF / 0x0145 \u4E0B\u8F7D / 0x0146 \u5BF9\u65F6 / 0x0147 MTU /\n# 0x0150 \u8FDB\u5EA6 / 0x0151~0x0152 \u7D27\u90BB\u8FDB\u5EA6\u4E4B\u540E\uFF0C\u4E5F\u662F WiFi \u72B6\u6001\u901A\u77E5\u5E38\u89C1\u7684\u843D\u70B9\uFF09\u3002\nDEFAULT_CMDS = (\n    [0x0045, 0x0048, 0x0049, 0x004A, 0x004B, 0x004C, 0x004D, 0x004E, 0x004F]\n    + [0x0051, 0x0052, 0x0053, 0x0054, 0x0055, 0x0056, 0x0057, 0x0058]\n    + [0x0141, 0x0142, 0x0143, 0x0144, 0x0148, 0x0149, 0x014A, 0x014B]\n    + [0x0151, 0x0152, 0x0153, 0x0154, 0x0155]\n)\n\n\ndef log(*a):\n    print(*a, file=sys.stderr, flush=True)\n\n\ndef emit(obj):\n    print(json.dumps(obj, ensure_ascii=False))\n\n\n# Windows \u63A7\u5236\u53F0\u9ED8\u8BA4\u662F cp936\uFF0CJSON \u91CC\u7684\u4E2D\u6587/SSID \u76F4\u63A5 print \u4F1A\u53D8\u6210\u4E71\u7801\uFF0C\n# \u8C03\u7528\u65B9\uFF08Node\uFF09\u6309 utf-8 \u89E3\u5C31\u5F97\u5230\u4E00\u5806\u95EE\u53F7\u3002\u8FD9\u91CC\u628A\u6807\u51C6\u8F93\u51FA\u5F3A\u5236\u6210 utf-8\u3002\ntry:\n    sys.stdout.reconfigure(encoding="utf-8", errors="replace")\n    sys.stderr.reconfigure(encoding="utf-8", errors="replace")\nexcept Exception:  # noqa: BLE001  Python < 3.7 \u6216\u5DF2\u88AB\u91CD\u5B9A\u5411\n    pass\n\n\n# ------------------------------------------------------------------ WiFi \u626B\u63CF\n\n\ndef visible_ssids():\n    """\u7535\u8111\u5F53\u524D\u80FD\u770B\u5230\u7684 SSID \u5217\u8868\u3002\n\n    Windows \u4E0A `netsh wlan show networks` \u7684\u8F93\u51FA\u7F16\u7801\u8DDF\u63A7\u5236\u53F0\u4EE3\u7801\u9875\u8D70\uFF0C\n    \u4E2D\u6587\u7CFB\u7EDF\u662F cp936\uFF1B\u76F4\u63A5 utf-8 \u89E3\u4F1A\u70B8\uFF0C\u6240\u4EE5\u6309 cp936 \u2192 utf-8 \u4F9D\u6B21\u8BD5\u3002\n    """\n    try:\n        raw = subprocess.run(\n            ["netsh", "wlan", "show", "networks", "mode=bssid"],\n            capture_output=True,\n            timeout=25,\n        ).stdout\n    except Exception as exc:  # noqa: BLE001\n        log("netsh \u5931\u8D25\uFF1A%s" % exc)\n        return []\n    text = None\n    for enc in ("cp936", "utf-8", "latin-1"):\n        try:\n            text = raw.decode(enc)\n            break\n        except UnicodeDecodeError:\n            continue\n    if text is None:\n        return []\n    out = []\n    for line in text.splitlines():\n        s = line.strip()\n        if s.startswith("SSID ") and ":" in s:\n            val = s.split(":", 1)[1].strip()\n            if val and val not in out:\n                out.append(val)\n    return out\n\n\ndef looks_like_card_hotspot(ssid):\n    """\u5361\u7247\u70ED\u70B9\u7684\u547D\u540D\u89C4\u5F8B\u6CA1\u6709\u516C\u5F00\u6587\u6863\uFF0C\u5148\u6309\u6700\u53EF\u80FD\u7684\u51E0\u79CD\u5F62\u72B6\u8BA4\u3002\n\n    GetSeed \u7684 BLE \u5E7F\u64AD\u540D\u662F `Get-<MAC \u540E 6 \u4F4D>`\uFF0C\u70ED\u70B9\u5927\u6982\u7387\u6CBF\u7528\u540C\u4E00\u4E2A\u524D\u7F00\uFF0C\n    \u6216\u8005\u76F4\u63A5\u7528\u578B\u53F7 GSC10 / \u4EA7\u54C1\u540D getseed\u3002\u90FD\u4E0D\u4E2D\u4E5F\u4E0D\u4EE3\u8868\u5931\u8D25 \u2014\u2014\n    \u8C03\u7528\u65B9\u4F1A\u62FF\u300C\u6FC0\u6D3B\u524D\u540E SSID \u96C6\u5408\u7684\u5DEE\u96C6\u300D\u515C\u5E95\uFF0C\u65B0\u5192\u51FA\u6765\u7684\u90A3\u4E2A\u5C31\u662F\u5B83\u3002\n    """\n    low = ssid.lower()\n    return (\n        low.startswith("get-")\n        or low.startswith("getseed")\n        or low.startswith("gsc10")\n        or "getseed" in low\n        or "\u5F97\u5230" in ssid\n    )\n\n\n# ------------------------------------------------------------------ BLE \u4F1A\u8BDD\n\n\nclass ProbeSession:\n    """\u6BD4 getcard_bridge \u7684 CardSession \u66F4\u8F7B\uFF1A\u4E0D\u5B9E\u73B0\u4E0B\u8F7D\uFF0C\u53EA\u53D1\u547D\u4EE4 + \u6536\u901A\u77E5\u3002"""\n\n    def __init__(self, addr=None):\n        self.addr = addr\n        self.client = None\n        self.events = []          # [(ts, cmd, body_bytes)]\n        self.done = None\n\n    async def connect(self, retries=3):\n        from bleak import BleakClient, BleakScanner\n\n        dev = None\n        for _ in range(retries):\n            if self.addr:\n                dev = await BleakScanner.find_device_by_address(self.addr, timeout=12.0)\n            else:\n                dev = await BleakScanner.find_device_by_filter(\n                    lambda d, ad: (d.name or ad.local_name or "").startswith("Get-"),\n                    timeout=15.0,\n                )\n            if dev is not None:\n                break\n        if dev is None:\n            raise RuntimeError(\n                "\u6CA1\u627E\u5230\u5F55\u97F3\u5361\u3002\u786E\u8BA4\uFF1A\u2460 \u5361\u7247\u5DF2\u5F00\u673A \u2461 \u5728\u7535\u8111 3 \u7C73\u5185 "\n                "\u2462 \u624B\u673A\u7684\u5F97\u5230 App \u5DF2\u65AD\u5F00\u8FDE\u63A5\uFF08\u628A\u624B\u673A\u84DD\u7259\u5173\u6389\u6700\u7701\u4E8B\uFF09"\n            )\n        log("\u8FDE\u63A5 %s (%s)" % (getattr(dev, "name", "?"), getattr(dev, "address", "?")))\n        self.client = BleakClient(dev, timeout=40.0)\n        await self.client.connect()\n        await self.client.start_notify(CH_CTL_N, self._on_notify)\n        log("\u5DF2\u8FDE\u63A5\uFF0CMTU \u534F\u5546\u4E2D\u2026")\n        await asyncio.sleep(1.5)\n\n    async def close(self):\n        try:\n            if self.client is not None:\n                await self.client.stop_notify(CH_CTL_N)\n                await self.client.disconnect()\n        except Exception:  # noqa: BLE001\n            pass\n\n    def _on_notify(self, _sender, data):\n        parsed = parse_ctrl(bytes(data))\n        if parsed is None:\n            # \u4E0D\u662F\u63A7\u5236\u901A\u9053\u5E27\uFF08\u53EF\u80FD\u662F\u522B\u7684\u7279\u5F81\u63A8\u4E0A\u6765\u7684\u6742\u5305\uFF09\uFF0C\u539F\u6837\u8BB0\u4E0B\u66F4\u6709\u7528\n            log("  \u2190 \u975E\u63A7\u5236\u5E27 len=%d hex=%s" % (len(data), bytes(data).hex()))\n            return\n        cmd, body = parsed\n        self.events.append((time.time(), cmd, body))\n        log("  \u2190 \u901A\u77E5 cmd=0x%04X len=%d body=%s" % (cmd, len(body), body.hex()))\n        if self.done is not None and not self.done.done():\n            self.done.set_result(None)\n\n    async def send(self, cmd, body=b""):\n        await self.client.write_gatt_char(CH_CTL_W, ctrl_frame(cmd, body), response=False)\n\n    async def wait_event(self, seconds, predicate=None):\n        """\u7B49\u4E00\u6761\uFF08\u6EE1\u8DB3 predicate \u7684\uFF09\u901A\u77E5\uFF0C\u8D85\u65F6\u8FD4\u56DE None\u3002"""\n        t0 = time.time()\n        start = len(self.events)\n        while time.time() - t0 < seconds:\n            for ts, cmd, body in self.events[start:]:\n                if predicate is None or predicate(cmd, body):\n                    return {"cmd": cmd, "body": body.hex(), "text": _text(body)}\n            await asyncio.sleep(0.1)\n        return None\n\n\ndef _text(body):\n    try:\n        s = body.decode("utf-8")\n    except UnicodeDecodeError:\n        return None\n    # \u53EA\u628A\u300C\u770B\u8D77\u6765\u50CF\u4EBA\u8BDD\u300D\u7684\u5185\u5BB9\u5E26\u51FA\u53BB\uFF0C\u4E8C\u8FDB\u5236\u8F7D\u8377\u7559\u5728 hex \u91CC\n    printable = sum(1 for ch in s if ch.isprintable())\n    if s and printable >= len(s) * 0.8:\n        return s\n    return None\n\n\n# ------------------------------------------------------------------ \u5B50\u547D\u4EE4\n\n\nasync def do_listen(args):\n    """\u7EAF\u88AB\u52A8\uFF1A\u8FDE\u4E0A\u540E\u4EC0\u4E48\u90FD\u4E0D\u53D1\uFF0C\u53EA\u7B49\u5361\u7247\u4E3B\u52A8\u63A8\u901A\u77E5\u3002"""\n    before = set(visible_ssids())\n    log("\u5F00\u59CB\u88AB\u52A8\u76D1\u542C %d \u79D2\u3002\u73B0\u5728\u8BF7\u6309\u5361\u7247\u4E0A\u7684\u300CWiFi \u4F20\u8F93\u300D\u6309\u952E\u7EC4\u5408\u3002" % args.seconds)\n    log("\uFF08\u4E0D\u540C\u56FA\u4EF6\u7EC4\u5408\u4E0D\u540C\uFF1A\u8BD5\u957F\u6309\u3001\u8FDE\u6309\u4E24\u4E0B\u3001\u8FDE\u6309\u4E09\u4E0B\u3002\u6309\u5BF9\u4E86\u5361\u7247\u4F1A\u5F00\u59CB\u95EA\u706F/\u5F00\u70ED\u70B9\u3002\uFF09")\n    sess = ProbeSession(args.addr)\n    await sess.connect()\n    try:\n        t0 = time.time()\n        while time.time() - t0 < args.seconds:\n            await asyncio.sleep(0.5)\n            now = set(visible_ssids())\n            new = [s for s in now - before if looks_like_card_hotspot(s)]\n            if new:\n                log("\u2605 \u5192\u51FA\u65B0\u70ED\u70B9\uFF1A%s" % ", ".join(new))\n                before = now\n        events = [\n            {"cmd": "0x%04X" % cmd, "len": len(body), "hex": body.hex(), "text": _text(body)}\n            for _, cmd, body in sess.events\n        ]\n        emit({"ok": True, "mode": "listen", "seconds": args.seconds, "events": events})\n    finally:\n        await sess.close()\n\n\nasync def do_probe(args):\n    """\u4E3B\u52A8\u679A\u4E3E\uFF1A\u53EA\u53D1\u5019\u9009\u7A97\u53E3\u91CC\u7684\u7801\uFF0C\u6BCF\u53D1\u4E00\u4E2A\u89C2\u5BDF\u901A\u77E5 + \u65B0\u70ED\u70B9\u3002"""\n    cmds = []\n    for raw in args.cmds.split(","):\n        raw = raw.strip()\n        if not raw:\n            continue\n        cmd = int(raw, 0)\n        if cmd in DANGEROUS:\n            log("!! \u62D2\u7EDD\u53D1\u9001 0x%04X\uFF08%s\uFF09" % (cmd, DANGEROUS[cmd]))\n            continue\n        cmds.append(cmd)\n    if not cmds:\n        emit({"ok": False, "error": "\u6CA1\u6709\u53EF\u7528\u7684\u5019\u9009\u547D\u4EE4\u7801"})\n        return\n\n    before = set(visible_ssids())\n    log("\u5019\u9009 %d \u4E2A\u547D\u4EE4\u7801\uFF0C\u5F00\u59CB\u9010\u4E2A\u8BD5\u3002" % len(cmds))\n    sess = ProbeSession(args.addr)\n    await sess.connect()\n    hits = []\n    try:\n        for cmd in cmds:\n            if cmd in DANGEROUS:  # \u53CC\u4FDD\u9669\n                continue\n            log("\u2192 \u53D1\u9001 cmd=0x%04X" % cmd)\n            mark = len(sess.events)\n            try:\n                await sess.send(cmd, bytes.fromhex(args.body) if args.body else b"")\n            except Exception as exc:  # noqa: BLE001\n                log("  \u5199\u5931\u8D25\uFF1A%s" % exc)\n                continue\n            await asyncio.sleep(args.wait)\n            fresh = sess.events[mark:]\n            now = set(visible_ssids())\n            new_ssids = sorted(now - before)\n            if fresh or new_ssids:\n                hit = {\n                    "cmd": "0x%04X" % cmd,\n                    "notifications": [\n                        {"cmd": "0x%04X" % c, "len": len(b), "hex": b.hex(), "text": _text(b)}\n                        for _, c, b in fresh\n                    ],\n                    "newSsids": new_ssids,\n                }\n                hits.append(hit)\n                log("  \u2605 \u6709\u53CD\u5E94\uFF1A\u901A\u77E5 %d \u6761\uFF0C\u65B0\u70ED\u70B9 %s" % (len(fresh), new_ssids or "\u65E0"))\n                if new_ssids:\n                    before = now\n        emit({"ok": True, "mode": "probe", "tried": len(cmds), "hits": hits})\n    finally:\n        await sess.close()\n\n\nasync def do_activate(args):\n    """\u5DF2\u77E5\u547D\u4EE4\u7801\u540E\uFF1A\u53D1\u5B83\uFF0C\u5E76\u628A\u5361\u7247\u63A8\u4E0A\u6765\u7684\u70ED\u70B9\u4FE1\u606F\u89E3\u6790\u51FA\u6765\u3002"""\n    cmd = int(args.cmd, 0)\n    if cmd in DANGEROUS:\n        emit({"ok": False, "error": "\u62D2\u7EDD\u53D1\u9001\u5371\u9669\u547D\u4EE4 0x%04X\uFF1A%s" % (cmd, DANGEROUS[cmd])})\n        return\n    before = set(visible_ssids())\n    sess = ProbeSession(args.addr)\n    await sess.connect()\n    try:\n        body = bytes.fromhex(args.body) if args.body else b""\n        log("\u2192 \u6FC0\u6D3B WiFi\uFF1Acmd=0x%04X body=%s" % (cmd, body.hex() or "(\u7A7A)"))\n        await sess.send(cmd, body)\n        # \u7B49\u901A\u77E5\u91CC\u51FA\u73B0\u70ED\u70B9\u4FE1\u606F\uFF08SSID / \u5BC6\u7801 / IP \u4E00\u822C\u90FD\u5728 JSON \u6216 `ssid:...,passwd:...` \u91CC\uFF09\n        payload = await sess.wait_event(args.wait)\n        ssid = None\n        passwd = None\n        if payload is not None:\n            text = payload.get("text") or ""\n            for token in text.replace(",", " ").replace(";", " ").split():\n                low = token.lower()\n                if low.startswith("ssid") and ":" in token:\n                    ssid = token.split(":", 1)[1]\n                elif low.startswith(("passwd", "password", "pwd")) and ":" in token:\n                    passwd = token.split(":", 1)[1]\n        # \u901A\u77E5\u91CC\u6CA1\u5E26\u5C31\u9760\u626B\u70ED\u70B9\u5DEE\u96C6\u515C\u5E95\n        new_ssids = sorted(set(visible_ssids()) - before)\n        emit(\n            {\n                "ok": True,\n                "mode": "activate",\n                "cmd": "0x%04X" % cmd,\n                "notification": payload,\n                "ssid": ssid,\n                "passwd": passwd,\n                "newSsids": new_ssids,\n                "cardHotspots": [s for s in new_ssids if looks_like_card_hotspot(s)],\n            }\n        )\n    finally:\n        await sess.close()\n\n\ndef do_ssids(_args):\n    names = visible_ssids()\n    emit({"ok": True, "ssids": names, "cardLike": [s for s in names if looks_like_card_hotspot(s)]})\n\n\ndef main():\n    ap = argparse.ArgumentParser(description="\u5F55\u97F3\u5361 WiFi \u5FEB\u4F20\u547D\u4EE4\u7801\u63A2\u9488")\n    ap.add_argument("mode", choices=["listen", "probe", "activate", "ssids"])\n    ap.add_argument("--addr", default=None, help="\u5361\u7247 BLE \u5730\u5740\uFF08\u9ED8\u8BA4\u6309 Get- \u524D\u7F00\u81EA\u52A8\u627E\uFF09")\n    ap.add_argument("--seconds", type=int, default=45, help="listen \u76D1\u542C\u79D2\u6570")\n    ap.add_argument("--cmds", default=",".join("0x%04X" % c for c in DEFAULT_CMDS))\n    ap.add_argument("--body", default="", help="\u6FC0\u6D3B\u547D\u4EE4\u7684 body\uFF08hex\uFF0C\u5982 01\uFF09")\n    ap.add_argument("--wait", type=float, default=2.5, help="\u6BCF\u6761\u547D\u4EE4\u540E\u7B49\u5F85\u79D2\u6570")\n    ap.add_argument("--cmd", default="0x0048", help="activate \u8981\u53D1\u7684\u547D\u4EE4\u7801")\n    args = ap.parse_args()\n\n    try:\n        if args.mode == "ssids":\n            do_ssids(args)\n            return 0\n        if args.mode == "listen":\n            asyncio.run(do_listen(args))\n        elif args.mode == "probe":\n            asyncio.run(do_probe(args))\n        else:\n            asyncio.run(do_activate(args))\n        return 0\n    except Exception as exc:  # noqa: BLE001\n        emit({"ok": False, "error": str(exc)})\n        return 1\n\n\nif __name__ == "__main__":\n    sys.exit(main())\n';
+
+// src/card/wifi_fetch.py
+var wifi_fetch_default = '#!/usr/bin/env python3\n# -*- coding: utf-8 -*-\n"""\u5F55\u97F3\u5361 WiFi \u5FEB\u4F20\u901A\u9053\uFF1A\u6570\u636E\u9762\u63A2\u6D4B\u3002\n\nBLE \u90A3\u6761\u8DEF\u53EA\u6709 25 KB/s\uFF0C\u4E00\u5C0F\u65F6\u5F55\u97F3\u8981\u4F20\u5341\u51E0\u5206\u949F\uFF1B\u5361\u7247\u81EA\u5DF1\u5E26 2.4G WiFi\uFF0C\n\u5B98\u65B9 App \u7684\u505A\u6CD5\u662F\u300CBLE \u62FF\u5230\u70ED\u70B9\u51ED\u8BC1 \u2192 \u8FDE\u5361\u7247\u70ED\u70B9 \u2192 \u8D70 HTTP \u9AD8\u901F\u4E0B\u8F7D\u300D\u3002\n\u8FD9\u4E2A\u811A\u672C\u8D1F\u8D23\u540E\u534A\u6BB5\uFF1A\u8FDE\u4E0A\u5361\u7247\u70ED\u70B9\uFF0C\u628A\u5B83\u7684\u4F20\u8F93\u670D\u52A1\u627E\u51FA\u6765\u3002\n\n\u4E09\u4E2A\u9636\u6BB5\uFF08\u6BCF\u4E00\u6B65\u90FD\u80FD\u5355\u72EC\u8DD1\uFF0C\u5931\u8D25\u5C31\u505C\u5728\u90A3\u4E00\u6B65\uFF0C\u4E0D\u4F1A\u778E\u8BD5\uFF09\uFF1A\n\n  1) `join`    \u2014\u2014 \u7528 netsh \u5EFA\u4E00\u4E2A WLAN profile \u5E76\u8FDE\u4E0A\u5361\u7247\u70ED\u70B9\u3002\n                  \u51ED\u8BC1\u4ECE\u547D\u4EE4\u884C\u7ED9\uFF08`--ssid` / `--pass`\uFF09\uFF0C\u56E0\u4E3A SSID \u548C\u5BC6\u7801\u8981\u7531\n                  wifi_probe.py \u4ECE BLE \u901A\u77E5\u91CC\u62FF\u5230\uFF0C\u4E24\u4E2A\u811A\u672C\u4E0D\u8026\u5408\u3002\n  2) `scan`    \u2014\u2014 \u8FDE\u4E0A\u4E4B\u540E\u679A\u4E3E\u7F51\u5173 IP\uFF0C\u626B\u5E38\u89C1\u7AEF\u53E3\uFF0880/8080/8000/443/22/9000\uFF09\uFF0C\n                  \u770B\u5361\u7247\u5230\u5E95\u5F00\u4E86\u4EC0\u4E48\u670D\u52A1\u3002\u8FD9\u4E00\u6B65\u51B3\u5B9A\u540E\u9762\u662F HTTP \u8FD8\u662F\u88F8 TCP\u3002\n  3) `fetch`   \u2014\u2014 \u6309\u626B\u51FA\u6765\u7684\u7AEF\u53E3\u53BB\u8BD5\u4E0B\u8F7D\uFF1A\n                  HTTP \u5C31\u8BD5\u5E38\u89C1\u8DEF\u5F84\uFF08/\u3001/files\u3001/list\u3001/recode\u3001/usb/recode \u2026\uFF09\uFF0C\n                  \u628A 200 \u7684\u54CD\u5E94\u5B58\u4E0B\u6765\uFF1B\u4E0D\u662F HTTP \u5C31\u9000\u5316\u6210\u88F8 TCP \u63A2\u63E1\u624B\u3002\n\n\u26A0\uFE0F \u5B89\u5168\u7EA6\u5B9A\uFF1A\n    * \u53EA\u8BFB\u3002\u4E0D\u5411\u5361\u7247\u53D1\u4EFB\u4F55\u5220\u9664/\u683C\u5F0F\u5316\u547D\u4EE4\u3002\n    * \u7528\u5B8C\u81EA\u52A8 `leave` \u6062\u590D\u539F\u6765\u7684 WiFi\uFF08\u5426\u5219\u4F60\u7535\u8111\u4F1A\u4E00\u76F4\u6302\u5728\u5361\u7247\u70ED\u70B9\u4E0A\uFF0C\n      \u90A3\u4E2A\u70ED\u70B9\u6CA1\u6709\u4E92\u8054\u7F51\uFF0C\u6D4F\u89C8\u5668\u4F1A\u5168\u90E8\u6253\u4E0D\u5F00\uFF0C\u5F88\u5BB9\u6613\u4EE5\u4E3A\u65AD\u7F51\u4E86\uFF09\u3002\n    * profile \u7528\u5B8C\u5373\u5220\uFF0C\u4E0D\u7559\u5728\u7CFB\u7EDF\u91CC\u3002\n\n\u7528\u6CD5\uFF1A\n    python wifi_fetch.py join  --ssid Get-A78A67 --pass 12345678\n    python wifi_fetch.py scan\n    python wifi_fetch.py fetch --port 80 --out DIR\n    python wifi_fetch.py leave\n"""\n\nimport argparse\nimport json\nimport os\nimport re\nimport socket\nimport subprocess\nimport sys\nimport time\nimport urllib.error\nimport urllib.request\n\ntry:\n    sys.stdout.reconfigure(encoding="utf-8", errors="replace")\n    sys.stderr.reconfigure(encoding="utf-8", errors="replace")\nexcept Exception:  # noqa: BLE001\n    pass\n\nPROFILE_NAME = "dsh-getnote-card"\n\n# \u5361\u7247\u4E0A\u5E38\u89C1\u4F1A\u5F00\u8FD9\u4E9B\u7AEF\u53E3\uFF1A80/8080 \u662F HTTP\uFF0C8000/9000 \u662F\u5404\u79CD\u5C0F web \u670D\u52A1\uFF0C\n# 443 \u662F HTTPS\uFF0C22 \u662F\u67D0\u4E9B\u65B9\u6848\u7559\u7684\u8C03\u8BD5\u53E3\uFF08\u4E0D\u8FDE\uFF0C\u53EA\u63A2\u6D4B\uFF09\u3002\nCOMMON_PORTS = [80, 8080, 8000, 9000, 443, 22, 5000, 8888]\n\n# \u5B98\u65B9\u56FA\u4EF6\u91CC\u5F55\u97F3\u843D\u76D8\u8DEF\u5F84\u662F /usb/recode\uFF08\u89C1 FIRMWARE.md 3.4 \u8282\uFF09\uFF0C\n# \u6240\u4EE5 HTTP \u670D\u52A1\u5F88\u53EF\u80FD\u76F4\u63A5\u628A\u8FD9\u4E2A\u76EE\u5F55\u6620\u5C04\u51FA\u6765\u3002\u8FD9\u91CC\u6309\u53EF\u80FD\u6027\u6392\u5E8F\u8BD5\u3002\nHTTP_PATHS = [\n    "/",\n    "/list",\n    "/files",\n    "/filelist",\n    "/files/list",\n    "/recode",\n    "/usb/recode",\n    "/recordings",\n    "/api/files",\n    "/api/list",\n    "/index.html",\n]\n\n\ndef log(*a):\n    print(*a, file=sys.stderr, flush=True)\n\n\ndef emit(obj):\n    print(json.dumps(obj, ensure_ascii=False))\n\n\ndef run(cmd, timeout=40):\n    """\u8DD1\u4E00\u6761\u547D\u4EE4\uFF0C\u8FD4\u56DE (code, text)\u3002\u8F93\u51FA\u7F16\u7801\u6309 cp936 \u2192 utf-8 \u4F9D\u6B21\u8BD5\u3002"""\n    try:\n        proc = subprocess.run(cmd, capture_output=True, timeout=timeout)\n    except Exception as exc:  # noqa: BLE001\n        return -1, str(exc)\n    raw = proc.stdout + proc.stderr\n    for enc in ("cp936", "utf-8", "latin-1"):\n        try:\n            return proc.returncode, raw.decode(enc)\n        except UnicodeDecodeError:\n            continue\n    return proc.returncode, raw.decode("utf-8", "replace")\n\n\n# ------------------------------------------------------------------ 1) join\n\n\ndef profile_xml(ssid, password):\n    """Windows \u7684 WLAN profile XML\u3002\n\n    \u5361\u7247\u70ED\u70B9\u662F WPA2-Personal + AES\uFF08BES SoftAP \u7684\u6807\u51C6\u914D\u7F6E\uFF09\u3002\n    `authentication` \u7528 WPA2PSK\u3001`encryption` \u7528 AES\uFF1B\n    \u4E07\u4E00\u5361\u7247\u7528\u7684\u662F\u5F00\u653E\u70ED\u70B9\uFF08\u6CA1\u5BC6\u7801\uFF09\uFF0Cpassword \u4F20\u7A7A\u4E32\u65F6\u8D70 open \u5206\u652F\u3002\n    """\n    if password:\n        security = (\n            "<authEncryption>"\n            "<authentication>WPA2PSK</authentication>"\n            "<encryption>AES</encryption>"\n            "<useOneX>false</useOneX>"\n            "</authEncryption>"\n            "<sharedKey>"\n            "<keyType>passPhrase</keyType>"\n            "<protected>false</protected>"\n            f"<keyMaterial>{_esc(password)}</keyMaterial>"\n            "</sharedKey>"\n        )\n    else:\n        security = (\n            "<authEncryption>"\n            "<authentication>open</authentication>"\n            "<encryption>none</encryption>"\n            "<useOneX>false</useOneX>"\n            "</authEncryption>"\n        )\n    return (\n        \'<?xml version="1.0"?>\'\n        \'<WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1">\'\n        f"<name>{_esc(ssid)}</name>"\n        "<SSIDConfig><SSID>"\n        f"<name>{_esc(ssid)}</name>"\n        "</SSID></SSIDConfig>"\n        "<connectionType>ESS</connectionType>"\n        "<connectionMode>manual</connectionMode>"\n        "<MSM><security>"\n        f"{security}"\n        "</security></MSM>"\n        "</WLANProfile>"\n    )\n\n\ndef _esc(s):\n    return (\n        str(s)\n        .replace("&", "&amp;")\n        .replace("<", "&lt;")\n        .replace(">", "&gt;")\n        .replace(\'"\', "&quot;")\n    )\n\n\ndef current_ssid():\n    code, text = run(["netsh", "wlan", "show", "interfaces"])\n    if code != 0:\n        return None\n    for line in text.splitlines():\n        s = line.strip()\n        if s.startswith("SSID") and "BSSID" not in s and ":" in s:\n            val = s.split(":", 1)[1].strip()\n            if val:\n                return val\n    return None\n\n\ndef do_join(args):\n    before = current_ssid()\n    tmp = os.path.join(os.environ.get("TEMP", "."), f"{PROFILE_NAME}.xml")\n    with open(tmp, "w", encoding="utf-8") as fh:\n        fh.write(profile_xml(args.ssid, args.passwd))\n    log("\u5199\u5165 profile\uFF1A%s" % tmp)\n\n    # \u540C\u540D profile \u5148\u5220\u6389\uFF0C\u5426\u5219 add \u4F1A\u56E0\u4E3A\u300C\u5DF2\u5B58\u5728\u300D\u800C\u9759\u9ED8\u4FDD\u7559\u65E7\u5BC6\u7801\n    run(["netsh", "wlan", "delete", "profile", f"name={PROFILE_NAME}"])\n    code, text = run(["netsh", "wlan", "add", "profile", f"filename={tmp}", "user=current"])\n    if code != 0:\n        emit({"ok": False, "stage": "add-profile", "error": text.strip()})\n        return\n\n    code, text = run(\n        ["netsh", "wlan", "connect", f"name={PROFILE_NAME}", f"ssid={args.ssid}"], timeout=60\n    )\n    log(text.strip())\n\n    # \u8FDE\u4E0A\u8981\u51E0\u79D2\uFF0C\u7B49\u63A5\u53E3\u771F\u7684\u62A5\u51FA\u8FD9\u4E2A SSID \u518D\u5F80\u4E0B\u8D70\n    t0 = time.time()\n    while time.time() - t0 < 25:\n        if current_ssid() == args.ssid:\n            break\n        time.sleep(1.5)\n\n    now = current_ssid()\n    if now != args.ssid:\n        emit(\n            {\n                "ok": False,\n                "stage": "connect",\n                "error": f"\u6CA1\u8FDE\u4E0A {args.ssid}\uFF08\u5F53\u524D\u662F {now}\uFF09",\n                "previousSsid": before,\n                "hint": "\u5361\u7247\u70ED\u70B9\u53EF\u80FD\u6CA1\u5F00\u3001\u5BC6\u7801\u4E0D\u5BF9\uFF0C\u6216\u8005\u79BB\u5F97\u592A\u8FDC\u3002",\n            }\n        )\n        return\n\n    ip, gw = interface_ip()\n    emit(\n        {\n            "ok": True,\n            "stage": "join",\n            "ssid": now,\n            "previousSsid": before,\n            "ip": ip,\n            "gateway": gw,\n            "profile": PROFILE_NAME,\n        }\n    )\n\n\ndef interface_ip():\n    """\u62FF WLAN \u7684 IPv4 \u4E0E\u9ED8\u8BA4\u7F51\u5173\u3002"""\n    code, text = run(["ipconfig"])\n    if code != 0:\n        return None, None\n    ip = None\n    gw = None\n    for line in text.splitlines():\n        s = line.strip()\n        m = re.search(r"IPv4[^:]*:\\s*([0-9.]+)", s)\n        if m and ip is None:\n            ip = m.group(1)\n        m = re.search(r"(?:Default Gateway|\u9ED8\u8BA4\u7F51\u5173)[^:]*:\\s*([0-9.]+)", s)\n        if m and gw is None:\n            gw = m.group(1)\n    # \u5361\u7247\u70ED\u70B9\u4E00\u5B9A\u662F\u79C1\u6709\u7F51\u6BB5\uFF0C\u53D6\u7B2C\u4E00\u4E2A\u79C1\u6709\u5730\u5740\u66F4\u7A33\n    if ip and not ip.startswith(("192.168.", "10.", "172.")):\n        ip = None\n    return ip, gw\n\n\n# ------------------------------------------------------------------ 2) scan\n\n\ndef tcp_probe(host, port, timeout=1.2):\n    """\u88F8 TCP \u8FDE\u4E00\u4E0B\u770B\u7AEF\u53E3\u5F00\u4E0D\u5F00\u3002\u4E0D\u7528 nmap\uFF1A\u7528\u6237\u673A\u5668\u4E0A\u5927\u6982\u7387\u6CA1\u88C5\u3002"""\n    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n    s.settimeout(timeout)\n    try:\n        s.connect((host, port))\n        return True\n    except Exception:  # noqa: BLE001\n        return False\n    finally:\n        try:\n            s.close()\n        except Exception:  # noqa: BLE001\n            pass\n\n\ndef do_scan(args):\n    ip, gw = interface_ip()\n    host = args.host or gw\n    if not host:\n        emit({"ok": False, "error": "\u6CA1\u62FF\u5230\u7F51\u5173\u5730\u5740\uFF0C\u5148\u786E\u8BA4\u5DF2\u7ECF\u8FDE\u4E0A\u5361\u7247\u70ED\u70B9\uFF08\u5148\u8DD1 join\uFF09"})\n        return\n    log("\u63A2\u6D4B\u7F51\u5173 %s \u2026" % host)\n    open_ports = [p for p in COMMON_PORTS if tcp_probe(host, p)]\n    emit(\n        {\n            "ok": True,\n            "stage": "scan",\n            "ip": ip,\n            "gateway": gw,\n            "host": host,\n            "openPorts": open_ports,\n            "hint": (\n                "\u6709 80/8080 \u5C31\u63A5\u7740\u8DD1 fetch --port \u90A3\u4E2A\u7AEF\u53E3\uFF1B"\n                "\u4E00\u4E2A\u90FD\u6CA1\u5F00\u8BF4\u660E\u5361\u7247\u8FD9\u4E2A\u56FA\u4EF6\u6CA1\u8D70 HTTP\uFF0C\u9700\u8981 Wireshark \u6293\u5B98\u65B9 App \u7684 TCP \u6D41\u3002"\n            ),\n        }\n    )\n\n\n# ------------------------------------------------------------------ 3) fetch\n\n\ndef http_get(url, timeout=6):\n    req = urllib.request.Request(url, headers={"User-Agent": "dsh-getnote-card/1.0"})\n    try:\n        with urllib.request.urlopen(req, timeout=timeout) as resp:\n            body = resp.read(64 * 1024)\n            return resp.status, resp.headers.get("content-type", ""), body\n    except urllib.error.HTTPError as exc:\n        return exc.code, exc.headers.get("content-type", "") if exc.headers else "", b""\n    except Exception as exc:  # noqa: BLE001\n        return None, str(exc), b""\n\n\ndef do_fetch(args):\n    ip, gw = interface_ip()\n    host = args.host or gw\n    if not host:\n        emit({"ok": False, "error": "\u6CA1\u62FF\u5230\u7F51\u5173\u5730\u5740\uFF0C\u5148\u8DD1 join"})\n        return\n    port = args.port\n    scheme = "https" if port == 443 else "http"\n    base = f"{scheme}://{host}:{port}" if port not in (80, 443) else f"{scheme}://{host}"\n\n    hits = []\n    for path in HTTP_PATHS:\n        url = base + path\n        status, ctype, body = http_get(url)\n        if status is None:\n            log("  %-22s \u8FDE\u4E0D\u4E0A\uFF08%s\uFF09" % (path, ctype))\n            continue\n        log("  %-22s HTTP %s  %s  %dB" % (path, status, ctype, len(body)))\n        if status == 200:\n            hits.append(\n                {\n                    "path": path,\n                    "status": status,\n                    "contentType": ctype,\n                    "bytes": len(body),\n                    "head": body[:400].decode("utf-8", "replace"),\n                }\n            )\n            if args.out:\n                os.makedirs(args.out, exist_ok=True)\n                safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", path.strip("/") or "root")\n                with open(os.path.join(args.out, safe), "wb") as fh:\n                    fh.write(body)\n\n    emit(\n        {\n            "ok": True,\n            "stage": "fetch",\n            "base": base,\n            "hits": hits,\n            "hint": (\n                "hits \u91CC\u5E26\u6587\u4EF6\u540D\u7684\u90A3\u4E2A\u5C31\u662F\u6587\u4EF6\u5217\u8868\u63A5\u53E3\uFF0C\u4E0B\u4E00\u6B65\u6309\u5B83\u7ED9\u7684\u540D\u5B57\u9010\u4E2A GET \u5C31\u80FD\u62C9\u97F3\u9891\uFF1B"\n                "\u4E00\u6761 200 \u90FD\u6CA1\u6709\u8BF4\u660E\u7AEF\u53E3\u5BF9\u4E86\u4F46\u8DEF\u5F84\u4E0D\u5BF9\uFF0C\u7528 Wireshark \u6293\u5B98\u65B9 App \u8BF7\u6C42\u6700\u7701\u65F6\u95F4\u3002"\n            ),\n        }\n    )\n\n\n# ------------------------------------------------------------------ 4) leave\n\n\ndef do_leave(_args):\n    # \u5148\u65AD\u5F00\uFF0C\u518D\u5220 profile\uFF1A\u987A\u5E8F\u53CD\u4E86\u7684\u8BDD Windows \u4F1A\u8BA4\u4E3A\u300C\u6B63\u5728\u4F7F\u7528\u300D\u800C\u5220\u4E0D\u6389\uFF0C\n    # \u4E0B\u6B21 join \u5C31\u5E26\u7740\u65E7\u5BC6\u7801\u53BB\u8FDE\uFF0C\u8868\u73B0\u6210\u300C\u5BC6\u7801\u660E\u660E\u662F\u5BF9\u7684\u5374\u8FDE\u4E0D\u4E0A\u300D\u3002\n    run(["netsh", "wlan", "disconnect"])\n    time.sleep(2)\n    run(["netsh", "wlan", "delete", "profile", f"name={PROFILE_NAME}"])\n    emit({"ok": True, "stage": "leave", "currentSsid": current_ssid()})\n\n\ndef main():\n    ap = argparse.ArgumentParser(description="\u5F55\u97F3\u5361 WiFi \u5FEB\u4F20\u6570\u636E\u9762\u63A2\u6D4B")\n    ap.add_argument("mode", choices=["join", "scan", "fetch", "leave"])\n    ap.add_argument("--ssid", default=None)\n    ap.add_argument("--pass", dest="passwd", default="")\n    ap.add_argument("--host", default=None, help="\u5361\u7247 IP\uFF08\u9ED8\u8BA4\u7528\u7F51\u5173\uFF09")\n    ap.add_argument("--port", type=int, default=80)\n    ap.add_argument("--out", default=None, help="\u628A 200 \u7684\u54CD\u5E94\u5B58\u5230\u8FD9\u4E2A\u76EE\u5F55")\n    args = ap.parse_args()\n\n    try:\n        if args.mode == "join":\n            if not args.ssid:\n                emit({"ok": False, "error": "join \u9700\u8981 --ssid\uFF08\u5BC6\u7801\u53EF\u9009 --pass\uFF09"})\n                return 1\n            do_join(args)\n        elif args.mode == "scan":\n            do_scan(args)\n        elif args.mode == "fetch":\n            do_fetch(args)\n        else:\n            do_leave(args)\n        return 0\n    except Exception as exc:  # noqa: BLE001\n        emit({"ok": False, "error": str(exc)})\n        return 1\n\n\nif __name__ == "__main__":\n    sys.exit(main())\n';
+
+// src/core/bundled.js
+var BUNDLED_CARD_SCRIPTS = {
+  "getcard_bridge.py": getcard_bridge_default,
+  "wifi_transfer.py": wifi_transfer_default,
+  "wifi_probe.py": wifi_probe_default,
+  "wifi_fetch.py": wifi_fetch_default
+};
+async function ensureCardScripts(baseDir) {
+  const dir = (0, import_node_path4.join)(baseDir, "card");
+  const written = [];
+  const failed = [];
+  try {
+    await (0, import_promises2.mkdir)(dir, { recursive: true });
+  } catch (error2) {
+    return { written, failed: [{ name: "card/", error: String(error2 && error2.message ? error2.message : error2) }] };
+  }
+  for (const [name, body] of Object.entries(BUNDLED_CARD_SCRIPTS)) {
+    const target = (0, import_node_path4.join)(dir, name);
+    try {
+      const existing = await (0, import_promises2.readFile)(target, "utf8").catch(() => null);
+      if (existing === body) continue;
+      await (0, import_promises2.writeFile)(target, body, "utf8");
+      written.push(name);
+    } catch (error2) {
+      failed.push({ name, error: String(error2 && error2.message ? error2.message : error2) });
+    }
+  }
+  return { written, failed };
 }
 
 // src/core/log.js
@@ -3744,13 +4388,13 @@ function serializeCanvas(canvas) {
 
 // src/core/service.js
 init_vfs();
-var import_node_path6 = require("node:path");
+var import_node_path7 = require("node:path");
 init_vault();
 init_history();
 
 // src/core/archive.js
 init_vfs();
-var import_node_path5 = require("node:path");
+var import_node_path6 = require("node:path");
 var import_node_zlib = require("node:zlib");
 var import_node_buffer = require("node:buffer");
 init_vault();
@@ -4039,9 +4683,9 @@ function isAllowedEntry(rel) {
   return ALLOWED_ASSET_EXT.has(lower.slice(dot + 1));
 }
 function absInside(absRoot, rel) {
-  const abs = (0, import_node_path5.resolve)(absRoot, rel.split("/").join(import_node_path5.sep));
-  const back = (0, import_node_path5.relative)(absRoot, abs);
-  if (back === "" || back.startsWith("..") || (0, import_node_path5.isAbsolute)(back)) return null;
+  const abs = (0, import_node_path6.resolve)(absRoot, rel.split("/").join(import_node_path6.sep));
+  const back = (0, import_node_path6.relative)(absRoot, abs);
+  if (back === "" || back.startsWith("..") || (0, import_node_path6.isAbsolute)(back)) return null;
   return abs;
 }
 async function existsAt(abs) {
@@ -4086,11 +4730,11 @@ async function indexNoteIds(absRoot) {
     for (const item of items) {
       if (item.isDirectory()) {
         if (IGNORED_DIRS2.has(item.name)) continue;
-        await walk((0, import_node_path5.join)(dirAbs, item.name), depth + 1);
+        await walk((0, import_node_path6.join)(dirAbs, item.name), depth + 1);
         continue;
       }
       if (!item.isFile() || !item.name.toLowerCase().endsWith(".md")) continue;
-      const abs = (0, import_node_path5.join)(dirAbs, item.name);
+      const abs = (0, import_node_path6.join)(dirAbs, item.name);
       try {
         const st = await lstat2(abs);
         if (!st.isFile() || st.size > INDEX_NOTE_MAX) continue;
@@ -4111,7 +4755,7 @@ async function exportVaultToZip(root, options = {}) {
   const maxFileBytes = options.maxFileBytes ?? 64 * MB;
   const maxTotalBytes = options.maxTotalBytes ?? 512 * MB;
   const fileLimit = Math.min(maxBytes, maxFileBytes);
-  const absRoot = (0, import_node_path5.resolve)(root);
+  const absRoot = (0, import_node_path6.resolve)(root);
   const found = [];
   const walk = async (dirAbs, relDir) => {
     let items;
@@ -4126,7 +4770,7 @@ async function exportVaultToZip(root, options = {}) {
       if (onlyDir !== "" && !(rel === onlyDir || rel.startsWith(onlyDir + "/"))) continue;
       if (item.isDirectory()) {
         if (IGNORED_DIRS2.has(item.name)) continue;
-        await walk((0, import_node_path5.join)(dirAbs, item.name), rel);
+        await walk((0, import_node_path6.join)(dirAbs, item.name), rel);
         continue;
       }
       if (!item.isFile()) continue;
@@ -4135,13 +4779,13 @@ async function exportVaultToZip(root, options = {}) {
       if (scope === "assets" && item.name.endsWith(".md")) continue;
       let st;
       try {
-        st = await lstat2((0, import_node_path5.join)(dirAbs, item.name));
+        st = await lstat2((0, import_node_path6.join)(dirAbs, item.name));
       } catch {
         continue;
       }
       if (!st.isFile()) continue;
       if (st.size > fileLimit) continue;
-      found.push({ rel, abs: (0, import_node_path5.join)(dirAbs, item.name), size: st.size, mtime: st.mtime });
+      found.push({ rel, abs: (0, import_node_path6.join)(dirAbs, item.name), size: st.size, mtime: st.mtime });
     }
   };
   await walk(absRoot, "");
@@ -4172,7 +4816,7 @@ async function importZipToVault(root, buffer, options = {}) {
   const maxFileBytes = options.maxFileBytes ?? 64 * MB;
   const zip = import_node_buffer.Buffer.isBuffer(buffer) ? buffer : buffer instanceof Uint8Array ? import_node_buffer.Buffer.from(buffer.buffer, buffer.byteOffset, buffer.byteLength) : null;
   if (zip === null) throw fail(400, "\u5F52\u6863\u5185\u5BB9\u5FC5\u987B\u662F\u4E8C\u8FDB\u5236 Buffer");
-  const absRoot = (0, import_node_path5.resolve)(root);
+  const absRoot = (0, import_node_path6.resolve)(root);
   const index = readZipIndex(zip);
   await mkdir2(absRoot, { recursive: true });
   const knownIds = await indexNoteIds(absRoot);
@@ -4230,7 +4874,7 @@ async function importZipToVault(root, buffer, options = {}) {
       const abs = absInside(absRoot, cand);
       if (abs === null) continue;
       try {
-        await mkdir2((0, import_node_path5.dirname)(abs), { recursive: true });
+        await mkdir2((0, import_node_path6.dirname)(abs), { recursive: true });
       } catch {
         continue;
       }
@@ -6199,7 +6843,7 @@ function createHandler(config) {
         }
         for (const name of names) {
           try {
-            const st = await stat2((0, import_node_path6.join)(abs, name));
+            const st = await stat2((0, import_node_path7.join)(abs, name));
             if (st.isFile()) {
               assetBytes += st.size;
               assetCount += 1;
@@ -6412,7 +7056,7 @@ function createHandler(config) {
           const { abs: srcAbs } = resolveInside(root, path);
           let finalName = base;
           let targetAbs = resolveInside(root, `${dir}/${base}`, { create: true }).abs;
-          await mkdir2((0, import_node_path6.dirname)(targetAbs), { recursive: true });
+          await mkdir2((0, import_node_path7.dirname)(targetAbs), { recursive: true });
           let suffix = 2;
           for (; ; ) {
             try {
@@ -7142,10 +7786,10 @@ function createHandler(config) {
     const body = await readJsonBody(req);
     const cmd = typeof body.cmd === "string" && body.cmd.trim() !== "" ? body.cmd.trim() : null;
     const bodyHex = typeof body.body === "string" && body.body.trim() !== "" ? body.body.trim() : null;
-    const join8 = body.join !== false;
+    const join9 = body.join !== false;
     const keep = body.keep === true;
     const wait = Number.isFinite(Number(body.wait)) ? Number(body.wait) : 3;
-    const result = await wifiActivate({ cmd, body: bodyHex, join: join8, keep, wait });
+    const result = await wifiActivate({ cmd, body: bodyHex, join: join9, keep, wait });
     return send(res, 200, result);
   }
   async function handleCardWifiJoin(req, res) {
@@ -10961,6 +11605,52 @@ function setHostLocale(value) {
   const raw = typeof value === "string" ? value.toLowerCase().split(/[-_]/)[0] : "";
   hostLocale = raw === "zh" || raw === "en" || raw === "nl" ? raw : null;
 }
+var hostStorage = null;
+function setHostStorage(store) {
+  const usable = store !== null && typeof store === "object" && typeof store.get === "function" && typeof store.set === "function" && typeof store.remove === "function";
+  hostStorage = usable ? store : null;
+}
+function storeGet(key) {
+  if (hostStorage !== null) {
+    try {
+      const value = hostStorage.get(key);
+      return typeof value === "string" ? value : value === null || value === void 0 ? null : String(value);
+    } catch {
+      return null;
+    }
+  }
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+function storeSet(key, value) {
+  if (hostStorage !== null) {
+    try {
+      hostStorage.set(key, value);
+    } catch {
+    }
+    return;
+  }
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+  }
+}
+function storeRemove(key) {
+  if (hostStorage !== null) {
+    try {
+      hostStorage.remove(key);
+    } catch {
+    }
+    return;
+  }
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+  }
+}
 function setUiLocale(value) {
   uiLocale = value === "zh" || value === "en" || value === "nl" ? value : null;
 }
@@ -14461,7 +15151,7 @@ function GetnotePage() {
   const clearRecentSearches = q2(() => {
     setRecentSearches([]);
     try {
-      window.localStorage.removeItem(RECENT_KEY);
+      storeRemove(RECENT_KEY);
     } catch {
     }
   }, []);
@@ -14473,7 +15163,7 @@ function GetnotePage() {
       if (next.length === prev.length) return prev;
       if (next.length === 0) {
         try {
-          window.localStorage.removeItem(RECENT_KEY);
+          storeRemove(RECENT_KEY);
         } catch {
         }
         return next;
@@ -14488,7 +15178,7 @@ function GetnotePage() {
   const makeSortPref = (key) => {
     const read = () => {
       try {
-        const saved = window.localStorage.getItem(key);
+        const saved = storeGet(key);
         if (saved === "name" || saved === "count" || saved === "time") return saved;
       } catch {
       }
@@ -14496,7 +15186,7 @@ function GetnotePage() {
     };
     const write = (next) => {
       try {
-        window.localStorage.setItem(key, next);
+        storeSet(key, next);
       } catch {
       }
     };
@@ -21691,7 +22381,7 @@ var RECENT_KEY = "dshgn.recentSearches";
 var RECENT_LIMIT = 8;
 function readRecentSearches() {
   try {
-    const raw = window.localStorage.getItem(RECENT_KEY);
+    const raw = storeGet(RECENT_KEY);
     if (raw === null) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -21709,14 +22399,14 @@ function readRecentSearches() {
 }
 function writeRecentSearches(list) {
   try {
-    window.localStorage.setItem(RECENT_KEY, JSON.stringify(list));
+    storeSet(RECENT_KEY, JSON.stringify(list));
   } catch {
   }
 }
 function readColWidths() {
   const fallback = { tree: 204, list: 260 };
   try {
-    const raw = window.localStorage.getItem(COL_WIDTH_KEY);
+    const raw = storeGet(COL_WIDTH_KEY);
     if (raw === null) return fallback;
     const parsed = JSON.parse(raw);
     const num = (value, min, max, def) => {
@@ -21733,7 +22423,7 @@ function readColWidths() {
 }
 function writeColWidths(widths) {
   try {
-    window.localStorage.setItem(COL_WIDTH_KEY, JSON.stringify(widths));
+    storeSet(COL_WIDTH_KEY, JSON.stringify(widths));
   } catch {
   }
 }
@@ -21742,7 +22432,7 @@ var SESSION_TABS = ["notes", "cloud", "settings", "card", "conflict", "broken", 
 function readSession() {
   const empty = { tab: "", dir: "", tag: "", path: "" };
   try {
-    const raw = window.localStorage.getItem(SESSION_KEY);
+    const raw = storeGet(SESSION_KEY);
     if (raw === null) return empty;
     const parsed = JSON.parse(raw);
     if (parsed === null || typeof parsed !== "object") return empty;
@@ -21761,7 +22451,7 @@ function readSession() {
 function writeSession(patch) {
   try {
     const prev = readSession();
-    window.localStorage.setItem(SESSION_KEY, JSON.stringify({ ...prev, ...patch }));
+    storeSet(SESSION_KEY, JSON.stringify({ ...prev, ...patch }));
   } catch {
   }
 }
@@ -21769,7 +22459,7 @@ var SCROLL_KEY = "dshgn.scroll";
 var SCROLL_KEEP = 40;
 function readScrollMarks() {
   try {
-    const raw = window.localStorage.getItem(SCROLL_KEY);
+    const raw = storeGet(SCROLL_KEY);
     if (raw === null) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -21790,7 +22480,7 @@ function writeScrollMark(path, top) {
   const value = Math.max(0, Math.round(Number(top) || 0));
   try {
     const rest = readScrollMarks().filter((item) => item.path !== rel);
-    window.localStorage.setItem(SCROLL_KEY, JSON.stringify([{ path: rel, top: value }, ...rest].slice(0, SCROLL_KEEP)));
+    storeSet(SCROLL_KEY, JSON.stringify([{ path: rel, top: value }, ...rest].slice(0, SCROLL_KEEP)));
   } catch {
   }
 }
@@ -21799,7 +22489,7 @@ var NOTE_SCALE_KEEP = 80;
 var SCALES = ["s", "m", "l"];
 function readNoteScales() {
   try {
-    const raw = window.localStorage.getItem(NOTE_SCALE_KEY);
+    const raw = storeGet(NOTE_SCALE_KEY);
     if (raw === null) return {};
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return {};
@@ -21822,8 +22512,8 @@ function writeNoteScale(path, scale) {
     delete rest[rel];
     const next = SCALES.indexOf(scale) === -1 ? rest : Object.assign({ [rel]: scale }, rest);
     const list = Object.keys(next).slice(0, NOTE_SCALE_KEEP).map((key) => ({ path: key, scale: next[key] }));
-    if (list.length === 0) window.localStorage.removeItem(NOTE_SCALE_KEY);
-    else window.localStorage.setItem(NOTE_SCALE_KEY, JSON.stringify(list));
+    if (list.length === 0) storeRemove(NOTE_SCALE_KEY);
+    else storeSet(NOTE_SCALE_KEY, JSON.stringify(list));
   } catch {
   }
 }
@@ -21832,7 +22522,7 @@ var DRAFT_KEEP = 5;
 var DRAFT_MAX = 2e5;
 function readDrafts() {
   try {
-    const raw = window.localStorage.getItem(DRAFT_KEY);
+    const raw = storeGet(DRAFT_KEY);
     if (raw === null) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -21854,7 +22544,7 @@ function writeDraft(path, content) {
   try {
     const rest = readDrafts().filter((item) => item.path !== rel);
     const next = [{ path: rel, content, at: Date.now() }, ...rest].slice(0, DRAFT_KEEP);
-    window.localStorage.setItem(DRAFT_KEY, JSON.stringify(next));
+    storeSet(DRAFT_KEY, JSON.stringify(next));
   } catch {
   }
 }
@@ -21863,8 +22553,8 @@ function dropDraft(path) {
   if (rel === "") return;
   try {
     const rest = readDrafts().filter((item) => item.path !== rel);
-    if (rest.length === 0) window.localStorage.removeItem(DRAFT_KEY);
-    else window.localStorage.setItem(DRAFT_KEY, JSON.stringify(rest));
+    if (rest.length === 0) storeRemove(DRAFT_KEY);
+    else storeSet(DRAFT_KEY, JSON.stringify(rest));
   } catch {
   }
 }
@@ -22734,7 +23424,7 @@ function NotePane(props) {
   const [scrollPast, setScrollPast] = h2(false);
   const [textScale, setTextScale] = h2(() => {
     try {
-      const saved = window.localStorage.getItem("dshgn.textScale");
+      const saved = storeGet("dshgn.textScale");
       return saved === "s" || saved === "l" ? saved : "m";
     } catch {
       return "m";
@@ -23067,7 +23757,7 @@ function NotePane(props) {
       if (path === "") {
         setTextScale(next);
         try {
-          window.localStorage.setItem("dshgn.textScale", next);
+          storeSet("dshgn.textScale", next);
         } catch {
         }
         return;
@@ -25502,9 +26192,24 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     } catch {
       setHostLocale(null);
     }
+    const appStore = this.app;
+    if (appStore !== null && typeof appStore === "object" && typeof appStore.loadLocalStorage === "function" && typeof appStore.saveLocalStorage === "function") {
+      setHostStorage({
+        get: (key) => appStore.loadLocalStorage(key),
+        set: (key, value) => appStore.saveLocalStorage(key, value),
+        remove: (key) => appStore.saveLocalStorage(key, null)
+      });
+    } else {
+      setHostStorage(null);
+    }
     configure2({ dataDir, vaultBase: basePath2, subfolder: DEFAULT_SUBFOLDER });
     configure({ adapter: adapter2, basePath: basePath2 });
     this.probe("onload \u5F00\u59CB");
+    const cardScripts = await ensureCardScripts(dataDir);
+    if (cardScripts.written.length > 0) this.probe(`\u6865\u811A\u672C\u89E3\u51FA ${cardScripts.written.join("\u3001")}`);
+    if (cardScripts.failed.length > 0) {
+      this.probe(`\u6865\u811A\u672C\u89E3\u4E0D\u51FA\u6765\uFF1A${cardScripts.failed.map((item) => `${item.name} ${item.error}`).join("\uFF1B")}`);
+    }
     configureCardScripts({ baseDir: dataDir });
     setOpenExternal((url) => {
       try {
@@ -25521,10 +26226,10 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       const res = await fetch(url);
       if (!res.ok) throw new Error(`\u5BFC\u51FA\u5931\u8D25\uFF1AHTTP ${res.status}`);
       const bytes = Buffer.from(await res.arrayBuffer());
-      const dir = (0, import_node_path7.join)((0, import_node_os2.tmpdir)(), "getnote-export");
-      await (0, import_promises2.mkdir)(dir, { recursive: true });
-      const target = (0, import_node_path7.join)(dir, filename);
-      await (0, import_promises2.writeFile)(target, bytes);
+      const dir = (0, import_node_path8.join)((0, import_node_os2.tmpdir)(), "getnote-export");
+      await (0, import_promises3.mkdir)(dir, { recursive: true });
+      const target = (0, import_node_path8.join)(dir, filename);
+      await (0, import_promises3.writeFile)(target, bytes);
       try {
         const electron = typeof require === "function" ? require("electron") : null;
         if (electron && electron.shell && typeof electron.shell.showItemInFolder === "function") {
@@ -25929,7 +26634,7 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       const runtime2 = getRuntime();
       const subfolder = String(runtime2.subfolder || DEFAULT_SUBFOLDER).replace(/^\/+|\/+$/g, "");
       const target = subfolder === "" ? "\u5F97\u5230\u5927\u8111.base" : `${subfolder}/\u5F97\u5230\u5927\u8111.base`;
-      const abs = (0, import_node_path7.join)(runtime2.vaultBase, target);
+      const abs = (0, import_node_path8.join)(runtime2.vaultBase, target);
       let already = false;
       try {
         await access2(abs);
@@ -25961,7 +26666,7 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       const runtime2 = getRuntime();
       const subfolder = String(runtime2.subfolder || DEFAULT_SUBFOLDER).replace(/^\/+|\/+$/g, "");
       const canvasRel = subfolder === "" ? "\u5F97\u5230\u5927\u8111\u753B\u5E03.canvas" : `${subfolder}/\u5F97\u5230\u5927\u8111\u753B\u5E03.canvas`;
-      const canvasAbs = (0, import_node_path7.join)(runtime2.vaultBase, canvasRel);
+      const canvasAbs = (0, import_node_path8.join)(runtime2.vaultBase, canvasRel);
       const fileRel = String(notePath).replace(/^\/+/, "");
       let canvas = parseCanvas("");
       try {
@@ -26753,7 +27458,7 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     if (basePath2 === "") return base;
     const names = linkNamesOf({ path: rel, title: rel.split("/").pop().replace(/\.md$/i, "") });
     try {
-      const own = await readFile2((0, import_node_path7.join)(basePath2, rel), "utf8");
+      const own = await readFile2((0, import_node_path8.join)(basePath2, rel), "utf8");
       const head = parseFrontmatter(own).data || {};
       const aliases = head.aliases !== void 0 ? head.aliases : head.alias !== void 0 ? head.alias : head["\u522B\u540D"];
       for (const alias of normalizeAliases(aliases)) names.push(alias);
@@ -26764,7 +27469,7 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     await Promise.all(
       base.hits.slice(0, budget).map(async (hit) => {
         try {
-          const text = await readFile2((0, import_node_path7.join)(basePath2, hit.path), "utf8");
+          const text = await readFile2((0, import_node_path8.join)(basePath2, hit.path), "utf8");
           hit.snippets = backlinkSnippets(text, wanted, 3);
         } catch {
           hit.snippets = [];

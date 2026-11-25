@@ -1,7 +1,14 @@
 name: release
 
-# 打 tag 就发版：把构建产物和 manifest / styles.css / card / locale 一起打包成
-# 一个可以直接解压进 .obsidian/plugins/getnote-brain/ 的 zip。
+# 打 tag 就发版。Release 里只放 Obsidian 真正会下载的三件套：
+#   main.js / manifest.json / styles.css
+#
+# 社区目录的自动审核提过两条意见，这里都照做了：
+#   · 「Release contains extra unsupported files」——以前还挂一个 zip（给人手动
+#     解压装库用），审核认为 Obsidian 不会下它、属于多余文件，所以去掉。
+#   · 「Missing GitHub artifact attestations」——加上构建来源证明，用户可以用
+#     gh attestation verify 核对「这份 main.js 确实是从这个仓库的这个 commit
+#     构建出来的」。
 #
 # 为什么不把构建产物提交到仓库里完事：main.js 是产物，手改源码不重新构建、
 # 或者构建后忘了提交，都会让「仓库里的 main.js」和源码悄悄分叉。所以 CI 里
@@ -14,6 +21,9 @@ on:
 
 permissions:
   contents: write
+  # 生成 artifact attestation 需要这两个权限
+  id-token: write
+  attestations: write
 
 jobs:
   release:
@@ -30,20 +40,24 @@ jobs:
 
       - run: npm test
 
-      - name: 打包
-        run: |
-          mkdir -p dist/getnote-brain
-          cp main.js manifest.json styles.css dist/getnote-brain/
-          cp -r card locale dist/getnote-brain/
-          cd dist && zip -r "../getnote-brain-${GITHUB_REF_NAME}.zip" getnote-brain
+      # 从源码重新构建一遍再发：Release 里的 main.js 因此必然是「源码构建出来的」，
+      # 而不是仓库里那份可能忘了更新的产物。
+      - name: 构建
+        run: npm run build
 
-      # 社区市场的审核要求 Release 里能直接下到这三件套；zip 是给人手动装库用的，
-      # 单文件是给目录校验与自动更新用的，两种都给。
+      # 构建来源证明：把下面这几个文件的 sha256 与这次 workflow 的 commit 绑在一起
+      - name: 生成构建来源证明
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            main.js
+            manifest.json
+            styles.css
+
       - name: 发布
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            getnote-brain-*.zip
             main.js
             manifest.json
             styles.css
