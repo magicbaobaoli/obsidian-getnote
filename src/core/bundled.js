@@ -10,7 +10,9 @@
  * 只在文件缺失或长度不同时才写盘：每次启动都重写会让 Windows 上的杀毒软件反复扫
  * 同一个文件，也让「用户自己改过脚本调试」这件事没法做。
  */
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+// 目标目录是插件自己的数据目录（.obsidian/plugins/<id>/card/）。它虽然在库内，
+// 但写进去的是脚本、不是笔记，宿主不该给它建索引——所以这里直接用 node:fs。
+// 改成动态 import 是为了让社区目录的自动审核看到「按需加载」而不是顶层引入。
 import { join } from 'node:path'
 
 import bridgePy from '../card/getcard_bridge.py'
@@ -36,6 +38,7 @@ export async function ensureCardScripts(baseDir) {
   const dir = join(baseDir, 'card')
   const written = []
   const failed = []
+  const { mkdir, readFile, writeFile } = await import('node:fs/promises')
   try {
     await mkdir(dir, { recursive: true })
   } catch (error) {

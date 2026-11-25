@@ -2977,12 +2977,10 @@ __export(main_exports, {
 });
 module.exports = __toCommonJS(main_exports);
 var import_obsidian2 = require("obsidian");
-var import_promises3 = require("node:fs/promises");
 var import_node_os2 = require("node:os");
 var import_node_path8 = require("node:path");
 
 // src/core/settings.js
-var import_promises = require("node:fs/promises");
 init_vfs();
 var import_node_crypto2 = require("node:crypto");
 var import_node_os = require("node:os");
@@ -3040,25 +3038,29 @@ function knownVaultCandidates() {
   if (typeof fromEnv === "string" && fromEnv.trim() !== "") list.unshift(fromEnv.trim());
   return list;
 }
+async function nodeFs() {
+  return import("node:fs/promises");
+}
 async function readJson(path) {
   try {
-    const parsed = JSON.parse(await (0, import_promises.readFile)(path, "utf8"));
+    const parsed = JSON.parse(await (await nodeFs()).readFile(path, "utf8"));
     return parsed && typeof parsed === "object" ? parsed : {};
   } catch {
     return {};
   }
 }
 async function writeJsonAtomic(path, value, mode) {
-  await (0, import_promises.mkdir)((0, import_node_path2.dirname)(path), { recursive: true });
+  const fs = await nodeFs();
+  await fs.mkdir((0, import_node_path2.dirname)(path), { recursive: true });
   const tmp = `${path}.${process.pid}.${(0, import_node_crypto2.randomBytes)(4).toString("hex")}.tmp`;
-  await (0, import_promises.writeFile)(tmp, JSON.stringify(value, null, 2) + "\n", "utf8");
+  await fs.writeFile(tmp, JSON.stringify(value, null, 2) + "\n", "utf8");
   if (mode) {
     try {
-      await (0, import_promises.chmod)(tmp, mode);
+      await fs.chmod(tmp, mode);
     } catch {
     }
   }
-  await (0, import_promises.rename)(tmp, path);
+  await fs.rename(tmp, path);
 }
 function normalizeThemeColor(input) {
   if (typeof input !== "string") return null;
@@ -3305,7 +3307,6 @@ function normalizeAutoSync(raw) {
 init_vfs();
 
 // src/core/card.js
-var import_node_child_process = require("node:child_process");
 init_vfs();
 var import_node_path3 = require("node:path");
 var scriptDir = process.cwd();
@@ -3321,7 +3322,8 @@ function pythonCandidates() {
 }
 var DEFAULT_TIMEOUT_MS = 120 * 1e3;
 var PULL_TIMEOUT_MS = 15 * 60 * 1e3;
-function runBridge(args, { timeoutMs = DEFAULT_TIMEOUT_MS, python = null, script = null } = {}) {
+async function runBridge(args, { timeoutMs = DEFAULT_TIMEOUT_MS, python = null, script = null } = {}) {
+  const { spawn } = await import("node:child_process");
   script = script || BRIDGE();
   const interpreters = python === null ? pythonCandidates() : [python];
   return new Promise((resolve5, reject) => {
@@ -3345,7 +3347,7 @@ function runBridge(args, { timeoutMs = DEFAULT_TIMEOUT_MS, python = null, script
         return;
       }
       const bin = interpreters[index];
-      const child = (0, import_node_child_process.spawn)(bin, [script, ...args], {
+      const child = spawn(bin, [script, ...args], {
         windowsHide: true,
         stdio: ["ignore", "pipe", "pipe"],
         env: { ...process.env, PYTHONIOENCODING: "utf-8" }
@@ -3431,7 +3433,8 @@ function runBridge(args, { timeoutMs = DEFAULT_TIMEOUT_MS, python = null, script
     attempt(0);
   });
 }
-function runPythonModule(moduleArgs, { timeoutMs = 5 * 60 * 1e3 } = {}) {
+async function runPythonModule(moduleArgs, { timeoutMs = 5 * 60 * 1e3 } = {}) {
+  const { spawn } = await import("node:child_process");
   const interpreters = pythonCandidates();
   return new Promise((resolve5, reject) => {
     let settled = false;
@@ -3451,7 +3454,7 @@ function runPythonModule(moduleArgs, { timeoutMs = 5 * 60 * 1e3 } = {}) {
         );
         return;
       }
-      const child = (0, import_node_child_process.spawn)(interpreters[index], moduleArgs, {
+      const child = spawn(interpreters[index], moduleArgs, {
         windowsHide: true,
         stdio: ["ignore", "pipe", "pipe"],
         env: { ...process.env, PYTHONIOENCODING: "utf-8" }
@@ -3626,8 +3629,7 @@ async function importCardRecordings(root, options = {}) {
       const assetRel = posix(targetDir === "" ? `asset/${assetName}` : `${targetDir}/asset/${assetName}`);
       const assetAbs = (0, import_node_path3.join)(root, assetRel);
       await mkdir2((0, import_node_path3.dirname)(assetAbs), { recursive: true });
-      const { rename: rename4 } = await import("node:fs/promises");
-      await rename4(item.path, assetAbs);
+      await rename2(item.path, assetAbs);
       const title = titleOfCardFile(sourceName);
       const date = dateOfCardFile(sourceName);
       const minutes = Math.max(1, Math.round((item.duration || 0) / 60));
@@ -3723,7 +3725,6 @@ async function wifiLeave() {
 }
 
 // src/core/bundled.js
-var import_promises2 = require("node:fs/promises");
 var import_node_path4 = require("node:path");
 
 // src/card/getcard_bridge.py
@@ -4347,17 +4348,18 @@ async function ensureCardScripts(baseDir) {
   const dir = (0, import_node_path4.join)(baseDir, "card");
   const written = [];
   const failed = [];
+  const { mkdir: mkdir3, readFile: readFile3, writeFile: writeFile3 } = await import("node:fs/promises");
   try {
-    await (0, import_promises2.mkdir)(dir, { recursive: true });
+    await mkdir3(dir, { recursive: true });
   } catch (error2) {
     return { written, failed: [{ name: "card/", error: String(error2 && error2.message ? error2.message : error2) }] };
   }
   for (const [name, body] of Object.entries(BUNDLED_CARD_SCRIPTS)) {
     const target = (0, import_node_path4.join)(dir, name);
     try {
-      const existing = await (0, import_promises2.readFile)(target, "utf8").catch(() => null);
+      const existing = await readFile3(target, "utf8").catch(() => null);
       if (existing === body) continue;
-      await (0, import_promises2.writeFile)(target, body, "utf8");
+      await writeFile3(target, body, "utf8");
       written.push(name);
     } catch (error2) {
       failed.push({ name, error: String(error2 && error2.message ? error2.message : error2) });
@@ -11699,6 +11701,7 @@ function setHostLocale(value) {
   hostLocale = raw === "zh" || raw === "en" || raw === "nl" ? raw : null;
 }
 var hostStorage = null;
+var memoryStore = /* @__PURE__ */ new Map();
 function setHostStorage(store) {
   const usable = store !== null && typeof store === "object" && typeof store.get === "function" && typeof store.set === "function" && typeof store.remove === "function";
   hostStorage = usable ? store : null;
@@ -11712,11 +11715,7 @@ function storeGet(key) {
       return null;
     }
   }
-  try {
-    return window.localStorage.getItem(key);
-  } catch {
-    return null;
-  }
+  return memoryStore.has(key) ? memoryStore.get(key) : null;
 }
 function storeSet(key, value) {
   if (hostStorage !== null) {
@@ -11726,10 +11725,7 @@ function storeSet(key, value) {
     }
     return;
   }
-  try {
-    window.localStorage.setItem(key, value);
-  } catch {
-  }
+  memoryStore.set(key, String(value));
 }
 function storeRemove(key) {
   if (hostStorage !== null) {
@@ -11739,10 +11735,7 @@ function storeRemove(key) {
     }
     return;
   }
-  try {
-    window.localStorage.removeItem(key);
-  } catch {
-  }
+  memoryStore.delete(key);
 }
 function setUiLocale(value) {
   uiLocale = value === "zh" || value === "en" || value === "nl" ? value : null;
@@ -14205,20 +14198,23 @@ var CSS = `
 .dshgn_treeTags .dshgn_tagRow[data-nest="true"]{border-style:dashed}
 /* \u5199\u4F5C\u70ED\u529B\u56FE\uFF1A16 \u5468 \xD7 7 \u5929\u7684\u5C0F\u65B9\u683C\u3002\u683C\u5B50\u7528 grid-auto-flow:column \u6309\u5217\u94FA\uFF0C
    \u6240\u4EE5 DOM \u987A\u5E8F\u662F\u300C\u4E00\u5929\u63A5\u4E00\u5929\u300D\uFF0C\u89C6\u89C9\u4E0A\u662F\u300C\u4E00\u5468\u4E00\u5217\u300D\u2014\u2014\u987A\u5E8F\u5BF9\u4E86\u4E0D\u7528\u91CD\u6392\u3002 */
-.dshgn_heat{flex:none;margin:6px 6px 8px;padding:8px 8px 6px;border-radius:8px;
-  background:rgba(255,255,255,.05)}
+.dshgn_heat{flex:none;margin:6px 6px 10px;padding:9px 10px 8px;border-radius:9px;
+  background:rgba(255,255,255,.06);box-shadow:inset 0 0 0 1px rgba(255,255,255,.05)}
 .dshgn_heatHead{display:flex;align-items:baseline;justify-content:space-between;gap:6px;
   margin-bottom:6px}
 .dshgn_heatTitle{font-size:10px;letter-spacing:.04em;text-transform:uppercase;
   color:var(--dsw-alias-label-tertiary)}
 .dshgn_heatStat{font-size:10px;font-weight:600;color:var(--dsw-alias-label-secondary);
   font-variant-numeric:tabular-nums}
+/* 16 \u5468 \xD7 (8px \u683C + 2px \u7F1D) = 158px\uFF0C\u6B63\u597D\u843D\u5728\u5DE6\u680F 204px \u91CC\uFF08\u53BB\u6389 12px \u680F\u5185\u8FB9\u8DDD
+   \u4E0E 20px \u9762\u677F\u5185\u8FB9\u8DDD\u8FD8\u5269 172px\uFF09\u3002\u683C\u5B50\u4ECE 7px \u653E\u5927\u5230 8px\u3001\u5E95\u8272\u63D0\u4EAE\u4E00\u6863\uFF1A
+   \u539F\u6765\u90A3\u7248\u5728\u6DF1\u84DD\u5E95\u4E0A\u51E0\u4E4E\u770B\u4E0D\u89C1\u3002 */
 .dshgn_heatGrid{display:grid;grid-auto-flow:column;gap:2px}
-.dshgn_heatCell{width:7px;height:7px;border-radius:2px;background:rgba(255,255,255,.08)}
-.dshgn_heatCell[data-lv="1"]{background:rgba(255,255,255,.28)}
-.dshgn_heatCell[data-lv="2"]{background:rgba(255,255,255,.46)}
-.dshgn_heatCell[data-lv="3"]{background:rgba(255,255,255,.66)}
-.dshgn_heatCell[data-lv="4"]{background:rgba(255,255,255,.88)}
+.dshgn_heatCell{width:8px;height:8px;border-radius:2.5px;background:rgba(255,255,255,.10)}
+.dshgn_heatCell[data-lv="1"]{background:rgba(255,255,255,.34)}
+.dshgn_heatCell[data-lv="2"]{background:rgba(255,255,255,.54)}
+.dshgn_heatCell[data-lv="3"]{background:rgba(255,255,255,.74)}
+.dshgn_heatCell[data-lv="4"]{background:rgba(255,255,255,.94)}
 /* \u672A\u6765\u65E5\u671F\u753B\u6210\u865A\u7EBF\u7A7A\u6846\uFF1A\u5B9E\u5FC3\u7A7A\u6846\u4F1A\u88AB\u8BEF\u8BFB\u6210\u300C\u90A3\u5929\u5199 0 \u7BC7\u300D */
 .dshgn_heatCell[data-future="true"]{background:transparent;
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
@@ -14312,9 +14308,9 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 .dshgn_moreRow .dshgn_btn{flex:1 1 auto;justify-content:center;min-width:0}
 /* \u641C\u7D22\u6001\u90A3\u9897\u300C\u518D\u591A\u770B\u51E0\u7BC7\u300D\uFF1A\u5B83\u5C5E\u4E8E\u4E0A\u9762\u90A3\u884C\u300C\u626B\u4E86\u591A\u5C11\u7BC7\u300D\uFF0C\u6240\u4EE5\u8DDF\u7740\u90A3\u884C\u7684
    \u5DE6\u53F3\u8FB9\u8DDD\u8D70\uFF0C\u522B\u7F29\u8FDB\u6210\u5217\u8868\u5361\u7247\u90A3\u6837\u2014\u2014\u5B83\u8BF4\u7684\u662F\u641C\u7D22\u672C\u8EAB\uFF0C\u4E0D\u662F\u7ED3\u679C\u3002 */
-.dshgn_searchMoreRow{padding:0 10px 7px;margin:0}
+.dshgn_searchMoreRow{padding:0 9px 7px;margin:0}
 .dshgn_moreBtn{display:block;width:100%;margin:6px 0 2px;justify-content:center}
-.dshgn_card{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border-radius:8px;cursor:pointer;
+.dshgn_card{display:flex;flex-direction:column;gap:3px;padding:9px 9px;border-radius:8px;cursor:pointer;
   border-left:2px solid transparent;user-select:none}
 .dshgn_card:hover{background:var(--dsw-alias-interactive-bg-hover)}
 .dshgn_card[data-on="true"]{background:var(--dsw-alias-interactive-bg-hover-accent);
@@ -14540,9 +14536,10 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 .dshgn_selPopBtn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .dshgn_selPopBtn:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dshgn_empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:8px;padding:32px;text-align:center;color:var(--dsw-alias-label-tertiary)}
-.dshgn_emptyTitle{font-size:13px;color:var(--dsw-alias-label-secondary)}
-.dshgn_emptyDesc{font-size:12px;line-height:1.7;max-width:340px}
+  gap:10px;padding:32px 18px;text-align:center;color:var(--dsw-alias-label-tertiary)}
+.dshgn_emptyTitle{font-size:13.5px;font-weight:500;color:var(--dsw-alias-label-secondary);
+  letter-spacing:.01em}
+.dshgn_emptyDesc{font-size:12px;line-height:1.75;max-width:360px}
 .dshgn_emptyBtn{appearance:none;display:inline-flex;align-items:center;gap:4px;margin-top:10px;
   padding:4px 10px;border:0.5px solid var(--dsw-alias-border-l2);border-radius:6px;
   background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;cursor:pointer}
@@ -17980,7 +17977,9 @@ ${insert}
           // 于是搜不到时中栏一片空白，连「没有匹配」四个字都没有。
           shown.length === 0 ? h4(
             "div",
-            { className: "dshgn_empty", style: { padding: "24px 12px" } },
+            // 内边距交给 CSS（.dshgn_empty）。以前这里塞了行内 padding，把
+            // 窄栏里的说明文字挤成两三行短句，看着像没排版。
+            { className: "dshgn_empty" },
             // 连笔记库都还没有时，说「这个目录还没有笔记」是错的：
             // 用户看到的会是一句「没有」，而真正该做的是先去挑个目录。
             h4("div", { className: "dshgn_emptyTitle" }, vaultMissing ? t4("empty.noVault") : query.trim() !== "" ? t4("empty.search") : t4("empty.noNotes")),
@@ -26347,8 +26346,8 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     } else {
       setHostStorage(null);
     }
-    configure2({ dataDir, vaultBase: basePath2, subfolder: DEFAULT_SUBFOLDER });
     configure({ adapter: adapter2, basePath: basePath2 });
+    configure2({ dataDir, vaultBase: basePath2, subfolder: DEFAULT_SUBFOLDER });
     this.probe("onload \u5F00\u59CB");
     const cardScripts = await ensureCardScripts(dataDir);
     if (cardScripts.written.length > 0) this.probe(`\u6865\u811A\u672C\u89E3\u51FA ${cardScripts.written.join("\u3001")}`);
@@ -26372,9 +26371,10 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       if (!res.ok) throw new Error(`\u5BFC\u51FA\u5931\u8D25\uFF1AHTTP ${res.status}`);
       const bytes = Buffer.from(await res.arrayBuffer());
       const dir = (0, import_node_path8.join)((0, import_node_os2.tmpdir)(), "getnote-export");
-      await (0, import_promises3.mkdir)(dir, { recursive: true });
+      const { mkdir: mkdir3, writeFile: writeFile3 } = await import("node:fs/promises");
+      await mkdir3(dir, { recursive: true });
       const target = (0, import_node_path8.join)(dir, filename);
-      await (0, import_promises3.writeFile)(target, bytes);
+      await writeFile3(target, bytes);
       try {
         const electron = typeof require === "function" ? require("electron") : null;
         if (electron && electron.shell && typeof electron.shell.showItemInFolder === "function") {

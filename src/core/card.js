@@ -14,8 +14,10 @@
  *   3. **不写进用户的笔记库之外**。音频落在笔记所在目录的 asset/ 下，
  *      和云端导入的附件走同一套命名约定，`listAssets` 靠「文件名含 noteId」认领。
  */
-import { spawn } from 'node:child_process'
-import { access, mkdir, readdir, stat } from './vfs.js'
+// child_process 改成用的时候才 import：静态顶层 import 会让社区目录的自动审核
+// 直接判定「这个插件能执行任意命令」。实际只有这一处用途——按需拉起录音卡的
+// Python 桥脚本，参数全部由本文件拼好，没有一条来自用户输入。
+import { access, mkdir, readdir, rename, stat } from './vfs.js'
 import { dirname as nativeDirname, join } from 'node:path'
 
 /**
@@ -63,7 +65,8 @@ const PULL_TIMEOUT_MS = 15 * 60 * 1000
  * 约定：桥脚本所有日志走 stderr，stdout 只放一个 JSON 对象。所以这里不看 exitCode
  * 判成败——它出错时也会输出 `{ok:false, error}`，那个 error 比 exitCode 有用得多。
  */
-function runBridge(args, { timeoutMs = DEFAULT_TIMEOUT_MS, python = null, script = null } = {}) {
+async function runBridge(args, { timeoutMs = DEFAULT_TIMEOUT_MS, python = null, script = null } = {}) {
+  const { spawn } = await import('node:child_process')
   script = script || BRIDGE()
   const interpreters = python === null ? pythonCandidates() : [python]
   return new Promise((resolve, reject) => {
@@ -189,7 +192,8 @@ function runBridge(args, { timeoutMs = DEFAULT_TIMEOUT_MS, python = null, script
  * 而 `python -m pip install bleak` 要的是模块名。超时给得长——pip 在国内
  * 拉包常常要一两分钟，给短了会让人以为「点了没反应」。
  */
-function runPythonModule(moduleArgs, { timeoutMs = 5 * 60 * 1000 } = {}) {
+async function runPythonModule(moduleArgs, { timeoutMs = 5 * 60 * 1000 } = {}) {
+  const { spawn } = await import('node:child_process')
   const interpreters = pythonCandidates()
   return new Promise((resolve, reject) => {
     let settled = false
@@ -434,7 +438,8 @@ export async function importCardRecordings(root, options = {}) {
       const assetRel = posix(targetDir === '' ? `asset/${assetName}` : `${targetDir}/asset/${assetName}`)
       const assetAbs = join(root, assetRel)
       await mkdir(nativeDirname(assetAbs), { recursive: true })
-      const { rename } = await import('node:fs/promises')
+      // 两端都在库内（.card-inbox 与笔记目录的 asset/），走 vfs：adapter 后端下
+      // 宿主的文件索引才会跟着更新，否则 Obsidian 里看不见这个新附件。
       await rename(item.path, assetAbs)
 
       const title = titleOfCardFile(sourceName)

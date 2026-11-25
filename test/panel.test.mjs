@@ -91,6 +91,16 @@ const fakeStorage = {
   },
 }
 Object.defineProperty(window, 'localStorage', { value: fakeStorage, configurable: true })
+
+// 面板的界面偏好走「宿主给的键值存储」，代码里不再出现 window.localStorage。
+// 测试里把宿主那一份接在同一个内存 Map 上：既有那些「记住栏宽/排序/草稿」的
+// 断言照样读得到，而面板自己一个 localStorage 都不碰。
+const defaultHostStorage = {
+  get: (key) => fakeStorage.getItem(key),
+  set: (key, value) => fakeStorage.setItem(key, value),
+  remove: (key) => fakeStorage.removeItem(key),
+}
+panel.setHostStorage(defaultHostStorage)
 globalThis.IS_REACT_ACT_ENVIRONMENT = false
 
 const React = await import('preact/compat')
@@ -17151,7 +17161,9 @@ test('设置页里能把面板钉成浅色或深色，钉住之后宿主的主�
 test('界面偏好写在宿主给的存储里，不再往 localStorage 里塞', async () => {
   // 社区目录的自动审核会看「是不是用了插件数据 API」。面板的偏好（最近搜过的词、
   // 栏宽、会话、滚动位置、每篇字号、草稿、文字档位）现在走注入进来的 store：
-  // 宿主给 app.loadLocalStorage / saveLocalStorage 就用它，没有才退回 localStorage。
+  // 宿主给 app.loadLocalStorage / saveLocalStorage 就用它；宿主没给就只记在本次
+  // 会话的内存里——不再退回 window.localStorage（静态扫描看得到那个名字，而且
+  // 渲染进程那份是整个 Obsidian 共用的、既不进库也不跟库走）。
   const { setHostStorage, storeGet, storeSet, storeRemove } = panel.__internals
   const host = new Map()
   const touched = []
@@ -17183,11 +17195,15 @@ test('界面偏好写在宿主给的存储里，不再往 localStorage 里塞', 
     assert.doesNotThrow(() => storeSet('dshgn.probeKey', 'x'))
     assert.doesNotThrow(() => storeRemove('dshgn.probeKey'))
 
-    // ④ 传 null 就退回 localStorage（老宿主没这两个方法时走这条）
+    // ④ 传 null 就退回进程内那一份（老宿主没这两个方法时走这条）：写进去读得回来，
+    //    但既不落 localStorage，也不跨会话——偏好丢了不影响任何数据。
     setHostStorage(null)
-    window.localStorage.setItem('dshgn.probeKey', '本地里的值')
-    assert.equal(storeGet('dshgn.probeKey'), '本地里的值', '没宿主存储时退回 localStorage')
-    window.localStorage.removeItem('dshgn.probeKey')
+    assert.equal(storeGet('dshgn.probeKey'), null, '换回内存那份之后读不到宿主里的')
+    storeSet('dshgn.probeKey', '内存里的值')
+    assert.equal(storeGet('dshgn.probeKey'), '内存里的值', '内存那份自己读写一致')
+    assert.equal(window.localStorage.getItem('dshgn.probeKey'), null, '没有宿主存储时也不碰 localStorage')
+    storeRemove('dshgn.probeKey')
+    assert.equal(storeGet('dshgn.probeKey'), null, '内存那份也能删')
 
     // ⑤ 最近搜过的词这种真偏好也走宿主那份
     setHostStorage({
@@ -17202,7 +17218,7 @@ test('界面偏好写在宿主给的存储里，不再往 localStorage 里塞', 
     assert.equal(window.localStorage.getItem(RECENT), null, '最近搜过的词不该留在 localStorage')
     host.delete(RECENT)
   } finally {
-    setHostStorage(null)
+    setHostStorage(defaultHostStorage)
     window.localStorage.removeItem('dshgn.probeKey')
   }
 })
@@ -17375,3 +17391,47 @@ test('依赖装好之后那颗「一键装依赖」就收起来了，只留一�
   }
 })
 
+test('左栏与中栏的同级元素站在同一条竖线上，热力图的格子也不再小得看不清', async () => {
+  const styleEl = window.document.getElementById('dshgn-style')
+  const text = styleEl === null ? '' : String(styleEl.textContent || '')
+  assert.ok(text !== '', '面板样式表该在')
+
+  const ruleOf = (selector) => {
+    const at = text.indexOf(selector + '{')
+    if (at === -1) return ''
+    const rest = text.slice(at + selector.length + 1)
+    const end = rest.indexOf('}')
+    return end === -1 ? '' : rest.slice(0, end)
+  }
+  const num = (decl, name) => {
+    const m = new RegExp(name + ':(-?[0-9.]+)px').exec(decl)
+    return m === null ? null : Number(m[1])
+  }
+
+  // 「全部笔记」那一行与搜索框：同一套高度/圆角/字号，左右内边距也必须一致，
+  // 否则两栏的文字起点差一两个像素，看着就是「没对齐」。
+  const row = ruleOf('.dshgn_treeRow')
+  const search = ruleOf('.dshgn_search')
+  assert.ok(row !== '' && search !== '', '目录行与搜索框的样式都该在')
+  assert.equal(num(row, 'height'), num(search, 'height'), '目录行与搜索框该一样高')
+  assert.equal(num(row, 'padding-left') ?? 9, num(search, 'padding-left') ?? 9, '左右内边距该一致')
+  assert.ok(
+    new RegExp('padding:0 ' + (num(row, 'padding-left') ?? 9) + 'px').test(row) &&
+      new RegExp('padding:0 ' + (num(search, 'padding-left') ?? 9) + 'px').test(search),
+    '目录行与搜索框的左右内边距该写成同一个值',
+  )
+
+  // 左栏那个筛原来比目录行窄一号（22px 高、11px 字），现在必须跟目录行同高。
+  const filter = ruleOf('.dshgn_treeFilter')
+  assert.ok(filter !== '', '左栏筛的样式该在')
+  assert.equal(num(filter, 'height'), num(row, 'height'), '左栏筛该和「全部笔记」那一行一样高')
+
+  // 热力图的格子：7px 在深蓝底上几乎看不见，现在至少 8px 且底色亮一档。
+  const cell = ruleOf('.dshgn_heatCell')
+  assert.ok(cell !== '', '热力图格子的样式该在')
+  const size = num(cell, 'width')
+  assert.ok(size !== null && size >= 8, '热力图格子该至少 8px，实际 ' + size)
+  const lv1 = ruleOf('.dshgn_heatCell[data-lv="1"]')
+  const alpha = /rgba\(255,255,255,\.([0-9]+)\)/.exec(lv1)
+  assert.ok(alpha !== null && Number('0.' + alpha[1]) >= 0.3, '最浅一档的格子该比原来亮，实际 ' + lv1)
+})

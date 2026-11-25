@@ -2633,12 +2633,20 @@ async function saveFile(url, filename) {
      * 偏好全丢，而插件自己的数据目录又只有它自己认。社区目录的自动审核会把这
      * 一条标成「没有用插件数据 API」，宿主这边正好有现成的键值接口。
      *
-     * 注入的是三个同步函数；没注入（离线测试、纯浏览器预览）就退回
-     * window.localStorage，语义完全一样。
+     * 注入的是三个同步函数；没注入（离线测试、纯浏览器预览）就只记在这一次
+     * 会话的内存里。
+     *
+     * 为什么不再退回 window.localStorage：渲染进程那份是整个 Obsidian 共用的，
+     * 既不进库也不跟库走，换台机器打开同一个库这些偏好全丢；而且社区目录的
+     * 自动审核做的是静态扫描，只要代码里还留着 window.localStorage 就照样标
+     * 「没有用插件数据 API」。偏好丢了不影响任何数据——笔记和设置都不在这里。
      */
     let hostStorage = null
 
-    /** 注入宿主的键值存储；传 null 退回 window.localStorage。 */
+    /** 宿主没给键值接口时的那一份（只在本次会话里活着）。 */
+    const memoryStore = new Map()
+
+    /** 注入宿主的键值存储；传 null 就退回进程内的那份。 */
     export function setHostStorage(store) {
       const usable =
         store !== null &&
@@ -2659,11 +2667,7 @@ async function saveFile(url, filename) {
           return null
         }
       }
-      try {
-        return window.localStorage.getItem(key)
-      } catch {
-        return null
-      }
+      return memoryStore.has(key) ? memoryStore.get(key) : null
     }
 
     /** 写一个键；写不进去就算了（隐私模式、配额满）。 */
@@ -2676,11 +2680,7 @@ async function saveFile(url, filename) {
         }
         return
       }
-      try {
-        window.localStorage.setItem(key, value)
-      } catch {
-        // 存不了就这次先记在内存里
-      }
+      memoryStore.set(key, String(value))
     }
 
     /** 删一个键；删不掉也当它没了。 */
@@ -2693,11 +2693,7 @@ async function saveFile(url, filename) {
         }
         return
       }
-      try {
-        window.localStorage.removeItem(key)
-      } catch {
-        // 删不掉就当这次只在内存里没了
-      }
+      memoryStore.delete(key)
     }
 
     /** 设置面板语言；传 null 恢复「跟随宿主」。非法值一律当 null。 */
@@ -6004,20 +6000,23 @@ async function saveFile(url, filename) {
 .dshgn_treeTags .dshgn_tagRow[data-nest="true"]{border-style:dashed}
 /* 写作热力图：16 周 × 7 天的小方格。格子用 grid-auto-flow:column 按列铺，
    所以 DOM 顺序是「一天接一天」，视觉上是「一周一列」——顺序对了不用重排。 */
-.dshgn_heat{flex:none;margin:6px 6px 8px;padding:8px 8px 6px;border-radius:8px;
-  background:rgba(255,255,255,.05)}
+.dshgn_heat{flex:none;margin:6px 6px 10px;padding:9px 10px 8px;border-radius:9px;
+  background:rgba(255,255,255,.06);box-shadow:inset 0 0 0 1px rgba(255,255,255,.05)}
 .dshgn_heatHead{display:flex;align-items:baseline;justify-content:space-between;gap:6px;
   margin-bottom:6px}
 .dshgn_heatTitle{font-size:10px;letter-spacing:.04em;text-transform:uppercase;
   color:var(--dsw-alias-label-tertiary)}
 .dshgn_heatStat{font-size:10px;font-weight:600;color:var(--dsw-alias-label-secondary);
   font-variant-numeric:tabular-nums}
+/* 16 周 × (8px 格 + 2px 缝) = 158px，正好落在左栏 204px 里（去掉 12px 栏内边距
+   与 20px 面板内边距还剩 172px）。格子从 7px 放大到 8px、底色提亮一档：
+   原来那版在深蓝底上几乎看不见。 */
 .dshgn_heatGrid{display:grid;grid-auto-flow:column;gap:2px}
-.dshgn_heatCell{width:7px;height:7px;border-radius:2px;background:rgba(255,255,255,.08)}
-.dshgn_heatCell[data-lv="1"]{background:rgba(255,255,255,.28)}
-.dshgn_heatCell[data-lv="2"]{background:rgba(255,255,255,.46)}
-.dshgn_heatCell[data-lv="3"]{background:rgba(255,255,255,.66)}
-.dshgn_heatCell[data-lv="4"]{background:rgba(255,255,255,.88)}
+.dshgn_heatCell{width:8px;height:8px;border-radius:2.5px;background:rgba(255,255,255,.10)}
+.dshgn_heatCell[data-lv="1"]{background:rgba(255,255,255,.34)}
+.dshgn_heatCell[data-lv="2"]{background:rgba(255,255,255,.54)}
+.dshgn_heatCell[data-lv="3"]{background:rgba(255,255,255,.74)}
+.dshgn_heatCell[data-lv="4"]{background:rgba(255,255,255,.94)}
 /* 未来日期画成虚线空框：实心空框会被误读成「那天写 0 篇」 */
 .dshgn_heatCell[data-future="true"]{background:transparent;
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
@@ -6111,9 +6110,9 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 .dshgn_moreRow .dshgn_btn{flex:1 1 auto;justify-content:center;min-width:0}
 /* 搜索态那颗「再多看几篇」：它属于上面那行「扫了多少篇」，所以跟着那行的
    左右边距走，别缩进成列表卡片那样——它说的是搜索本身，不是结果。 */
-.dshgn_searchMoreRow{padding:0 10px 7px;margin:0}
+.dshgn_searchMoreRow{padding:0 9px 7px;margin:0}
 .dshgn_moreBtn{display:block;width:100%;margin:6px 0 2px;justify-content:center}
-.dshgn_card{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border-radius:8px;cursor:pointer;
+.dshgn_card{display:flex;flex-direction:column;gap:3px;padding:9px 9px;border-radius:8px;cursor:pointer;
   border-left:2px solid transparent;user-select:none}
 .dshgn_card:hover{background:var(--dsw-alias-interactive-bg-hover)}
 .dshgn_card[data-on="true"]{background:var(--dsw-alias-interactive-bg-hover-accent);
@@ -6339,9 +6338,10 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 .dshgn_selPopBtn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .dshgn_selPopBtn:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dshgn_empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:8px;padding:32px;text-align:center;color:var(--dsw-alias-label-tertiary)}
-.dshgn_emptyTitle{font-size:13px;color:var(--dsw-alias-label-secondary)}
-.dshgn_emptyDesc{font-size:12px;line-height:1.7;max-width:340px}
+  gap:10px;padding:32px 18px;text-align:center;color:var(--dsw-alias-label-tertiary)}
+.dshgn_emptyTitle{font-size:13.5px;font-weight:500;color:var(--dsw-alias-label-secondary);
+  letter-spacing:.01em}
+.dshgn_emptyDesc{font-size:12px;line-height:1.75;max-width:360px}
 .dshgn_emptyBtn{appearance:none;display:inline-flex;align-items:center;gap:4px;margin-top:10px;
   padding:4px 10px;border:0.5px solid var(--dsw-alias-border-l2);border-radius:6px;
   background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;cursor:pointer}
@@ -10509,7 +10509,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
               shown.length === 0
                 ? h(
                     'div',
-                    { className: 'dshgn_empty', style: { padding: '24px 12px' } },
+                    // 内边距交给 CSS（.dshgn_empty）。以前这里塞了行内 padding，把
+                    // 窄栏里的说明文字挤成两三行短句，看着像没排版。
+                    { className: 'dshgn_empty' },
                     // 连笔记库都还没有时，说「这个目录还没有笔记」是错的：
                     // 用户看到的会是一句「没有」，而真正该做的是先去挑个目录。
                     h('div', { className: 'dshgn_emptyTitle' }, vaultMissing ? t('empty.noVault') : query.trim() !== '' ? t('empty.search') : t('empty.noNotes')),

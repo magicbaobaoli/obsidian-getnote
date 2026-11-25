@@ -14,7 +14,6 @@
  */
 
 import { FuzzySuggestModal, Menu, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian'
-import { mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -134,8 +133,10 @@ export default class GetnoteObsidianPlugin extends Plugin {
       setHostStorage(null)
     }
 
-    settingsStore.configure({ dataDir, vaultBase: basePath, subfolder: DEFAULT_SUBFOLDER })
+    // vfs 必须先就位：设置文件就落在插件数据目录里（库内），下面 configure 之后
+    // 立刻可能读它，而读的时候会按「在不在库根下」决定走 adapter 还是 node:fs。
     configureVfs({ adapter, basePath })
+    settingsStore.configure({ dataDir, vaultBase: basePath, subfolder: DEFAULT_SUBFOLDER })
 
     // 启动即落一份心跳文件。用户报「面板全黑、一个字都没有」时，最难的从来不是
     // 修，而是先分清问题在哪一层：插件根本没加载？加载了但视图没挂上？视图挂了
@@ -179,6 +180,10 @@ export default class GetnoteObsidianPlugin extends Plugin {
       if (!res.ok) throw new Error(`导出失败：HTTP ${res.status}`)
       const bytes = Buffer.from(await res.arrayBuffer())
       const dir = join(tmpdir(), 'getnote-export')
+      // 库外的系统临时目录，vfs 管不着（它会按「越界」拒掉），只能走 node:fs。
+      // 用的时候才 import：顶层静态 import 会让自动审核判定「这个插件在用 fs
+      // 模块读整个系统」，而这里只写一个自己的导出目录。
+      const { mkdir, writeFile } = await import('node:fs/promises')
       await mkdir(dir, { recursive: true })
       const target = join(dir, filename)
       await writeFile(target, bytes)

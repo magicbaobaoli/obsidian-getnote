@@ -147,7 +147,7 @@ Obsidian → Settings → Community plugins → Browse → search for **Getnote 
 ```bash
 npm install
 npm run build         # produces main.js and copies card/ + locale/ into the plugin root
-npm test              # 1006 offline tests (needs Node >= 22; jsdom 31 uses Node 22's zstd API)
+npm test              # 1007 offline tests (needs Node >= 22; jsdom 31 uses Node 22's zstd API)
 npm run check:market  # community-directory self-check: id/name/description rules, version
                       # consistency across three files, leaked credentials
 ```
@@ -270,11 +270,11 @@ Coverage: vault algorithms (196), archive bundles (64), history snapshots (51), 
 checks** (a real server, real requests, real files: Range 206/416, path-escape rejection, masked
 credentials, sync boundaries, recorder environment probing, attachment upload rules, broken-link
 checks, todo lists), **37 startup checks** (the built `main.js` is really `require`d with a fake
-`obsidian` module and an in-memory adapter, then `onload` is driven), **185 panel render checks**
+`obsidian` module and an in-memory adapter, then `onload` is driven), **186 panel render checks**
 (jsdom renders the real panel, every tab, dark/light themes, keyboard handling, drag and drop,
 selection clipping, image zoom, search highlighting, conflict and trash panes), **9 view-layer
 checks**, **8 markdown render checks**, **8 transcript checks** and **4 external integration
-checks** — plus **3 community-directory self-checks**.
+checks** — plus **3 community-directory self-checks**. Layout regressions are pinned too: the sidebar row, the sidebar filter and the middle-column search field all resolve to one height and one left edge, and the heatmap cells are at least 8px wide with the lightest level no dimmer than a third opacity.
 
 Everything is offline: no network, and never your real vault.
 
