@@ -3129,7 +3129,10 @@ async function readSettings() {
     followActive: data.followActive === true,
     // 版本历史每篇留几版。默认 10 版和以前写死的数字一致，老用户升级观感不变；
     // 这个值传进 snapshotNote 与 pruneHistory，两处都走同一份口径。
-    historyLimit: normalizeHistoryLimit(data.historyLimit)
+    historyLimit: normalizeHistoryLimit(data.historyLimit),
+    // 左栏的写作热力图。默认关：它占着左栏顶部一块固定的地方，而多数时候
+    // 用户要的是目录和标签。想看的人自己在设置里打开。
+    showHeatmap: data.showHeatmap === true
   };
 }
 async function updateSettings(patch = {}) {
@@ -3152,7 +3155,8 @@ async function updateSettings(patch = {}) {
     debugLogging: patch.debugLogging !== void 0 ? patch.debugLogging === true : cur.debugLogging,
     cardAutoImport: patch.cardAutoImport !== void 0 ? patch.cardAutoImport === true : cur.cardAutoImport,
     followActive: patch.followActive !== void 0 ? patch.followActive === true : cur.followActive,
-    historyLimit: patch.historyLimit !== void 0 ? normalizeHistoryLimit(patch.historyLimit) : cur.historyLimit
+    historyLimit: patch.historyLimit !== void 0 ? normalizeHistoryLimit(patch.historyLimit) : cur.historyLimit,
+    showHeatmap: patch.showHeatmap !== void 0 ? patch.showHeatmap === true : cur.showHeatmap
   };
   await writeJsonAtomic(settingsPath(), next);
   return readSettings();
@@ -6574,6 +6578,9 @@ function createHandler(config) {
       // 会让热力图在首屏之后才「啪」地出现，看起来像加载失败重试。
       // 26 周 = 半年，格子数 182，JSON 也就几 KB，不值得再拆。
       heatmap: missing ? null : heatmapOf(entries, { weeks: 26 }),
+      // 左栏要不要画热力图。数据照发（几 KB，而且切开关时不想再等一次往返），
+      // 画不画由这个开关决定。
+      showHeatmap: settings.showHeatmap === true,
       // 云端通道状态：configured 表示「现在点一下就能用」，transport 说明走哪条路
       api: {
         configured: readiness.configured,
@@ -7426,6 +7433,7 @@ function createHandler(config) {
     if ("templates" in body) patch.templates = body.templates;
     if (typeof body.followActive === "boolean") patch.followActive = body.followActive;
     if (typeof body.historyLimit === "number") patch.historyLimit = body.historyLimit;
+    if (typeof body.showHeatmap === "boolean") patch.showHeatmap = body.showHeatmap;
     if (Object.keys(patch).length > 0) await updateSettings(patch);
     const settings = await readSettings();
     const { root } = await resolveVaultRoot(settings.vaultRoot || config.vaultPath || null);
@@ -10107,6 +10115,12 @@ var LEX = {
     "settings.followDesc": "\u4F60\u5728 Obsidian \u91CC\u7FFB\u5230\u54EA\u4E00\u7BC7\uFF0C\u5F00\u7740\u7684\u9762\u677F\u5C31\u8DDF\u7740\u6253\u5F00\u540C\u4E00\u7BC7\uFF0C\u53CD\u94FE\u548C\u540C\u6B65\u72B6\u6001\u7ACB\u523B\u8DDF\u4E0A\u3002\u9762\u677F\u6CA1\u5F00\u7740\u65F6\u4E0D\u4F1A\u66FF\u4F60\u6253\u5F00\u5B83\uFF1B\u4E0D\u5728\u300C\u5F97\u5230\u5927\u8111\u300D\u76EE\u5F55\u91CC\u7684\u7B14\u8BB0\u4E5F\u4E0D\u4F1A\u8DDF\u3002",
     "settings.followToggle": "\u9762\u677F\u8DDF\u7740\u6211\u7FFB",
     "settings.followSaved": "\u8DDF\u968F\u8BBE\u7F6E\u5DF2\u4FDD\u5B58",
+    // 左栏那张写作热力图。默认收着——它占着左栏顶部一块固定地方，
+    // 而左栏真正天天要用的是目录和标签。
+    "settings.heatmapTitle": "\u5199\u4F5C\u70ED\u529B\u56FE",
+    "settings.heatmapDesc": "\u5DE6\u680F\u9876\u90E8\u90A3\u5F20\u534A\u5E74 182 \u683C\u7684\u5C0F\u56FE\uFF0C\u70B9\u67D0\u4E00\u5929\u80FD\u53EA\u770B\u90A3\u5929\u5199\u7684\u7B14\u8BB0\u3002\u6536\u8D77\u5B83\uFF0C\u5DE6\u680F\u5C31\u80FD\u591A\u653E\u51E0\u884C\u76EE\u5F55\u3002",
+    "settings.heatmapToggle": "\u5728\u5DE6\u680F\u663E\u793A\u5199\u4F5C\u70ED\u529B\u56FE",
+    "settings.heatmapSaved": "\u70ED\u529B\u56FE\u8BBE\u7F6E\u5DF2\u4FDD\u5B58",
     // 版本历史每篇留几版。以前这个数字写死在代码里（10 版），用户改不了：
     // 天天改稿的人嫌少、只存定稿的人嫌库里堆快照。
     "settings.historyTitle": "\u7248\u672C\u5386\u53F2\u7559\u51E0\u7248",
@@ -10795,6 +10809,10 @@ var LEX = {
     "settings.followDesc": "Open a note in Obsidian and the panel switches to the same one, with its backlinks and sync state right behind it. The panel will not open itself for you, and notes outside the Get\u7B14\u8BB0 folder are ignored.",
     "settings.followToggle": "Keep the panel on the note I open",
     "settings.followSaved": "Follow setting saved",
+    "settings.heatmapTitle": "Writing heatmap",
+    "settings.heatmapDesc": "The 182-cell, half-year grid at the top of the sidebar. Click a day to see only what you wrote then. Hiding it gives the sidebar room for a few more folders.",
+    "settings.heatmapToggle": "Show the writing heatmap in the sidebar",
+    "settings.heatmapSaved": "Heatmap setting saved",
     "settings.historyTitle": "How many versions to keep",
     "settings.historyDesc": "Each note keeps its most recent snapshots up to this many. Lowering it trims what is already in the vault right away, and trimmed versions are gone for good.",
     "settings.historyLabel": "Keep at most",
@@ -11468,6 +11486,10 @@ var LEX = {
     "settings.followDesc": "Open je een notitie in Obsidian, dan springt het paneel naar dezelfde, met de verwijzingen en de synchronisatiestatus erachteraan. Het paneel opent zichzelf niet en notities buiten de map Get\u7B14\u8BB0 worden genegeerd.",
     "settings.followToggle": "Laat het paneel mijn notitie volgen",
     "settings.followSaved": "Volginstelling opgeslagen",
+    "settings.heatmapTitle": "Schrijfheatmap",
+    "settings.heatmapDesc": "Het raster van 182 cellen (een half jaar) boven in de zijbalk. Klik op een dag om alleen te zien wat je toen schreef. Verbergen geeft de zijbalk ruimte voor een paar mappen extra.",
+    "settings.heatmapToggle": "Toon de schrijfheatmap in de zijbalk",
+    "settings.heatmapSaved": "Heatmapinstelling opgeslagen",
     "settings.historyTitle": "Hoeveel versies bewaren",
     "settings.historyDesc": "Elke notitie bewaart hooguit dit aantal recente snapshots. Lager zetten snoeit meteen wat er al in de kluis staat, en gesnoeide versies zijn definitief weg.",
     "settings.historyLabel": "Bewaar hooguit",
@@ -13705,19 +13727,25 @@ var CSS = `
   box-sizing:border-box;display:flex;flex-direction:column;height:100%;min-height:0;
   background:var(--dsw-alias-bg-base,transparent);color:var(--dsw-alias-label-primary);
   font-family:var(--dshgn-fontText);font-size:var(--font-ui-small,13px)}
-/* \u9876\u680F\u6392\u6210\u4E24\u884C\uFF1A\u6807\u9898\u4E0E\u52A8\u4F5C\u4E00\u884C\uFF0C\u9875\u7B7E\u6574\u6761\u5360\u7B2C\u4E8C\u884C\u3002
-   \u4EE5\u524D\u4E09\u6837\u6324\u5728\u4E00\u884C\u91CC\uFF0C\u9762\u677F\u7A84\u4E00\u70B9\uFF08Obsidian \u4FA7\u680F 600~700px \u5F88\u5E38\u89C1\uFF09\u6807\u9898\u5C31\u548C\u9875\u7B7E
-   \u53E0\u5728\u4E00\u8D77\uFF0C\u300C\u7B14\u8BB0\u300D\u4E24\u4E2A\u5B57\u88AB\u76D6\u6389\u4E00\u534A\u3002wrap + \u9875\u7B7E flex:1 0 100% \u662F\u627F\u91CD\u7684\uFF1A
-   \u9875\u7B7E\u5FC5\u987B\u6574\u6761\u6362\u884C\uFF0C\u5426\u5219\u5B83\u4F1A\u88AB\u538B\u7A84\u5230\u53EA\u5269\u51E0\u4E2A\u5B57\u3001\u8FD8\u662F\u8981\u6A2A\u5411\u6324\u3002 */
-.dshgn_head{flex:none;display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;padding:10px 14px;
+/* \u9762\u677F\u91CC\u4E00\u5F8B\u6309 border-box \u91CF\u76D2\u5B50\u3002\u4EE5\u524D\u53EA\u6709\u51E0\u5904\u5C40\u90E8\u5199\u4E86\uFF0C\u5176\u4F59\u5143\u7D20\u7528\u9ED8\u8BA4\u7684
+   content-box\uFF1A\u4E00\u4E2A height:22px\u3001\u4E0A\u4E0B\u5185\u8FB9\u8DDD 2px \u7684\u80F6\u56CA\u5B9E\u9645\u5360 26px\uFF0C\u5BBD\u5EA6\u540C\u7406
+   \u2014\u2014\u5199\u6210 width:100% \u7684\u8F93\u5165\u6846\u4F1A\u6BD4\u81EA\u5DF1\u6240\u5728\u7684\u683C\u5B50\u5BBD\u51FA\u4E00\u5708\uFF0C\u770B\u8D77\u6765\u5C31\u662F
+   \u300C\u5B57\u8DD1\u5230\u6846\u5916\u9762\u53BB\u4E86\u300D\u3002\u8FD9\u4E00\u6761\u515C\u4F4F\u5168\u90E8\u540E\u4EE3\uFF0C\u4E0D\u7528\u518D\u9010\u4E2A\u8865\u3002 */
+.dshgn_root,.dshgn_root *,.dshgn_root *::before,.dshgn_root *::after{box-sizing:border-box}
+/* \u9876\u680F\u6392\u6210\u4E00\u884C\uFF1A\u6807\u9898\u3001\u52A8\u4F5C\u3001\u9875\u7B7E\u3001\u5E2E\u52A9\u4F9D\u6B21\u6392\u5F00\uFF0C\u548C\u300C\u5F97\u5230\u5927\u8111\u300D\u5728\u540C\u4E00\u6761\u6C34\u5E73\u7EBF\u4E0A\u3002
+   \u4E0D\u6362\u884C\uFF0C\u4F46\u9875\u7B7E\u90A3\u4E00\u6761\u81EA\u5DF1\u6A2A\u5411\u6EDA\u2014\u2014\u4E0D\u6362\u884C\u7684\u524D\u63D0\u662F\u300C\u6324\u4E0D\u4E0B\u65F6\u53EA\u6709\u9875\u7B7E\u8BA9\u8DEF\u300D\uFF1A
+   \u6807\u9898\u4E0E\u52A8\u4F5C flex:none \u4FDD\u6301\u539F\u5BBD\uFF0C\u9875\u7B7E flex:1 1 auto + min-width:0 + overflow-x:auto\uFF0C
+   \u8FD9\u6837\u9762\u677F\u518D\u7A84\u4E5F\u53EA\u662F\u9875\u7B7E\u6EDA\u8D77\u6765\uFF0C\u4E0D\u4F1A\u628A\u6807\u9898\u76D6\u6389\u4E00\u534A\u3001\u4E5F\u4E0D\u4F1A\u628A\u6BCF\u4E2A\u5B57\u538B\u6210\u4E24\u884C\u3002 */
+.dshgn_head{flex:none;display:flex;align-items:center;flex-wrap:nowrap;gap:8px;padding:8px 12px;
   border-bottom:0.5px solid var(--dsw-alias-border-l2);box-sizing:border-box}
-.dshgn_headMain{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1 1 auto}
+.dshgn_headMain{display:flex;flex-direction:column;gap:1px;min-width:0;flex:0 1 auto}
 .dshgn_title{font-size:13px;font-weight:600;line-height:18px;color:var(--dsw-alias-label-primary)}
 .dshgn_sub{font-size:11px;line-height:15px;color:var(--dsw-alias-label-tertiary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}
-/* order:10 + flex-basis:100% \u628A\u9875\u7B7E\u9489\u5728\u7B2C\u4E8C\u884C\uFF1B\u516B\u4E2A\u9875\u7B7E\u5728\u7A84\u9762\u677F\u91CC\u653E\u4E0D\u4E0B\u65F6
-   \u81EA\u5DF1\u6A2A\u5411\u6EDA\uFF0C\u800C\u4E0D\u662F\u628A\u6BCF\u4E2A\u5B57\u538B\u6210\u4E24\u884C\u3002\u5E2E\u52A9\u6309\u94AE order:9\uFF0C\u7559\u5728\u7B2C\u4E00\u884C\u6700\u53F3\u8FB9\u3002 */
-.dshgn_tabs{order:10;flex:1 0 100%;display:flex;gap:2px;padding:3px;border-radius:9px;
+/* \u9875\u7B7E\u8DDF\u7740\u6807\u9898\u7AD9\u5728\u540C\u4E00\u884C\u3002flex:1 1 auto + min-width:0 \u662F\u627F\u91CD\u7684\uFF1A\u5BBD\u5EA6\u4E0D\u591F\u65F6
+   \u53EA\u6709\u8FD9\u6761\u88AB\u538B\u7F29\uFF08\u6807\u9898\u4E0E\u52A8\u4F5C\u90FD\u662F flex:none\uFF09\uFF0C\u538B\u7F29\u4E4B\u540E\u5B83\u81EA\u5DF1\u6A2A\u5411\u6EDA\uFF0C
+   \u516B\u4E2A\u9875\u7B7E\u4E0D\u4F1A\u88AB\u538B\u6210\u7AD6\u6392\uFF0C\u4E5F\u4E0D\u4F1A\u76D6\u4F4F\u5DE6\u8FB9\u7684\u6807\u9898\u3002 */
+.dshgn_tabs{flex:1 1 auto;min-width:0;display:flex;gap:2px;padding:3px;border-radius:9px;
   background:var(--dsw-alias-interactive-bg-hover);overflow-x:auto;scrollbar-width:none;
   box-sizing:border-box}
 .dshgn_tabs::-webkit-scrollbar{display:none}
@@ -13734,8 +13762,7 @@ var CSS = `
   background:var(--dsw-alias-state-error-primary);color:#fff;
   font-size:10px;font-weight:600;line-height:16px;letter-spacing:0;
   font-variant-numeric:tabular-nums}
-.dshgn_actions{display:flex;align-items:center;gap:4px;flex:none;margin-left:auto}
-.dshgn_head .dshgn_helpBtn{order:9}
+.dshgn_actions{display:flex;align-items:center;gap:4px;flex:none}
 /* \u5207\u6362\u9875\u7B7E\u7684\u5165\u573A\u52A8\u753B\uFF1A\u6DE1\u5165 + \u8F7B\u5FAE\u4E0A\u6D6E\u3002180ms \u662F\u4ECE\u300C\u80FD\u611F\u89C9\u5230\u300D\u5230\u300C\u4E0D\u6321\u624B\u300D\u4E4B\u95F4\u7684
    \u7ECF\u9A8C\u503C\u2014\u2014\u518D\u6162\u5C31\u6709\u62D6\u6C93\u611F\uFF0C\u518D\u5FEB\u5C31\u770B\u4E0D\u51FA\u6765\u3002\u53EA\u505A opacity/transform\uFF0C\u8D70 GPU \u5408\u6210\uFF0C
    \u4E0D\u89E6\u53D1\u91CD\u6392\uFF0C\u9762\u677F\u91CC\u540C\u65F6\u6709\u5217\u8868\u548C\u6B63\u6587\u4E5F\u4E0D\u4F1A\u6389\u5E27\u3002 */
@@ -14314,6 +14341,7 @@ var CSS = `
 .dshgn_tagRow[data-drop="true"]{border-color:var(--dsw-alias-brand-primary);
   color:var(--dsw-alias-brand-primary);
   box-shadow:0 0 0 1px var(--dsw-alias-brand-primary)}
+.dshgn_tagLabel{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_treeTags{display:flex;flex-wrap:wrap;padding:2px 4px}
 /* \u5D4C\u5957\u6807\u7B7E\u644A\u5E73\u540E\uFF0C\u5B50\u6807\u7B7E\u7684\u80F6\u56CA\u53EA\u5199\u6700\u540E\u4E00\u6BB5\uFF0C\u9760\u7F29\u8FDB\u8868\u793A\u5C42\u7EA7 */
 .dshgn_treeTags .dshgn_tagRow[data-nest="true"]{border-style:dashed}
@@ -17379,6 +17407,8 @@ ${insert}
           void addTagTo(path, tag);
         },
         activeDay,
+        // 左栏那张热力图默认收着，由设置页那个开关决定画不画。
+        showHeatmap: status !== null && status.showHeatmap === true,
         // 点某一天就只看那天写的：先把目录/标签筛选让开，否则两个条件一叠加
         // 常常是空的，用户会以为那天什么都没写。再点同一颗就只取消日期。
         onPickDay: (day) => {
@@ -19900,6 +19930,47 @@ function FollowCard(props) {
         onChange: (event) => void flip(event.target.checked === true)
       }),
       t4("settings.followToggle")
+    )
+  );
+}
+function HeatmapCard(props) {
+  const { t: t4, status, onSaved, onError } = props;
+  const [busy, setBusy] = h2(false);
+  const on2 = status !== null && status.showHeatmap === true;
+  const flip = q2(
+    async (next) => {
+      if (busy) return;
+      setBusy(true);
+      try {
+        await api("/settings", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ showHeatmap: next })
+        });
+        await onSaved(t4("settings.heatmapSaved"));
+      } catch (err) {
+        onError(err && err.message ? err.message : String(err));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, onError, onSaved, t4]
+  );
+  return h4(
+    "div",
+    { className: "dshgn_section" },
+    h4("div", { className: "dshgn_sectionHead" }, h4("span", null, t4("settings.heatmapTitle"))),
+    h4("div", { className: "dshgn_sectionDesc" }, t4("settings.heatmapDesc")),
+    h4(
+      "label",
+      { className: "dshgn_rowLine", style: { fontSize: 11.5, color: "var(--dsw-alias-label-secondary)" } },
+      h4("input", {
+        type: "checkbox",
+        checked: on2,
+        disabled: busy || status === null,
+        onChange: (event) => void flip(event.target.checked === true)
+      }),
+      t4("settings.heatmapToggle")
     )
   );
 }
@@ -22917,6 +22988,7 @@ function TreePane(props) {
     onRenameDir,
     onNewNoteIn,
     heatmap,
+    showHeatmap,
     currentNoteId,
     onNarrowPick,
     onMoveNoteTo,
@@ -23335,7 +23407,9 @@ function TreePane(props) {
     treeFilter.trim() !== "" && flat.length === 0 && tagTree.length === 0 ? h4("div", { className: "dshgn_sectionDesc" }, t4("tree.filterNone")) : null,
     // 热力图放在「全部笔记」正下方：它是「这个库整体在长」的视角，
     // 跟下面按目录/标签切分是两种维度，夹在中间会让人以为它属于某个目录。
-    h4(HeatmapStrip, { t: t4, heatmap, activeDay, onPickDay }),
+    // 默认收起来——左栏最金贵的是目录和标签，一张半年 182 格的图天天占着
+    // 上面 60px，多数时候只是「瞄一眼今天写了没」。要看的人在设置页打开。
+    showHeatmap === true ? h4(HeatmapStrip, { t: t4, heatmap, activeDay, onPickDay }) : null,
     // 目录区
     h4(
       "div",
@@ -23605,7 +23679,11 @@ ${t4("tree.menuDelete")}\uFF1A\u53F3\u952E`
                 onAddTagTo(dragged, tag);
               }
             },
-            `${label} ${count}`
+            // 文字包一层 span 再截断：胶囊自己是 inline-flex 容器，
+            // text-overflow 对「容器的直接文本节点」不生效，长标签会被
+            // 硬切成半个字、看着像溢出到圈外面。span 是块级盒子，
+            // 省略号才真的出现，宽度也永远不超过胶囊。
+            h4("span", { className: "dshgn_tagLabel" }, `${label} ${count}`)
           ),
           menu !== null && menu.kind === "tag" && menu.name === tag ? rowMenu() : null
         )
@@ -25921,6 +25999,7 @@ function SettingsPane(props) {
       // 跟随卡片紧跟在语言之后：它和「面板长什么样」属于同一类设置（怎么跟
       // 宿主配合），而不是「库里有什么」。
       h4(FollowCard, { t: t4, status, onSaved, onError }),
+      h4(HeatmapCard, { t: t4, status, onSaved, onError }),
       // 版本历史紧跟在跟随卡之后：两张都是「面板怎么配合你」，而不是「库里有什么」。
       h4(HistoryCard, { t: t4, status, onSaved, onError }),
       // 模板卡放在语言之后、备份之前：它属于「写作习惯」这一类，跟主题色/语言

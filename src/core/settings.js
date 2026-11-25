@@ -266,6 +266,9 @@ export async function readSettings() {
     // 版本历史每篇留几版。默认 10 版和以前写死的数字一致，老用户升级观感不变；
     // 这个值传进 snapshotNote 与 pruneHistory，两处都走同一份口径。
     historyLimit: normalizeHistoryLimit(data.historyLimit),
+    // 左栏的写作热力图。默认关：它占着左栏顶部一块固定的地方，而多数时候
+    // 用户要的是目录和标签。想看的人自己在设置里打开。
+    showHeatmap: data.showHeatmap === true,
   }
 }
 
@@ -291,6 +294,7 @@ export async function updateSettings(patch = {}) {
     cardAutoImport: patch.cardAutoImport !== undefined ? patch.cardAutoImport === true : cur.cardAutoImport,
     followActive: patch.followActive !== undefined ? patch.followActive === true : cur.followActive,
     historyLimit: patch.historyLimit !== undefined ? normalizeHistoryLimit(patch.historyLimit) : cur.historyLimit,
+    showHeatmap: patch.showHeatmap !== undefined ? patch.showHeatmap === true : cur.showHeatmap,
   }
   await writeJsonAtomic(settingsPath(), next)
   return readSettings()

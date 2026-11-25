@@ -11562,6 +11562,9 @@ test('热力图上点某一天就按那一天筛，左栏顶上多一颗日期�
   })
   assert.ok(typeof madeA.path === 'string' && madeA.path !== '', '那一篇建好了')
 
+  // 热力图默认是收起来的（左栏顶部那块地方留给目录和标签），所以先把它打开，
+  // 再看格子。开关是真实设置，收尾时要关回去，别把状态漏给后面的用例。
+  await post('/getnote/settings', { showHeatmap: true })
   await clickTab('笔记')
   const refreshBtn = () =>
     Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
@@ -11618,6 +11621,11 @@ test('热力图上点某一天就按那一天筛，左栏顶上多一颗日期�
     allBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
     await sleep(300)
   }
+
+  // 把热力图关回收起状态：这是默认值，后面的用例不该看到一个已经改过的库。
+  await post('/getnote/settings', { showHeatmap: false })
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
 })
 
 /**

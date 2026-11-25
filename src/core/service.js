@@ -669,6 +669,9 @@ export function createHandler(config) {
       // 会让热力图在首屏之后才「啪」地出现，看起来像加载失败重试。
       // 26 周 = 半年，格子数 182，JSON 也就几 KB，不值得再拆。
       heatmap: missing ? null : heatmapOf(entries, { weeks: 26 }),
+      // 左栏要不要画热力图。数据照发（几 KB，而且切开关时不想再等一次往返），
+      // 画不画由这个开关决定。
+      showHeatmap: settings.showHeatmap === true,
       // 云端通道状态：configured 表示「现在点一下就能用」，transport 说明走哪条路
       api: {
         configured: readiness.configured,
@@ -1855,6 +1858,8 @@ export function createHandler(config) {
     if (typeof body.followActive === 'boolean') patch.followActive = body.followActive
     // 版本历史留几版：只认数字，传字符串当没传
     if (typeof body.historyLimit === 'number') patch.historyLimit = body.historyLimit
+    // 左栏热力图开不开：同样只认布尔值
+    if (typeof body.showHeatmap === 'boolean') patch.showHeatmap = body.showHeatmap
     if (Object.keys(patch).length > 0) await updateSettings(patch)
     const settings = await readSettings()
     const { root } = await resolveVaultRoot(settings.vaultRoot || config.vaultPath || null)

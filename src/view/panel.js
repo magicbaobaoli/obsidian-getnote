@@ -933,6 +933,12 @@ async function saveFile(url, filename) {
         'settings.followDesc': '你在 Obsidian 里翻到哪一篇，开着的面板就跟着打开同一篇，反链和同步状态立刻跟上。面板没开着时不会替你打开它；不在「得到大脑」目录里的笔记也不会跟。',
         'settings.followToggle': '面板跟着我翻',
         'settings.followSaved': '跟随设置已保存',
+        // 左栏那张写作热力图。默认收着——它占着左栏顶部一块固定地方，
+        // 而左栏真正天天要用的是目录和标签。
+        'settings.heatmapTitle': '写作热力图',
+        'settings.heatmapDesc': '左栏顶部那张半年 182 格的小图，点某一天能只看那天写的笔记。收起它，左栏就能多放几行目录。',
+        'settings.heatmapToggle': '在左栏显示写作热力图',
+        'settings.heatmapSaved': '热力图设置已保存',
         // 版本历史每篇留几版。以前这个数字写死在代码里（10 版），用户改不了：
         // 天天改稿的人嫌少、只存定稿的人嫌库里堆快照。
         'settings.historyTitle': '版本历史留几版',
@@ -1626,6 +1632,10 @@ async function saveFile(url, filename) {
         'settings.followDesc': 'Open a note in Obsidian and the panel switches to the same one, with its backlinks and sync state right behind it. The panel will not open itself for you, and notes outside the Get笔记 folder are ignored.',
         'settings.followToggle': 'Keep the panel on the note I open',
         'settings.followSaved': 'Follow setting saved',
+        'settings.heatmapTitle': 'Writing heatmap',
+        'settings.heatmapDesc': 'The 182-cell, half-year grid at the top of the sidebar. Click a day to see only what you wrote then. Hiding it gives the sidebar room for a few more folders.',
+        'settings.heatmapToggle': 'Show the writing heatmap in the sidebar',
+        'settings.heatmapSaved': 'Heatmap setting saved',
         'settings.historyTitle': 'How many versions to keep',
         'settings.historyDesc': 'Each note keeps its most recent snapshots up to this many. Lowering it trims what is already in the vault right away, and trimmed versions are gone for good.',
         'settings.historyLabel': 'Keep at most',
@@ -2303,6 +2313,10 @@ async function saveFile(url, filename) {
         'settings.followDesc': 'Open je een notitie in Obsidian, dan springt het paneel naar dezelfde, met de verwijzingen en de synchronisatiestatus erachteraan. Het paneel opent zichzelf niet en notities buiten de map Get笔记 worden genegeerd.',
         'settings.followToggle': 'Laat het paneel mijn notitie volgen',
         'settings.followSaved': 'Volginstelling opgeslagen',
+        'settings.heatmapTitle': 'Schrijfheatmap',
+        'settings.heatmapDesc': 'Het raster van 182 cellen (een half jaar) boven in de zijbalk. Klik op een dag om alleen te zien wat je toen schreef. Verbergen geeft de zijbalk ruimte voor een paar mappen extra.',
+        'settings.heatmapToggle': 'Toon de schrijfheatmap in de zijbalk',
+        'settings.heatmapSaved': 'Heatmapinstelling opgeslagen',
         'settings.historyTitle': 'Hoeveel versies bewaren',
         'settings.historyDesc': 'Elke notitie bewaart hooguit dit aantal recente snapshots. Lager zetten snoeit meteen wat er al in de kluis staat, en gesnoeide versies zijn definitief weg.',
         'settings.historyLabel': 'Bewaar hooguit',
@@ -5437,19 +5451,25 @@ async function saveFile(url, filename) {
   box-sizing:border-box;display:flex;flex-direction:column;height:100%;min-height:0;
   background:var(--dsw-alias-bg-base,transparent);color:var(--dsw-alias-label-primary);
   font-family:var(--dshgn-fontText);font-size:var(--font-ui-small,13px)}
-/* 顶栏排成两行：标题与动作一行，页签整条占第二行。
-   以前三样挤在一行里，面板窄一点（Obsidian 侧栏 600~700px 很常见）标题就和页签
-   叠在一起，「笔记」两个字被盖掉一半。wrap + 页签 flex:1 0 100% 是承重的：
-   页签必须整条换行，否则它会被压窄到只剩几个字、还是要横向挤。 */
-.dshgn_head{flex:none;display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;padding:10px 14px;
+/* 面板里一律按 border-box 量盒子。以前只有几处局部写了，其余元素用默认的
+   content-box：一个 height:22px、上下内边距 2px 的胶囊实际占 26px，宽度同理
+   ——写成 width:100% 的输入框会比自己所在的格子宽出一圈，看起来就是
+   「字跑到框外面去了」。这一条兜住全部后代，不用再逐个补。 */
+.dshgn_root,.dshgn_root *,.dshgn_root *::before,.dshgn_root *::after{box-sizing:border-box}
+/* 顶栏排成一行：标题、动作、页签、帮助依次排开，和「得到大脑」在同一条水平线上。
+   不换行，但页签那一条自己横向滚——不换行的前提是「挤不下时只有页签让路」：
+   标题与动作 flex:none 保持原宽，页签 flex:1 1 auto + min-width:0 + overflow-x:auto，
+   这样面板再窄也只是页签滚起来，不会把标题盖掉一半、也不会把每个字压成两行。 */
+.dshgn_head{flex:none;display:flex;align-items:center;flex-wrap:nowrap;gap:8px;padding:8px 12px;
   border-bottom:0.5px solid var(--dsw-alias-border-l2);box-sizing:border-box}
-.dshgn_headMain{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1 1 auto}
+.dshgn_headMain{display:flex;flex-direction:column;gap:1px;min-width:0;flex:0 1 auto}
 .dshgn_title{font-size:13px;font-weight:600;line-height:18px;color:var(--dsw-alias-label-primary)}
 .dshgn_sub{font-size:11px;line-height:15px;color:var(--dsw-alias-label-tertiary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}
-/* order:10 + flex-basis:100% 把页签钉在第二行；八个页签在窄面板里放不下时
-   自己横向滚，而不是把每个字压成两行。帮助按钮 order:9，留在第一行最右边。 */
-.dshgn_tabs{order:10;flex:1 0 100%;display:flex;gap:2px;padding:3px;border-radius:9px;
+/* 页签跟着标题站在同一行。flex:1 1 auto + min-width:0 是承重的：宽度不够时
+   只有这条被压缩（标题与动作都是 flex:none），压缩之后它自己横向滚，
+   八个页签不会被压成竖排，也不会盖住左边的标题。 */
+.dshgn_tabs{flex:1 1 auto;min-width:0;display:flex;gap:2px;padding:3px;border-radius:9px;
   background:var(--dsw-alias-interactive-bg-hover);overflow-x:auto;scrollbar-width:none;
   box-sizing:border-box}
 .dshgn_tabs::-webkit-scrollbar{display:none}
@@ -5466,8 +5486,7 @@ async function saveFile(url, filename) {
   background:var(--dsw-alias-state-error-primary);color:#fff;
   font-size:10px;font-weight:600;line-height:16px;letter-spacing:0;
   font-variant-numeric:tabular-nums}
-.dshgn_actions{display:flex;align-items:center;gap:4px;flex:none;margin-left:auto}
-.dshgn_head .dshgn_helpBtn{order:9}
+.dshgn_actions{display:flex;align-items:center;gap:4px;flex:none}
 /* 切换页签的入场动画：淡入 + 轻微上浮。180ms 是从「能感觉到」到「不挡手」之间的
    经验值——再慢就有拖沓感，再快就看不出来。只做 opacity/transform，走 GPU 合成，
    不触发重排，面板里同时有列表和正文也不会掉帧。 */
@@ -6046,6 +6065,7 @@ async function saveFile(url, filename) {
 .dshgn_tagRow[data-drop="true"]{border-color:var(--dsw-alias-brand-primary);
   color:var(--dsw-alias-brand-primary);
   box-shadow:0 0 0 1px var(--dsw-alias-brand-primary)}
+.dshgn_tagLabel{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_treeTags{display:flex;flex-wrap:wrap;padding:2px 4px}
 /* 嵌套标签摊平后，子标签的胶囊只写最后一段，靠缩进表示层级 */
 .dshgn_treeTags .dshgn_tagRow[data-nest="true"]{border-style:dashed}
@@ -9752,6 +9772,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
               void addTagTo(path, tag)
             },
             activeDay,
+            // 左栏那张热力图默认收着，由设置页那个开关决定画不画。
+            showHeatmap: status !== null && status.showHeatmap === true,
             // 点某一天就只看那天写的：先把目录/标签筛选让开，否则两个条件一叠加
             // 常常是空的，用户会以为那天什么都没写。再点同一颗就只取消日期。
             onPickDay: (day) => {
@@ -12691,6 +12713,56 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             onChange: (event) => void flip(event.target.checked === true),
           }),
           t('settings.followToggle'),
+        ),
+      )
+    }
+
+    /**
+     * 左栏那张写作热力图要不要显示。
+     *
+     * 默认关：它固定占着左栏顶部一块地方，而左栏真正天天要用的是目录和标签。
+     * 数据一直跟着 status 发过来，打开开关不用再等一次请求。
+     */
+    function HeatmapCard(props) {
+      const { t, status, onSaved, onError } = props
+      const [busy, setBusy] = React.useState(false)
+      const on = status !== null && status.showHeatmap === true
+
+      const flip = React.useCallback(
+        async (next) => {
+          if (busy) return
+          setBusy(true)
+          try {
+            await api('/settings', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ showHeatmap: next }),
+            })
+            await onSaved(t('settings.heatmapSaved'))
+          } catch (err) {
+            onError(err && err.message ? err.message : String(err))
+          } finally {
+            setBusy(false)
+          }
+        },
+        [busy, onError, onSaved, t],
+      )
+
+      return h(
+        'div',
+        { className: 'dshgn_section' },
+        h('div', { className: 'dshgn_sectionHead' }, h('span', null, t('settings.heatmapTitle'))),
+        h('div', { className: 'dshgn_sectionDesc' }, t('settings.heatmapDesc')),
+        h(
+          'label',
+          { className: 'dshgn_rowLine', style: { fontSize: 11.5, color: 'var(--dsw-alias-label-secondary)' } },
+          h('input', {
+            type: 'checkbox',
+            checked: on,
+            disabled: busy || status === null,
+            onChange: (event) => void flip(event.target.checked === true),
+          }),
+          t('settings.heatmapToggle'),
         ),
       )
     }
@@ -16284,6 +16356,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         onRenameDir,
         onNewNoteIn,
         heatmap,
+        showHeatmap,
         currentNoteId,
         onNarrowPick,
         onMoveNoteTo,
@@ -16807,7 +16880,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
 
         // 热力图放在「全部笔记」正下方：它是「这个库整体在长」的视角，
         // 跟下面按目录/标签切分是两种维度，夹在中间会让人以为它属于某个目录。
-        h(HeatmapStrip, { t, heatmap, activeDay, onPickDay }),
+        // 默认收起来——左栏最金贵的是目录和标签，一张半年 182 格的图天天占着
+        // 上面 60px，多数时候只是「瞄一眼今天写了没」。要看的人在设置页打开。
+        showHeatmap === true ? h(HeatmapStrip, { t, heatmap, activeDay, onPickDay }) : null,
 
         // 目录区
         h(
@@ -17089,7 +17164,11 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                             onAddTagTo(dragged, tag)
                           },
                         },
-                        `${label} ${count}`,
+                        // 文字包一层 span 再截断：胶囊自己是 inline-flex 容器，
+                        // text-overflow 对「容器的直接文本节点」不生效，长标签会被
+                        // 硬切成半个字、看着像溢出到圈外面。span 是块级盒子，
+                        // 省略号才真的出现，宽度也永远不超过胶囊。
+                        h('span', { className: 'dshgn_tagLabel' }, `${label} ${count}`),
                       ),
                       menu !== null && menu.kind === 'tag' && menu.name === tag ? rowMenu() : null,
                     ),
@@ -19951,6 +20030,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           // 跟随卡片紧跟在语言之后：它和「面板长什么样」属于同一类设置（怎么跟
           // 宿主配合），而不是「库里有什么」。
           h(FollowCard, { t, status, onSaved, onError }),
+          h(HeatmapCard, { t, status, onSaved, onError }),
           // 版本历史紧跟在跟随卡之后：两张都是「面板怎么配合你」，而不是「库里有什么」。
           h(HistoryCard, { t, status, onSaved, onError }),
           // 模板卡放在语言之后、备份之前：它属于「写作习惯」这一类，跟主题色/语言
