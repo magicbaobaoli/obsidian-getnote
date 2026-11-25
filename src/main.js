@@ -98,6 +98,28 @@ function leafIsAlive(leaf) {
 
 export default class GetnoteObsidianPlugin extends Plugin {
   async onload() {
+    // 整个启动过程兜一层：任何一步抛出来，宿主那边只会显示「插件加载失败」，
+    // 我们手上什么线索都没有。这里接住、把错因写进启动轨迹（boot.txt），
+    // 再决定要不要继续——诊断代码自己把插件搞崩才是最难查的那种 bug。
+    try {
+      await this.bootUp()
+    } catch (error) {
+      const message = error && error.message ? error.message : String(error)
+      this.probe(`onload 抛出：${message}`)
+      try {
+        console.error('[getnote-brain] onload 失败', error)
+      } catch {
+        // 没有 console 的环境（离线测试）就算了
+      }
+      try {
+        new Notice(`得到大脑：启动时出错 —— ${message}`, 10000)
+      } catch {
+        // 连 Notice 都没有就算了
+      }
+    }
+  }
+
+  async bootUp() {
     // 库根的绝对路径：vfs.js 靠它把「绝对路径」翻译成 adapter 认的库内相对路径。
     const adapter = this.app.vault.adapter
     const basePath = typeof adapter.getBasePath === 'function' ? adapter.getBasePath() : ''
@@ -146,10 +168,15 @@ export default class GetnoteObsidianPlugin extends Plugin {
 
     // 录音卡的 Python 桥脚本是打进 main.js 的（社区目录只下载三个文件，挂在 Release
     // 里的 card/ 目录不会被取走），这里解到插件数据目录，之后按相对路径去读。
-    const cardScripts = await ensureCardScripts(dataDir)
-    if (cardScripts.written.length > 0) this.probe(`桥脚本解出 ${cardScripts.written.join('、')}`)
-    if (cardScripts.failed.length > 0) {
-      this.probe(`桥脚本解不出来：${cardScripts.failed.map((item) => `${item.name} ${item.error}`).join('；')}`)
+    try {
+      const cardScripts = await ensureCardScripts(dataDir)
+      if (cardScripts.written.length > 0) this.probe(`桥脚本解出 ${cardScripts.written.join('、')}`)
+      if (cardScripts.failed.length > 0) {
+        this.probe(`桥脚本解不出来：${cardScripts.failed.map((item) => `${item.name} ${item.error}`).join('；')}`)
+      }
+    } catch (error) {
+      // 解不出脚本只影响录音卡，不该连累整个插件启动。
+      this.probe(`桥脚本解包抛错：${error && error.message ? error.message : error}`)
     }
     configureCardScripts({ baseDir: dataDir })
 
@@ -183,7 +210,8 @@ export default class GetnoteObsidianPlugin extends Plugin {
       // 库外的系统临时目录，vfs 管不着（它会按「越界」拒掉），只能走 node:fs。
       // 用的时候才 import：顶层静态 import 会让自动审核判定「这个插件在用 fs
       // 模块读整个系统」，而这里只写一个自己的导出目录。
-      const { mkdir, writeFile } = await import('node:fs/promises')
+      const { mkdir, writeFile } =
+        typeof require === 'function' ? require('node:fs/promises') : await import('node:fs/promises')
       await mkdir(dir, { recursive: true })
       const target = join(dir, filename)
       await writeFile(target, bytes)

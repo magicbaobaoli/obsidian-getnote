@@ -802,7 +802,7 @@ Obsidian 设置 → 第三方插件 → 浏览 → 搜「Getnote Brain」。目�
 ```bash
 npm install
 npm run build      # 产出 main.js，并把 card/ 与 locale/ 复制到插件根
-npm test           # 1008 项离线测试（需 Node ≥ 22，jsdom 31 依赖 Node 22 的 zstd API）
+npm test           # 1009 项离线测试（需 Node ≥ 22，jsdom 31 依赖 Node 22 的 zstd API）
 npm run check:market  # 上架条件自检：id/name/description 的规矩、版本三处一致、有没有泄露
 ```
 
@@ -898,7 +898,7 @@ npm test
 而不是 `remove`）、**274 项 HTTP 路由验收**（真起服务、真打请求、真读文件，含 Range 206/416、路径逃逸拒绝、
 凭证打码、定时同步边界、录音卡环境探测、附件上传（名字带主干前缀、重名加后缀不覆盖、
 只取绝对路径的最后一段、缺路径缺名字空文件与目录逃逸一律 400）、断链体检（围栏里的、带小节的、指附件的都不误报，
-别名认得出）、待办清单（只收没勾的、序号与勾选那边同口径、围栏与注释里的不算）等）、**37 项启动验收**——把打包后的 `main.js`
+别名认得出）、待办清单（只收没勾的、序号与勾选那边同口径、围栏与注释里的不算）等）、**38 项启动验收**——把打包后的 `main.js`
 真的 `require` 起来，用假的 `obsidian` 模块与内存 adapter 驱动 `onload`（库根故意用
 带中文和空格的临时目录，跟真实用户路径一致），确认视图/命令/服务都注册成功、
 写入真的走 `app.vault.adapter` 而不是直接落盘、插件状态只落在

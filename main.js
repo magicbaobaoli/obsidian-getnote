@@ -3038,8 +3038,8 @@ function knownVaultCandidates() {
   if (typeof fromEnv === "string" && fromEnv.trim() !== "") list.unshift(fromEnv.trim());
   return list;
 }
-async function nodeFs() {
-  return import("node:fs/promises");
+function nodeFs() {
+  return typeof require === "function" ? require("node:fs/promises") : import("node:fs/promises");
 }
 async function readJson(path) {
   try {
@@ -3323,7 +3323,7 @@ function pythonCandidates() {
 var DEFAULT_TIMEOUT_MS = 120 * 1e3;
 var PULL_TIMEOUT_MS = 15 * 60 * 1e3;
 async function runBridge(args, { timeoutMs = DEFAULT_TIMEOUT_MS, python = null, script = null } = {}) {
-  const { spawn } = await import("node:child_process");
+  const { spawn } = typeof require === "function" ? require("node:child_process") : await import("node:child_process");
   script = script || BRIDGE();
   const interpreters = python === null ? pythonCandidates() : [python];
   return new Promise((resolve5, reject) => {
@@ -3434,7 +3434,7 @@ async function runBridge(args, { timeoutMs = DEFAULT_TIMEOUT_MS, python = null, 
   });
 }
 async function runPythonModule(moduleArgs, { timeoutMs = 5 * 60 * 1e3 } = {}) {
-  const { spawn } = await import("node:child_process");
+  const { spawn } = typeof require === "function" ? require("node:child_process") : await import("node:child_process");
   const interpreters = pythonCandidates();
   return new Promise((resolve5, reject) => {
     let settled = false;
@@ -4348,7 +4348,7 @@ async function ensureCardScripts(baseDir) {
   const dir = (0, import_node_path4.join)(baseDir, "card");
   const written = [];
   const failed = [];
-  const { mkdir: mkdir3, readFile: readFile3, writeFile: writeFile3 } = await import("node:fs/promises");
+  const { mkdir: mkdir3, readFile: readFile3, writeFile: writeFile3 } = typeof require === "function" ? require("node:fs/promises") : await import("node:fs/promises");
   try {
     await mkdir3(dir, { recursive: true });
   } catch (error2) {
@@ -26386,6 +26386,22 @@ function leafIsAlive(leaf) {
 }
 var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
   async onload() {
+    try {
+      await this.bootUp();
+    } catch (error2) {
+      const message = error2 && error2.message ? error2.message : String(error2);
+      this.probe(`onload \u629B\u51FA\uFF1A${message}`);
+      try {
+        console.error("[getnote-brain] onload \u5931\u8D25", error2);
+      } catch {
+      }
+      try {
+        new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A\u542F\u52A8\u65F6\u51FA\u9519 \u2014\u2014 ${message}`, 1e4);
+      } catch {
+      }
+    }
+  }
+  async bootUp() {
     const adapter2 = this.app.vault.adapter;
     const basePath2 = typeof adapter2.getBasePath === "function" ? adapter2.getBasePath() : "";
     const dataDir = this.resolveDataDir(basePath2);
@@ -26408,10 +26424,14 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
     configure({ adapter: adapter2, basePath: basePath2 });
     configure2({ dataDir, vaultBase: basePath2, subfolder: DEFAULT_SUBFOLDER });
     this.probe("onload \u5F00\u59CB");
-    const cardScripts = await ensureCardScripts(dataDir);
-    if (cardScripts.written.length > 0) this.probe(`\u6865\u811A\u672C\u89E3\u51FA ${cardScripts.written.join("\u3001")}`);
-    if (cardScripts.failed.length > 0) {
-      this.probe(`\u6865\u811A\u672C\u89E3\u4E0D\u51FA\u6765\uFF1A${cardScripts.failed.map((item) => `${item.name} ${item.error}`).join("\uFF1B")}`);
+    try {
+      const cardScripts = await ensureCardScripts(dataDir);
+      if (cardScripts.written.length > 0) this.probe(`\u6865\u811A\u672C\u89E3\u51FA ${cardScripts.written.join("\u3001")}`);
+      if (cardScripts.failed.length > 0) {
+        this.probe(`\u6865\u811A\u672C\u89E3\u4E0D\u51FA\u6765\uFF1A${cardScripts.failed.map((item) => `${item.name} ${item.error}`).join("\uFF1B")}`);
+      }
+    } catch (error2) {
+      this.probe(`\u6865\u811A\u672C\u89E3\u5305\u629B\u9519\uFF1A${error2 && error2.message ? error2.message : error2}`);
     }
     configureCardScripts({ baseDir: dataDir });
     setOpenExternal((url) => {
@@ -26430,7 +26450,7 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       if (!res.ok) throw new Error(`\u5BFC\u51FA\u5931\u8D25\uFF1AHTTP ${res.status}`);
       const bytes = Buffer.from(await res.arrayBuffer());
       const dir = (0, import_node_path8.join)((0, import_node_os2.tmpdir)(), "getnote-export");
-      const { mkdir: mkdir3, writeFile: writeFile3 } = await import("node:fs/promises");
+      const { mkdir: mkdir3, writeFile: writeFile3 } = typeof require === "function" ? require("node:fs/promises") : await import("node:fs/promises");
       await mkdir3(dir, { recursive: true });
       const target = (0, import_node_path8.join)(dir, filename);
       await writeFile3(target, bytes);

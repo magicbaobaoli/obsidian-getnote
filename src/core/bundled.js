@@ -38,7 +38,9 @@ export async function ensureCardScripts(baseDir) {
   const dir = join(baseDir, 'card')
   const written = []
   const failed = []
-  const { mkdir, readFile, writeFile } = await import('node:fs/promises')
+  // 同 settings.js：宿主用 require 装插件，动态 import() 在那边解析不了 node: 说明符。
+  const { mkdir, readFile, writeFile } =
+    typeof require === 'function' ? require('node:fs/promises') : await import('node:fs/promises')
   try {
     await mkdir(dir, { recursive: true })
   } catch (error) {

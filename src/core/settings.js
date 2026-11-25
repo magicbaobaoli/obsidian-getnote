@@ -128,8 +128,13 @@ export function knownVaultCandidates() {
  * 自动审核静态判定成「这个插件在用 fs 模块读整个系统」。改成动态 import 之后
  * 能力没变，但扫描看到的是「按需加载」。
  */
-async function nodeFs() {
-  return import('node:fs/promises')
+function nodeFs() {
+  // 优先 require：Obsidian 用 new Function + require 把 main.js 装进渲染进程，
+  // 那个执行环境没有动态 import 的回调，import('node:…') 会直接抛
+  // ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING —— 插件在宿主眼里就是「加载失败」。
+  // 打成 CJS 之后 require 就是最普通的那条路。只有离线测试（ESM）才走 import()。
+  // eslint-disable-next-line global-require
+  return typeof require === 'function' ? require('node:fs/promises') : import('node:fs/promises')
 }
 
 async function readJson(path) {

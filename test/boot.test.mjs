@@ -1861,3 +1861,22 @@ test('设置页里能把启动轨迹摊出来、也能一次抄走，读不到�
   assert.ok(emptyPre.text.includes('还没有轨迹'), '读不到时要说一句人话')
   app.vault.adapter = realAdapter
 })
+
+
+test('打包产物里每一处 node 内置模块的按需加载都留着 require 那条路', async () => {
+  // 用户报「现在显示插件加载不出来」，启动轨迹只剩一行「onload 开始」。
+  // 真因：Obsidian 用 new Function + require 把 main.js 装进渲染进程，那个执行
+  // 环境没有动态 import 的回调，import('node:fs/promises') 会抛
+  // ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING —— onload 第二步就炸了。
+  // 所以这里钉住：产物里每一处 import("node:…") 的同一行都必须带着 require 兜底。
+  const bundle = await readFile(new URL('../main.js', import.meta.url), 'utf8')
+  const offenders = bundle
+    .split('\n')
+    .map((line, index) => ({ line, no: index + 1 }))
+    .filter((item) => item.line.includes('import("node:') && !item.line.includes('require('))
+  assert.deepEqual(
+    offenders.map((item) => `${item.no}: ${item.line.trim().slice(0, 120)}`),
+    [],
+    '这些行的 import("node:…") 没有 require 兜底，Obsidian 里会直接抛 ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING',
+  )
+})
