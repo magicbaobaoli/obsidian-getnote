@@ -26,7 +26,8 @@ const { configureCardScripts } = await import('../src/core/card.js')
 // Obsidian 版不「换库」：库根由 Obsidian 决定，插件只在库里选一个子目录。
 // 所以这里把 vaultBase 指到一个临时目录，库根就是它下面的「得到大脑」。
 const vaultBase = await mkdtemp(join(tmpdir(), 'dshgn-vaultbase-'))
-settings.configure({ dataDir: fakeHome, vaultBase, subfolder: '得到大脑' })
+// 版本号平时由 main.js 从 manifest 注入；这里给一个固定值，好断言 /status 带上了它。
+settings.configure({ dataDir: fakeHome, vaultBase, subfolder: '得到大脑', version: '0.1.8' })
 configureCardScripts({ baseDir: REPO_ROOT })
 
 const results = []
@@ -1335,6 +1336,73 @@ try {
     check('limit 限制单轮条数并如实说被截断', tiny.json && tiny.json.pushed <= 1 && typeof tiny.json.truncated === 'boolean', JSON.stringify(tiny.json && { pushed: tiny.json.pushed, truncated: tiny.json.truncated }))
 
     setCloudClientFactory(null)
+  }
+
+  // ── 版本号与「检查更新」──────────────────────────────────────────────
+  // 设置页底部那张卡要显示当前版本，所以 /status 必须带上它。
+  const versioned = await call('/status')
+  check('GET /status 带上了插件版本号', versioned.json && versioned.json.version === '0.1.8', String(versioned.json && versioned.json.version))
+
+  // 「检查更新」打的是一个可以替换的地址：这里换成自己起的假 GitHub，
+  // 免得验收去碰真实网络（离线跑、也不会因为限流挂掉）。
+  const fakeReleases = createServer((req, res) => {
+    if ((req.url || '') !== '/latest') {
+      res.writeHead(404, { 'content-type': 'application/json' }).end('{}')
+      return
+    }
+    res.writeHead(200, { 'content-type': 'application/json' }).end(
+      JSON.stringify({
+        tag_name: 'v0.1.9',
+        html_url: 'https://example.invalid/releases/0.1.9',
+        published_at: '2026-11-25T00:00:00Z',
+        body: '这一版修了排版。',
+      }),
+    )
+  })
+  await new Promise((done) => fakeReleases.listen(0, '127.0.0.1', done))
+  const fakePort = fakeReleases.address().port
+  const updateHandler = createRouter({
+    getOrigin: () => 'http://127.0.0.1:8115',
+    updateUrl: 'http://127.0.0.1:' + fakePort + '/latest',
+  })
+  const updateServer = createServer((req, res) => {
+    const path = (req.url || '/').split('?')[0]
+    if (path === '/getnote' || path.startsWith('/getnote/')) return updateHandler(req, res)
+    res.writeHead(404).end('not found')
+  })
+  await new Promise((done) => updateServer.listen(0, '127.0.0.1', done))
+  const updateBase = 'http://127.0.0.1:' + updateServer.address().port + '/getnote'
+  try {
+    const fresh = await fetch(updateBase + '/update/check')
+    const freshJson = await fresh.json()
+    check('GET /update/check 200', fresh.status === 200, 'status=' + fresh.status)
+    check('检查更新说得出当前版本', freshJson && freshJson.current === '0.1.8', JSON.stringify(freshJson && freshJson.current))
+    check('检查更新认得出 GitHub 上的新 tag', freshJson && freshJson.latest === '0.1.9', JSON.stringify(freshJson && freshJson.latest))
+    check('检查更新判定「有新版」', freshJson && freshJson.newer === true, JSON.stringify(freshJson && freshJson.newer))
+    check('检查更新把下载地址带回来了', freshJson && freshJson.url === 'https://example.invalid/releases/0.1.9', JSON.stringify(freshJson && freshJson.url))
+    check('检查更新带上了发布说明', Boolean(freshJson && typeof freshJson.notes === 'string' && freshJson.notes.includes('排版')), JSON.stringify(freshJson && freshJson.notes))
+  } finally {
+    await new Promise((done) => updateServer.close(done))
+    await new Promise((done) => fakeReleases.close(done))
+  }
+
+  // 连不上时不能回「已是最新」——那会让真该升级的人以为没事。
+  const deadHandler = createRouter({
+    getOrigin: () => 'http://127.0.0.1:8115',
+    updateUrl: 'http://127.0.0.1:1/latest',
+  })
+  const deadServer = createServer((req, res) => deadHandler(req, res))
+  await new Promise((done) => deadServer.listen(0, '127.0.0.1', done))
+  try {
+    const unreachable = await fetch('http://127.0.0.1:' + deadServer.address().port + '/getnote/update/check')
+    const unreachableJson = await unreachable.json()
+    check(
+      '查不到时说「查不了」而不是「已是最新」',
+      unreachableJson && unreachableJson.ok === false && typeof unreachableJson.reason === 'string' && unreachableJson.reason.length > 0,
+      JSON.stringify(unreachableJson),
+    )
+  } finally {
+    await new Promise((done) => deadServer.close(done))
   }
 
   await rm(vault, { recursive: true, force: true })

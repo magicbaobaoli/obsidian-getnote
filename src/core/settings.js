@@ -37,12 +37,16 @@ let runtime = {
   dataDir: '',
   vaultBase: '',
   subfolder: '得到大脑',
+  // 插件版本号（main.js 从 this.manifest.version 注入）。放这里是为了让
+  // /status 和「检查更新」都能读到同一份，不用每个 handler 各自去问 manifest。
+  version: '',
 }
 
 export function configure(options = {}) {
   if (typeof options.dataDir === 'string' && options.dataDir !== '') runtime.dataDir = options.dataDir
   if (typeof options.vaultBase === 'string' && options.vaultBase !== '') runtime.vaultBase = options.vaultBase
   if (typeof options.subfolder === 'string' && options.subfolder.trim() !== '') runtime.subfolder = options.subfolder.trim()
+  if (typeof options.version === 'string' && options.version !== '') runtime.version = options.version
   return { ...runtime }
 }
 

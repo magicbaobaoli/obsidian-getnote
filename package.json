@@ -1,6 +1,6 @@
 {
   "name": "obsidian-getnote",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "把「得到大脑（Get笔记）」搬进 Obsidian：本地优先的 Markdown 笔记库面板，含云端同步与录音卡导入。",
   "type": "module",
   "main": "main.js",

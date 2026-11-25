@@ -799,6 +799,15 @@ async function saveFile(url, filename) {
         'settings.loggedOut': '未登录',
         'settings.loginExpired': '登录已过期',
         'settings.storeHint': '登录凭证只保存在本机 DSH 配置目录，不出现在浏览器里。',
+        'settings.version': '版本',
+        'settings.versionHint': '插件跑的是这一版。点「检查更新」会去 GitHub 看一眼有没有更新的发布。',
+        'settings.checkUpdate': '检查更新',
+        'settings.checking': '正在查…',
+        'settings.upToDate': '已是最新',
+        'settings.newVersion': '有新版本 {version}',
+        'settings.updateFail': '查不了：{reason}',
+        'settings.openRelease': '去下载',
+        'settings.updateHint': '下载后把 main.js / manifest.json / styles.css 三个文件覆盖到插件目录，然后重启 Obsidian。社区目录装的版本可以直接在 Obsidian 的「第三方插件」里更新。',
         'theme.title': '面板主题色',
         'theme.desc': '选一个颜色，左栏最深、中栏浅一点、右栏接近白，层次会自动算好。改完点「应用」才会保存。',
         'theme.custom': '自定义颜色',
@@ -1495,6 +1504,15 @@ async function saveFile(url, filename) {
         'settings.loggedOut': 'Not signed in',
         'settings.loginExpired': 'Sign-in expired',
         'settings.storeHint': 'Credentials stay in the local DSH config dir, never in the browser.',
+        'settings.version': 'Version',
+        'settings.versionHint': 'This is the build you are running. Check for updates asks GitHub for the latest release.',
+        'settings.checkUpdate': 'Check for updates',
+        'settings.checking': 'Checking…',
+        'settings.upToDate': 'Up to date',
+        'settings.newVersion': 'Version {version} is available',
+        'settings.updateFail': 'Could not check: {reason}',
+        'settings.openRelease': 'Download',
+        'settings.updateHint': 'Overwrite main.js, manifest.json and styles.css in the plugin folder, then restart Obsidian. Versions installed from the community directory can be updated from Obsidian\'s Community plugins list.',
         'theme.title': 'Panel theme color',
         'theme.desc': 'Pick one color — the left pane stays darkest, the middle lighter, the reading pane near white. Depth is derived for you. Click Apply to save.',
         'theme.custom': 'Custom color',
@@ -2163,6 +2181,15 @@ async function saveFile(url, filename) {
         'settings.loggedOut': 'Niet ingelogd',
         'settings.loginExpired': 'Inlog verlopen',
         'settings.storeHint': 'Inloggegevens blijven in de lokale DSH-configuratiemap, nooit in de browser.',
+        'settings.version': 'Versie',
+        'settings.versionHint': 'Dit is de build die je nu draait. Bij updaten controleert de plugin de nieuwste release op GitHub.',
+        'settings.checkUpdate': 'Controleren op updates',
+        'settings.checking': 'Bezig…',
+        'settings.upToDate': 'Up-to-date',
+        'settings.newVersion': 'Versie {version} is beschikbaar',
+        'settings.updateFail': 'Kan niet controleren: {reason}',
+        'settings.openRelease': 'Downloaden',
+        'settings.updateHint': 'Overschrijf main.js, manifest.json en styles.css in de pluginmap en herstart Obsidian. Versies uit de community-map kun je bijwerken via de lijst met community-plugins.',
         'theme.title': 'Themakleur van het paneel',
         'theme.desc': 'Kies één kleur — het linkerpaneel blijft het donkerst, het midden lichter, het leespaneel bijna wit. De diepte wordt voor je berekend. Klik op Toepassen om op te slaan.',
         'theme.custom': 'Eigen kleur',
@@ -5410,16 +5437,25 @@ async function saveFile(url, filename) {
   box-sizing:border-box;display:flex;flex-direction:column;height:100%;min-height:0;
   background:var(--dsw-alias-bg-base,transparent);color:var(--dsw-alias-label-primary);
   font-family:var(--dshgn-fontText);font-size:var(--font-ui-small,13px)}
-.dshgn_head{flex:none;display:flex;align-items:center;gap:10px;padding:10px 14px;
-  border-bottom:0.5px solid var(--dsw-alias-border-l2)}
-.dshgn_headMain{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
+/* 顶栏排成两行：标题与动作一行，页签整条占第二行。
+   以前三样挤在一行里，面板窄一点（Obsidian 侧栏 600~700px 很常见）标题就和页签
+   叠在一起，「笔记」两个字被盖掉一半。wrap + 页签 flex:1 0 100% 是承重的：
+   页签必须整条换行，否则它会被压窄到只剩几个字、还是要横向挤。 */
+.dshgn_head{flex:none;display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;padding:10px 14px;
+  border-bottom:0.5px solid var(--dsw-alias-border-l2);box-sizing:border-box}
+.dshgn_headMain{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1 1 auto}
 .dshgn_title{font-size:13px;font-weight:600;line-height:18px;color:var(--dsw-alias-label-primary)}
 .dshgn_sub{font-size:11px;line-height:15px;color:var(--dsw-alias-label-tertiary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}
-.dshgn_tabs{display:flex;gap:2px;padding:3px;border-radius:9px;background:var(--dsw-alias-interactive-bg-hover)}
-.dshgn_tab{appearance:none;border:0;height:24px;padding:0 10px;border-radius:7px;background:transparent;
+/* order:10 + flex-basis:100% 把页签钉在第二行；八个页签在窄面板里放不下时
+   自己横向滚，而不是把每个字压成两行。帮助按钮 order:9，留在第一行最右边。 */
+.dshgn_tabs{order:10;flex:1 0 100%;display:flex;gap:2px;padding:3px;border-radius:9px;
+  background:var(--dsw-alias-interactive-bg-hover);overflow-x:auto;scrollbar-width:none;
+  box-sizing:border-box}
+.dshgn_tabs::-webkit-scrollbar{display:none}
+.dshgn_tab{appearance:none;border:0;flex:none;height:24px;padding:0 10px;border-radius:7px;background:transparent;
   color:var(--dsw-alias-label-secondary);cursor:pointer;font:inherit;font-size:12px;line-height:24px;
-  display:inline-flex;align-items:center;gap:5px}
+  display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
 .dshgn_tab:hover{color:var(--dsw-alias-label-primary)}
 .dshgn_tab[data-on="true"]{background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary)}
 /* 页签上的数字小标：跟文字同一行、排在右边。用 pill 而不是右上角角标，
@@ -5430,7 +5466,8 @@ async function saveFile(url, filename) {
   background:var(--dsw-alias-state-error-primary);color:#fff;
   font-size:10px;font-weight:600;line-height:16px;letter-spacing:0;
   font-variant-numeric:tabular-nums}
-.dshgn_actions{display:flex;align-items:center;gap:4px;flex:none}
+.dshgn_actions{display:flex;align-items:center;gap:4px;flex:none;margin-left:auto}
+.dshgn_head .dshgn_helpBtn{order:9}
 /* 切换页签的入场动画：淡入 + 轻微上浮。180ms 是从「能感觉到」到「不挡手」之间的
    经验值——再慢就有拖沓感，再快就看不出来。只做 opacity/transform，走 GPU 合成，
    不触发重排，面板里同时有列表和正文也不会掉帧。 */
@@ -6133,8 +6170,11 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
   border-left-color:var(--dsw-alias-brand-primary)}
 .dshgn_cardTitle{font-size:12px;line-height:17px;color:var(--dsw-alias-label-primary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dshgn_cardMeta{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--dsw-alias-label-tertiary);
-  overflow:hidden;white-space:nowrap}
+/* min-width:0 是承重的：这一行里日期是 flex:none、目录和标签是可收缩的，
+   以前没有 min-width:0，目录名长一点就把整行顶出卡片边界、文字压到边框外面。
+   现在目录与标签各自 ellipsis，宁可截断也不越界。 */
+.dshgn_cardMeta{display:flex;align-items:center;gap:6px;min-width:0;font-size:10px;
+  color:var(--dsw-alias-label-tertiary);overflow:hidden;white-space:nowrap}
 /* 卡片上的标签：和日期、目录挤在同一行，所以只给到能看清的最小尺寸；
    多了就收成 +N，宁可不显示也不让目录被挤掉。 */
 /* 日期做成可点的：和热力图点某一天同一个动作，落在日期那一栏。 */
@@ -6144,11 +6184,12 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 .dshgn_cardDay:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dshgn_cardDay[data-on="true"]{color:var(--dsw-alias-brand-primary);text-decoration:underline}
 /* 目录做成可点的：和标签胶囊同一个动作（按它筛），只是落在目录那一栏。 */
-.dshgn_cardDir{appearance:none;max-width:120px;padding:0;border:0;background:transparent;
-  color:inherit;font:inherit;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_cardDir{appearance:none;flex:0 1 auto;min-width:0;max-width:120px;padding:0;border:0;
+  background:transparent;color:inherit;font:inherit;cursor:pointer;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
 .dshgn_cardDir:hover{color:var(--dsw-alias-brand-primary);text-decoration:underline}
 .dshgn_cardDir:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
-.dshgn_cardTags{display:inline-flex;align-items:center;gap:3px;min-width:0;overflow:hidden}
+.dshgn_cardTags{display:inline-flex;align-items:center;gap:3px;flex:0 1 auto;min-width:0;overflow:hidden}
 .dshgn_cardTag{appearance:none;max-width:88px;padding:0 5px;border:0.5px solid var(--dsw-alias-border-l2);
   border-radius:999px;background:transparent;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:9px;
   line-height:1.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
@@ -6376,7 +6417,15 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 .dshgn_trashPeekMore{appearance:none;flex:none;margin-left:auto;padding:1px 7px;border:0.5px dashed var(--dsw-alias-border-l2);border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:10px;line-height:16px;cursor:pointer}
 .dshgn_trashPeekMore:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-brand-primary)}
 .dshgn_trashPeekMore:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
-.dshgn_pane{flex:1;overflow-y:auto;padding:18px clamp(16px,3vw,28px) 40px}
+/* 页签页统一居中：pane 是 flex 列，直接子元素（section / cardBox / paneInner /
+   banner）一律 width:100% + margin:0 auto + 一个上限宽度。
+   以前只有录音卡和设置页自己写 max-width，冲突页/待办页/回收站页是光秃秃一个
+   section，在宽面板里整块贴左边、右边空一大片，看着像没加载完。 */
+.dshgn_pane{flex:1;display:flex;flex-direction:column;align-items:center;
+  overflow-y:auto;padding:18px clamp(16px,3vw,28px) 40px}
+/* 只定宽度上限与居中，不碰 flex-grow：空态那几块自己是 flex:1 的，
+   这里写成 flex:none 会把它们压成一行高。 */
+.dshgn_pane > *{width:100%;max-width:760px;margin-left:auto;margin-right:auto}
 .dshgn_cardBox{max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
 .dshgn_section{display:flex;flex-direction:column;gap:8px;padding:14px 15px;border-radius:10px;
   border:0.5px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-overlay)}
@@ -19715,6 +19764,92 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
       )
     }
 
+    // ── 版本 / 检查更新 ───────────────────────────────────────────────────────
+
+    /**
+     * 设置页最底下那张版本卡。
+     *
+     * 只做「告诉用户现在跑的是哪一版、GitHub 上有没有新的」这两件事，**不做自动
+     * 替换 main.js**：社区目录的自动审核会把「插件自己改自己的文件」当成风险项，
+     * 而且半路替换主程序容易把 Obsidian 卡在一个改了一半的状态里。所以查到新版
+     * 之后只给一个「去下载」，剩下的交给用户或宿主自己的更新通道。
+     */
+    function VersionCard(props) {
+      const { t, status, onError } = props
+      const [state, setState] = React.useState('idle') // idle | busy | done | fail
+      const [result, setResult] = React.useState(null)
+      const current = status !== null && typeof status.version === 'string' ? status.version : ''
+
+      const check = React.useCallback(async () => {
+        setState('busy')
+        setResult(null)
+        try {
+          const json = await api('/update/check')
+          setResult(json)
+          setState(json.ok === true ? 'done' : 'fail')
+        } catch (err) {
+          setState('fail')
+          setResult({ ok: false, reason: err && err.message ? err.message : String(err) })
+          if (onError) onError(err && err.message ? err.message : String(err))
+        }
+      }, [onError])
+
+      let badge = null
+      if (state === 'busy') badge = t('settings.checking')
+      else if (state === 'fail') badge = t('settings.updateFail').replace('{reason}', String((result && result.reason) || ''))
+      else if (state === 'done' && result) {
+        badge =
+          result.newer === true
+            ? t('settings.newVersion').replace('{version}', result.latest)
+            : t('settings.upToDate')
+      }
+
+      return h(
+        'div',
+        { className: 'dshgn_section' },
+        h(
+          'div',
+          { className: 'dshgn_sectionHead' },
+          h('div', { className: 'dshgn_sectionTitle' }, t('settings.version')),
+          h(
+            'span',
+            { className: 'dshgn_badge' + (state === 'done' && result && result.newer === true ? ' dshgn_badgeWarn' : '') },
+            current === '' ? '—' : current,
+          ),
+        ),
+        h('div', { className: 'dshgn_sectionDesc' }, t('settings.versionHint')),
+        h(
+          'div',
+          { className: 'dshgn_rowLine' },
+          h(
+            'button',
+            {
+              type: 'button',
+              className: 'dshgn_btn',
+              disabled: state === 'busy',
+              onClick: () => void check(),
+            },
+            h(Icon, { name: 'refresh', size: 12 }),
+            state === 'busy' ? t('settings.checking') : t('settings.checkUpdate'),
+          ),
+          state === 'done' && result && result.newer === true && result.url
+            ? h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dshgn_btn dshgn_btnPrimary',
+                  onClick: () => openExternal(result.url),
+                },
+                h(Icon, { name: 'down', size: 12 }),
+                t('settings.openRelease'),
+              )
+            : null,
+          badge === null ? null : h('span', { className: 'dshgn_sectionDesc' }, badge),
+        ),
+        h('div', { className: 'dshgn_sectionDesc' }, t('settings.updateHint')),
+      )
+    }
+
     // ── 设置 ──────────────────────────────────────────────────────────────────
 
     function SettingsPane(props) {
@@ -19849,6 +19984,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             h('div', { className: 'dshgn_sectionDesc' }, status !== null ? status.authPath : ''),
             h('div', { className: 'dshgn_sectionDesc' }, t('settings.storeHint')),
           ),
+          // 版本卡压在最后：它属于「维护」这一类，跟凭证、备份排在一起。
+          h(VersionCard, { t, status, onError }),
         ),
       )
     }

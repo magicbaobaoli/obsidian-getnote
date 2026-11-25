@@ -158,7 +158,14 @@ export default class GetnoteObsidianPlugin extends Plugin {
     // vfs 必须先就位：设置文件就落在插件数据目录里（库内），下面 configure 之后
     // 立刻可能读它，而读的时候会按「在不在库根下」决定走 adapter 还是 node:fs。
     configureVfs({ adapter, basePath })
-    settingsStore.configure({ dataDir, vaultBase: basePath, subfolder: DEFAULT_SUBFOLDER })
+    // version 一起传：/status 与「检查更新」都要报当前版本，设置页底部那张
+    // 卡片靠它显示，而不是让用户自己去插件目录翻 manifest.json。
+    settingsStore.configure({
+      dataDir,
+      vaultBase: basePath,
+      subfolder: DEFAULT_SUBFOLDER,
+      version: this.manifest && typeof this.manifest.version === 'string' ? this.manifest.version : '',
+    })
 
     // 启动即落一份心跳文件。用户报「面板全黑、一个字都没有」时，最难的从来不是
     // 修，而是先分清问题在哪一层：插件根本没加载？加载了但视图没挂上？视图挂了

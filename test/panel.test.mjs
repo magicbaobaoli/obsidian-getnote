@@ -22,7 +22,8 @@ const vaultBase = await mkdtemp(join(tmpdir(), 'dshgn-panel-vault-'))
 process.env.DSH_HOME = dataDir
 
 const settings = await import('../src/core/settings.js')
-settings.configure({ dataDir, vaultBase, subfolder: '得到大脑' })
+// 带上版本号：设置页底部那张「版本」卡要能显示出来，不然只能看到「—」。
+settings.configure({ dataDir, vaultBase, subfolder: '得到大脑', version: '0.1.8' })
 await settings.setVaultRoot('得到大脑')
 
 const { startLocalServer } = await import('../src/host/server.js')
@@ -17471,4 +17472,78 @@ test('左栏装不下时让栏自己滚，而不是把每一行压扁到字叠�
   const child = ruleOf('.dshgn_tree>*')
   assert.ok(child !== '', '左栏该有一条「子元素不许收缩」的兜底规则')
   assert.equal(shrinkOf(child), '0', '左栏的子元素该写 flex-shrink:0')
+})
+
+
+test('设置页底部那张版本卡：显示当前版本，点了能查更新，查到新版就给去下载', async () => {
+  // 「检查更新」打的是本地服务里的 /getnote/update/check，那一步会去问 GitHub。
+  // 验收不能依赖外网（会限流、离线就挂），所以这里把面板发出的那条请求换掉，
+  // 只验证「面板拿到结果之后怎么摆」——后端那一半在 host 测试里已经验过了。
+  await clickTab('设置')
+  const sectionOf = (title) =>
+    Array.from(window.document.querySelectorAll('.dshgn_pane .dshgn_section')).find((el) => {
+      const head = el.querySelector('.dshgn_sectionTitle')
+      return head !== null && (head.textContent || '').trim() === title
+    }) || null
+
+  const versionCard = await waitFor(() => sectionOf('版本'), 5000, '设置页底部该有一张「版本」卡')
+  // 版本号是 main.js 从 manifest 注入、跟着 /status 下来的；显示不出来就说明这条线断了。
+  const badge = versionCard.querySelector('.dshgn_sectionHead .dshgn_badge')
+  assert.ok(badge !== null, '版本卡右上角该有一颗版本号徽标')
+  assert.equal((badge.textContent || '').trim(), '0.1.8', '徽标要显示当前版本：' + (badge.textContent || ''))
+
+  const checkBtn = Array.from(versionCard.querySelectorAll('.dshgn_btn')).find(
+    (el) => (el.textContent || '').trim() === '检查更新',
+  )
+  assert.ok(checkBtn !== null, '版本卡里该有一颗「检查更新」')
+
+  const wrapped = window.fetch
+  let asked = 0
+  window.fetch = globalThis.fetch = async (input, init) => {
+    const url = typeof input === 'string' ? input : String(input && input.url)
+    if (url.includes('/getnote/update/check')) {
+      asked += 1
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          ok: true,
+          current: '0.1.8',
+          latest: '0.1.9',
+          newer: true,
+          notes: '这一版修了排版。',
+          publishedAt: '2026-11-25T00:00:00Z',
+          url: 'https://example.invalid/releases/0.1.9',
+        }),
+      }
+    }
+    return wrapped(input, init)
+  }
+
+  try {
+    checkBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(
+      () => {
+        const text = String(versionCard.textContent || '')
+        return text.includes('有新版本 0.1.9') ? text : null
+      },
+      5000,
+      '查到新版要说清是哪一版',
+    )
+    assert.equal(asked, 1, '点一下只该查一次')
+    // 光说「有新版本」不够，得给一条能走的路。
+    const download = Array.from(versionCard.querySelectorAll('.dshgn_btn')).find(
+      (el) => (el.textContent || '').trim() === '去下载',
+    )
+    assert.ok(download !== null, '查到新版时该摆一颗「去下载」')
+    assert.equal(download.className.includes('dshgn_btnPrimary'), true, '「去下载」该是主按钮')
+    // 版本号徽标本身也要提醒：用户扫一眼设置页就知道该升级了。
+    assert.equal(
+      versionCard.querySelector('.dshgn_sectionHead .dshgn_badge').className.includes('dshgn_badgeWarn'),
+      true,
+      '有新版本时版本号徽标该换成提醒色',
+    )
+  } finally {
+    window.fetch = globalThis.fetch = wrapped
+  }
 })

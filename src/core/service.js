@@ -164,6 +164,9 @@ const importState = {
 }
 const AUTH_TTL_MS = 15 * 60 * 1000
 const MAX_BODY = 2 * 1024 * 1024 + 64 * 1024
+// 「检查更新」默认打这里：仓库的 releases/latest，公开只读，不需要令牌。
+// 只取 tag_name 与 html_url 两件事，正文最多留 4000 字给设置页看。
+const DEFAULT_UPDATE_URL = 'https://api.github.com/repos/magicbaobaoli/obsidian-getnote/releases/latest'
 // 单个附件的上限。拖进来的通常是图或录音，100MB 足够覆盖一段长录音；
 // 再大就该走归档导入而不是往笔记旁边塞。
 const MAX_UPLOAD = 100 * 1024 * 1024
@@ -707,6 +710,58 @@ export function createHandler(config) {
       trash: trashItems.length,
       // 冲突留档条数：同步页的「冲突」入口靠它显示待处理数量
       conflicts: conflictCount,
+      // 插件自己的版本号。设置页底部那张「版本」卡片靠它显示当前版本，
+      // 「检查更新」也拿它跟 GitHub 上的最新 tag 比。跟着 status 一起发，
+      // 是因为设置页本来就要先拿 status 才能画——单开一个路由只会多一次往返。
+      version: getRuntime().version,
+    })
+  }
+
+  /**
+   * 检查有没有新版本。
+   *
+   * 只读公开的 releases/latest，不需要令牌；拿不到网络就当「查不了」，
+   * 不编一个「已是最新」糊弄用户（那会让真正该升级的人以为没事）。
+   */
+  async function handleUpdateCheck(res) {
+    const current = getRuntime().version
+    let latest = ''
+    let notes = ''
+    let publishedAt = ''
+    let url = ''
+    try {
+      const response = await netFetch(config.updateUrl, {
+        headers: { accept: 'application/vnd.github+json', 'user-agent': 'getnote-brain' },
+        signal: AbortSignal.timeout(15 * 1000),
+      })
+      if (!response.ok) {
+        return send(res, 200, {
+          ok: false,
+          current,
+          reason: `GitHub 回了 ${response.status}`,
+        })
+      }
+      const body = await response.json()
+      latest = String(body.tag_name || body.name || '').replace(/^v/i, '').trim()
+      notes = typeof body.body === 'string' ? body.body.slice(0, 4000) : ''
+      publishedAt = typeof body.published_at === 'string' ? body.published_at : ''
+      url = typeof body.html_url === 'string' ? body.html_url : ''
+    } catch (error) {
+      return send(res, 200, {
+        ok: false,
+        current,
+        reason: String(error && error.message ? error.message : error),
+      })
+    }
+    return send(res, 200, {
+      ok: true,
+      current,
+      latest,
+      // 只有两边都解析得出数字才敢比；解析不出来就报「不知道」，让用户自己看。
+      newer: compareVersion(latest, current) > 0,
+      notes,
+      publishedAt,
+      url,
     })
   }
 
@@ -2591,6 +2646,8 @@ export function createHandler(config) {
 
       if (method === 'GET') {
         if (action === 'status') return await handleStatus(res)
+        // 检查更新：打 GitHub 的 releases/latest，跟当前版本比一比
+        if (action === 'update' && parts[2] === 'check') return await handleUpdateCheck(res)
         if (action === 'tree') return await handleTree(res)
         // 目录底下的笔记数/子目录数：删目录前那句确认要说得清删的是多少
         if (action === 'dir' && parts[2] === 'contents') return await handleDirContents(res, url)
@@ -2813,11 +2870,46 @@ p{margin:0;font-size:13px;line-height:1.7;color:color-mix(in srgb,CanvasText 72%
  * 里的 config 原样传进来，我们自己在 apply 里做类型收敛（见 normalizeConfig）。
  */
 
+/**
+ * 比版本号。返回 1 / 0 / -1。
+ *
+ * 只按「点分段、每段取数字」比，够用：插件版本一直是 0.1.x 这种形式。
+ * 刻意不引 semver：一个只比三个数字的函数不值得多一个依赖，而且社区目录
+ * 会扫依赖清单，能少一个就少一个。
+ */
+export function compareVersion(a, b) {
+  const parse = (value) =>
+    String(value == null ? '' : value)
+      .trim()
+      .replace(/^v/i, '')
+      .split(/[.+-]/)
+      .map((piece) => {
+        const digits = String(piece).replace(/\D/g, '')
+        return digits === '' ? 0 : Number(digits)
+      })
+  const left = parse(a)
+  const right = parse(b)
+  const size = Math.max(left.length, right.length)
+  for (let index = 0; index < size; index += 1) {
+    const x = left[index] || 0
+    const y = right[index] || 0
+    if (x > y) return 1
+    if (x < y) return -1
+  }
+  return 0
+}
+
 /** 把 loader 传来的 config 收敛成已知字段，任何形状都不炸（没有 schema 兜底了，只能自己防）。 */
 function normalizeConfig(config) {
   const raw = config && typeof config === 'object' ? config : {}
   return {
     vaultPath: typeof raw.vaultPath === 'string' ? raw.vaultPath.trim() : '',
+    // 「检查更新」打哪个地址。默认是仓库的 releases/latest；单独留一个口子，
+    // 是为了验收时能指向本机的一个假端点，不去碰真实网络。
+    updateUrl:
+      typeof raw.updateUrl === 'string' && raw.updateUrl.trim() !== ''
+        ? raw.updateUrl.trim()
+        : DEFAULT_UPDATE_URL,
   }
 }
 
@@ -2832,8 +2924,8 @@ function normalizeConfig(config) {
  * redirect_uri 必须是 `http://127.0.0.1:<port>/getnote/oauth/callback` 这种能被
  * 系统浏览器直接访问的地址，监听前拿不到。
  */
-export function createRouter({ vaultPath = '', getOrigin = () => null } = {}) {
-  const merged = normalizeConfig({ vaultPath })
+export function createRouter({ vaultPath = '', getOrigin = () => null, updateUrl = '' } = {}) {
+  const merged = normalizeConfig({ vaultPath, updateUrl })
   merged.getOrigin = () => {
     const origin = getOrigin()
     return typeof origin === 'string' && origin !== '' ? origin.replace(/\/+$/, '') : null

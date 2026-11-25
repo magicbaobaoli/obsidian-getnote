@@ -2993,12 +2993,16 @@ var SYNC_FILENAME = "dsh-getnote/state.json";
 var runtime = {
   dataDir: "",
   vaultBase: "",
-  subfolder: "\u5F97\u5230\u5927\u8111"
+  subfolder: "\u5F97\u5230\u5927\u8111",
+  // 插件版本号（main.js 从 this.manifest.version 注入）。放这里是为了让
+  // /status 和「检查更新」都能读到同一份，不用每个 handler 各自去问 manifest。
+  version: ""
 };
 function configure2(options = {}) {
   if (typeof options.dataDir === "string" && options.dataDir !== "") runtime.dataDir = options.dataDir;
   if (typeof options.vaultBase === "string" && options.vaultBase !== "") runtime.vaultBase = options.vaultBase;
   if (typeof options.subfolder === "string" && options.subfolder.trim() !== "") runtime.subfolder = options.subfolder.trim();
+  if (typeof options.version === "string" && options.version !== "") runtime.version = options.version;
   return { ...runtime };
 }
 function getRuntime() {
@@ -6221,6 +6225,7 @@ var importState = {
 };
 var AUTH_TTL_MS = 15 * 60 * 1e3;
 var MAX_BODY = 2 * 1024 * 1024 + 64 * 1024;
+var DEFAULT_UPDATE_URL = "https://api.github.com/repos/magicbaobaoli/obsidian-getnote/releases/latest";
 var MAX_UPLOAD = 100 * 1024 * 1024;
 var cardState = {
   running: false,
@@ -6609,7 +6614,52 @@ function createHandler(config) {
       // 回收站条数：面板要在「笔记」页签上直接显示「回收站 N」，用户才知道有东西可救。
       trash: trashItems.length,
       // 冲突留档条数：同步页的「冲突」入口靠它显示待处理数量
-      conflicts: conflictCount
+      conflicts: conflictCount,
+      // 插件自己的版本号。设置页底部那张「版本」卡片靠它显示当前版本，
+      // 「检查更新」也拿它跟 GitHub 上的最新 tag 比。跟着 status 一起发，
+      // 是因为设置页本来就要先拿 status 才能画——单开一个路由只会多一次往返。
+      version: getRuntime().version
+    });
+  }
+  async function handleUpdateCheck(res) {
+    const current = getRuntime().version;
+    let latest = "";
+    let notes = "";
+    let publishedAt = "";
+    let url = "";
+    try {
+      const response = await netFetch(config.updateUrl, {
+        headers: { accept: "application/vnd.github+json", "user-agent": "getnote-brain" },
+        signal: AbortSignal.timeout(15 * 1e3)
+      });
+      if (!response.ok) {
+        return send(res, 200, {
+          ok: false,
+          current,
+          reason: `GitHub \u56DE\u4E86 ${response.status}`
+        });
+      }
+      const body = await response.json();
+      latest = String(body.tag_name || body.name || "").replace(/^v/i, "").trim();
+      notes = typeof body.body === "string" ? body.body.slice(0, 4e3) : "";
+      publishedAt = typeof body.published_at === "string" ? body.published_at : "";
+      url = typeof body.html_url === "string" ? body.html_url : "";
+    } catch (error2) {
+      return send(res, 200, {
+        ok: false,
+        current,
+        reason: String(error2 && error2.message ? error2.message : error2)
+      });
+    }
+    return send(res, 200, {
+      ok: true,
+      current,
+      latest,
+      // 只有两边都解析得出数字才敢比；解析不出来就报「不知道」，让用户自己看。
+      newer: compareVersion(latest, current) > 0,
+      notes,
+      publishedAt,
+      url
     });
   }
   async function handleTree(res) {
@@ -7959,6 +8009,7 @@ function createHandler(config) {
       }
       if (method === "GET") {
         if (action === "status") return await handleStatus(res);
+        if (action === "update" && parts[2] === "check") return await handleUpdateCheck(res);
         if (action === "tree") return await handleTree(res);
         if (action === "dir" && parts[2] === "contents") return await handleDirContents(res, url);
         if (action === "list") return await handleList(res, url);
@@ -8123,14 +8174,33 @@ p{margin:0;font-size:13px;line-height:1.7;color:color-mix(in srgb,CanvasText 72%
 </style></head><body><div class="card"><h1>${escapeHtml(title)}</h1>
 <p>${escapeHtml(message)}</p><p class="tip">dsh-getnote \xB7 \u5F97\u5230\u5927\u8111</p></div></body></html>`;
 }
+function compareVersion(a3, b3) {
+  const parse = (value) => String(value == null ? "" : value).trim().replace(/^v/i, "").split(/[.+-]/).map((piece) => {
+    const digits = String(piece).replace(/\D/g, "");
+    return digits === "" ? 0 : Number(digits);
+  });
+  const left = parse(a3);
+  const right = parse(b3);
+  const size = Math.max(left.length, right.length);
+  for (let index = 0; index < size; index += 1) {
+    const x4 = left[index] || 0;
+    const y3 = right[index] || 0;
+    if (x4 > y3) return 1;
+    if (x4 < y3) return -1;
+  }
+  return 0;
+}
 function normalizeConfig(config) {
   const raw = config && typeof config === "object" ? config : {};
   return {
-    vaultPath: typeof raw.vaultPath === "string" ? raw.vaultPath.trim() : ""
+    vaultPath: typeof raw.vaultPath === "string" ? raw.vaultPath.trim() : "",
+    // 「检查更新」打哪个地址。默认是仓库的 releases/latest；单独留一个口子，
+    // 是为了验收时能指向本机的一个假端点，不去碰真实网络。
+    updateUrl: typeof raw.updateUrl === "string" && raw.updateUrl.trim() !== "" ? raw.updateUrl.trim() : DEFAULT_UPDATE_URL
   };
 }
-function createRouter({ vaultPath = "", getOrigin = () => null } = {}) {
-  const merged = normalizeConfig({ vaultPath });
+function createRouter({ vaultPath = "", getOrigin = () => null, updateUrl = "" } = {}) {
+  const merged = normalizeConfig({ vaultPath, updateUrl });
   merged.getOrigin = () => {
     const origin = getOrigin();
     return typeof origin === "string" && origin !== "" ? origin.replace(/\/+$/, "") : null;
@@ -9904,6 +9974,15 @@ var LEX = {
     "settings.loggedOut": "\u672A\u767B\u5F55",
     "settings.loginExpired": "\u767B\u5F55\u5DF2\u8FC7\u671F",
     "settings.storeHint": "\u767B\u5F55\u51ED\u8BC1\u53EA\u4FDD\u5B58\u5728\u672C\u673A DSH \u914D\u7F6E\u76EE\u5F55\uFF0C\u4E0D\u51FA\u73B0\u5728\u6D4F\u89C8\u5668\u91CC\u3002",
+    "settings.version": "\u7248\u672C",
+    "settings.versionHint": "\u63D2\u4EF6\u8DD1\u7684\u662F\u8FD9\u4E00\u7248\u3002\u70B9\u300C\u68C0\u67E5\u66F4\u65B0\u300D\u4F1A\u53BB GitHub \u770B\u4E00\u773C\u6709\u6CA1\u6709\u66F4\u65B0\u7684\u53D1\u5E03\u3002",
+    "settings.checkUpdate": "\u68C0\u67E5\u66F4\u65B0",
+    "settings.checking": "\u6B63\u5728\u67E5\u2026",
+    "settings.upToDate": "\u5DF2\u662F\u6700\u65B0",
+    "settings.newVersion": "\u6709\u65B0\u7248\u672C {version}",
+    "settings.updateFail": "\u67E5\u4E0D\u4E86\uFF1A{reason}",
+    "settings.openRelease": "\u53BB\u4E0B\u8F7D",
+    "settings.updateHint": "\u4E0B\u8F7D\u540E\u628A main.js / manifest.json / styles.css \u4E09\u4E2A\u6587\u4EF6\u8986\u76D6\u5230\u63D2\u4EF6\u76EE\u5F55\uFF0C\u7136\u540E\u91CD\u542F Obsidian\u3002\u793E\u533A\u76EE\u5F55\u88C5\u7684\u7248\u672C\u53EF\u4EE5\u76F4\u63A5\u5728 Obsidian \u7684\u300C\u7B2C\u4E09\u65B9\u63D2\u4EF6\u300D\u91CC\u66F4\u65B0\u3002",
     "theme.title": "\u9762\u677F\u4E3B\u9898\u8272",
     "theme.desc": "\u9009\u4E00\u4E2A\u989C\u8272\uFF0C\u5DE6\u680F\u6700\u6DF1\u3001\u4E2D\u680F\u6D45\u4E00\u70B9\u3001\u53F3\u680F\u63A5\u8FD1\u767D\uFF0C\u5C42\u6B21\u4F1A\u81EA\u52A8\u7B97\u597D\u3002\u6539\u5B8C\u70B9\u300C\u5E94\u7528\u300D\u624D\u4F1A\u4FDD\u5B58\u3002",
     "theme.custom": "\u81EA\u5B9A\u4E49\u989C\u8272",
@@ -10595,6 +10674,15 @@ var LEX = {
     "settings.loggedOut": "Not signed in",
     "settings.loginExpired": "Sign-in expired",
     "settings.storeHint": "Credentials stay in the local DSH config dir, never in the browser.",
+    "settings.version": "Version",
+    "settings.versionHint": "This is the build you are running. Check for updates asks GitHub for the latest release.",
+    "settings.checkUpdate": "Check for updates",
+    "settings.checking": "Checking\u2026",
+    "settings.upToDate": "Up to date",
+    "settings.newVersion": "Version {version} is available",
+    "settings.updateFail": "Could not check: {reason}",
+    "settings.openRelease": "Download",
+    "settings.updateHint": "Overwrite main.js, manifest.json and styles.css in the plugin folder, then restart Obsidian. Versions installed from the community directory can be updated from Obsidian's Community plugins list.",
     "theme.title": "Panel theme color",
     "theme.desc": "Pick one color \u2014 the left pane stays darkest, the middle lighter, the reading pane near white. Depth is derived for you. Click Apply to save.",
     "theme.custom": "Custom color",
@@ -11259,6 +11347,15 @@ var LEX = {
     "settings.loggedOut": "Niet ingelogd",
     "settings.loginExpired": "Inlog verlopen",
     "settings.storeHint": "Inloggegevens blijven in de lokale DSH-configuratiemap, nooit in de browser.",
+    "settings.version": "Versie",
+    "settings.versionHint": "Dit is de build die je nu draait. Bij updaten controleert de plugin de nieuwste release op GitHub.",
+    "settings.checkUpdate": "Controleren op updates",
+    "settings.checking": "Bezig\u2026",
+    "settings.upToDate": "Up-to-date",
+    "settings.newVersion": "Versie {version} is beschikbaar",
+    "settings.updateFail": "Kan niet controleren: {reason}",
+    "settings.openRelease": "Downloaden",
+    "settings.updateHint": "Overschrijf main.js, manifest.json en styles.css in de pluginmap en herstart Obsidian. Versies uit de community-map kun je bijwerken via de lijst met community-plugins.",
     "theme.title": "Themakleur van het paneel",
     "theme.desc": "Kies \xE9\xE9n kleur \u2014 het linkerpaneel blijft het donkerst, het midden lichter, het leespaneel bijna wit. De diepte wordt voor je berekend. Klik op Toepassen om op te slaan.",
     "theme.custom": "Eigen kleur",
@@ -13608,16 +13705,25 @@ var CSS = `
   box-sizing:border-box;display:flex;flex-direction:column;height:100%;min-height:0;
   background:var(--dsw-alias-bg-base,transparent);color:var(--dsw-alias-label-primary);
   font-family:var(--dshgn-fontText);font-size:var(--font-ui-small,13px)}
-.dshgn_head{flex:none;display:flex;align-items:center;gap:10px;padding:10px 14px;
-  border-bottom:0.5px solid var(--dsw-alias-border-l2)}
-.dshgn_headMain{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
+/* \u9876\u680F\u6392\u6210\u4E24\u884C\uFF1A\u6807\u9898\u4E0E\u52A8\u4F5C\u4E00\u884C\uFF0C\u9875\u7B7E\u6574\u6761\u5360\u7B2C\u4E8C\u884C\u3002
+   \u4EE5\u524D\u4E09\u6837\u6324\u5728\u4E00\u884C\u91CC\uFF0C\u9762\u677F\u7A84\u4E00\u70B9\uFF08Obsidian \u4FA7\u680F 600~700px \u5F88\u5E38\u89C1\uFF09\u6807\u9898\u5C31\u548C\u9875\u7B7E
+   \u53E0\u5728\u4E00\u8D77\uFF0C\u300C\u7B14\u8BB0\u300D\u4E24\u4E2A\u5B57\u88AB\u76D6\u6389\u4E00\u534A\u3002wrap + \u9875\u7B7E flex:1 0 100% \u662F\u627F\u91CD\u7684\uFF1A
+   \u9875\u7B7E\u5FC5\u987B\u6574\u6761\u6362\u884C\uFF0C\u5426\u5219\u5B83\u4F1A\u88AB\u538B\u7A84\u5230\u53EA\u5269\u51E0\u4E2A\u5B57\u3001\u8FD8\u662F\u8981\u6A2A\u5411\u6324\u3002 */
+.dshgn_head{flex:none;display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;padding:10px 14px;
+  border-bottom:0.5px solid var(--dsw-alias-border-l2);box-sizing:border-box}
+.dshgn_headMain{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1 1 auto}
 .dshgn_title{font-size:13px;font-weight:600;line-height:18px;color:var(--dsw-alias-label-primary)}
 .dshgn_sub{font-size:11px;line-height:15px;color:var(--dsw-alias-label-tertiary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}
-.dshgn_tabs{display:flex;gap:2px;padding:3px;border-radius:9px;background:var(--dsw-alias-interactive-bg-hover)}
-.dshgn_tab{appearance:none;border:0;height:24px;padding:0 10px;border-radius:7px;background:transparent;
+/* order:10 + flex-basis:100% \u628A\u9875\u7B7E\u9489\u5728\u7B2C\u4E8C\u884C\uFF1B\u516B\u4E2A\u9875\u7B7E\u5728\u7A84\u9762\u677F\u91CC\u653E\u4E0D\u4E0B\u65F6
+   \u81EA\u5DF1\u6A2A\u5411\u6EDA\uFF0C\u800C\u4E0D\u662F\u628A\u6BCF\u4E2A\u5B57\u538B\u6210\u4E24\u884C\u3002\u5E2E\u52A9\u6309\u94AE order:9\uFF0C\u7559\u5728\u7B2C\u4E00\u884C\u6700\u53F3\u8FB9\u3002 */
+.dshgn_tabs{order:10;flex:1 0 100%;display:flex;gap:2px;padding:3px;border-radius:9px;
+  background:var(--dsw-alias-interactive-bg-hover);overflow-x:auto;scrollbar-width:none;
+  box-sizing:border-box}
+.dshgn_tabs::-webkit-scrollbar{display:none}
+.dshgn_tab{appearance:none;border:0;flex:none;height:24px;padding:0 10px;border-radius:7px;background:transparent;
   color:var(--dsw-alias-label-secondary);cursor:pointer;font:inherit;font-size:12px;line-height:24px;
-  display:inline-flex;align-items:center;gap:5px}
+  display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
 .dshgn_tab:hover{color:var(--dsw-alias-label-primary)}
 .dshgn_tab[data-on="true"]{background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary)}
 /* \u9875\u7B7E\u4E0A\u7684\u6570\u5B57\u5C0F\u6807\uFF1A\u8DDF\u6587\u5B57\u540C\u4E00\u884C\u3001\u6392\u5728\u53F3\u8FB9\u3002\u7528 pill \u800C\u4E0D\u662F\u53F3\u4E0A\u89D2\u89D2\u6807\uFF0C
@@ -13628,7 +13734,8 @@ var CSS = `
   background:var(--dsw-alias-state-error-primary);color:#fff;
   font-size:10px;font-weight:600;line-height:16px;letter-spacing:0;
   font-variant-numeric:tabular-nums}
-.dshgn_actions{display:flex;align-items:center;gap:4px;flex:none}
+.dshgn_actions{display:flex;align-items:center;gap:4px;flex:none;margin-left:auto}
+.dshgn_head .dshgn_helpBtn{order:9}
 /* \u5207\u6362\u9875\u7B7E\u7684\u5165\u573A\u52A8\u753B\uFF1A\u6DE1\u5165 + \u8F7B\u5FAE\u4E0A\u6D6E\u3002180ms \u662F\u4ECE\u300C\u80FD\u611F\u89C9\u5230\u300D\u5230\u300C\u4E0D\u6321\u624B\u300D\u4E4B\u95F4\u7684
    \u7ECF\u9A8C\u503C\u2014\u2014\u518D\u6162\u5C31\u6709\u62D6\u6C93\u611F\uFF0C\u518D\u5FEB\u5C31\u770B\u4E0D\u51FA\u6765\u3002\u53EA\u505A opacity/transform\uFF0C\u8D70 GPU \u5408\u6210\uFF0C
    \u4E0D\u89E6\u53D1\u91CD\u6392\uFF0C\u9762\u677F\u91CC\u540C\u65F6\u6709\u5217\u8868\u548C\u6B63\u6587\u4E5F\u4E0D\u4F1A\u6389\u5E27\u3002 */
@@ -14331,8 +14438,11 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
   border-left-color:var(--dsw-alias-brand-primary)}
 .dshgn_cardTitle{font-size:12px;line-height:17px;color:var(--dsw-alias-label-primary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dshgn_cardMeta{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--dsw-alias-label-tertiary);
-  overflow:hidden;white-space:nowrap}
+/* min-width:0 \u662F\u627F\u91CD\u7684\uFF1A\u8FD9\u4E00\u884C\u91CC\u65E5\u671F\u662F flex:none\u3001\u76EE\u5F55\u548C\u6807\u7B7E\u662F\u53EF\u6536\u7F29\u7684\uFF0C
+   \u4EE5\u524D\u6CA1\u6709 min-width:0\uFF0C\u76EE\u5F55\u540D\u957F\u4E00\u70B9\u5C31\u628A\u6574\u884C\u9876\u51FA\u5361\u7247\u8FB9\u754C\u3001\u6587\u5B57\u538B\u5230\u8FB9\u6846\u5916\u9762\u3002
+   \u73B0\u5728\u76EE\u5F55\u4E0E\u6807\u7B7E\u5404\u81EA ellipsis\uFF0C\u5B81\u53EF\u622A\u65AD\u4E5F\u4E0D\u8D8A\u754C\u3002 */
+.dshgn_cardMeta{display:flex;align-items:center;gap:6px;min-width:0;font-size:10px;
+  color:var(--dsw-alias-label-tertiary);overflow:hidden;white-space:nowrap}
 /* \u5361\u7247\u4E0A\u7684\u6807\u7B7E\uFF1A\u548C\u65E5\u671F\u3001\u76EE\u5F55\u6324\u5728\u540C\u4E00\u884C\uFF0C\u6240\u4EE5\u53EA\u7ED9\u5230\u80FD\u770B\u6E05\u7684\u6700\u5C0F\u5C3A\u5BF8\uFF1B
    \u591A\u4E86\u5C31\u6536\u6210 +N\uFF0C\u5B81\u53EF\u4E0D\u663E\u793A\u4E5F\u4E0D\u8BA9\u76EE\u5F55\u88AB\u6324\u6389\u3002 */
 /* \u65E5\u671F\u505A\u6210\u53EF\u70B9\u7684\uFF1A\u548C\u70ED\u529B\u56FE\u70B9\u67D0\u4E00\u5929\u540C\u4E00\u4E2A\u52A8\u4F5C\uFF0C\u843D\u5728\u65E5\u671F\u90A3\u4E00\u680F\u3002 */
@@ -14342,11 +14452,12 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 .dshgn_cardDay:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dshgn_cardDay[data-on="true"]{color:var(--dsw-alias-brand-primary);text-decoration:underline}
 /* \u76EE\u5F55\u505A\u6210\u53EF\u70B9\u7684\uFF1A\u548C\u6807\u7B7E\u80F6\u56CA\u540C\u4E00\u4E2A\u52A8\u4F5C\uFF08\u6309\u5B83\u7B5B\uFF09\uFF0C\u53EA\u662F\u843D\u5728\u76EE\u5F55\u90A3\u4E00\u680F\u3002 */
-.dshgn_cardDir{appearance:none;max-width:120px;padding:0;border:0;background:transparent;
-  color:inherit;font:inherit;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_cardDir{appearance:none;flex:0 1 auto;min-width:0;max-width:120px;padding:0;border:0;
+  background:transparent;color:inherit;font:inherit;cursor:pointer;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
 .dshgn_cardDir:hover{color:var(--dsw-alias-brand-primary);text-decoration:underline}
 .dshgn_cardDir:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
-.dshgn_cardTags{display:inline-flex;align-items:center;gap:3px;min-width:0;overflow:hidden}
+.dshgn_cardTags{display:inline-flex;align-items:center;gap:3px;flex:0 1 auto;min-width:0;overflow:hidden}
 .dshgn_cardTag{appearance:none;max-width:88px;padding:0 5px;border:0.5px solid var(--dsw-alias-border-l2);
   border-radius:999px;background:transparent;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:9px;
   line-height:1.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
@@ -14574,7 +14685,15 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 .dshgn_trashPeekMore{appearance:none;flex:none;margin-left:auto;padding:1px 7px;border:0.5px dashed var(--dsw-alias-border-l2);border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:10px;line-height:16px;cursor:pointer}
 .dshgn_trashPeekMore:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-brand-primary)}
 .dshgn_trashPeekMore:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
-.dshgn_pane{flex:1;overflow-y:auto;padding:18px clamp(16px,3vw,28px) 40px}
+/* \u9875\u7B7E\u9875\u7EDF\u4E00\u5C45\u4E2D\uFF1Apane \u662F flex \u5217\uFF0C\u76F4\u63A5\u5B50\u5143\u7D20\uFF08section / cardBox / paneInner /
+   banner\uFF09\u4E00\u5F8B width:100% + margin:0 auto + \u4E00\u4E2A\u4E0A\u9650\u5BBD\u5EA6\u3002
+   \u4EE5\u524D\u53EA\u6709\u5F55\u97F3\u5361\u548C\u8BBE\u7F6E\u9875\u81EA\u5DF1\u5199 max-width\uFF0C\u51B2\u7A81\u9875/\u5F85\u529E\u9875/\u56DE\u6536\u7AD9\u9875\u662F\u5149\u79C3\u79C3\u4E00\u4E2A
+   section\uFF0C\u5728\u5BBD\u9762\u677F\u91CC\u6574\u5757\u8D34\u5DE6\u8FB9\u3001\u53F3\u8FB9\u7A7A\u4E00\u5927\u7247\uFF0C\u770B\u7740\u50CF\u6CA1\u52A0\u8F7D\u5B8C\u3002 */
+.dshgn_pane{flex:1;display:flex;flex-direction:column;align-items:center;
+  overflow-y:auto;padding:18px clamp(16px,3vw,28px) 40px}
+/* \u53EA\u5B9A\u5BBD\u5EA6\u4E0A\u9650\u4E0E\u5C45\u4E2D\uFF0C\u4E0D\u78B0 flex-grow\uFF1A\u7A7A\u6001\u90A3\u51E0\u5757\u81EA\u5DF1\u662F flex:1 \u7684\uFF0C
+   \u8FD9\u91CC\u5199\u6210 flex:none \u4F1A\u628A\u5B83\u4EEC\u538B\u6210\u4E00\u884C\u9AD8\u3002 */
+.dshgn_pane > *{width:100%;max-width:760px;margin-left:auto;margin-right:auto}
 .dshgn_cardBox{max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
 .dshgn_section{display:flex;flex-direction:column;gap:8px;padding:14px 15px;border-radius:10px;
   border:0.5px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-overlay)}
@@ -25650,6 +25769,73 @@ function ImportPane(props) {
     )
   );
 }
+function VersionCard(props) {
+  const { t: t4, status, onError } = props;
+  const [state, setState] = h2("idle");
+  const [result, setResult] = h2(null);
+  const current = status !== null && typeof status.version === "string" ? status.version : "";
+  const check = q2(async () => {
+    setState("busy");
+    setResult(null);
+    try {
+      const json = await api("/update/check");
+      setResult(json);
+      setState(json.ok === true ? "done" : "fail");
+    } catch (err) {
+      setState("fail");
+      setResult({ ok: false, reason: err && err.message ? err.message : String(err) });
+      if (onError) onError(err && err.message ? err.message : String(err));
+    }
+  }, [onError]);
+  let badge = null;
+  if (state === "busy") badge = t4("settings.checking");
+  else if (state === "fail") badge = t4("settings.updateFail").replace("{reason}", String(result && result.reason || ""));
+  else if (state === "done" && result) {
+    badge = result.newer === true ? t4("settings.newVersion").replace("{version}", result.latest) : t4("settings.upToDate");
+  }
+  return h4(
+    "div",
+    { className: "dshgn_section" },
+    h4(
+      "div",
+      { className: "dshgn_sectionHead" },
+      h4("div", { className: "dshgn_sectionTitle" }, t4("settings.version")),
+      h4(
+        "span",
+        { className: "dshgn_badge" + (state === "done" && result && result.newer === true ? " dshgn_badgeWarn" : "") },
+        current === "" ? "\u2014" : current
+      )
+    ),
+    h4("div", { className: "dshgn_sectionDesc" }, t4("settings.versionHint")),
+    h4(
+      "div",
+      { className: "dshgn_rowLine" },
+      h4(
+        "button",
+        {
+          type: "button",
+          className: "dshgn_btn",
+          disabled: state === "busy",
+          onClick: () => void check()
+        },
+        h4(Icon, { name: "refresh", size: 12 }),
+        state === "busy" ? t4("settings.checking") : t4("settings.checkUpdate")
+      ),
+      state === "done" && result && result.newer === true && result.url ? h4(
+        "button",
+        {
+          type: "button",
+          className: "dshgn_btn dshgn_btnPrimary",
+          onClick: () => openExternal(result.url)
+        },
+        h4(Icon, { name: "down", size: 12 }),
+        t4("settings.openRelease")
+      ) : null,
+      badge === null ? null : h4("span", { className: "dshgn_sectionDesc" }, badge)
+    ),
+    h4("div", { className: "dshgn_sectionDesc" }, t4("settings.updateHint"))
+  );
+}
 function SettingsPane(props) {
   const { t: t4, status, onSaved, onError, onThemePreview, showToast, locale, onLocaleChange, onSyncChanged } = props;
   const uiMode = status !== null && (status.uiMode === "light" || status.uiMode === "dark") ? status.uiMode : null;
@@ -25761,7 +25947,9 @@ function SettingsPane(props) {
         ),
         h4("div", { className: "dshgn_sectionDesc" }, status !== null ? status.authPath : ""),
         h4("div", { className: "dshgn_sectionDesc" }, t4("settings.storeHint"))
-      )
+      ),
+      // 版本卡压在最后：它属于「维护」这一类，跟凭证、备份排在一起。
+      h4(VersionCard, { t: t4, status, onError })
     )
   );
 }
@@ -26422,7 +26610,12 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       setHostStorage(null);
     }
     configure({ adapter: adapter2, basePath: basePath2 });
-    configure2({ dataDir, vaultBase: basePath2, subfolder: DEFAULT_SUBFOLDER });
+    configure2({
+      dataDir,
+      vaultBase: basePath2,
+      subfolder: DEFAULT_SUBFOLDER,
+      version: this.manifest && typeof this.manifest.version === "string" ? this.manifest.version : ""
+    });
     this.probe("onload \u5F00\u59CB");
     try {
       const cardScripts = await ensureCardScripts(dataDir);
