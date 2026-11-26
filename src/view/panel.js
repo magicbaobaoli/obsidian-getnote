@@ -1240,6 +1240,14 @@ async function saveFile(url, filename) {
         'lang.auto': '自动',
         'lang.saved': '语言已保存',
         'tab.card': '录音卡',
+        'tab.calendar': '日历',
+        'calendar.desc': '按日子翻笔记。有笔记的日子右下角写着那天几篇，点一天看那天写了什么。',
+        'calendar.weekdays': '日,一,二,三,四,五,六',
+        'calendar.prev': '上个月',
+        'calendar.next': '下个月',
+        'calendar.monthCount': '本月 {n} 篇',
+        'calendar.dayCount': '那天 {n} 篇',
+        'calendar.dayHint': '那天写了 {n} 篇，点一下看清单',
         'card.title': '录音卡直连',
         'card.desc': '绕过云端，直接通过蓝牙从录音卡上把音频拉进笔记库。卡片要开机、在 3 米内，并且手机 App 先断开（关掉手机蓝牙即可，不用解绑）。',
         'card.envOk': '环境就绪',
@@ -1922,6 +1930,14 @@ async function saveFile(url, filename) {
         'lang.auto': 'Automatic',
         'lang.saved': 'Language saved',
         'tab.card': 'Recorder',
+        'tab.calendar': 'Calendar',
+        'calendar.desc': 'Flip through notes by date. Days with notes carry a small count; click one to see what you wrote.',
+        'calendar.weekdays': 'Sun,Mon,Tue,Wed,Thu,Fri,Sat',
+        'calendar.prev': 'Previous month',
+        'calendar.next': 'Next month',
+        'calendar.monthCount': '{n} this month',
+        'calendar.dayCount': '{n} that day',
+        'calendar.dayHint': '{n} notes that day — click to list them',
         'card.title': 'Recorder card (direct)',
         'card.desc': 'Skip the cloud — pull audio straight off the recorder card over Bluetooth. The card must be on, within about 3 metres, and the phone app disconnected (just turn off phone Bluetooth; no need to unbind).',
         'card.envOk': 'Ready',
@@ -2598,6 +2614,14 @@ async function saveFile(url, filename) {
         'lang.auto': 'Automatisch',
         'lang.saved': 'Taal opgeslagen',
         'tab.card': 'Recordercard',
+        'tab.calendar': 'Kalender',
+        'calendar.desc': 'Blader op datum door je notities. Dagen met notities hebben een klein aantal; klik erop om te zien wat je toen schreef.',
+        'calendar.weekdays': 'zo,ma,di,wo,do,vr,za',
+        'calendar.prev': 'Vorige maand',
+        'calendar.next': 'Volgende maand',
+        'calendar.monthCount': '{n} deze maand',
+        'calendar.dayCount': '{n} die dag',
+        'calendar.dayHint': '{n} notities die dag — klik om ze te zien',
         'card.title': 'Recordercard (direct)',
         'card.desc': 'Sla de cloud over — haal audio rechtstreeks via bluetooth van de recordercard. De kaart moet aan staan, binnen ongeveer 3 meter, en de telefoon-app moet losgekoppeld zijn (zet gewoon bluetooth op je telefoon uit; ontkoppelen is niet nodig).',
         'card.envOk': 'Klaar voor gebruik',
@@ -5466,10 +5490,11 @@ async function saveFile(url, filename) {
 .dshgn_title{font-size:13px;font-weight:600;line-height:18px;color:var(--dsw-alias-label-primary)}
 .dshgn_sub{font-size:11px;line-height:15px;color:var(--dsw-alias-label-tertiary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}
-/* 页签跟着标题站在同一行。flex:1 1 auto + min-width:0 是承重的：宽度不够时
-   只有这条被压缩（标题与动作都是 flex:none），压缩之后它自己横向滚，
-   八个页签不会被压成竖排，也不会盖住左边的标题。 */
-.dshgn_tabs{flex:1 1 auto;min-width:0;display:flex;gap:2px;padding:3px;border-radius:9px;
+/* 页签跟着标题站在同一行，但**靠右**：标题在左，动作与页签都贴着右边那一头。
+   靠右靠的是 .dshgn_actions 的 margin-left:auto（把后面这一串一起推过去），
+   页签自己 flex:0 1 auto —— 挤不下时它收缩并横向滚，标题不会被盖掉。
+   以前页签是 flex:1 1 auto，等于把它撑满整条顶栏，看着就像页签从左边开始排。 */
+.dshgn_tabs{flex:0 1 auto;min-width:0;display:flex;gap:2px;padding:3px;border-radius:9px;
   background:var(--dsw-alias-interactive-bg-hover);overflow-x:auto;scrollbar-width:none;
   box-sizing:border-box}
 .dshgn_tabs::-webkit-scrollbar{display:none}
@@ -5486,7 +5511,9 @@ async function saveFile(url, filename) {
   background:var(--dsw-alias-state-error-primary);color:#fff;
   font-size:10px;font-weight:600;line-height:16px;letter-spacing:0;
   font-variant-numeric:tabular-nums}
-.dshgn_actions{display:flex;align-items:center;gap:4px;flex:none}
+/* margin-left:auto 是承重的：它把动作区连同后面的页签一起推到顶栏右侧，
+   标题留在左边。去掉它，页签又会从标题右边紧贴着排过去。 */
+.dshgn_actions{display:flex;align-items:center;gap:4px;flex:none;margin-left:auto}
 /* 切换页签的入场动画：淡入 + 轻微上浮。180ms 是从「能感觉到」到「不挡手」之间的
    经验值——再慢就有拖沓感，再快就看不出来。只做 opacity/transform，走 GPU 合成，
    不触发重排，面板里同时有列表和正文也不会掉帧。 */
@@ -5640,11 +5667,15 @@ async function saveFile(url, filename) {
 .dshgn_brokenJump:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 /* 断链按「指不到的那个名字」分组：同一个名字在七八篇里各写一次，就是七八条一模一样的
    红字；分组之后一处名字一行头，写着它被写错了几处，右边一颗「写一篇」当场把那一篇补出来。 */
-.dshgn_brokenGroup{display:flex;align-items:center;gap:6px;padding:2px 2px 0;min-width:0}
+.dshgn_brokenGroup{display:flex;align-items:center;flex-wrap:wrap;gap:2px 6px;padding:2px 2px 0;min-width:0}
 .dshgn_brokenGroupName{flex:0 1 auto;min-width:0;font-size:11px;font-weight:600;
   color:var(--dsw-alias-state-error-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_brokenGroupCount{flex:none;font-size:10px;color:var(--dsw-alias-label-dimmed)}
-.dshgn_brokenGroupAll{flex:none;margin-left:auto;height:22px;padding:0 8px;font-size:11px}
+/* 组头这颗按钮的文案是「改指到已有那篇」这种七八个字的长句，加上「写一篇」一起摆在
+   名字右边，窄一点的面板里就顶出容器了。让它跟着组头换行、自己也能折行，
+   高度跟着长，不再靠 nowrap 硬撑。 */
+.dshgn_brokenGroupAll{flex:0 1 auto;max-width:100%;margin-left:auto;height:auto;min-height:22px;
+  padding:2px 8px;font-size:11px;white-space:normal;line-height:1.45;text-align:left}
 /* 改指到已有的那一篇：一行输入 + 一颗「全库改过去」。名字多半是从库里挑的，
    所以挂上候选；回车就提交，Esc 收起。 */
 .dshgn_brokenRetarget{display:flex;align-items:center;gap:6px;padding:4px 2px 2px}
@@ -5673,13 +5704,15 @@ async function saveFile(url, filename) {
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* 待办按篇分组：组头是这一篇的名字（点一下打开它）、还剩几条、以及一颗把这一组
    一起勾掉的按钮。组头本身不做成按钮——名字和按钮各自可点，按钮不能套按钮。 */
-.dshgn_todoGroup{display:flex;align-items:center;gap:6px;padding:2px 2px 0;min-width:0}
+.dshgn_todoGroup{display:flex;align-items:center;flex-wrap:wrap;gap:2px 6px;padding:2px 2px 0;min-width:0}
 .dshgn_todoGroupName{appearance:none;flex:0 1 auto;min-width:0;padding:0;border:0;background:transparent;
   font:inherit;font-size:11px;font-weight:600;color:var(--dsw-alias-label-secondary);cursor:pointer;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
 .dshgn_todoGroupName:hover{color:var(--dsw-alias-label-primary);text-decoration:underline}
 .dshgn_todoGroupCount{flex:none;font-size:10px;color:var(--dsw-alias-label-dimmed)}
-.dshgn_todoGroupAll{flex:none;margin-left:auto;height:22px;padding:0 8px;font-size:11px}
+/* 和断链那页同一个道理：「勾掉这一篇的 12 条」是长句，窄面板里得能折行。 */
+.dshgn_todoGroupAll{flex:0 1 auto;max-width:100%;margin-left:auto;height:auto;min-height:22px;
+  padding:2px 8px;font-size:11px;white-space:normal;line-height:1.45;text-align:left}
 .dshgn_backlinks{margin-top:18px;padding-top:12px;border-top:0.5px solid var(--dsw-alias-border-l1)}
 .dshgn_backlinksHead{display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:11px;
   color:var(--dsw-alias-label-tertiary)}
@@ -6209,20 +6242,24 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
   text-overflow:ellipsis;white-space:nowrap}
 .dshgn_cardDir:hover{color:var(--dsw-alias-brand-primary);text-decoration:underline}
 .dshgn_cardDir:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
-.dshgn_cardTags{display:inline-flex;align-items:center;gap:3px;flex:0 1 auto;min-width:0;overflow:hidden}
-.dshgn_cardTag{appearance:none;max-width:88px;padding:0 5px;border:0.5px solid var(--dsw-alias-border-l2);
-  border-radius:999px;background:transparent;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:9px;
-  line-height:1.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
-.dshgn_cardTag:hover{color:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary)}
+/* 标签挪到日期那一行**底下**，写成一行小字，每颗前面带一个 #。
+   以前是塞在日期右边的一串胶囊：日期、目录、标签抢同一行的宽度，标签一多
+   就横着溢出卡片边框（用户原话「放在一个圆点内有点诡异然后很容易超出」）。
+   现在这一行自己占一行、能换行，长标签按字断行，不会再顶出卡片。 */
+.dshgn_cardTags{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 8px;min-width:0;
+  font-size:10px;line-height:15px;color:var(--dsw-alias-label-tertiary)}
+.dshgn_cardTag{appearance:none;max-width:100%;padding:0;border:0;background:transparent;
+  color:inherit;font:inherit;font-size:10px;line-height:15px;text-align:left;cursor:pointer;
+  overflow-wrap:anywhere}
+.dshgn_cardTag:hover{color:var(--dsw-alias-brand-primary);text-decoration:underline}
 .dshgn_cardTag:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
-/* 摊开之后要能换行：一行塞不下十几颗标签，硬挤会把目录挤没。 */
-.dshgn_cardTags[data-open="true"]{flex-wrap:wrap;overflow:visible}
-.dshgn_cardTagMore{appearance:none;flex:none;padding:0 4px;border:0.5px dashed var(--dsw-alias-border-l2);
-  border-radius:999px;background:transparent;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:9px;
-  line-height:1.6;cursor:pointer;white-space:nowrap}
-.dshgn_cardTagMore:hover{color:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary)}
+/* 收起来时只摆前几颗，超出的那几颗靠这颗「+N」摊开；摊开之后就在同一行里换行。 */
+.dshgn_cardTagMore{appearance:none;flex:none;padding:0;border:0;background:transparent;
+  color:var(--dsw-alias-label-dimmed);font:inherit;font-size:10px;line-height:15px;
+  cursor:pointer;white-space:nowrap}
+.dshgn_cardTagMore:hover{color:var(--dsw-alias-brand-primary);text-decoration:underline}
 .dshgn_cardTagMore:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
-.dshgn_cardTagMore[data-open="true"]{border-style:solid;color:var(--dsw-alias-label-secondary)}
+.dshgn_cardTagMore[data-open="true"]{color:var(--dsw-alias-label-secondary)}
 .dshgn_cardExcerpt{font-size:11px;line-height:15px;color:var(--dsw-alias-label-tertiary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_note{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;position:relative}
@@ -6447,11 +6484,51 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
    这里写成 flex:none 会把它们压成一行高。 */
 .dshgn_pane > *{width:100%;max-width:760px;margin-left:auto;margin-right:auto}
 .dshgn_cardBox{max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+/* 日历页：一张真月历。七列等宽格子，有笔记的日子右下角挂一个篇数；
+   没笔记的日子淡掉且点不动（点开只会得到一片空白，不如不让点）。
+   格子用 aspect-ratio 撑成近正方形——写死高度在窄面板里会变成扁条，
+   写死宽度在宽面板里会撑出一排大空块。 */
+.dshgn_calHead{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:2px}
+.dshgn_calMonth{flex:none;font-size:14px;font-weight:600;letter-spacing:.02em;
+  color:var(--dsw-alias-label-primary);font-variant-numeric:tabular-nums}
+.dshgn_calHead .dshgn_sectionDesc{margin-left:auto}
+.dshgn_calGrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.dshgn_calWeek{font-size:10px;line-height:16px;text-align:center;color:var(--dsw-alias-label-tertiary)}
+.dshgn_calCell{appearance:none;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:1px;min-width:0;aspect-ratio:1/1;padding:2px;border:0.5px solid transparent;border-radius:8px;
+  background:transparent;color:var(--dsw-alias-label-dimmed);font:inherit;cursor:default;
+  font-variant-numeric:tabular-nums}
+.dshgn_calCell[data-has="true"]{cursor:pointer;color:var(--dsw-alias-label-primary);
+  background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-border-l1)}
+.dshgn_calCell[data-has="true"]:hover{background:var(--dsw-alias-interactive-bg-hover-accent);
+  border-color:var(--dsw-alias-brand-primary)}
+.dshgn_calCell[data-has="true"]:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_calCell[data-on="true"]{background:var(--dsw-alias-interactive-bg-hover-accent);
+  border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-primary);font-weight:600}
+/* 今天只描一圈边，不抢「选中」的那块底色——两者同时出现时得能分清。 */
+.dshgn_calCell[data-today="true"]{box-shadow:inset 0 0 0 1px var(--dsw-alias-brand-primary)}
+.dshgn_calDay{font-size:12px;line-height:16px}
+.dshgn_calNum{font-size:9px;line-height:11px;color:var(--dsw-alias-label-secondary)}
+.dshgn_calDayList{display:flex;flex-direction:column;gap:4px;min-width:0}
+.dshgn_calNote{appearance:none;display:flex;align-items:center;gap:8px;width:100%;min-width:0;
+  padding:7px 9px;border:0.5px solid var(--dsw-alias-border-l1);border-radius:8px;
+  background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.dshgn_calNote:hover{background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-border-l2)}
+.dshgn_calNote:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_calNoteTitle{flex:1;min-width:0;font-size:12.5px;line-height:1.5;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_calNoteDir{flex:none;max-width:40%;font-size:10px;color:var(--dsw-alias-label-tertiary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_section{display:flex;flex-direction:column;gap:8px;padding:14px 15px;border-radius:10px;
   border:0.5px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-overlay)}
-.dshgn_sectionTitle{font-size:12px;font-weight:600;color:var(--dsw-alias-label-primary)}
-/* 卡片标题行：标题 + 右侧状态徽章。以前徽章只能挂在下一行，读起来像两个独立信息。 */
-.dshgn_sectionHead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:2px}
+/* 标题本身也可能很长（话题名、断链里那个指不到的篇名），得让它先收缩，
+   而不是把徽章/按钮挤出卡片右边。 */
+.dshgn_sectionTitle{flex:0 1 auto;min-width:0;font-size:12px;font-weight:600;
+  color:var(--dsw-alias-label-primary);overflow-wrap:anywhere}
+/* 卡片标题行：标题 + 右侧状态徽章。以前徽章只能挂在下一行，读起来像两个独立信息。
+   挤不下时允许换行：一行里塞标题 + 两颗按钮 + 一颗徽章，窄面板必然顶出去。 */
+.dshgn_sectionHead{display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;
+  gap:4px 8px;margin-bottom:2px;min-width:0}
 .dshgn_sectionDesc{font-size:11.5px;line-height:1.7;color:var(--dsw-alias-label-secondary)}
 .dshgn_rowLine{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .dshgn_input{flex:1;min-width:180px;height:28px;padding:0 9px;border:0.5px solid var(--dsw-alias-border-l2);
@@ -6460,8 +6537,13 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 .dshgn_input:focus{border-color:var(--dsw-alias-brand-primary)}
 /* 工具栏里的小下拉：不该像正文输入框那样抢走半行宽度 */
 .dshgn_selectSm{flex:none;min-width:0;width:auto;height:24px;padding:0 6px;font-size:11.5px;cursor:pointer}
-.dshgn_badge{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 7px;border-radius:10px;
-  font-size:10.5px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}
+/* 徽章里常塞的是话题名、登录态、版本号这类不定长的字符串。以前没有宽度上限，
+   一个长话题名就能把 sectionHead 撑破（标题被挤成两行、徽章自己顶出卡片右边）。
+   现在它最多占满一行，超了省略号收尾，高度也跟着内容走而不是写死 20px。 */
+.dshgn_badge{display:inline-flex;align-items:center;gap:4px;min-height:20px;max-width:100%;
+  padding:1px 7px;border-radius:10px;font-size:10.5px;line-height:1.5;
+  background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_badgeOk{background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-brand-primary)}
 .dshgn_badgeWarn{background:transparent;color:var(--dsw-alias-state-warn-primary);
   box-shadow:inset 0 0 0 0.5px var(--dsw-alias-state-warn-primary)}
@@ -9568,6 +9650,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             status !== null && status.conflicts > 0 ? status.conflicts : undefined,
           ),
           tabButton('card', t('tab.card')),
+          // 日历：按日子翻笔记。搜索框是按字找，左栏热力图是「哪天写得多」，
+          // 都不回答「十月那周我记了什么」，所以给它一个一级入口。
+          tabButton('calendar', t('tab.calendar')),
           tabButton('broken', t('tab.broken')),
           tabButton('todos', t('tab.todos')),
           tabButton('settings', t('tab.settings')),
@@ -9638,6 +9723,15 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
           },
           onError: (message) => setError(message),
           showToast,
+        })
+      } else if (tab === 'calendar') {
+        body = h(CalendarPane, {
+          t,
+          entries,
+          onOpen: (path) => {
+            setTab('notes')
+            void openNote(path)
+          },
         })
       } else if (tab === 'broken') {
         body = h(BrokenPane, {
@@ -10902,61 +10996,61 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                               entry.dir,
                             )
                           : null,
-                        // 标签摆在卡片上：光看标题和目录，常常想不起这篇属于哪一摊事。
-                        // 点一颗就按它筛——和左栏标签区、属性区里那几颗是同一个动作。
-                        // 最多三颗，多出来的收成「+N」，否则标签多的一行会把目录挤没。
-                        Array.isArray(entry.tags) && entry.tags.length > 0
-                          ? h(
-                              'span',
-                              {
-                                className: 'dshgn_cardTags',
-                                'data-open': openTags.has(entry.path) ? 'true' : 'false',
-                              },
-                              (openTags.has(entry.path) ? entry.tags : entry.tags.slice(0, 3)).map((tag) =>
-                                h(
+                      ),
+                      // 标签单独占一行，写在日期那一行的底下：小字、每颗前面一个 #，
+                      // 点一颗还是「按它筛」。以前是塞在日期右边的一串胶囊，
+                      // 和目录抢同一行宽度，标签一多就横着溢出卡片边框。
+                      Array.isArray(entry.tags) && entry.tags.length > 0
+                        ? h(
+                            'div',
+                            {
+                              className: 'dshgn_cardTags',
+                              'data-open': openTags.has(entry.path) ? 'true' : 'false',
+                            },
+                            (openTags.has(entry.path) ? entry.tags : entry.tags.slice(0, 3)).map((tag) =>
+                              h(
+                                'button',
+                                {
+                                  key: tag,
+                                  type: 'button',
+                                  className: 'dshgn_cardTag',
+                                  title: `${t('note.pickTag')}：${tag}`,
+                                  onClick: (event) => {
+                                    // 点标签是「按它筛」，不是「打开这篇」
+                                    event.stopPropagation()
+                                    setActiveTag(tag)
+                                    setActiveDir('')
+                                  },
+                                },
+                                `#${tag}`,
+                              ),
+                            ),
+                            // 「+N」不只是个数字：点一下就地摊开全部标签，再点收回去。
+                            // 摊开之后不按标签筛、也不打开这一篇——它只是一扇窗。
+                            entry.tags.length > 3
+                              ? h(
                                   'button',
                                   {
-                                    key: tag,
                                     type: 'button',
-                                    className: 'dshgn_cardTag',
-                                    title: `${t('note.pickTag')}：${tag}`,
+                                    className: 'dshgn_cardTagMore',
+                                    title: openTags.has(entry.path) ? t('note.lessTags') : t('note.moreTags').replace('{n}', String(entry.tags.length - 3)),
+                                    'aria-expanded': openTags.has(entry.path) ? 'true' : 'false',
+                                    'data-open': openTags.has(entry.path) ? 'true' : 'false',
                                     onClick: (event) => {
-                                      // 点标签是「按它筛」，不是「打开这篇」
                                       event.stopPropagation()
-                                      setActiveTag(tag)
-                                      setActiveDir('')
+                                      setOpenTags((prev) => {
+                                        const next = new Set(prev)
+                                        if (next.has(entry.path)) next.delete(entry.path)
+                                        else next.add(entry.path)
+                                        return next
+                                      })
                                     },
                                   },
-                                  tag,
-                                ),
-                              ),
-                              // 「+N」不只是个数字：点一下就地摊开全部标签，再点收回去。
-                              // 摊开之后不按标签筛、也不打开这一篇——它只是一扇窗。
-                              entry.tags.length > 3
-                                ? h(
-                                    'button',
-                                    {
-                                      type: 'button',
-                                      className: 'dshgn_cardTagMore',
-                                      title: openTags.has(entry.path) ? t('note.lessTags') : t('note.moreTags').replace('{n}', String(entry.tags.length - 3)),
-                                      'aria-expanded': openTags.has(entry.path) ? 'true' : 'false',
-                                      'data-open': openTags.has(entry.path) ? 'true' : 'false',
-                                      onClick: (event) => {
-                                        event.stopPropagation()
-                                        setOpenTags((prev) => {
-                                          const next = new Set(prev)
-                                          if (next.has(entry.path)) next.delete(entry.path)
-                                          else next.add(entry.path)
-                                          return next
-                                        })
-                                      },
-                                    },
-                                    openTags.has(entry.path) ? t('note.lessTags') : `+${entry.tags.length - 3}`,
-                                  )
-                                : null,
-                            )
-                          : null,
-                      ),
+                                  openTags.has(entry.path) ? t('note.lessTags') : `+${entry.tags.length - 3}`,
+                                )
+                              : null,
+                          )
+                        : null,
                       // 搜索态优先显示正文命中行（带行号），比摘要更能说明为什么它被搜出来
                       searchMode && Array.isArray(entry.matches) && entry.matches.length > 0
                         ? h(
@@ -14949,6 +15043,173 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
               ),
       )
     }
+    /**
+     * 日历页：按时间找笔记。
+     *
+     * 中栏那个搜索框是按字找，左栏热力图是「这半年哪天写得多」——都不回答
+     * 「十月那周我记了什么」。这一页就是一张月历：有笔记的日子标上篇数，
+     * 点一天，下面列出那天写的每一篇，点一篇直接打开。
+     *
+     * 数据全是现成的：/tree 回来的 entries 每条都带 date（文件名前缀、归档字段
+     * 或 mtime 推出来的），这里只做分组，不再打接口。
+     */
+    function CalendarPane(props) {
+      const { t, entries, onOpen } = props
+      const byDay = React.useMemo(() => {
+        const map = new Map()
+        for (const entry of Array.isArray(entries) ? entries : []) {
+          const day = typeof entry.date === 'string' ? entry.date : ''
+          if (day === '') continue
+          const list = map.get(day)
+          if (list === undefined) map.set(day, [entry])
+          else list.push(entry)
+        }
+        return map
+      }, [entries])
+
+      // 打开时停在最近有笔记的那个月；一篇都没有就停在当前月，别给一张空白日历。
+      const [cursor, setCursor] = React.useState(() => {
+        let latest = ''
+        for (const day of byDay.keys()) if (day > latest) latest = day
+        const base = latest === '' ? new Date() : new Date(latest + 'T00:00:00')
+        return { year: base.getFullYear(), month: base.getMonth() }
+      })
+      const [picked, setPicked] = React.useState('')
+
+      const shift = (delta) => {
+        setCursor((prev) => {
+          const next = new Date(prev.year, prev.month + delta, 1)
+          return { year: next.getFullYear(), month: next.getMonth() }
+        })
+        // 换月就把选中的那天清掉：上个月的日子在这个月里根本不存在。
+        setPicked('')
+      }
+
+      const pad = (n) => String(n).padStart(2, '0')
+      const daysInMonth = new Date(cursor.year, cursor.month + 1, 0).getDate()
+      const firstWeekday = new Date(cursor.year, cursor.month, 1).getDay()
+      const now = new Date()
+      const todayKey = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+      const monthKey = `${cursor.year}-${pad(cursor.month + 1)}`
+
+      // 这个月里有笔记的日子一共有几篇——页头那句「本月 N 篇」。
+      let monthCount = 0
+      for (let day = 1; day <= daysInMonth; day += 1) {
+        const list = byDay.get(`${monthKey}-${pad(day)}`)
+        if (list !== undefined) monthCount += list.length
+      }
+
+      const weekdays = String(t('calendar.weekdays') || '').split(',')
+      const cells = []
+      for (let i = 0; i < firstWeekday; i += 1) cells.push(null)
+      for (let day = 1; day <= daysInMonth; day += 1) cells.push(day)
+
+      const pickedList = picked === '' ? [] : byDay.get(picked) || []
+
+      return h(
+        'div',
+        { className: 'dshgn_pane' },
+        h(
+          'div',
+          { className: 'dshgn_section' },
+          h(
+            'div',
+            { className: 'dshgn_calHead' },
+            h(
+              'button',
+              {
+                type: 'button',
+                className: 'dshgn_iconBtn',
+                title: t('calendar.prev'),
+                onClick: () => shift(-1),
+              },
+              h(Icon, { name: 'left', size: 14 }),
+            ),
+            h('div', { className: 'dshgn_calMonth' }, `${cursor.year}-${pad(cursor.month + 1)}`),
+            h(
+              'span',
+              { className: 'dshgn_sectionDesc' },
+              t('calendar.monthCount').replace('{n}', String(monthCount)),
+            ),
+            h(
+              'button',
+              {
+                type: 'button',
+                className: 'dshgn_iconBtn',
+                title: t('calendar.next'),
+                onClick: () => shift(1),
+              },
+              h(Icon, { name: 'right', size: 14 }),
+            ),
+          ),
+          h('div', { className: 'dshgn_sectionDesc' }, t('calendar.desc')),
+          h(
+            'div',
+            { className: 'dshgn_calGrid' },
+            weekdays.map((label, index) =>
+              h('div', { key: 'w' + String(index), className: 'dshgn_calWeek' }, label),
+            ),
+            cells.map((day, index) => {
+              if (day === null) return h('span', { key: 'e' + String(index) })
+              const key = `${monthKey}-${pad(day)}`
+              const list = byDay.get(key)
+              const has = list !== undefined
+              return h(
+                'button',
+                {
+                  key,
+                  type: 'button',
+                  className: 'dshgn_calCell',
+                  'data-has': has ? 'true' : 'false',
+                  'data-on': picked === key ? 'true' : 'false',
+                  'data-today': key === todayKey ? 'true' : 'false',
+                  title: has ? t('calendar.dayHint').replace('{n}', String(list.length)) : key,
+                  // 没笔记的日子点不动：点开只会得到一片空白。
+                  disabled: !has,
+                  onClick: has ? () => setPicked(picked === key ? '' : key) : undefined,
+                },
+                h('span', { className: 'dshgn_calDay' }, String(day)),
+                has ? h('span', { className: 'dshgn_calNum' }, String(list.length)) : null,
+              )
+            }),
+          ),
+        ),
+        picked === ''
+          ? null
+          : h(
+              'div',
+              { className: 'dshgn_section' },
+              h(
+                'div',
+                { className: 'dshgn_sectionHead' },
+                h('div', { className: 'dshgn_sectionTitle' }, picked),
+                h('span', { className: 'dshgn_sectionDesc' }, t('calendar.dayCount').replace('{n}', String(pickedList.length))),
+              ),
+              h(
+                'div',
+                { className: 'dshgn_calDayList' },
+                pickedList.map((entry) =>
+                  h(
+                    'button',
+                    {
+                      key: entry.path,
+                      type: 'button',
+                      className: 'dshgn_calNote',
+                      title: entry.path,
+                      onClick: () => {
+                        if (typeof onOpen === 'function') onOpen(entry.path)
+                      },
+                    },
+                    h(Icon, { name: 'note', size: 12 }),
+                    h('span', { className: 'dshgn_calNoteTitle' }, entry.title),
+                    entry.dir ? h('span', { className: 'dshgn_calNoteDir' }, entry.dir) : null,
+                  ),
+                ),
+              ),
+            ),
+      )
+    }
+
     function TrashPane(props) {
       const { t, status, dirs, onChanged, onError, showToast } = props
       const [items, setItems] = React.useState(null)
@@ -16082,7 +16343,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
     // 只存路径不存正文：正文可能已经被别处改过（同步、宿主编辑器、另一个
     // 窗口），恢复时重新走一遍 /read 才是当下真实的内容。
     const SESSION_KEY = 'dshgn.session'
-    const SESSION_TABS = ['notes', 'cloud', 'settings', 'card', 'conflict', 'broken', 'todos', 'trash']
+    const SESSION_TABS = ['notes', 'cloud', 'settings', 'card', 'calendar', 'conflict', 'broken', 'todos', 'trash']
 
     function readSession() {
       const empty = { tab: '', dir: '', tag: '', path: '' }

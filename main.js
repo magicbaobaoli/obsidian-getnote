@@ -10420,6 +10420,14 @@ var LEX = {
     "lang.auto": "\u81EA\u52A8",
     "lang.saved": "\u8BED\u8A00\u5DF2\u4FDD\u5B58",
     "tab.card": "\u5F55\u97F3\u5361",
+    "tab.calendar": "\u65E5\u5386",
+    "calendar.desc": "\u6309\u65E5\u5B50\u7FFB\u7B14\u8BB0\u3002\u6709\u7B14\u8BB0\u7684\u65E5\u5B50\u53F3\u4E0B\u89D2\u5199\u7740\u90A3\u5929\u51E0\u7BC7\uFF0C\u70B9\u4E00\u5929\u770B\u90A3\u5929\u5199\u4E86\u4EC0\u4E48\u3002",
+    "calendar.weekdays": "\u65E5,\u4E00,\u4E8C,\u4E09,\u56DB,\u4E94,\u516D",
+    "calendar.prev": "\u4E0A\u4E2A\u6708",
+    "calendar.next": "\u4E0B\u4E2A\u6708",
+    "calendar.monthCount": "\u672C\u6708 {n} \u7BC7",
+    "calendar.dayCount": "\u90A3\u5929 {n} \u7BC7",
+    "calendar.dayHint": "\u90A3\u5929\u5199\u4E86 {n} \u7BC7\uFF0C\u70B9\u4E00\u4E0B\u770B\u6E05\u5355",
     "card.title": "\u5F55\u97F3\u5361\u76F4\u8FDE",
     "card.desc": "\u7ED5\u8FC7\u4E91\u7AEF\uFF0C\u76F4\u63A5\u901A\u8FC7\u84DD\u7259\u4ECE\u5F55\u97F3\u5361\u4E0A\u628A\u97F3\u9891\u62C9\u8FDB\u7B14\u8BB0\u5E93\u3002\u5361\u7247\u8981\u5F00\u673A\u3001\u5728 3 \u7C73\u5185\uFF0C\u5E76\u4E14\u624B\u673A App \u5148\u65AD\u5F00\uFF08\u5173\u6389\u624B\u673A\u84DD\u7259\u5373\u53EF\uFF0C\u4E0D\u7528\u89E3\u7ED1\uFF09\u3002",
     "card.envOk": "\u73AF\u5883\u5C31\u7EEA",
@@ -11097,6 +11105,14 @@ var LEX = {
     "lang.auto": "Automatic",
     "lang.saved": "Language saved",
     "tab.card": "Recorder",
+    "tab.calendar": "Calendar",
+    "calendar.desc": "Flip through notes by date. Days with notes carry a small count; click one to see what you wrote.",
+    "calendar.weekdays": "Sun,Mon,Tue,Wed,Thu,Fri,Sat",
+    "calendar.prev": "Previous month",
+    "calendar.next": "Next month",
+    "calendar.monthCount": "{n} this month",
+    "calendar.dayCount": "{n} that day",
+    "calendar.dayHint": "{n} notes that day \u2014 click to list them",
     "card.title": "Recorder card (direct)",
     "card.desc": "Skip the cloud \u2014 pull audio straight off the recorder card over Bluetooth. The card must be on, within about 3 metres, and the phone app disconnected (just turn off phone Bluetooth; no need to unbind).",
     "card.envOk": "Ready",
@@ -11771,6 +11787,14 @@ var LEX = {
     "lang.auto": "Automatisch",
     "lang.saved": "Taal opgeslagen",
     "tab.card": "Recordercard",
+    "tab.calendar": "Kalender",
+    "calendar.desc": "Blader op datum door je notities. Dagen met notities hebben een klein aantal; klik erop om te zien wat je toen schreef.",
+    "calendar.weekdays": "zo,ma,di,wo,do,vr,za",
+    "calendar.prev": "Vorige maand",
+    "calendar.next": "Volgende maand",
+    "calendar.monthCount": "{n} deze maand",
+    "calendar.dayCount": "{n} die dag",
+    "calendar.dayHint": "{n} notities die dag \u2014 klik om ze te zien",
     "card.title": "Recordercard (direct)",
     "card.desc": "Sla de cloud over \u2014 haal audio rechtstreeks via bluetooth van de recordercard. De kaart moet aan staan, binnen ongeveer 3 meter, en de telefoon-app moet losgekoppeld zijn (zet gewoon bluetooth op je telefoon uit; ontkoppelen is niet nodig).",
     "card.envOk": "Klaar voor gebruik",
@@ -13742,10 +13766,11 @@ var CSS = `
 .dshgn_title{font-size:13px;font-weight:600;line-height:18px;color:var(--dsw-alias-label-primary)}
 .dshgn_sub{font-size:11px;line-height:15px;color:var(--dsw-alias-label-tertiary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}
-/* \u9875\u7B7E\u8DDF\u7740\u6807\u9898\u7AD9\u5728\u540C\u4E00\u884C\u3002flex:1 1 auto + min-width:0 \u662F\u627F\u91CD\u7684\uFF1A\u5BBD\u5EA6\u4E0D\u591F\u65F6
-   \u53EA\u6709\u8FD9\u6761\u88AB\u538B\u7F29\uFF08\u6807\u9898\u4E0E\u52A8\u4F5C\u90FD\u662F flex:none\uFF09\uFF0C\u538B\u7F29\u4E4B\u540E\u5B83\u81EA\u5DF1\u6A2A\u5411\u6EDA\uFF0C
-   \u516B\u4E2A\u9875\u7B7E\u4E0D\u4F1A\u88AB\u538B\u6210\u7AD6\u6392\uFF0C\u4E5F\u4E0D\u4F1A\u76D6\u4F4F\u5DE6\u8FB9\u7684\u6807\u9898\u3002 */
-.dshgn_tabs{flex:1 1 auto;min-width:0;display:flex;gap:2px;padding:3px;border-radius:9px;
+/* \u9875\u7B7E\u8DDF\u7740\u6807\u9898\u7AD9\u5728\u540C\u4E00\u884C\uFF0C\u4F46**\u9760\u53F3**\uFF1A\u6807\u9898\u5728\u5DE6\uFF0C\u52A8\u4F5C\u4E0E\u9875\u7B7E\u90FD\u8D34\u7740\u53F3\u8FB9\u90A3\u4E00\u5934\u3002
+   \u9760\u53F3\u9760\u7684\u662F .dshgn_actions \u7684 margin-left:auto\uFF08\u628A\u540E\u9762\u8FD9\u4E00\u4E32\u4E00\u8D77\u63A8\u8FC7\u53BB\uFF09\uFF0C
+   \u9875\u7B7E\u81EA\u5DF1 flex:0 1 auto \u2014\u2014 \u6324\u4E0D\u4E0B\u65F6\u5B83\u6536\u7F29\u5E76\u6A2A\u5411\u6EDA\uFF0C\u6807\u9898\u4E0D\u4F1A\u88AB\u76D6\u6389\u3002
+   \u4EE5\u524D\u9875\u7B7E\u662F flex:1 1 auto\uFF0C\u7B49\u4E8E\u628A\u5B83\u6491\u6EE1\u6574\u6761\u9876\u680F\uFF0C\u770B\u7740\u5C31\u50CF\u9875\u7B7E\u4ECE\u5DE6\u8FB9\u5F00\u59CB\u6392\u3002 */
+.dshgn_tabs{flex:0 1 auto;min-width:0;display:flex;gap:2px;padding:3px;border-radius:9px;
   background:var(--dsw-alias-interactive-bg-hover);overflow-x:auto;scrollbar-width:none;
   box-sizing:border-box}
 .dshgn_tabs::-webkit-scrollbar{display:none}
@@ -13762,7 +13787,9 @@ var CSS = `
   background:var(--dsw-alias-state-error-primary);color:#fff;
   font-size:10px;font-weight:600;line-height:16px;letter-spacing:0;
   font-variant-numeric:tabular-nums}
-.dshgn_actions{display:flex;align-items:center;gap:4px;flex:none}
+/* margin-left:auto \u662F\u627F\u91CD\u7684\uFF1A\u5B83\u628A\u52A8\u4F5C\u533A\u8FDE\u540C\u540E\u9762\u7684\u9875\u7B7E\u4E00\u8D77\u63A8\u5230\u9876\u680F\u53F3\u4FA7\uFF0C
+   \u6807\u9898\u7559\u5728\u5DE6\u8FB9\u3002\u53BB\u6389\u5B83\uFF0C\u9875\u7B7E\u53C8\u4F1A\u4ECE\u6807\u9898\u53F3\u8FB9\u7D27\u8D34\u7740\u6392\u8FC7\u53BB\u3002 */
+.dshgn_actions{display:flex;align-items:center;gap:4px;flex:none;margin-left:auto}
 /* \u5207\u6362\u9875\u7B7E\u7684\u5165\u573A\u52A8\u753B\uFF1A\u6DE1\u5165 + \u8F7B\u5FAE\u4E0A\u6D6E\u3002180ms \u662F\u4ECE\u300C\u80FD\u611F\u89C9\u5230\u300D\u5230\u300C\u4E0D\u6321\u624B\u300D\u4E4B\u95F4\u7684
    \u7ECF\u9A8C\u503C\u2014\u2014\u518D\u6162\u5C31\u6709\u62D6\u6C93\u611F\uFF0C\u518D\u5FEB\u5C31\u770B\u4E0D\u51FA\u6765\u3002\u53EA\u505A opacity/transform\uFF0C\u8D70 GPU \u5408\u6210\uFF0C
    \u4E0D\u89E6\u53D1\u91CD\u6392\uFF0C\u9762\u677F\u91CC\u540C\u65F6\u6709\u5217\u8868\u548C\u6B63\u6587\u4E5F\u4E0D\u4F1A\u6389\u5E27\u3002 */
@@ -13916,11 +13943,15 @@ var CSS = `
 .dshgn_brokenJump:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 /* \u65AD\u94FE\u6309\u300C\u6307\u4E0D\u5230\u7684\u90A3\u4E2A\u540D\u5B57\u300D\u5206\u7EC4\uFF1A\u540C\u4E00\u4E2A\u540D\u5B57\u5728\u4E03\u516B\u7BC7\u91CC\u5404\u5199\u4E00\u6B21\uFF0C\u5C31\u662F\u4E03\u516B\u6761\u4E00\u6A21\u4E00\u6837\u7684
    \u7EA2\u5B57\uFF1B\u5206\u7EC4\u4E4B\u540E\u4E00\u5904\u540D\u5B57\u4E00\u884C\u5934\uFF0C\u5199\u7740\u5B83\u88AB\u5199\u9519\u4E86\u51E0\u5904\uFF0C\u53F3\u8FB9\u4E00\u9897\u300C\u5199\u4E00\u7BC7\u300D\u5F53\u573A\u628A\u90A3\u4E00\u7BC7\u8865\u51FA\u6765\u3002 */
-.dshgn_brokenGroup{display:flex;align-items:center;gap:6px;padding:2px 2px 0;min-width:0}
+.dshgn_brokenGroup{display:flex;align-items:center;flex-wrap:wrap;gap:2px 6px;padding:2px 2px 0;min-width:0}
 .dshgn_brokenGroupName{flex:0 1 auto;min-width:0;font-size:11px;font-weight:600;
   color:var(--dsw-alias-state-error-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_brokenGroupCount{flex:none;font-size:10px;color:var(--dsw-alias-label-dimmed)}
-.dshgn_brokenGroupAll{flex:none;margin-left:auto;height:22px;padding:0 8px;font-size:11px}
+/* \u7EC4\u5934\u8FD9\u9897\u6309\u94AE\u7684\u6587\u6848\u662F\u300C\u6539\u6307\u5230\u5DF2\u6709\u90A3\u7BC7\u300D\u8FD9\u79CD\u4E03\u516B\u4E2A\u5B57\u7684\u957F\u53E5\uFF0C\u52A0\u4E0A\u300C\u5199\u4E00\u7BC7\u300D\u4E00\u8D77\u6446\u5728
+   \u540D\u5B57\u53F3\u8FB9\uFF0C\u7A84\u4E00\u70B9\u7684\u9762\u677F\u91CC\u5C31\u9876\u51FA\u5BB9\u5668\u4E86\u3002\u8BA9\u5B83\u8DDF\u7740\u7EC4\u5934\u6362\u884C\u3001\u81EA\u5DF1\u4E5F\u80FD\u6298\u884C\uFF0C
+   \u9AD8\u5EA6\u8DDF\u7740\u957F\uFF0C\u4E0D\u518D\u9760 nowrap \u786C\u6491\u3002 */
+.dshgn_brokenGroupAll{flex:0 1 auto;max-width:100%;margin-left:auto;height:auto;min-height:22px;
+  padding:2px 8px;font-size:11px;white-space:normal;line-height:1.45;text-align:left}
 /* \u6539\u6307\u5230\u5DF2\u6709\u7684\u90A3\u4E00\u7BC7\uFF1A\u4E00\u884C\u8F93\u5165 + \u4E00\u9897\u300C\u5168\u5E93\u6539\u8FC7\u53BB\u300D\u3002\u540D\u5B57\u591A\u534A\u662F\u4ECE\u5E93\u91CC\u6311\u7684\uFF0C
    \u6240\u4EE5\u6302\u4E0A\u5019\u9009\uFF1B\u56DE\u8F66\u5C31\u63D0\u4EA4\uFF0CEsc \u6536\u8D77\u3002 */
 .dshgn_brokenRetarget{display:flex;align-items:center;gap:6px;padding:4px 2px 2px}
@@ -13949,13 +13980,15 @@ var CSS = `
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* \u5F85\u529E\u6309\u7BC7\u5206\u7EC4\uFF1A\u7EC4\u5934\u662F\u8FD9\u4E00\u7BC7\u7684\u540D\u5B57\uFF08\u70B9\u4E00\u4E0B\u6253\u5F00\u5B83\uFF09\u3001\u8FD8\u5269\u51E0\u6761\u3001\u4EE5\u53CA\u4E00\u9897\u628A\u8FD9\u4E00\u7EC4
    \u4E00\u8D77\u52FE\u6389\u7684\u6309\u94AE\u3002\u7EC4\u5934\u672C\u8EAB\u4E0D\u505A\u6210\u6309\u94AE\u2014\u2014\u540D\u5B57\u548C\u6309\u94AE\u5404\u81EA\u53EF\u70B9\uFF0C\u6309\u94AE\u4E0D\u80FD\u5957\u6309\u94AE\u3002 */
-.dshgn_todoGroup{display:flex;align-items:center;gap:6px;padding:2px 2px 0;min-width:0}
+.dshgn_todoGroup{display:flex;align-items:center;flex-wrap:wrap;gap:2px 6px;padding:2px 2px 0;min-width:0}
 .dshgn_todoGroupName{appearance:none;flex:0 1 auto;min-width:0;padding:0;border:0;background:transparent;
   font:inherit;font-size:11px;font-weight:600;color:var(--dsw-alias-label-secondary);cursor:pointer;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
 .dshgn_todoGroupName:hover{color:var(--dsw-alias-label-primary);text-decoration:underline}
 .dshgn_todoGroupCount{flex:none;font-size:10px;color:var(--dsw-alias-label-dimmed)}
-.dshgn_todoGroupAll{flex:none;margin-left:auto;height:22px;padding:0 8px;font-size:11px}
+/* \u548C\u65AD\u94FE\u90A3\u9875\u540C\u4E00\u4E2A\u9053\u7406\uFF1A\u300C\u52FE\u6389\u8FD9\u4E00\u7BC7\u7684 12 \u6761\u300D\u662F\u957F\u53E5\uFF0C\u7A84\u9762\u677F\u91CC\u5F97\u80FD\u6298\u884C\u3002 */
+.dshgn_todoGroupAll{flex:0 1 auto;max-width:100%;margin-left:auto;height:auto;min-height:22px;
+  padding:2px 8px;font-size:11px;white-space:normal;line-height:1.45;text-align:left}
 .dshgn_backlinks{margin-top:18px;padding-top:12px;border-top:0.5px solid var(--dsw-alias-border-l1)}
 .dshgn_backlinksHead{display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:11px;
   color:var(--dsw-alias-label-tertiary)}
@@ -14485,20 +14518,24 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
   text-overflow:ellipsis;white-space:nowrap}
 .dshgn_cardDir:hover{color:var(--dsw-alias-brand-primary);text-decoration:underline}
 .dshgn_cardDir:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
-.dshgn_cardTags{display:inline-flex;align-items:center;gap:3px;flex:0 1 auto;min-width:0;overflow:hidden}
-.dshgn_cardTag{appearance:none;max-width:88px;padding:0 5px;border:0.5px solid var(--dsw-alias-border-l2);
-  border-radius:999px;background:transparent;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:9px;
-  line-height:1.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
-.dshgn_cardTag:hover{color:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary)}
+/* \u6807\u7B7E\u632A\u5230\u65E5\u671F\u90A3\u4E00\u884C**\u5E95\u4E0B**\uFF0C\u5199\u6210\u4E00\u884C\u5C0F\u5B57\uFF0C\u6BCF\u9897\u524D\u9762\u5E26\u4E00\u4E2A #\u3002
+   \u4EE5\u524D\u662F\u585E\u5728\u65E5\u671F\u53F3\u8FB9\u7684\u4E00\u4E32\u80F6\u56CA\uFF1A\u65E5\u671F\u3001\u76EE\u5F55\u3001\u6807\u7B7E\u62A2\u540C\u4E00\u884C\u7684\u5BBD\u5EA6\uFF0C\u6807\u7B7E\u4E00\u591A
+   \u5C31\u6A2A\u7740\u6EA2\u51FA\u5361\u7247\u8FB9\u6846\uFF08\u7528\u6237\u539F\u8BDD\u300C\u653E\u5728\u4E00\u4E2A\u5706\u70B9\u5185\u6709\u70B9\u8BE1\u5F02\u7136\u540E\u5F88\u5BB9\u6613\u8D85\u51FA\u300D\uFF09\u3002
+   \u73B0\u5728\u8FD9\u4E00\u884C\u81EA\u5DF1\u5360\u4E00\u884C\u3001\u80FD\u6362\u884C\uFF0C\u957F\u6807\u7B7E\u6309\u5B57\u65AD\u884C\uFF0C\u4E0D\u4F1A\u518D\u9876\u51FA\u5361\u7247\u3002 */
+.dshgn_cardTags{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 8px;min-width:0;
+  font-size:10px;line-height:15px;color:var(--dsw-alias-label-tertiary)}
+.dshgn_cardTag{appearance:none;max-width:100%;padding:0;border:0;background:transparent;
+  color:inherit;font:inherit;font-size:10px;line-height:15px;text-align:left;cursor:pointer;
+  overflow-wrap:anywhere}
+.dshgn_cardTag:hover{color:var(--dsw-alias-brand-primary);text-decoration:underline}
 .dshgn_cardTag:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
-/* \u644A\u5F00\u4E4B\u540E\u8981\u80FD\u6362\u884C\uFF1A\u4E00\u884C\u585E\u4E0D\u4E0B\u5341\u51E0\u9897\u6807\u7B7E\uFF0C\u786C\u6324\u4F1A\u628A\u76EE\u5F55\u6324\u6CA1\u3002 */
-.dshgn_cardTags[data-open="true"]{flex-wrap:wrap;overflow:visible}
-.dshgn_cardTagMore{appearance:none;flex:none;padding:0 4px;border:0.5px dashed var(--dsw-alias-border-l2);
-  border-radius:999px;background:transparent;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:9px;
-  line-height:1.6;cursor:pointer;white-space:nowrap}
-.dshgn_cardTagMore:hover{color:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary)}
+/* \u6536\u8D77\u6765\u65F6\u53EA\u6446\u524D\u51E0\u9897\uFF0C\u8D85\u51FA\u7684\u90A3\u51E0\u9897\u9760\u8FD9\u9897\u300C+N\u300D\u644A\u5F00\uFF1B\u644A\u5F00\u4E4B\u540E\u5C31\u5728\u540C\u4E00\u884C\u91CC\u6362\u884C\u3002 */
+.dshgn_cardTagMore{appearance:none;flex:none;padding:0;border:0;background:transparent;
+  color:var(--dsw-alias-label-dimmed);font:inherit;font-size:10px;line-height:15px;
+  cursor:pointer;white-space:nowrap}
+.dshgn_cardTagMore:hover{color:var(--dsw-alias-brand-primary);text-decoration:underline}
 .dshgn_cardTagMore:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
-.dshgn_cardTagMore[data-open="true"]{border-style:solid;color:var(--dsw-alias-label-secondary)}
+.dshgn_cardTagMore[data-open="true"]{color:var(--dsw-alias-label-secondary)}
 .dshgn_cardExcerpt{font-size:11px;line-height:15px;color:var(--dsw-alias-label-tertiary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_note{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;position:relative}
@@ -14723,11 +14760,51 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
    \u8FD9\u91CC\u5199\u6210 flex:none \u4F1A\u628A\u5B83\u4EEC\u538B\u6210\u4E00\u884C\u9AD8\u3002 */
 .dshgn_pane > *{width:100%;max-width:760px;margin-left:auto;margin-right:auto}
 .dshgn_cardBox{max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+/* \u65E5\u5386\u9875\uFF1A\u4E00\u5F20\u771F\u6708\u5386\u3002\u4E03\u5217\u7B49\u5BBD\u683C\u5B50\uFF0C\u6709\u7B14\u8BB0\u7684\u65E5\u5B50\u53F3\u4E0B\u89D2\u6302\u4E00\u4E2A\u7BC7\u6570\uFF1B
+   \u6CA1\u7B14\u8BB0\u7684\u65E5\u5B50\u6DE1\u6389\u4E14\u70B9\u4E0D\u52A8\uFF08\u70B9\u5F00\u53EA\u4F1A\u5F97\u5230\u4E00\u7247\u7A7A\u767D\uFF0C\u4E0D\u5982\u4E0D\u8BA9\u70B9\uFF09\u3002
+   \u683C\u5B50\u7528 aspect-ratio \u6491\u6210\u8FD1\u6B63\u65B9\u5F62\u2014\u2014\u5199\u6B7B\u9AD8\u5EA6\u5728\u7A84\u9762\u677F\u91CC\u4F1A\u53D8\u6210\u6241\u6761\uFF0C
+   \u5199\u6B7B\u5BBD\u5EA6\u5728\u5BBD\u9762\u677F\u91CC\u4F1A\u6491\u51FA\u4E00\u6392\u5927\u7A7A\u5757\u3002 */
+.dshgn_calHead{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:2px}
+.dshgn_calMonth{flex:none;font-size:14px;font-weight:600;letter-spacing:.02em;
+  color:var(--dsw-alias-label-primary);font-variant-numeric:tabular-nums}
+.dshgn_calHead .dshgn_sectionDesc{margin-left:auto}
+.dshgn_calGrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.dshgn_calWeek{font-size:10px;line-height:16px;text-align:center;color:var(--dsw-alias-label-tertiary)}
+.dshgn_calCell{appearance:none;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:1px;min-width:0;aspect-ratio:1/1;padding:2px;border:0.5px solid transparent;border-radius:8px;
+  background:transparent;color:var(--dsw-alias-label-dimmed);font:inherit;cursor:default;
+  font-variant-numeric:tabular-nums}
+.dshgn_calCell[data-has="true"]{cursor:pointer;color:var(--dsw-alias-label-primary);
+  background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-border-l1)}
+.dshgn_calCell[data-has="true"]:hover{background:var(--dsw-alias-interactive-bg-hover-accent);
+  border-color:var(--dsw-alias-brand-primary)}
+.dshgn_calCell[data-has="true"]:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_calCell[data-on="true"]{background:var(--dsw-alias-interactive-bg-hover-accent);
+  border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-primary);font-weight:600}
+/* \u4ECA\u5929\u53EA\u63CF\u4E00\u5708\u8FB9\uFF0C\u4E0D\u62A2\u300C\u9009\u4E2D\u300D\u7684\u90A3\u5757\u5E95\u8272\u2014\u2014\u4E24\u8005\u540C\u65F6\u51FA\u73B0\u65F6\u5F97\u80FD\u5206\u6E05\u3002 */
+.dshgn_calCell[data-today="true"]{box-shadow:inset 0 0 0 1px var(--dsw-alias-brand-primary)}
+.dshgn_calDay{font-size:12px;line-height:16px}
+.dshgn_calNum{font-size:9px;line-height:11px;color:var(--dsw-alias-label-secondary)}
+.dshgn_calDayList{display:flex;flex-direction:column;gap:4px;min-width:0}
+.dshgn_calNote{appearance:none;display:flex;align-items:center;gap:8px;width:100%;min-width:0;
+  padding:7px 9px;border:0.5px solid var(--dsw-alias-border-l1);border-radius:8px;
+  background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.dshgn_calNote:hover{background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-border-l2)}
+.dshgn_calNote:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_calNoteTitle{flex:1;min-width:0;font-size:12.5px;line-height:1.5;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_calNoteDir{flex:none;max-width:40%;font-size:10px;color:var(--dsw-alias-label-tertiary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_section{display:flex;flex-direction:column;gap:8px;padding:14px 15px;border-radius:10px;
   border:0.5px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-overlay)}
-.dshgn_sectionTitle{font-size:12px;font-weight:600;color:var(--dsw-alias-label-primary)}
-/* \u5361\u7247\u6807\u9898\u884C\uFF1A\u6807\u9898 + \u53F3\u4FA7\u72B6\u6001\u5FBD\u7AE0\u3002\u4EE5\u524D\u5FBD\u7AE0\u53EA\u80FD\u6302\u5728\u4E0B\u4E00\u884C\uFF0C\u8BFB\u8D77\u6765\u50CF\u4E24\u4E2A\u72EC\u7ACB\u4FE1\u606F\u3002 */
-.dshgn_sectionHead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:2px}
+/* \u6807\u9898\u672C\u8EAB\u4E5F\u53EF\u80FD\u5F88\u957F\uFF08\u8BDD\u9898\u540D\u3001\u65AD\u94FE\u91CC\u90A3\u4E2A\u6307\u4E0D\u5230\u7684\u7BC7\u540D\uFF09\uFF0C\u5F97\u8BA9\u5B83\u5148\u6536\u7F29\uFF0C
+   \u800C\u4E0D\u662F\u628A\u5FBD\u7AE0/\u6309\u94AE\u6324\u51FA\u5361\u7247\u53F3\u8FB9\u3002 */
+.dshgn_sectionTitle{flex:0 1 auto;min-width:0;font-size:12px;font-weight:600;
+  color:var(--dsw-alias-label-primary);overflow-wrap:anywhere}
+/* \u5361\u7247\u6807\u9898\u884C\uFF1A\u6807\u9898 + \u53F3\u4FA7\u72B6\u6001\u5FBD\u7AE0\u3002\u4EE5\u524D\u5FBD\u7AE0\u53EA\u80FD\u6302\u5728\u4E0B\u4E00\u884C\uFF0C\u8BFB\u8D77\u6765\u50CF\u4E24\u4E2A\u72EC\u7ACB\u4FE1\u606F\u3002
+   \u6324\u4E0D\u4E0B\u65F6\u5141\u8BB8\u6362\u884C\uFF1A\u4E00\u884C\u91CC\u585E\u6807\u9898 + \u4E24\u9897\u6309\u94AE + \u4E00\u9897\u5FBD\u7AE0\uFF0C\u7A84\u9762\u677F\u5FC5\u7136\u9876\u51FA\u53BB\u3002 */
+.dshgn_sectionHead{display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;
+  gap:4px 8px;margin-bottom:2px;min-width:0}
 .dshgn_sectionDesc{font-size:11.5px;line-height:1.7;color:var(--dsw-alias-label-secondary)}
 .dshgn_rowLine{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .dshgn_input{flex:1;min-width:180px;height:28px;padding:0 9px;border:0.5px solid var(--dsw-alias-border-l2);
@@ -14736,8 +14813,13 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 .dshgn_input:focus{border-color:var(--dsw-alias-brand-primary)}
 /* \u5DE5\u5177\u680F\u91CC\u7684\u5C0F\u4E0B\u62C9\uFF1A\u4E0D\u8BE5\u50CF\u6B63\u6587\u8F93\u5165\u6846\u90A3\u6837\u62A2\u8D70\u534A\u884C\u5BBD\u5EA6 */
 .dshgn_selectSm{flex:none;min-width:0;width:auto;height:24px;padding:0 6px;font-size:11.5px;cursor:pointer}
-.dshgn_badge{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 7px;border-radius:10px;
-  font-size:10.5px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}
+/* \u5FBD\u7AE0\u91CC\u5E38\u585E\u7684\u662F\u8BDD\u9898\u540D\u3001\u767B\u5F55\u6001\u3001\u7248\u672C\u53F7\u8FD9\u7C7B\u4E0D\u5B9A\u957F\u7684\u5B57\u7B26\u4E32\u3002\u4EE5\u524D\u6CA1\u6709\u5BBD\u5EA6\u4E0A\u9650\uFF0C
+   \u4E00\u4E2A\u957F\u8BDD\u9898\u540D\u5C31\u80FD\u628A sectionHead \u6491\u7834\uFF08\u6807\u9898\u88AB\u6324\u6210\u4E24\u884C\u3001\u5FBD\u7AE0\u81EA\u5DF1\u9876\u51FA\u5361\u7247\u53F3\u8FB9\uFF09\u3002
+   \u73B0\u5728\u5B83\u6700\u591A\u5360\u6EE1\u4E00\u884C\uFF0C\u8D85\u4E86\u7701\u7565\u53F7\u6536\u5C3E\uFF0C\u9AD8\u5EA6\u4E5F\u8DDF\u7740\u5185\u5BB9\u8D70\u800C\u4E0D\u662F\u5199\u6B7B 20px\u3002 */
+.dshgn_badge{display:inline-flex;align-items:center;gap:4px;min-height:20px;max-width:100%;
+  padding:1px 7px;border-radius:10px;font-size:10.5px;line-height:1.5;
+  background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_badgeOk{background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-brand-primary)}
 .dshgn_badgeWarn{background:transparent;color:var(--dsw-alias-state-warn-primary);
   box-shadow:inset 0 0 0 0.5px var(--dsw-alias-state-warn-primary)}
@@ -17204,6 +17286,9 @@ ${insert}
         status !== null && status.conflicts > 0 ? status.conflicts : void 0
       ),
       tabButton("card", t4("tab.card")),
+      // 日历：按日子翻笔记。搜索框是按字找，左栏热力图是「哪天写得多」，
+      // 都不回答「十月那周我记了什么」，所以给它一个一级入口。
+      tabButton("calendar", t4("tab.calendar")),
       tabButton("broken", t4("tab.broken")),
       tabButton("todos", t4("tab.todos")),
       tabButton("settings", t4("tab.settings")),
@@ -17273,6 +17358,15 @@ ${insert}
       },
       onError: (message) => setError(message),
       showToast
+    });
+  } else if (tab === "calendar") {
+    body = h4(CalendarPane, {
+      t: t4,
+      entries,
+      onOpen: (path) => {
+        setTab("notes");
+        void openNote(path);
+      }
     });
   } else if (tab === "broken") {
     body = h4(BrokenPane, {
@@ -18413,57 +18507,57 @@ ${insert}
                       }
                     },
                     entry.dir
-                  ) : null,
-                  // 标签摆在卡片上：光看标题和目录，常常想不起这篇属于哪一摊事。
-                  // 点一颗就按它筛——和左栏标签区、属性区里那几颗是同一个动作。
-                  // 最多三颗，多出来的收成「+N」，否则标签多的一行会把目录挤没。
-                  Array.isArray(entry.tags) && entry.tags.length > 0 ? h4(
-                    "span",
-                    {
-                      className: "dshgn_cardTags",
-                      "data-open": openTags.has(entry.path) ? "true" : "false"
-                    },
-                    (openTags.has(entry.path) ? entry.tags : entry.tags.slice(0, 3)).map(
-                      (tag) => h4(
-                        "button",
-                        {
-                          key: tag,
-                          type: "button",
-                          className: "dshgn_cardTag",
-                          title: `${t4("note.pickTag")}\uFF1A${tag}`,
-                          onClick: (event) => {
-                            event.stopPropagation();
-                            setActiveTag(tag);
-                            setActiveDir("");
-                          }
-                        },
-                        tag
-                      )
-                    ),
-                    // 「+N」不只是个数字：点一下就地摊开全部标签，再点收回去。
-                    // 摊开之后不按标签筛、也不打开这一篇——它只是一扇窗。
-                    entry.tags.length > 3 ? h4(
-                      "button",
-                      {
-                        type: "button",
-                        className: "dshgn_cardTagMore",
-                        title: openTags.has(entry.path) ? t4("note.lessTags") : t4("note.moreTags").replace("{n}", String(entry.tags.length - 3)),
-                        "aria-expanded": openTags.has(entry.path) ? "true" : "false",
-                        "data-open": openTags.has(entry.path) ? "true" : "false",
-                        onClick: (event) => {
-                          event.stopPropagation();
-                          setOpenTags((prev) => {
-                            const next = new Set(prev);
-                            if (next.has(entry.path)) next.delete(entry.path);
-                            else next.add(entry.path);
-                            return next;
-                          });
-                        }
-                      },
-                      openTags.has(entry.path) ? t4("note.lessTags") : `+${entry.tags.length - 3}`
-                    ) : null
                   ) : null
                 ),
+                // 标签单独占一行，写在日期那一行的底下：小字、每颗前面一个 #，
+                // 点一颗还是「按它筛」。以前是塞在日期右边的一串胶囊，
+                // 和目录抢同一行宽度，标签一多就横着溢出卡片边框。
+                Array.isArray(entry.tags) && entry.tags.length > 0 ? h4(
+                  "div",
+                  {
+                    className: "dshgn_cardTags",
+                    "data-open": openTags.has(entry.path) ? "true" : "false"
+                  },
+                  (openTags.has(entry.path) ? entry.tags : entry.tags.slice(0, 3)).map(
+                    (tag) => h4(
+                      "button",
+                      {
+                        key: tag,
+                        type: "button",
+                        className: "dshgn_cardTag",
+                        title: `${t4("note.pickTag")}\uFF1A${tag}`,
+                        onClick: (event) => {
+                          event.stopPropagation();
+                          setActiveTag(tag);
+                          setActiveDir("");
+                        }
+                      },
+                      `#${tag}`
+                    )
+                  ),
+                  // 「+N」不只是个数字：点一下就地摊开全部标签，再点收回去。
+                  // 摊开之后不按标签筛、也不打开这一篇——它只是一扇窗。
+                  entry.tags.length > 3 ? h4(
+                    "button",
+                    {
+                      type: "button",
+                      className: "dshgn_cardTagMore",
+                      title: openTags.has(entry.path) ? t4("note.lessTags") : t4("note.moreTags").replace("{n}", String(entry.tags.length - 3)),
+                      "aria-expanded": openTags.has(entry.path) ? "true" : "false",
+                      "data-open": openTags.has(entry.path) ? "true" : "false",
+                      onClick: (event) => {
+                        event.stopPropagation();
+                        setOpenTags((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(entry.path)) next.delete(entry.path);
+                          else next.add(entry.path);
+                          return next;
+                        });
+                      }
+                    },
+                    openTags.has(entry.path) ? t4("note.lessTags") : `+${entry.tags.length - 3}`
+                  ) : null
+                ) : null,
                 // 搜索态优先显示正文命中行（带行号），比摘要更能说明为什么它被搜出来
                 searchMode && Array.isArray(entry.matches) && entry.matches.length > 0 ? h4(
                   "div",
@@ -21825,6 +21919,150 @@ function TodoPane(props) {
     )
   );
 }
+function CalendarPane(props) {
+  const { t: t4, entries, onOpen } = props;
+  const byDay = T2(() => {
+    const map = /* @__PURE__ */ new Map();
+    for (const entry of Array.isArray(entries) ? entries : []) {
+      const day = typeof entry.date === "string" ? entry.date : "";
+      if (day === "") continue;
+      const list = map.get(day);
+      if (list === void 0) map.set(day, [entry]);
+      else list.push(entry);
+    }
+    return map;
+  }, [entries]);
+  const [cursor, setCursor] = h2(() => {
+    let latest = "";
+    for (const day of byDay.keys()) if (day > latest) latest = day;
+    const base = latest === "" ? /* @__PURE__ */ new Date() : /* @__PURE__ */ new Date(latest + "T00:00:00");
+    return { year: base.getFullYear(), month: base.getMonth() };
+  });
+  const [picked, setPicked] = h2("");
+  const shift = (delta) => {
+    setCursor((prev) => {
+      const next = new Date(prev.year, prev.month + delta, 1);
+      return { year: next.getFullYear(), month: next.getMonth() };
+    });
+    setPicked("");
+  };
+  const pad2 = (n2) => String(n2).padStart(2, "0");
+  const daysInMonth = new Date(cursor.year, cursor.month + 1, 0).getDate();
+  const firstWeekday = new Date(cursor.year, cursor.month, 1).getDay();
+  const now = /* @__PURE__ */ new Date();
+  const todayKey = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+  const monthKey = `${cursor.year}-${pad2(cursor.month + 1)}`;
+  let monthCount = 0;
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const list = byDay.get(`${monthKey}-${pad2(day)}`);
+    if (list !== void 0) monthCount += list.length;
+  }
+  const weekdays = String(t4("calendar.weekdays") || "").split(",");
+  const cells = [];
+  for (let i3 = 0; i3 < firstWeekday; i3 += 1) cells.push(null);
+  for (let day = 1; day <= daysInMonth; day += 1) cells.push(day);
+  const pickedList = picked === "" ? [] : byDay.get(picked) || [];
+  return h4(
+    "div",
+    { className: "dshgn_pane" },
+    h4(
+      "div",
+      { className: "dshgn_section" },
+      h4(
+        "div",
+        { className: "dshgn_calHead" },
+        h4(
+          "button",
+          {
+            type: "button",
+            className: "dshgn_iconBtn",
+            title: t4("calendar.prev"),
+            onClick: () => shift(-1)
+          },
+          h4(Icon, { name: "left", size: 14 })
+        ),
+        h4("div", { className: "dshgn_calMonth" }, `${cursor.year}-${pad2(cursor.month + 1)}`),
+        h4(
+          "span",
+          { className: "dshgn_sectionDesc" },
+          t4("calendar.monthCount").replace("{n}", String(monthCount))
+        ),
+        h4(
+          "button",
+          {
+            type: "button",
+            className: "dshgn_iconBtn",
+            title: t4("calendar.next"),
+            onClick: () => shift(1)
+          },
+          h4(Icon, { name: "right", size: 14 })
+        )
+      ),
+      h4("div", { className: "dshgn_sectionDesc" }, t4("calendar.desc")),
+      h4(
+        "div",
+        { className: "dshgn_calGrid" },
+        weekdays.map(
+          (label, index) => h4("div", { key: "w" + String(index), className: "dshgn_calWeek" }, label)
+        ),
+        cells.map((day, index) => {
+          if (day === null) return h4("span", { key: "e" + String(index) });
+          const key = `${monthKey}-${pad2(day)}`;
+          const list = byDay.get(key);
+          const has = list !== void 0;
+          return h4(
+            "button",
+            {
+              key,
+              type: "button",
+              className: "dshgn_calCell",
+              "data-has": has ? "true" : "false",
+              "data-on": picked === key ? "true" : "false",
+              "data-today": key === todayKey ? "true" : "false",
+              title: has ? t4("calendar.dayHint").replace("{n}", String(list.length)) : key,
+              // 没笔记的日子点不动：点开只会得到一片空白。
+              disabled: !has,
+              onClick: has ? () => setPicked(picked === key ? "" : key) : void 0
+            },
+            h4("span", { className: "dshgn_calDay" }, String(day)),
+            has ? h4("span", { className: "dshgn_calNum" }, String(list.length)) : null
+          );
+        })
+      )
+    ),
+    picked === "" ? null : h4(
+      "div",
+      { className: "dshgn_section" },
+      h4(
+        "div",
+        { className: "dshgn_sectionHead" },
+        h4("div", { className: "dshgn_sectionTitle" }, picked),
+        h4("span", { className: "dshgn_sectionDesc" }, t4("calendar.dayCount").replace("{n}", String(pickedList.length)))
+      ),
+      h4(
+        "div",
+        { className: "dshgn_calDayList" },
+        pickedList.map(
+          (entry) => h4(
+            "button",
+            {
+              key: entry.path,
+              type: "button",
+              className: "dshgn_calNote",
+              title: entry.path,
+              onClick: () => {
+                if (typeof onOpen === "function") onOpen(entry.path);
+              }
+            },
+            h4(Icon, { name: "note", size: 12 }),
+            h4("span", { className: "dshgn_calNoteTitle" }, entry.title),
+            entry.dir ? h4("span", { className: "dshgn_calNoteDir" }, entry.dir) : null
+          )
+        )
+      )
+    )
+  );
+}
 function TrashPane(props) {
   const { t: t4, status, dirs, onChanged, onError, showToast } = props;
   const [items, setItems] = h2(null);
@@ -22789,7 +23027,7 @@ function writeColWidths(widths) {
   }
 }
 var SESSION_KEY = "dshgn.session";
-var SESSION_TABS = ["notes", "cloud", "settings", "card", "conflict", "broken", "todos", "trash"];
+var SESSION_TABS = ["notes", "cloud", "settings", "card", "calendar", "conflict", "broken", "todos", "trash"];
 function readSession() {
   const empty = { tab: "", dir: "", tag: "", path: "" };
   try {

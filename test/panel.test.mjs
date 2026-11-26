@@ -7991,8 +7991,14 @@ test('卡片上摆着这一篇的标签，点一颗就按它筛，多出来的�
   assert.equal(chipsA.length, 3, '最多摆三颗，实际 ' + chipsA.length)
   assert.deepEqual(
     chipsA.map((el) => (el.textContent || '').trim()),
-    ['卡片标签/子一', '卡片标签/子二', '卡片标签/子三'],
-    '摆的是最前面那三颗',
+    ['#卡片标签/子一', '#卡片标签/子二', '#卡片标签/子三'],
+    '摆的是最前面那三颗，每颗前面带一个 #',
+  )
+  // 标签自己占一行、写在日期那一行底下，不再挤在 meta 里跟目录抢宽度。
+  assert.equal(
+    cardA.querySelector('.dshgn_cardMeta .dshgn_cardTag'),
+    null,
+    '标签不该还塞在 meta 那一行里',
   )
   const moreA = cardA.querySelector('.dshgn_cardTagMore')
   assert.ok(moreA !== null, '多出来的要收成一颗 +N')
@@ -17554,4 +17560,86 @@ test('设置页底部那张版本卡：显示当前版本，点了能查更新�
   } finally {
     window.fetch = globalThis.fetch = wrapped
   }
+})
+
+test('日历页把有笔记的日子标上篇数，点一天列出那天写的每一篇，点一篇就打开它', async () => {
+  const rootNode = () => window.document.querySelector('.dshgn_root')
+  const pad = (n) => String(n).padStart(2, '0')
+  const now = new Date()
+  const todayKey = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate())
+
+  // 造一篇今天的笔记：文件名带日期前缀，deriveDate 才会把它算到今天头上
+  const createRes = await realFetch(server.origin + '/getnote/create', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+    body: JSON.stringify({
+      dir: '随手记',
+      title: '日历页验收',
+      content: '# 日历页验收\n\n这天写的。\n',
+      withDatePrefix: true,
+      requestId: 'seed-calendar-pane',
+    }),
+  })
+  assert.equal(createRes.ok, true, '造笔记失败：' + createRes.status)
+  const created = await createRes.json()
+  const createdPath = String(created.path || '')
+  assert.ok(createdPath.includes(todayKey), '文件名该带今天的前缀，实际 ' + createdPath)
+
+  // 刷新一次，让 /tree 把这篇带回来。上一条用例停在设置页，而刷新按钮只在
+  // 笔记/云端两个页签摆出来，所以先回笔记页再找它。
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  const refresh = await waitFor(refreshBtn, 5000, '顶栏那颗刷新按钮')
+  refresh.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(600)
+
+  await clickTab('日历')
+  const grid = await waitFor(() => window.document.querySelector('.dshgn_calGrid'), 8000, '日历格子')
+  assert.equal(
+    window.document.querySelectorAll('.dshgn_calWeek').length,
+    7,
+    '表头该是七天',
+  )
+
+  const cellOf = () =>
+    Array.from(grid.querySelectorAll('.dshgn_calCell')).find(
+      (el) => el.getAttribute('data-today') === 'true',
+    ) || null
+  const todayCell = await waitFor(cellOf, 5000, '今天那颗格子')
+  assert.equal(todayCell.getAttribute('data-has'), 'true', '今天写过东西，格子上该有篇数')
+  assert.ok(todayCell.querySelector('.dshgn_calNum'), '有笔记的日子右下角要写篇数')
+
+  // 没笔记的日子点不动：点开只会得到一片空白
+  const emptyCell = Array.from(grid.querySelectorAll('.dshgn_calCell')).find(
+    (el) => el.getAttribute('data-has') === 'false',
+  )
+  assert.ok(emptyCell, '这个月里总有没写东西的日子')
+  assert.equal(emptyCell.disabled, true, '没笔记的日子不该能点')
+
+  todayCell.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  const noteBtn = await waitFor(
+    () =>
+      Array.from(window.document.querySelectorAll('.dshgn_calNote')).find((el) =>
+        (el.textContent || '').includes('日历页验收'),
+      ) || null,
+    5000,
+    '点一天之后列出那天写的笔记',
+  )
+  assert.ok(noteBtn, '那天的清单里该有这一篇')
+
+  // 前面几条用例可能已经开着一篇笔记，data-has-note 一直是 true，
+  // 所以这里等的是「路径变成日历里点的那一篇」，而不是那个布尔。
+  const pathOf = () => {
+    const el = window.document.querySelector('.dshgn_notePath')
+    return el !== null && el.textContent === createdPath ? el : null
+  }
+  noteBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(pathOf, 8000, '打开的是日历里点的那一篇')
+  assert.equal(rootNode().getAttribute('data-has-note'), 'true', '点一篇该进阅读态')
+
+  // 收尾：退回空态，别把打开状态留给下一条用例
+  const back = window.document.querySelector('.dshgn_noteBack')
+  if (back) back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
 })
