@@ -3220,6 +3220,13 @@ async function saveFile(url, filename) {
           '--dshgn-btnHoverSoft': hslToHex(hue, 0.48, 0.50),
           '--dshgn-btnFillPale': hslToHex(hue, 0.34, 0.32),
           '--dshgn-btnHoverPale': hslToHex(hue, 0.38, 0.38),
+          // 卡片面（断链/待办/日历/大纲/属性那些一块块的东西）：比所在那一栏亮一档，
+          // 深色下才有「浮起来的卡」而不是「挖进去的黑洞」。描边用半透明白，
+          // 比写死的 rgba(var(--dshgn-tintRgb),…) 在深底上更立得住。
+          '--dshgn-card': hslToHex(hue, tint(0.20, 0.38), 0.205),
+          '--dshgn-cardLine': 'rgba(255,255,255,.10)',
+          // 输入框的面：比卡片沉一档，像嵌在卡片里。
+          '--dshgn-input': hslToHex(hue, tint(0.20, 0.38), 0.125),
         }
       }
       return {
@@ -3265,6 +3272,11 @@ async function saveFile(url, filename) {
         // 主按钮；这里要表达的是「我选过这个」，不是「点这个」。
         '--dshgn-btnFillPale': hslToHex(hue, 0.44, 0.74),
         '--dshgn-btnHoverPale': hslToHex(hue, 0.48, 0.68),
+        // 卡片面：近白但留一丝色相，纯白在浅蓝底上会显得是「贴上去的白纸」。
+        '--dshgn-card': hslToHex(hue, tint(0.12, 0.34), 0.995),
+        '--dshgn-cardLine': `rgba(${Math.round(rgb.r)},${Math.round(rgb.g)},${Math.round(rgb.b)},.10)`,
+        // 输入框的面：比卡片沉一档，看得出是能打字的地方。
+        '--dshgn-input': hslToHex(hue, tint(0.22, 0.50), 0.945),
       }
     }
 
@@ -5583,8 +5595,8 @@ async function saveFile(url, filename) {
 .dshgn_head .dshgn_iconBtn.dshgn_iconBtnFail{color:var(--dsw-alias-state-error-primary)}
 /* 大纲：贴着阅读区顶部的一条可折叠目录。层级靠左内边距区分，不做竖线树状，
    因为阅读区本来就窄，画树线会把标题文字挤到很短。 */
-.dshgn_outline{margin:0 0 10px;border:0.5px solid var(--dsw-alias-border-l1);border-radius:8px;
-  background:var(--dsw-alias-interactive-bg-hover);overflow:hidden}
+.dshgn_outline{margin:0 0 10px;border:0.5px solid var(--dshgn-cardLine);border-radius:8px;
+  background:var(--dshgn-card);overflow:hidden}
 .dshgn_outlineToggle{appearance:none;display:flex;align-items:center;gap:6px;width:100%;
   padding:7px 10px;border:0;background:transparent;font:inherit;font-size:11px;
   color:var(--dsw-alias-label-secondary);cursor:pointer;text-align:left}
@@ -5597,13 +5609,13 @@ async function saveFile(url, filename) {
   color:var(--dsw-alias-label-tertiary)}
 .dshgn_outlineFilter{flex:1 1 auto;min-width:0;height:22px;font-size:11px}
 .dshgn_outlineFilterClear{flex:none;width:22px;height:22px}
-.dshgn_outlineEmpty{padding:6px 10px;font-size:11px;color:var(--dsw-alias-label-dimmed)}
+.dshgn_outlineEmpty{padding:6px 8px;font-size:11px;color:var(--dsw-alias-label-dimmed)}
 .dshgn_outlineList{padding:0 0 5px;max-height:220px;overflow-y:auto}
 /* 一行 = 标题 + 一颗「抄链接」的小按钮。按钮平时不显形，鼠标停在那一行
    或者用键盘聚焦到它才出现——大纲本来就是一列纯文字，多十几颗图标会把
    「读标题」这件事搅乱。 */
 .dshgn_outlineRow{display:flex;align-items:center;gap:2px}
-.dshgn_outlineItem{appearance:none;display:block;flex:1;min-width:0;padding:3px 10px;border:0;
+.dshgn_outlineItem{appearance:none;display:block;flex:1;min-width:0;padding:3px 8px;border:0;
   background:transparent;font:inherit;font-size:12px;line-height:1.5;
   color:var(--dsw-alias-label-secondary);cursor:pointer;text-align:left;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -5624,9 +5636,9 @@ async function saveFile(url, filename) {
 /* 属性区：笔记头部那些键值（tags / aliases / 自定义字段）。
    放在正文上方、比大纲更淡——它是「这篇是什么」，不是「这篇写了什么」，
    读正文时它应该退到背景里，但要一眼能扫到。 */
-.dshgn_props{margin:0 0 12px;border:0.5px solid var(--dsw-alias-border-l1);
-  border-radius:8px;background:var(--dsw-alias-interactive-bg-hover);overflow:hidden;font-size:11.5px}
-.dshgn_propsBody{padding:0 10px 7px}
+.dshgn_props{margin:0 0 12px;border:0.5px solid var(--dshgn-cardLine);
+  border-radius:8px;background:var(--dshgn-card);overflow:hidden;font-size:11.5px}
+.dshgn_propsBody{padding:0 8px 7px}
 .dshgn_propRow{display:flex;align-items:flex-start;gap:8px;padding:2px 0;line-height:1.6}
 .dshgn_propKey{flex:0 0 auto;min-width:52px;max-width:110px;color:var(--dsw-alias-label-tertiary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -5646,9 +5658,9 @@ async function saveFile(url, filename) {
 /* 断链清单：一行一处。目标名字用错误色，因为这一行本身就是「这里有问题」；
    底下的位置与上下文用淡色，扫一眼就能跳过正常的那些。 */
 .dshgn_brokenRow{appearance:none;display:flex;flex-direction:column;gap:3px;width:100%;
-  text-align:left;padding:8px 10px;border:0.5px solid var(--dsw-alias-border-l1);
-  border-radius:8px;background:transparent;font:inherit;cursor:pointer}
-.dshgn_brokenRow:hover{background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-border-l2)}
+  text-align:left;padding:8px 10px;border:0.5px solid var(--dshgn-cardLine);
+  border-radius:8px;background:var(--dshgn-card);font:inherit;cursor:pointer}
+.dshgn_brokenRow:hover{background:var(--dshgn-surface);border-color:var(--dsw-alias-brand-primary)}
 .dshgn_brokenTarget{font-size:12px;font-weight:600;color:var(--dsw-alias-state-error-primary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_brokenWhere{font-size:10.5px;color:var(--dsw-alias-label-dimmed);
@@ -5660,7 +5672,7 @@ async function saveFile(url, filename) {
 .dshgn_brokenLine{display:flex;align-items:stretch;gap:6px;width:100%}
 .dshgn_brokenLine .dshgn_brokenRow{flex:1 1 auto;min-width:0}
 .dshgn_brokenJump{flex:none;align-self:center;appearance:none;padding:2px 8px;
-  border:0.5px solid var(--dsw-alias-border-l2);border-radius:999px;background:transparent;
+  border:0.5px solid var(--dshgn-cardLine);border-radius:999px;background:var(--dshgn-card);
   color:var(--dsw-alias-label-secondary);font:inherit;font-size:10.5px;line-height:1.7;
   white-space:nowrap;cursor:pointer}
 .dshgn_brokenJump:hover{color:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary)}
@@ -5668,14 +5680,20 @@ async function saveFile(url, filename) {
 /* 断链按「指不到的那个名字」分组：同一个名字在七八篇里各写一次，就是七八条一模一样的
    红字；分组之后一处名字一行头，写着它被写错了几处，右边一颗「写一篇」当场把那一篇补出来。 */
 .dshgn_brokenGroup{display:flex;align-items:center;flex-wrap:wrap;gap:2px 6px;padding:2px 2px 0;min-width:0}
+/* 组头右边那一簇按钮：整簇靠右、内部等距，换行时一起掉到下一行，
+   两颗按钮的左边缘因此永远对齐（以前各自 margin-left:auto 会互相推）。 */
+.dshgn_brokenGroupActions{display:flex;align-items:center;flex-wrap:wrap;gap:4px;
+  margin-left:auto;min-width:0}
 .dshgn_brokenGroupName{flex:0 1 auto;min-width:0;font-size:11px;font-weight:600;
   color:var(--dsw-alias-state-error-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_brokenGroupCount{flex:none;font-size:10px;color:var(--dsw-alias-label-dimmed)}
 /* 组头这颗按钮的文案是「改指到已有那篇」这种七八个字的长句，加上「写一篇」一起摆在
    名字右边，窄一点的面板里就顶出容器了。让它跟着组头换行、自己也能折行，
    高度跟着长，不再靠 nowrap 硬撑。 */
-.dshgn_brokenGroupAll{flex:0 1 auto;max-width:100%;margin-left:auto;height:auto;min-height:22px;
-  padding:2px 8px;font-size:11px;white-space:normal;line-height:1.45;text-align:left}
+.dshgn_brokenGroupAll{flex:0 1 auto;max-width:100%;height:auto;min-height:22px;
+  padding:2px 8px;font-size:11px;white-space:normal;line-height:1.45;text-align:left;
+  border-color:var(--dshgn-cardLine);background:var(--dshgn-card)}
+.dshgn_brokenGroupAll:hover{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary)}
 /* 改指到已有的那一篇：一行输入 + 一颗「全库改过去」。名字多半是从库里挑的，
    所以挂上候选；回车就提交，Esc 收起。 */
 .dshgn_brokenRetarget{display:flex;align-items:center;gap:6px;padding:4px 2px 2px}
@@ -5692,8 +5710,8 @@ async function saveFile(url, filename) {
    方框外面套一层透明按钮，是为了让整块方框连周边的点击热区一起可点——12px 的方框
    直接点很难点中，手机上尤其。 */
 .dshgn_todoRow{display:flex;align-items:flex-start;gap:8px;padding:7px 10px;
-  border:0.5px solid var(--dsw-alias-border-l1);border-radius:8px;background:transparent}
-.dshgn_todoRow:hover{background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-border-l2)}
+  border:0.5px solid var(--dshgn-cardLine);border-radius:8px;background:var(--dshgn-card)}
+.dshgn_todoRow:hover{background:var(--dshgn-surface);border-color:var(--dsw-alias-brand-primary)}
 .dshgn_todoRow .dshgn_check{margin-top:3px}
 /* 待办那行里的文字与「去这一条」并排：文字自己是个按钮，不能把按钮套进按钮。 */
 .dshgn_todoLine{display:flex;align-items:center;gap:6px;flex:1;min-width:0}
@@ -5701,18 +5719,22 @@ async function saveFile(url, filename) {
 .dshgn_todoText{appearance:none;display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;
   text-align:left;padding:0;border:0;background:transparent;font:inherit;cursor:pointer;color:inherit}
 .dshgn_todoTitle{font-size:12.5px;line-height:1.5;color:var(--dsw-alias-label-primary);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  overflow-wrap:anywhere;word-break:break-word}
 /* 待办按篇分组：组头是这一篇的名字（点一下打开它）、还剩几条、以及一颗把这一组
    一起勾掉的按钮。组头本身不做成按钮——名字和按钮各自可点，按钮不能套按钮。 */
 .dshgn_todoGroup{display:flex;align-items:center;flex-wrap:wrap;gap:2px 6px;padding:2px 2px 0;min-width:0}
+.dshgn_todoGroupActions{display:flex;align-items:center;flex-wrap:wrap;gap:4px;
+  margin-left:auto;min-width:0}
 .dshgn_todoGroupName{appearance:none;flex:0 1 auto;min-width:0;padding:0;border:0;background:transparent;
   font:inherit;font-size:11px;font-weight:600;color:var(--dsw-alias-label-secondary);cursor:pointer;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
 .dshgn_todoGroupName:hover{color:var(--dsw-alias-label-primary);text-decoration:underline}
 .dshgn_todoGroupCount{flex:none;font-size:10px;color:var(--dsw-alias-label-dimmed)}
 /* 和断链那页同一个道理：「勾掉这一篇的 12 条」是长句，窄面板里得能折行。 */
-.dshgn_todoGroupAll{flex:0 1 auto;max-width:100%;margin-left:auto;height:auto;min-height:22px;
-  padding:2px 8px;font-size:11px;white-space:normal;line-height:1.45;text-align:left}
+.dshgn_todoGroupAll{flex:0 1 auto;max-width:100%;height:auto;min-height:22px;
+  padding:2px 8px;font-size:11px;white-space:normal;line-height:1.45;text-align:left;
+  border-color:var(--dshgn-cardLine);background:var(--dshgn-card)}
+.dshgn_todoGroupAll:hover{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary)}
 .dshgn_backlinks{margin-top:18px;padding-top:12px;border-top:0.5px solid var(--dsw-alias-border-l1)}
 .dshgn_backlinksHead{display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:11px;
   color:var(--dsw-alias-label-tertiary)}
@@ -5983,8 +6005,8 @@ async function saveFile(url, filename) {
    那种模式是为抠空格/换行差异准备的。 */
 .dshgn_diffRow{display:flex;gap:10px;flex:1;min-height:0;overflow:hidden}
 .dshgn_diffCol{flex:1;min-width:0;display:flex;flex-direction:column;
-  border:0.5px solid var(--dsw-alias-border-l2);border-radius:9px;overflow:hidden;
-  background:var(--dsw-alias-bg-overlay)}
+  border:0.5px solid var(--dshgn-cardLine);border-radius:9px;overflow:hidden;
+  background:var(--dshgn-card)}
 .dshgn_diffHead{flex:none;padding:6px 10px;font-size:11px;font-weight:600;
   background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);
   border-bottom:0.5px solid var(--dsw-alias-border-l1)}
@@ -6031,9 +6053,11 @@ async function saveFile(url, filename) {
 .dshgn_note .dshgn_md.dshgn_mdS{font-size:12px !important;line-height:1.7}
 .dshgn_note .dshgn_md.dshgn_mdL{font-size:15px !important;line-height:1.9}
 .dshgn_btn{appearance:none;display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 11px;
-  border:0.5px solid var(--dsw-alias-border-l2);border-radius:7px;background:transparent;
-  color:var(--dsw-alias-label-primary);cursor:pointer;font:inherit;font-size:12px;white-space:nowrap}
-.dshgn_btn:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
+  border:0.5px solid var(--dshgn-cardLine);border-radius:7px;background:var(--dshgn-card);
+  color:var(--dsw-alias-label-primary);cursor:pointer;font:inherit;font-size:12px;white-space:nowrap;
+  max-width:100%;box-sizing:border-box}
+.dshgn_btn:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);
+  border-color:var(--dsw-alias-border-l2)}
 .dshgn_btn:disabled{opacity:.5;cursor:default}
 /* 键盘走到哪一颗，哪一颗亮一圈。文件里另外 40 来颗小按钮各自写了这条，
    偏偏最常用的 .dshgn_btn / .dshgn_chip / 左栏目录行漏了——Tab 过去什么都看不见。 */
@@ -6167,9 +6191,9 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
    在各自的栏里都从同一条竖线起头，两边宽度也一样，不再一宽一窄。 */
 .dshgn_searchWrap{flex:none;display:flex;align-items:center;gap:6px;padding:8px 6px;
   border-bottom:0.5px solid var(--dsw-alias-border-l2)}
-.dshgn_search{flex:1;min-width:0;height:26px;padding:0 9px;border:0.5px solid var(--dsw-alias-border-l2);
-  border-radius:7px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;
-  font-size:12px;outline:none}
+.dshgn_search{flex:1;min-width:0;height:26px;padding:0 9px;border:0.5px solid var(--dshgn-cardLine);
+  border-radius:7px;background:var(--dshgn-input);color:var(--dsw-alias-label-primary);font:inherit;
+  font-size:12px;outline:none;box-sizing:border-box}
 .dshgn_search:focus{border-color:var(--dsw-alias-brand-primary)}
 /* 浏览器自带的那个 × 各家长得不一样、位置也不受控，我们自己摆一颗，把它藏掉 */
 .dshgn_search::-webkit-search-cancel-button{display:none}
@@ -6376,7 +6400,8 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 .dshgn_liCont{color:var(--dsw-alias-label-secondary)}
 .dshgn_task{list-style:none;margin-left:-18px;display:flex;align-items:flex-start;gap:6px}
 .dshgn_check{flex:none;width:12px;height:12px;margin-top:5px;border-radius:3px;
-  border:1.5px solid var(--dsw-alias-border-l2);display:inline-block}
+  border:1.5px solid var(--dsw-alias-label-tertiary);background:var(--dshgn-input);
+  display:inline-block;box-sizing:border-box}
 .dshgn_checkOn{background:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary)}
 /* 可点的待办方框：12px 的方块在桌面上太难点中，用透明 outline 把命中区撑到 26px，
    视觉上还是一个 12px 的框。cursor 与 hover 是唯一能告诉用户「这个能点」的信号。 */
@@ -6466,7 +6491,7 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 /* 「原来在」那一行：比时间那行再淡一点，它是提示不是主信息。 */
 .dshgn_trashOrigin{margin-top:1px;font-size:10px;color:var(--dsw-alias-label-dimmed);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_trashTarget{display:flex;flex-direction:column;gap:4px;margin:8px 0 2px;min-width:0}
-.dshgn_trashPreview{display:flex;flex-direction:column;gap:4px;margin:0 0 8px;padding:8px 10px;border-radius:7px;background:var(--dsw-alias-interactive-bg-hover);min-width:0}
+.dshgn_trashPreview{display:flex;flex-direction:column;gap:4px;margin:0 0 8px;padding:8px 10px;border-radius:7px;background:var(--dshgn-input);border:0.5px solid var(--dshgn-cardLine);min-width:0}
 .dshgn_trashPreviewBody{font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary);white-space:pre-wrap;word-break:break-word;max-height:160px;overflow:hidden}
 .dshgn_trashPreviewHint{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--dsw-alias-label-tertiary)}
 /* 摊全之后别再拿 160px 卡着——那等于换了个地方继续截 */
@@ -6492,35 +6517,45 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 .dshgn_calMonth{flex:none;font-size:14px;font-weight:600;letter-spacing:.02em;
   color:var(--dsw-alias-label-primary);font-variant-numeric:tabular-nums}
 .dshgn_calHead .dshgn_sectionDesc{margin-left:auto}
+/* 表头与日期各占一层 grid，但列宽、列间距必须一模一样，两行才咬得住。
+   星期几单独一行是 0.1.11 修的：以前它们和日期同处一个 grid，表头被算成
+   第一行 7 个格子，日期整体后移，看着就是「日历没对齐」。 */
+.dshgn_calWeekRow{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;
+  margin-bottom:2px;padding-bottom:4px;border-bottom:0.5px solid var(--dshgn-cardLine)}
 .dshgn_calGrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
-.dshgn_calWeek{font-size:10px;line-height:16px;text-align:center;color:var(--dsw-alias-label-tertiary)}
+.dshgn_calWeek{font-size:10px;line-height:16px;text-align:center;color:var(--dsw-alias-label-tertiary);
+  font-weight:500}
 .dshgn_calCell{appearance:none;display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:1px;min-width:0;aspect-ratio:1/1;padding:2px;border:0.5px solid transparent;border-radius:8px;
   background:transparent;color:var(--dsw-alias-label-dimmed);font:inherit;cursor:default;
   font-variant-numeric:tabular-nums}
 .dshgn_calCell[data-has="true"]{cursor:pointer;color:var(--dsw-alias-label-primary);
-  background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-border-l1)}
+  background:var(--dshgn-card);border-color:var(--dshgn-cardLine)}
 .dshgn_calCell[data-has="true"]:hover{background:var(--dsw-alias-interactive-bg-hover-accent);
   border-color:var(--dsw-alias-brand-primary)}
 .dshgn_calCell[data-has="true"]:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dshgn_calCell[data-on="true"]{background:var(--dsw-alias-interactive-bg-hover-accent);
   border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-primary);font-weight:600}
+/* 有笔记的日子右下角那颗篇数，选中/悬停时不能跟着淡下去——它就是「这天有几篇」。 */
+.dshgn_calCell[data-has="true"] .dshgn_calNum{color:var(--dsw-alias-brand-primary);font-weight:600}
 /* 今天只描一圈边，不抢「选中」的那块底色——两者同时出现时得能分清。 */
 .dshgn_calCell[data-today="true"]{box-shadow:inset 0 0 0 1px var(--dsw-alias-brand-primary)}
 .dshgn_calDay{font-size:12px;line-height:16px}
 .dshgn_calNum{font-size:9px;line-height:11px;color:var(--dsw-alias-label-secondary)}
 .dshgn_calDayList{display:flex;flex-direction:column;gap:4px;min-width:0}
 .dshgn_calNote{appearance:none;display:flex;align-items:center;gap:8px;width:100%;min-width:0;
-  padding:7px 9px;border:0.5px solid var(--dsw-alias-border-l1);border-radius:8px;
-  background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
-.dshgn_calNote:hover{background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-border-l2)}
+  padding:7px 9px;border:0.5px solid var(--dshgn-cardLine);border-radius:8px;
+  background:var(--dshgn-card);color:inherit;font:inherit;text-align:left;cursor:pointer}
+.dshgn_calNote:hover{background:var(--dshgn-surface);border-color:var(--dsw-alias-brand-primary)}
 .dshgn_calNote:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
 .dshgn_calNoteTitle{flex:1;min-width:0;font-size:12.5px;line-height:1.5;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_calNoteDir{flex:none;max-width:40%;font-size:10px;color:var(--dsw-alias-label-tertiary);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 页签页上那一块块内容卡：浅色给白卡，深色给比面板亮一档的蓝灰。
+   以前写的是 bg-overlay（半透明），深色里透出底色，看着像「一块没画完的黑框」。 */
 .dshgn_section{display:flex;flex-direction:column;gap:8px;padding:14px 15px;border-radius:10px;
-  border:0.5px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-overlay)}
+  border:0.5px solid var(--dshgn-cardLine);background:var(--dshgn-card)}
 /* 标题本身也可能很长（话题名、断链里那个指不到的篇名），得让它先收缩，
    而不是把徽章/按钮挤出卡片右边。 */
 .dshgn_sectionTitle{flex:0 1 auto;min-width:0;font-size:12px;font-weight:600;
@@ -6531,9 +6566,12 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
   gap:4px 8px;margin-bottom:2px;min-width:0}
 .dshgn_sectionDesc{font-size:11.5px;line-height:1.7;color:var(--dsw-alias-label-secondary)}
 .dshgn_rowLine{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.dshgn_input{flex:1;min-width:180px;height:28px;padding:0 9px;border:0.5px solid var(--dsw-alias-border-l2);
-  border-radius:7px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;
-  font-size:12px;outline:none}
+/* 输入框的面：比所在卡片沉一档，一眼看得出「这里能打字」。
+   以前是 transparent，深色里就是一条几乎看不见的线，像没加载出来。 */
+.dshgn_input{flex:1;min-width:180px;height:28px;padding:0 9px;border:0.5px solid var(--dshgn-cardLine);
+  border-radius:7px;background:var(--dshgn-input);color:var(--dsw-alias-label-primary);font:inherit;
+  font-size:12px;outline:none;box-sizing:border-box}
+.dshgn_input::placeholder{color:var(--dsw-alias-label-dimmed)}
 .dshgn_input:focus{border-color:var(--dsw-alias-brand-primary)}
 /* 工具栏里的小下拉：不该像正文输入框那样抢走半行宽度 */
 .dshgn_selectSm{flex:none;min-width:0;width:auto;height:24px;padding:0 6px;font-size:11.5px;cursor:pointer}
@@ -6601,7 +6639,7 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
   font-family:var(--dshgn-fontMono);font-size:11px}
 /* ── 音频播放器 ── */
 .dshgn_audioCard{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-radius:10px;
-  border:0.5px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-overlay)}
+  border:0.5px solid var(--dshgn-cardLine);background:var(--dshgn-card)}
 .dshgn_audioBar{display:flex;align-items:center;gap:10px}
 .dshgn_audioBtn{flex:none;display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;
   border-radius:50%;border:0;background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-foreground);
@@ -6663,7 +6701,7 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 .dshgn_tplForm{display:flex;flex-direction:column;gap:6px}
 .dshgn_btnRow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .dshgn_textarea{width:100%;box-sizing:border-box;min-height:180px;resize:vertical;padding:9px 10px;
-  border:0.5px solid var(--dsw-alias-border-l2);border-radius:8px;background:transparent;
+  border:0.5px solid var(--dshgn-cardLine);border-radius:8px;background:var(--dshgn-input);
   color:var(--dsw-alias-label-primary);font-family:var(--dshgn-fontMono);
   font-size:12px;line-height:1.65;outline:none}
 .dshgn_textarea:focus{border-color:var(--dsw-alias-brand-primary)}
@@ -6843,7 +6881,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
   color:var(--dsw-alias-brand-primary);cursor:pointer;font-size:11px}
 .dshgn_momentAt:hover{text-decoration:underline}
 .dshgn_banner{display:flex;flex-direction:column;gap:8px;padding:14px;border-radius:10px;
-  border:0.5px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-overlay);text-align:center;
+  border:0.5px solid var(--dshgn-cardLine);background:var(--dshgn-card);text-align:center;
   align-items:center}
 /* 警告型横幅：左对齐、带色边。用于「Key 被拒」这类要用户动手处理的提示，
    居中的空状态样式会让它看起来像普通说明文字而被划过去。 */
@@ -6904,6 +6942,27 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
      浅色给一层薄白纱，深色由 themeVars 换成更暗的一档。 */
   --dshgn-well:rgba(255,255,255,.42);
   --dshgn-overlayMask:rgba(4,12,24,.42);
+  /* 卡片面：断链/待办/日历/大纲/属性这些「一块一块的东西」统一用这两个值。
+     以前它们写的是 background:transparent —— 在深色面板里就是一块纯黑的洞，
+     字压在上面像没加载出来；浅色里又完全糊进背景，看不出边界。
+     现在浅色给一张干净的白卡，深色由 themeVars 换成比面板亮一档的蓝灰。 */
+  --dshgn-card:#ffffff;
+  --dshgn-cardLine:rgba(10,42,82,.09);
+  /* 输入框的面：比卡片再沉一档，像嵌进卡片里，而不是又贴一张纸。 */
+  --dshgn-input:#f3f8fd;
+  /* 下面这几个 --dsw-alias-state-* / bg-* / toast-* / elevation-* 是宿主提供的
+     语义 token，面板里一直在用，但插件自己从来没定义过它们。宿主没给值时
+     var() 会整条声明失效：断链的红字不红、提示条底色透明、弹窗没有阴影。
+     这里补一套浅色默认值，深色由 themeVars 覆盖。 */
+  --dsw-alias-state-error-primary:#b4232a;
+  --dsw-alias-state-warn-primary:#9a6212;
+  --dsw-alias-state-success-primary:#1d7a4d;
+  --dsw-alias-bg-primary:var(--dshgn-card);
+  --dsw-alias-bg-secondary:var(--dshgn-light2);
+  --dsw-alias-bg-base:var(--dshgn-light);
+  --dsw-alias-toast-bg:#16283c;
+  --dsw-alias-toast-label:#ffffff;
+  --dsw-alias-elevation-prominent:0 12px 32px rgba(6,20,40,.18);
 }
 
 /* ── 顶栏：与右栏同色系，压一条浅蓝分隔 ── */
@@ -6917,7 +6976,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
   --dsw-alias-label-dimmed:var(--dshgn-lightFg3);
   --dsw-alias-border-l2:var(--dshgn-lineOnLight);
   --dsw-alias-interactive-bg-hover:rgba(var(--dshgn-tintRgb),.07);
-  --dsw-alias-interactive-bg-hover-accent:rgba(31,111,184,.16);
+  /* 这里原来是写死的 rgba(31,111,184,.16)。换成墨绿/酒红主题色之后，
+     页签的高亮底色还是那块蓝，和整条顶栏对不上。跟着 tintRgb 走。 */
+  --dsw-alias-interactive-bg-hover-accent:rgba(var(--dshgn-tintRgb),.16);
   --dsw-alias-bg-overlay:var(--dshgn-surface);
   --dsw-alias-brand-primary:var(--dshgn-accentOnLight);
 }
@@ -7147,8 +7208,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
   --dsw-alias-button-primary-hover:var(--dshgn-btnHover);
 }
 .dshgn_pane .dshgn_section{box-shadow:0 1px 2px rgba(var(--dshgn-tintRgb),.06)}
-/* 输入槽走 well：比卡片底色沉一点，看着像嵌进卡片里，不是又贴一张白纸。 */
-.dshgn_pane .dshgn_input,.dshgn_pane .dshgn_textarea{background:var(--dshgn-well)}
+/* 输入槽走 --dshgn-input：比卡片底色沉一点，看着像嵌进卡片里，不是又贴一张白纸。 */
+.dshgn_pane .dshgn_input,.dshgn_pane .dshgn_textarea{background:var(--dshgn-input)}
 .dshgn_pane .dshgn_log{background:rgba(var(--dshgn-tintRgb),.06)}
 .dshgn_pane .dshgn_stat{background:rgba(var(--dshgn-tintRgb),.08)}
 .dshgn_root{background:var(--dshgn-light)}
@@ -14512,7 +14573,13 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                       { className: 'dshgn_brokenGroup', title: group.target },
                       h('span', { className: 'dshgn_brokenGroupName' }, group.target),
                       h('span', { className: 'dshgn_brokenGroupCount' }, t('broken.times').replace('{n}', String(group.items.length))),
-                      typeof onRetarget === 'function'
+                      // 两颗按钮包在同一层里：以前它们各自 margin-left:auto，
+                      // 挤在一行时互相往外推，左边那两颗永远对不齐；包一层之后
+                      // 整组靠右对齐，换行时也一起换，右边缘是一条直线。
+                      h(
+                        'div',
+                        { className: 'dshgn_brokenGroupActions' },
+                        typeof onRetarget === 'function'
                         ? h(
                             'button',
                             {
@@ -14549,6 +14616,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                             t('broken.writeOne'),
                           )
                         : null,
+                      ),
                     ),
                     // 摊开的那一行：填对的名字，回车就全库改过去。候选来自库里已有的
                     // 文件名，改错字时多半直接挑一个——比凭记忆再敲一遍少一次打错的机会。
@@ -14959,17 +15027,22 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                         group.title,
                       ),
                       h('span', { className: 'dshgn_todoGroupCount' }, String(group.items.length)),
+                      // 和断链组头一样：按钮包一层再靠右，长文案折行时不会把组头撑歪。
                       h(
-                        'button',
-                        {
-                          type: 'button',
-                          className: 'dshgn_btn dshgn_todoGroupAll',
-                          title: t('todos.unticked').replace('{n}', String(group.items.length)),
-                          disabled: groupBusy,
-                          onClick: () => void untickAll(group),
-                        },
-                        groupBusy ? h('span', { className: 'dshgn_spin' }) : h(Icon, { name: 'check', size: 12 }),
-                        t('todos.unticked').replace('{n}', String(group.items.length)),
+                        'div',
+                        { className: 'dshgn_todoGroupActions' },
+                        h(
+                          'button',
+                          {
+                            type: 'button',
+                            className: 'dshgn_btn dshgn_todoGroupAll',
+                            title: t('todos.unticked').replace('{n}', String(group.items.length)),
+                            disabled: groupBusy,
+                            onClick: () => void untickAll(group),
+                          },
+                          groupBusy ? h('span', { className: 'dshgn_spin' }) : h(Icon, { name: 'check', size: 12 }),
+                          t('todos.unticked').replace('{n}', String(group.items.length)),
+                        ),
                       ),
                     ),
                     foldedGroups.has(group.path)
@@ -15143,12 +15216,19 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             ),
           ),
           h('div', { className: 'dshgn_sectionDesc' }, t('calendar.desc')),
+          // 星期几单独占一行。以前它们和日期格子塞在同一个 grid 里，7 个表头
+          // 被当成第一行 7 列的一部分，日期整体往后错位一格，于是「1 号」落在
+          // 「一」下面、「2 号」落在「二」下面，整张日历看着就是歪的。
           h(
             'div',
-            { className: 'dshgn_calGrid' },
+            { className: 'dshgn_calWeekRow' },
             weekdays.map((label, index) =>
               h('div', { key: 'w' + String(index), className: 'dshgn_calWeek' }, label),
             ),
+          ),
+          h(
+            'div',
+            { className: 'dshgn_calGrid' },
             cells.map((day, index) => {
               if (day === null) return h('span', { key: 'e' + String(index) })
               const key = `${monthKey}-${pad(day)}`
