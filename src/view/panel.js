@@ -5595,8 +5595,10 @@ async function saveFile(url, filename) {
 .dshgn_head .dshgn_iconBtn.dshgn_iconBtnFail{color:var(--dsw-alias-state-error-primary)}
 /* 大纲：贴着阅读区顶部的一条可折叠目录。层级靠左内边距区分，不做竖线树状，
    因为阅读区本来就窄，画树线会把标题文字挤到很短。 */
-.dshgn_outline{margin:0 0 10px;border:0.5px solid var(--dshgn-cardLine);border-radius:8px;
-  background:var(--dshgn-card);overflow:hidden}
+/* 大纲不再是一张带边框的卡：用户原话「不要每次都有一个单独的黑色框框，
+   可以直接去掉那个黑色框，换成一个点」。现在整块透明，只有每行前面一颗点，
+   鼠标停上去才把那一行填成浅蓝。 */
+.dshgn_outline{margin:0 0 10px;border:0;background:transparent}
 .dshgn_outlineToggle{appearance:none;display:flex;align-items:center;gap:6px;width:100%;
   padding:7px 10px;border:0;background:transparent;font:inherit;font-size:11px;
   color:var(--dsw-alias-label-secondary);cursor:pointer;text-align:left}
@@ -5615,10 +5617,15 @@ async function saveFile(url, filename) {
    或者用键盘聚焦到它才出现——大纲本来就是一列纯文字，多十几颗图标会把
    「读标题」这件事搅乱。 */
 .dshgn_outlineRow{display:flex;align-items:center;gap:2px}
-.dshgn_outlineItem{appearance:none;display:block;flex:1;min-width:0;padding:3px 8px;border:0;
-  background:transparent;font:inherit;font-size:12px;line-height:1.5;
-  color:var(--dsw-alias-label-secondary);cursor:pointer;text-align:left;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 一行 = 一颗小圆点 + 标题，不再是一行一个实底小方块。以前每条都套着
+   透明底 + block 布局，在浅色卡上看着就是「一行一个黑框」，很重。
+   现在只有文字和一颗点，鼠标停上去才用浅蓝底把这一行框出来。 */
+.dshgn_outlineItem{appearance:none;display:flex;align-items:center;gap:6px;flex:1;min-width:0;
+  padding:3px 8px;border:0;border-radius:6px;background:transparent;font:inherit;font-size:12px;
+  line-height:1.5;color:var(--dsw-alias-label-secondary);cursor:pointer;text-align:left}
+.dshgn_outlineDot{flex:none;width:4px;height:4px;border-radius:50%;background:currentColor;
+  opacity:.45}
+.dshgn_outlineText{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_outlineCopy{appearance:none;flex:none;display:inline-flex;align-items:center;
   justify-content:center;width:20px;height:20px;margin-right:4px;padding:0;border:0;
   border-radius:5px;background:transparent;color:var(--dsw-alias-label-tertiary);
@@ -5628,7 +5635,10 @@ async function saveFile(url, filename) {
 .dshgn_outlineCopy:hover{background:var(--dsw-alias-interactive-bg-hover-accent);
   color:var(--dsw-alias-brand-primary)}
 .dshgn_outlineCopy:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
-.dshgn_outlineItem:hover{background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-brand-primary)}
+/* 悬停：一整行铺一层浅蓝（纸墨色系里最淡的那档），这是「这一行可以被点」的信号；
+   底色是填充的，不是描边——描边在窄栏里会把文字挤窄。 */
+.dshgn_outlineItem:hover{background:rgba(var(--dshgn-tintRgb),.10);color:var(--dsw-alias-brand-primary)}
+.dshgn_outlineItem:hover .dshgn_outlineDot{opacity:.8}
 /* 正在读的那一节：左侧一道竖线 + 主色文字。只加粗上色不动背景，
    否则和「悬停」抢视觉，用户分不清「我点过」和「鼠标正停在这」。 */
 .dshgn_outlineItem[data-on='true']{color:var(--dsw-alias-brand-primary);font-weight:600;
@@ -6129,18 +6139,22 @@ async function saveFile(url, filename) {
 /* 写作热力图：16 周 × 7 天的小方格。格子用 grid-auto-flow:column 按列铺，
    所以 DOM 顺序是「一天接一天」，视觉上是「一周一列」——顺序对了不用重排。 */
 .dshgn_heat{flex:none;margin:6px 6px 10px;padding:9px 10px 8px;border-radius:9px;
-  background:rgba(255,255,255,.06);box-shadow:inset 0 0 0 1px rgba(255,255,255,.05)}
+  background:rgba(255,255,255,.06);box-shadow:inset 0 0 0 1px rgba(255,255,255,.05);
+  overflow:hidden}
 .dshgn_heatHead{display:flex;align-items:baseline;justify-content:space-between;gap:6px;
   margin-bottom:6px}
 .dshgn_heatTitle{font-size:10px;letter-spacing:.04em;text-transform:uppercase;
   color:var(--dsw-alias-label-tertiary)}
 .dshgn_heatStat{font-size:10px;font-weight:600;color:var(--dsw-alias-label-secondary);
   font-variant-numeric:tabular-nums}
-/* 16 周 × (8px 格 + 2px 缝) = 158px，正好落在左栏 204px 里（去掉 12px 栏内边距
-   与 20px 面板内边距还剩 172px）。格子从 7px 放大到 8px、底色提亮一档：
-   原来那版在深蓝底上几乎看不见。 */
-.dshgn_heatGrid{display:grid;grid-auto-flow:column;gap:2px}
-.dshgn_heatCell{width:8px;height:8px;border-radius:2.5px;background:rgba(255,255,255,.10)}
+/* 16 周 × 7 天的小方格。以前格子写死 8px、列宽由内容撑，16 列一共 158px
+   加内外边距约 184px——左栏一窄或用户把栏拖小，最后那几列就顶出卡片右边界，
+   用户看到的正是「最后一行竖着超出去」。现在列宽按可用宽度均分（1fr），
+   格子随列宽自适应、保持正方形，左栏再窄也只是变小，不会溢出。 */
+.dshgn_heatGrid{display:grid;grid-template-rows:repeat(7,1fr);grid-auto-flow:column;
+  grid-auto-columns:minmax(0,1fr);gap:2px}
+.dshgn_heatCell{width:100%;height:auto;min-width:0;aspect-ratio:1/1;border-radius:2.5px;
+  background:rgba(255,255,255,.10)}
 .dshgn_heatCell[data-lv="1"]{background:rgba(255,255,255,.34)}
 .dshgn_heatCell[data-lv="2"]{background:rgba(255,255,255,.54)}
 .dshgn_heatCell[data-lv="3"]{background:rgba(255,255,255,.74)}
@@ -6517,14 +6531,16 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 .dshgn_calMonth{flex:none;font-size:14px;font-weight:600;letter-spacing:.02em;
   color:var(--dsw-alias-label-primary);font-variant-numeric:tabular-nums}
 .dshgn_calHead .dshgn_sectionDesc{margin-left:auto}
-/* 表头与日期各占一层 grid，但列宽、列间距必须一模一样，两行才咬得住。
-   星期几单独一行是 0.1.11 修的：以前它们和日期同处一个 grid，表头被算成
-   第一行 7 个格子，日期整体后移，看着就是「日历没对齐」。 */
-.dshgn_calWeekRow{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;
-  margin-bottom:2px;padding-bottom:4px;border-bottom:0.5px solid var(--dshgn-cardLine)}
+/* 表头与日期同处一个 grid、同一套列宽——这是唯一能保证「星期几对着几号」的写法。
+   0.1.11 曾把表头拆成独立一层 grid，两层各自算列宽，日期格子带 padding/border
+   而表头没有，列宽分了岔，实测表头整体右偏约三分之一列。 */
 .dshgn_calGrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
-.dshgn_calWeek{font-size:10px;line-height:16px;text-align:center;color:var(--dsw-alias-label-tertiary);
-  font-weight:500}
+/* 表头就是同一个 grid 的头 7 格：列宽由 1fr 均分，跟日期格子逐列咬住。
+   这里不写 aspect-ratio——表头不该跟日期格子一样高，只保留与格子一致的
+   左右内边距，文字才落在格子的中线上。 */
+.dshgn_calWeek{display:flex;align-items:center;justify-content:center;min-width:0;
+  padding:0 2px 4px;box-sizing:border-box;font-size:10px;line-height:16px;
+  text-align:center;color:var(--dsw-alias-label-tertiary);font-weight:500}
 .dshgn_calCell{appearance:none;display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:1px;min-width:0;aspect-ratio:1/1;padding:2px;border:0.5px solid transparent;border-radius:8px;
   background:transparent;color:var(--dsw-alias-label-dimmed);font:inherit;cursor:default;
@@ -6897,72 +6913,76 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
    自动跟着变，只有真正需要「换一种颜色」的地方才写显式规则。
    好处：以后调色只改这里一组变量，不会漏掉某个还在用旧 token 的角落。 */
 .dshgn_root{
-  /* 左栏（目录树）：很深的蓝 */
-  --dshgn-deep:#0a2a52;
-  --dshgn-deep2:#071d3b;
+  /* 浅色模式走「纸与墨」：参照用户 DSH 里「得到大脑」那套配色
+     （纸 #f7f1e1/#f3ebd7/#ece1c8，墨 #101f3c/#1c3560/#3a5580，界栏 #c9b791）。
+     以前的浅色是冷蓝调，三栏一块比一块蓝，用户说「配色很诡异」。 */
+  /* 左栏（目录树）：最深的墨蓝 */
+  --dshgn-deep:#101f3c;
+  --dshgn-deep2:#0b1730;
   /* 深蓝区一律白字：用户明确要求「所有这种深度的蓝色区域内的字体颜色都改为白色」。
      之前用 hslToHex(hue,…) 推导浅色字，换主题色时会偏成淡绿/淡粉，白字最稳。 */
   --dshgn-deepFg:#ffffff;
   --dshgn-deepFg2:rgba(255,255,255,.86);
   --dshgn-deepFg3:rgba(255,255,255,.66);
-  /* 中栏（笔记列表）：浅一点的蓝 */
-  --dshgn-mid:#c5daf3;
-  --dshgn-mid2:#b6cfee;
-  --dshgn-midFg:#102a45;
-  --dshgn-midFg2:#3d5c7e;
-  --dshgn-midFg3:#5d7c9d;
-  /* 右栏（阅读区）：浅蓝。原来是 #f7fbff 那种「接近纯白」，
-     在深色桌面上整块亮得刺眼，压一档到明显带色相的浅蓝。 */
-  --dshgn-light:#eff5fc;
-  --dshgn-light2:#e6eef9;
-  --dshgn-lightFg:#16283c;
-  --dshgn-lightFg2:#40586f;
-  --dshgn-lightFg3:#6b8298;
-  /* 强调色：深栏上要够亮，浅栏上要够沉 */
-  --dshgn-accentOnDark:#7fb8ff;
-  --dshgn-accentOnLight:#1f6fb8;
+  /* 中栏（笔记列表）：比纸面深一档的旧纸色 */
+  --dshgn-mid:#e3d5b8;
+  --dshgn-mid2:#d8c7a4;
+  --dshgn-midFg:#101f3c;
+  --dshgn-midFg2:#1c3560;
+  --dshgn-midFg3:#3a5580;
+  /* 右栏（阅读区）：纸面。卡片比它再亮一档，读起来像纸上压着一张更白的纸。 */
+  --dshgn-light:#f3ebd7;
+  --dshgn-light2:#ece1c8;
+  --dshgn-lightFg:#101f3c;
+  --dshgn-lightFg2:#1c3560;
+  --dshgn-lightFg3:#3a5580;
+  /* 强调色：深栏上要够亮（暖米白），浅栏上用墨蓝，压在纸上才够沉 */
+  --dshgn-accentOnDark:#e8d9b6;
+  --dshgn-accentOnLight:#1c3560;
   --dshgn-lineOnDark:rgba(255,255,255,.13);
-  --dshgn-lineOnLight:rgba(var(--dshgn-tintRgb),.13);
+  --dshgn-lineOnLight:#c9b791;
   /* 默认主题色的 RGB 分量。所有半透明描边/阴影/悬浮底色都由它推导，
      这样「自定义主题色」只需要覆盖这一个值 + 上面那批色板，
      散落在 18 处的 rgba(10,42,82,…) 会自动跟着变。 */
-  --dshgn-tintRgb:10,42,82;
-  --dshgn-btnFill:#2f7fd4;
-  --dshgn-btnHover:#3d90e8;
-  --dshgn-btnFillSoft:#7fa9d0;
-  --dshgn-btnHoverSoft:#6b99c4;
-  --dshgn-btnFillPale:#a8c6e4;
-  --dshgn-btnHoverPale:#96badd;
+  --dshgn-tintRgb:28,53,96;
+  --dshgn-btnFill:#1c3560;
+  --dshgn-btnHover:#101f3c;
+  --dshgn-btnFillSoft:#4a6a94;
+  --dshgn-btnHoverSoft:#3a5580;
+  --dshgn-btnFillPale:#c3cddc;
+  --dshgn-btnHoverPale:#b3c0d4;
   /* 卡片/弹层/输入框的实底色。原来是纯白：设置页整排卡片、列表里的搜索框
      全是一块块 #fff，在浅蓝底上像贴了白纸。改成带一点底色的浅蓝白，
      既还分得出「这是浮起来的一块」，又不刺眼。深色由 themeVars 换成深色。 */
-  --dshgn-surface:#eef4fb;
-  --dshgn-surfaceStrong:#e3edf8;
+  --dshgn-surface:#ece1c8;
+  --dshgn-surfaceStrong:#e3d5b8;
   /* 凹进去的输入槽（中栏搜索框）：比所在那一栏略沉一档，像嵌进去的。
-     浅色给一层薄白纱，深色由 themeVars 换成更暗的一档。 */
-  --dshgn-well:rgba(255,255,255,.42);
-  --dshgn-overlayMask:rgba(4,12,24,.42);
+     浅色给一层半透明的旧纸色，深色由 themeVars 换成更暗的一档。 */
+  --dshgn-well:rgba(236,225,200,.85);
+  --dshgn-overlayMask:rgba(16,31,60,.42);
   /* 卡片面：断链/待办/日历/大纲/属性这些「一块一块的东西」统一用这两个值。
      以前它们写的是 background:transparent —— 在深色面板里就是一块纯黑的洞，
      字压在上面像没加载出来；浅色里又完全糊进背景，看不出边界。
      现在浅色给一张干净的白卡，深色由 themeVars 换成比面板亮一档的蓝灰。 */
-  --dshgn-card:#ffffff;
-  --dshgn-cardLine:rgba(10,42,82,.09);
+  --dshgn-card:#f7f1e1;
+  --dshgn-cardLine:#ded0b0;
   /* 输入框的面：比卡片再沉一档，像嵌进卡片里，而不是又贴一张纸。 */
-  --dshgn-input:#f3f8fd;
+  --dshgn-input:#ece1c8;
   /* 下面这几个 --dsw-alias-state-* / bg-* / toast-* / elevation-* 是宿主提供的
      语义 token，面板里一直在用，但插件自己从来没定义过它们。宿主没给值时
      var() 会整条声明失效：断链的红字不红、提示条底色透明、弹窗没有阴影。
      这里补一套浅色默认值，深色由 themeVars 覆盖。 */
-  --dsw-alias-state-error-primary:#b4232a;
-  --dsw-alias-state-warn-primary:#9a6212;
-  --dsw-alias-state-success-primary:#1d7a4d;
+  /* 三个状态色也调成纸墨里能压得住的那档：断链的「红」用笔红 #8d2f36，
+     压在米黄纸上像钢笔写的，不会像霓虹灯。 */
+  --dsw-alias-state-error-primary:#8d2f36;
+  --dsw-alias-state-warn-primary:#8a5a12;
+  --dsw-alias-state-success-primary:#2f6b46;
   --dsw-alias-bg-primary:var(--dshgn-card);
   --dsw-alias-bg-secondary:var(--dshgn-light2);
   --dsw-alias-bg-base:var(--dshgn-light);
-  --dsw-alias-toast-bg:#16283c;
-  --dsw-alias-toast-label:#ffffff;
-  --dsw-alias-elevation-prominent:0 12px 32px rgba(6,20,40,.18);
+  --dsw-alias-toast-bg:#101f3c;
+  --dsw-alias-toast-label:#f7f1e1;
+  --dsw-alias-elevation-prominent:0 12px 32px rgba(16,31,60,.18);
 }
 
 /* ── 顶栏：与右栏同色系，压一条浅蓝分隔 ── */
@@ -7212,6 +7232,20 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
 .dshgn_pane .dshgn_input,.dshgn_pane .dshgn_textarea{background:var(--dshgn-input)}
 .dshgn_pane .dshgn_log{background:rgba(var(--dshgn-tintRgb),.06)}
 .dshgn_pane .dshgn_stat{background:rgba(var(--dshgn-tintRgb),.08)}
+/* 断链 / 待办：整页就是一张浅色大卡，从页顶一直铺到页底。
+   以前标题那块是 .dshgn_section、列表是 .dshgn_cardBox，两块是兄弟节点，
+   浅色底只包住头部，下面一大片是页面底色——用户原话「那个浅色的大大的框
+   只覆盖到整个页面的一点，我想让它整个覆盖下去」。现在两块都放进同一个外壳。 */
+.dshgn_paneSheet{flex:1 0 auto;display:flex;flex-direction:column;gap:12px;min-width:0;
+  padding:14px 15px;border-radius:10px;border:0.5px solid var(--dshgn-cardLine);
+  background:var(--dshgn-card)}
+/* 外壳本身就是那张卡，里面的 section 不再叠一层卡、也不再描边。 */
+.dshgn_paneSheet .dshgn_section{padding:0;border:0;background:transparent;box-shadow:none}
+.dshgn_paneSheet .dshgn_cardBox{max-width:none;margin:0;gap:10px}
+/* 外壳已经是一张浅色卡，行再同色就只剩一圈边看不出「一条一条」。
+   行改用凹一档的输入面色，像卡里压着几条纸签。 */
+.dshgn_paneSheet .dshgn_brokenRow,.dshgn_paneSheet .dshgn_todoRow{background:var(--dshgn-input)}
+.dshgn_paneSheet .dshgn_brokenRow:hover,.dshgn_paneSheet .dshgn_todoRow:hover{background:var(--dshgn-surface)}
 .dshgn_root{background:var(--dshgn-light)}
 
 /* 深色栏里的滚动条（WebKit 不认 scrollbar-color） */
@@ -14476,9 +14510,14 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         }
       }, [list, showToast, t])
 
+      // 整页一张浅色大卡：标题、筛、列表、空态全放进同一个外壳里，
+      // 底色才能从页顶一直铺到页底（以前标题卡与列表是兄弟，底色只包住头部）。
       return h(
         'div',
         { className: 'dshgn_pane' },
+        h(
+          'div',
+          { className: 'dshgn_paneSheet' },
         h(
           'div',
           { className: 'dshgn_section' },
@@ -14692,6 +14731,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                   )
                 }),
               ),
+        ),
         // 候选名单只写一次：七八组各自摊开时共用同一份，不用每组都挂一遍。
         nameList.length === 0
           ? null
@@ -14883,9 +14923,13 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
 
       const summary = t('todos.found').replace('{n}', String(allItems.length)).replace('{scanned}', String(scanned))
 
+      // 同断链页：一张浅色大卡从页顶铺到页底。
       return h(
         'div',
         { className: 'dshgn_pane' },
+        h(
+          'div',
+          { className: 'dshgn_paneSheet' },
         h(
           'div',
           { className: 'dshgn_section' },
@@ -15114,6 +15158,7 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                   )
                 }),
               ),
+        ),
       )
     }
     /**
@@ -15216,19 +15261,17 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
             ),
           ),
           h('div', { className: 'dshgn_sectionDesc' }, t('calendar.desc')),
-          // 星期几单独占一行。以前它们和日期格子塞在同一个 grid 里，7 个表头
-          // 被当成第一行 7 列的一部分，日期整体往后错位一格，于是「1 号」落在
-          // 「一」下面、「2 号」落在「二」下面，整张日历看着就是歪的。
-          h(
-            'div',
-            { className: 'dshgn_calWeekRow' },
-            weekdays.map((label, index) =>
-              h('div', { key: 'w' + String(index), className: 'dshgn_calWeek' }, label),
-            ),
-          ),
+          // 星期几与日期必须同处一个 grid、共用同一套列宽。0.1.11 把表头拆成
+          // 单独一层 grid，两层各自算列宽——日期格子带 padding/border/aspect-ratio，
+          // 表头什么都没有，列宽就分了岔，实测整排表头比日期右偏约三分之一列，
+          // 用户看到的还是「星期一没对着 1 号」。现在表头就是同一个 grid 的头 7 格，
+          // 盒模型也跟日期格子写成一样，两行必然咬住。
           h(
             'div',
             { className: 'dshgn_calGrid' },
+            weekdays.map((label, index) =>
+              h('div', { key: 'w' + String(index), className: 'dshgn_calWeek' }, label),
+            ),
             cells.map((day, index) => {
               if (day === null) return h('span', { key: 'e' + String(index) })
               const key = `${monthKey}-${pad(day)}`
@@ -16287,7 +16330,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
         ),
         h(
           'div',
-          { className: 'dshgn_heatGrid', style: { gridTemplateRows: 'repeat(7, 1fr)', gridAutoFlow: 'column' } },
+          // 列宽交给样式表均分，这里不再写死行高/流向：写死就会在窄栏里溢出。
+          { className: 'dshgn_heatGrid' },
           days.map((day) => {
             const on = activeDay === day.date
             const tip = `${day.date} · ${day.count} ${t('heat.unit')}`
@@ -19408,8 +19452,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                       {
                         type: 'button',
                         className: 'dshgn_outlineToggle',
+                        // 不挂原生 title：那会在鼠标划过时自动弹出一个小窗，
+                        // 用户明确要求「点上去再给我看」，所以提示全部走点击展开。
                         onClick: () => setShowProps((prev) => !prev),
-                        title: t('reader.frontmatter'),
                       },
                       h(Icon, { name: showProps ? 'up' : 'file', size: 12 }),
                       t('reader.frontmatter'),
@@ -19423,7 +19468,9 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                             h(
                               'div',
                               { key: row.key, className: 'dshgn_propRow' },
-                              h('span', { className: 'dshgn_propKey', title: row.key }, row.key),
+                              // 不挂 title：属性名与属性值鼠标划过就弹窗会挡住正文，
+                              // 想看全名点开这一栏即可。
+                              h('span', { className: 'dshgn_propKey' }, row.key),
                               h(
                                 'span',
                                 { className: 'dshgn_propVal' },
@@ -19437,7 +19484,6 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                                           key: `${index}-${tag}`,
                                           type: 'button',
                                           className: 'dshgn_propTag',
-                                          title: tag,
                                           onClick: () => onPickTag(tag),
                                         },
                                         tag,
@@ -19450,9 +19496,6 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                                           key: 'link',
                                           type: 'button',
                                           className: 'dshgn_propLink',
-                                          title:
-                                            row.link.target +
-                                            (row.link.anchor === '' ? '' : ` › ${row.link.anchor}`),
                                           onClick: () => onOpenWikiLink(row.link.target, row.link.anchor),
                                         },
                                         row.link.label ||
@@ -19563,7 +19606,10 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                                   title: item.text,
                                   onClick: () => jumpToHeading(index),
                                 },
-                                item.text,
+                                // 一行 = 一颗小圆点 + 标题。圆点是空元素，读屏跳过，
+                                // 也让 textContent 仍然只有标题本身。
+                                h('span', { className: 'dshgn_outlineDot', 'aria-hidden': 'true' }),
+                                h('span', { className: 'dshgn_outlineText' }, item.text),
                               ),
                               onCopyHeadingLink === null
                                 ? null

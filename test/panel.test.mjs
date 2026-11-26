@@ -10685,7 +10685,9 @@ test('头部里那个值是双链时点得开，不用自己去左栏翻', async
   const linkBtn = props.querySelector('.dshgn_propLink')
   assert.ok(linkBtn, '头部里那条双链该做成能点的')
   assert.equal((linkBtn.textContent || '').trim(), '头部链接-被指向的那一篇', '按钮上显示的就是被指的那一篇')
-  assert.equal(linkBtn.title, '头部链接-被指向的那一篇', '悬停说清点了会去哪一篇')
+  // 属性区不再挂原生 title：鼠标划过就自动弹窗会挡住正文，
+  // 用户明确要求「点上去再给我看」，所以这里断言它没有悬停提示。
+  assert.ok(!linkBtn.title, '属性值不该挂悬停弹窗，实际 ' + linkBtn.title)
   // 同一条双链不该被当成普通文字原样摊出来
   assert.ok(!(props.textContent || '').includes('[['), '双链不该原样露出方括号')
 
@@ -17441,11 +17443,19 @@ test('左栏与中栏的同级元素站在同一条竖线上，热力图的格�
   assert.ok(filter !== '', '左栏筛的样式该在')
   assert.equal(num(filter, 'height'), num(row, 'height'), '左栏筛该和「全部笔记」那一行一样高')
 
-  // 热力图的格子：7px 在深蓝底上几乎看不见，现在至少 8px 且底色亮一档。
+  // 热力图的格子：以前写死 8px、16 列一共 158px，左栏一窄最后几列就顶出卡片；
+  // 现在列宽按可用宽度均分，格子宽度跟着列走、自己保持正方形，栏再窄也不溢出。
   const cell = ruleOf('.dshgn_heatCell')
   assert.ok(cell !== '', '热力图格子的样式该在')
-  const size = num(cell, 'width')
-  assert.ok(size !== null && size >= 8, '热力图格子该至少 8px，实际 ' + size)
+  assert.ok(/width:100%/.test(cell), '热力图格子该跟着列宽走（width:100%），实际 ' + cell)
+  assert.ok(/aspect-ratio:1\/1/.test(cell), '热力图格子该保持正方形，实际 ' + cell)
+  const grid = ruleOf('.dshgn_heatGrid')
+  assert.ok(
+    /grid-auto-columns:minmax\(0,1fr\)/.test(grid),
+    '热力图的列该均分可用宽度（minmax(0,1fr)），实际 ' + grid,
+  )
+  const heat = ruleOf('.dshgn_heat')
+  assert.ok(/overflow:hidden/.test(heat), '热力图外框该把溢出的部分裁掉，实际 ' + heat)
   const lv1 = ruleOf('.dshgn_heatCell[data-lv="1"]')
   const alpha = /rgba\(255,255,255,\.([0-9]+)\)/.exec(lv1)
   assert.ok(alpha !== null && Number('0.' + alpha[1]) >= 0.3, '最浅一档的格子该比原来亮，实际 ' + lv1)

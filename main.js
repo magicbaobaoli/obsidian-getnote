@@ -13871,8 +13871,10 @@ var CSS = `
 .dshgn_head .dshgn_iconBtn.dshgn_iconBtnFail{color:var(--dsw-alias-state-error-primary)}
 /* \u5927\u7EB2\uFF1A\u8D34\u7740\u9605\u8BFB\u533A\u9876\u90E8\u7684\u4E00\u6761\u53EF\u6298\u53E0\u76EE\u5F55\u3002\u5C42\u7EA7\u9760\u5DE6\u5185\u8FB9\u8DDD\u533A\u5206\uFF0C\u4E0D\u505A\u7AD6\u7EBF\u6811\u72B6\uFF0C
    \u56E0\u4E3A\u9605\u8BFB\u533A\u672C\u6765\u5C31\u7A84\uFF0C\u753B\u6811\u7EBF\u4F1A\u628A\u6807\u9898\u6587\u5B57\u6324\u5230\u5F88\u77ED\u3002 */
-.dshgn_outline{margin:0 0 10px;border:0.5px solid var(--dshgn-cardLine);border-radius:8px;
-  background:var(--dshgn-card);overflow:hidden}
+/* \u5927\u7EB2\u4E0D\u518D\u662F\u4E00\u5F20\u5E26\u8FB9\u6846\u7684\u5361\uFF1A\u7528\u6237\u539F\u8BDD\u300C\u4E0D\u8981\u6BCF\u6B21\u90FD\u6709\u4E00\u4E2A\u5355\u72EC\u7684\u9ED1\u8272\u6846\u6846\uFF0C
+   \u53EF\u4EE5\u76F4\u63A5\u53BB\u6389\u90A3\u4E2A\u9ED1\u8272\u6846\uFF0C\u6362\u6210\u4E00\u4E2A\u70B9\u300D\u3002\u73B0\u5728\u6574\u5757\u900F\u660E\uFF0C\u53EA\u6709\u6BCF\u884C\u524D\u9762\u4E00\u9897\u70B9\uFF0C
+   \u9F20\u6807\u505C\u4E0A\u53BB\u624D\u628A\u90A3\u4E00\u884C\u586B\u6210\u6D45\u84DD\u3002 */
+.dshgn_outline{margin:0 0 10px;border:0;background:transparent}
 .dshgn_outlineToggle{appearance:none;display:flex;align-items:center;gap:6px;width:100%;
   padding:7px 10px;border:0;background:transparent;font:inherit;font-size:11px;
   color:var(--dsw-alias-label-secondary);cursor:pointer;text-align:left}
@@ -13891,10 +13893,15 @@ var CSS = `
    \u6216\u8005\u7528\u952E\u76D8\u805A\u7126\u5230\u5B83\u624D\u51FA\u73B0\u2014\u2014\u5927\u7EB2\u672C\u6765\u5C31\u662F\u4E00\u5217\u7EAF\u6587\u5B57\uFF0C\u591A\u5341\u51E0\u9897\u56FE\u6807\u4F1A\u628A
    \u300C\u8BFB\u6807\u9898\u300D\u8FD9\u4EF6\u4E8B\u6405\u4E71\u3002 */
 .dshgn_outlineRow{display:flex;align-items:center;gap:2px}
-.dshgn_outlineItem{appearance:none;display:block;flex:1;min-width:0;padding:3px 8px;border:0;
-  background:transparent;font:inherit;font-size:12px;line-height:1.5;
-  color:var(--dsw-alias-label-secondary);cursor:pointer;text-align:left;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* \u4E00\u884C = \u4E00\u9897\u5C0F\u5706\u70B9 + \u6807\u9898\uFF0C\u4E0D\u518D\u662F\u4E00\u884C\u4E00\u4E2A\u5B9E\u5E95\u5C0F\u65B9\u5757\u3002\u4EE5\u524D\u6BCF\u6761\u90FD\u5957\u7740
+   \u900F\u660E\u5E95 + block \u5E03\u5C40\uFF0C\u5728\u6D45\u8272\u5361\u4E0A\u770B\u7740\u5C31\u662F\u300C\u4E00\u884C\u4E00\u4E2A\u9ED1\u6846\u300D\uFF0C\u5F88\u91CD\u3002
+   \u73B0\u5728\u53EA\u6709\u6587\u5B57\u548C\u4E00\u9897\u70B9\uFF0C\u9F20\u6807\u505C\u4E0A\u53BB\u624D\u7528\u6D45\u84DD\u5E95\u628A\u8FD9\u4E00\u884C\u6846\u51FA\u6765\u3002 */
+.dshgn_outlineItem{appearance:none;display:flex;align-items:center;gap:6px;flex:1;min-width:0;
+  padding:3px 8px;border:0;border-radius:6px;background:transparent;font:inherit;font-size:12px;
+  line-height:1.5;color:var(--dsw-alias-label-secondary);cursor:pointer;text-align:left}
+.dshgn_outlineDot{flex:none;width:4px;height:4px;border-radius:50%;background:currentColor;
+  opacity:.45}
+.dshgn_outlineText{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dshgn_outlineCopy{appearance:none;flex:none;display:inline-flex;align-items:center;
   justify-content:center;width:20px;height:20px;margin-right:4px;padding:0;border:0;
   border-radius:5px;background:transparent;color:var(--dsw-alias-label-tertiary);
@@ -13904,7 +13911,10 @@ var CSS = `
 .dshgn_outlineCopy:hover{background:var(--dsw-alias-interactive-bg-hover-accent);
   color:var(--dsw-alias-brand-primary)}
 .dshgn_outlineCopy:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
-.dshgn_outlineItem:hover{background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-brand-primary)}
+/* \u60AC\u505C\uFF1A\u4E00\u6574\u884C\u94FA\u4E00\u5C42\u6D45\u84DD\uFF08\u7EB8\u58A8\u8272\u7CFB\u91CC\u6700\u6DE1\u7684\u90A3\u6863\uFF09\uFF0C\u8FD9\u662F\u300C\u8FD9\u4E00\u884C\u53EF\u4EE5\u88AB\u70B9\u300D\u7684\u4FE1\u53F7\uFF1B
+   \u5E95\u8272\u662F\u586B\u5145\u7684\uFF0C\u4E0D\u662F\u63CF\u8FB9\u2014\u2014\u63CF\u8FB9\u5728\u7A84\u680F\u91CC\u4F1A\u628A\u6587\u5B57\u6324\u7A84\u3002 */
+.dshgn_outlineItem:hover{background:rgba(var(--dshgn-tintRgb),.10);color:var(--dsw-alias-brand-primary)}
+.dshgn_outlineItem:hover .dshgn_outlineDot{opacity:.8}
 /* \u6B63\u5728\u8BFB\u7684\u90A3\u4E00\u8282\uFF1A\u5DE6\u4FA7\u4E00\u9053\u7AD6\u7EBF + \u4E3B\u8272\u6587\u5B57\u3002\u53EA\u52A0\u7C97\u4E0A\u8272\u4E0D\u52A8\u80CC\u666F\uFF0C
    \u5426\u5219\u548C\u300C\u60AC\u505C\u300D\u62A2\u89C6\u89C9\uFF0C\u7528\u6237\u5206\u4E0D\u6E05\u300C\u6211\u70B9\u8FC7\u300D\u548C\u300C\u9F20\u6807\u6B63\u505C\u5728\u8FD9\u300D\u3002 */
 .dshgn_outlineItem[data-on='true']{color:var(--dsw-alias-brand-primary);font-weight:600;
@@ -14405,18 +14415,22 @@ var CSS = `
 /* \u5199\u4F5C\u70ED\u529B\u56FE\uFF1A16 \u5468 \xD7 7 \u5929\u7684\u5C0F\u65B9\u683C\u3002\u683C\u5B50\u7528 grid-auto-flow:column \u6309\u5217\u94FA\uFF0C
    \u6240\u4EE5 DOM \u987A\u5E8F\u662F\u300C\u4E00\u5929\u63A5\u4E00\u5929\u300D\uFF0C\u89C6\u89C9\u4E0A\u662F\u300C\u4E00\u5468\u4E00\u5217\u300D\u2014\u2014\u987A\u5E8F\u5BF9\u4E86\u4E0D\u7528\u91CD\u6392\u3002 */
 .dshgn_heat{flex:none;margin:6px 6px 10px;padding:9px 10px 8px;border-radius:9px;
-  background:rgba(255,255,255,.06);box-shadow:inset 0 0 0 1px rgba(255,255,255,.05)}
+  background:rgba(255,255,255,.06);box-shadow:inset 0 0 0 1px rgba(255,255,255,.05);
+  overflow:hidden}
 .dshgn_heatHead{display:flex;align-items:baseline;justify-content:space-between;gap:6px;
   margin-bottom:6px}
 .dshgn_heatTitle{font-size:10px;letter-spacing:.04em;text-transform:uppercase;
   color:var(--dsw-alias-label-tertiary)}
 .dshgn_heatStat{font-size:10px;font-weight:600;color:var(--dsw-alias-label-secondary);
   font-variant-numeric:tabular-nums}
-/* 16 \u5468 \xD7 (8px \u683C + 2px \u7F1D) = 158px\uFF0C\u6B63\u597D\u843D\u5728\u5DE6\u680F 204px \u91CC\uFF08\u53BB\u6389 12px \u680F\u5185\u8FB9\u8DDD
-   \u4E0E 20px \u9762\u677F\u5185\u8FB9\u8DDD\u8FD8\u5269 172px\uFF09\u3002\u683C\u5B50\u4ECE 7px \u653E\u5927\u5230 8px\u3001\u5E95\u8272\u63D0\u4EAE\u4E00\u6863\uFF1A
-   \u539F\u6765\u90A3\u7248\u5728\u6DF1\u84DD\u5E95\u4E0A\u51E0\u4E4E\u770B\u4E0D\u89C1\u3002 */
-.dshgn_heatGrid{display:grid;grid-auto-flow:column;gap:2px}
-.dshgn_heatCell{width:8px;height:8px;border-radius:2.5px;background:rgba(255,255,255,.10)}
+/* 16 \u5468 \xD7 7 \u5929\u7684\u5C0F\u65B9\u683C\u3002\u4EE5\u524D\u683C\u5B50\u5199\u6B7B 8px\u3001\u5217\u5BBD\u7531\u5185\u5BB9\u6491\uFF0C16 \u5217\u4E00\u5171 158px
+   \u52A0\u5185\u5916\u8FB9\u8DDD\u7EA6 184px\u2014\u2014\u5DE6\u680F\u4E00\u7A84\u6216\u7528\u6237\u628A\u680F\u62D6\u5C0F\uFF0C\u6700\u540E\u90A3\u51E0\u5217\u5C31\u9876\u51FA\u5361\u7247\u53F3\u8FB9\u754C\uFF0C
+   \u7528\u6237\u770B\u5230\u7684\u6B63\u662F\u300C\u6700\u540E\u4E00\u884C\u7AD6\u7740\u8D85\u51FA\u53BB\u300D\u3002\u73B0\u5728\u5217\u5BBD\u6309\u53EF\u7528\u5BBD\u5EA6\u5747\u5206\uFF081fr\uFF09\uFF0C
+   \u683C\u5B50\u968F\u5217\u5BBD\u81EA\u9002\u5E94\u3001\u4FDD\u6301\u6B63\u65B9\u5F62\uFF0C\u5DE6\u680F\u518D\u7A84\u4E5F\u53EA\u662F\u53D8\u5C0F\uFF0C\u4E0D\u4F1A\u6EA2\u51FA\u3002 */
+.dshgn_heatGrid{display:grid;grid-template-rows:repeat(7,1fr);grid-auto-flow:column;
+  grid-auto-columns:minmax(0,1fr);gap:2px}
+.dshgn_heatCell{width:100%;height:auto;min-width:0;aspect-ratio:1/1;border-radius:2.5px;
+  background:rgba(255,255,255,.10)}
 .dshgn_heatCell[data-lv="1"]{background:rgba(255,255,255,.34)}
 .dshgn_heatCell[data-lv="2"]{background:rgba(255,255,255,.54)}
 .dshgn_heatCell[data-lv="3"]{background:rgba(255,255,255,.74)}
@@ -14793,14 +14807,16 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 .dshgn_calMonth{flex:none;font-size:14px;font-weight:600;letter-spacing:.02em;
   color:var(--dsw-alias-label-primary);font-variant-numeric:tabular-nums}
 .dshgn_calHead .dshgn_sectionDesc{margin-left:auto}
-/* \u8868\u5934\u4E0E\u65E5\u671F\u5404\u5360\u4E00\u5C42 grid\uFF0C\u4F46\u5217\u5BBD\u3001\u5217\u95F4\u8DDD\u5FC5\u987B\u4E00\u6A21\u4E00\u6837\uFF0C\u4E24\u884C\u624D\u54AC\u5F97\u4F4F\u3002
-   \u661F\u671F\u51E0\u5355\u72EC\u4E00\u884C\u662F 0.1.11 \u4FEE\u7684\uFF1A\u4EE5\u524D\u5B83\u4EEC\u548C\u65E5\u671F\u540C\u5904\u4E00\u4E2A grid\uFF0C\u8868\u5934\u88AB\u7B97\u6210
-   \u7B2C\u4E00\u884C 7 \u4E2A\u683C\u5B50\uFF0C\u65E5\u671F\u6574\u4F53\u540E\u79FB\uFF0C\u770B\u7740\u5C31\u662F\u300C\u65E5\u5386\u6CA1\u5BF9\u9F50\u300D\u3002 */
-.dshgn_calWeekRow{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;
-  margin-bottom:2px;padding-bottom:4px;border-bottom:0.5px solid var(--dshgn-cardLine)}
+/* \u8868\u5934\u4E0E\u65E5\u671F\u540C\u5904\u4E00\u4E2A grid\u3001\u540C\u4E00\u5957\u5217\u5BBD\u2014\u2014\u8FD9\u662F\u552F\u4E00\u80FD\u4FDD\u8BC1\u300C\u661F\u671F\u51E0\u5BF9\u7740\u51E0\u53F7\u300D\u7684\u5199\u6CD5\u3002
+   0.1.11 \u66FE\u628A\u8868\u5934\u62C6\u6210\u72EC\u7ACB\u4E00\u5C42 grid\uFF0C\u4E24\u5C42\u5404\u81EA\u7B97\u5217\u5BBD\uFF0C\u65E5\u671F\u683C\u5B50\u5E26 padding/border
+   \u800C\u8868\u5934\u6CA1\u6709\uFF0C\u5217\u5BBD\u5206\u4E86\u5C94\uFF0C\u5B9E\u6D4B\u8868\u5934\u6574\u4F53\u53F3\u504F\u7EA6\u4E09\u5206\u4E4B\u4E00\u5217\u3002 */
 .dshgn_calGrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
-.dshgn_calWeek{font-size:10px;line-height:16px;text-align:center;color:var(--dsw-alias-label-tertiary);
-  font-weight:500}
+/* \u8868\u5934\u5C31\u662F\u540C\u4E00\u4E2A grid \u7684\u5934 7 \u683C\uFF1A\u5217\u5BBD\u7531 1fr \u5747\u5206\uFF0C\u8DDF\u65E5\u671F\u683C\u5B50\u9010\u5217\u54AC\u4F4F\u3002
+   \u8FD9\u91CC\u4E0D\u5199 aspect-ratio\u2014\u2014\u8868\u5934\u4E0D\u8BE5\u8DDF\u65E5\u671F\u683C\u5B50\u4E00\u6837\u9AD8\uFF0C\u53EA\u4FDD\u7559\u4E0E\u683C\u5B50\u4E00\u81F4\u7684
+   \u5DE6\u53F3\u5185\u8FB9\u8DDD\uFF0C\u6587\u5B57\u624D\u843D\u5728\u683C\u5B50\u7684\u4E2D\u7EBF\u4E0A\u3002 */
+.dshgn_calWeek{display:flex;align-items:center;justify-content:center;min-width:0;
+  padding:0 2px 4px;box-sizing:border-box;font-size:10px;line-height:16px;
+  text-align:center;color:var(--dsw-alias-label-tertiary);font-weight:500}
 .dshgn_calCell{appearance:none;display:flex;flex-direction:column;align-items:center;justify-content:center;
   gap:1px;min-width:0;aspect-ratio:1/1;padding:2px;border:0.5px solid transparent;border-radius:8px;
   background:transparent;color:var(--dsw-alias-label-dimmed);font:inherit;cursor:default;
@@ -15173,72 +15189,76 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
    \u81EA\u52A8\u8DDF\u7740\u53D8\uFF0C\u53EA\u6709\u771F\u6B63\u9700\u8981\u300C\u6362\u4E00\u79CD\u989C\u8272\u300D\u7684\u5730\u65B9\u624D\u5199\u663E\u5F0F\u89C4\u5219\u3002
    \u597D\u5904\uFF1A\u4EE5\u540E\u8C03\u8272\u53EA\u6539\u8FD9\u91CC\u4E00\u7EC4\u53D8\u91CF\uFF0C\u4E0D\u4F1A\u6F0F\u6389\u67D0\u4E2A\u8FD8\u5728\u7528\u65E7 token \u7684\u89D2\u843D\u3002 */
 .dshgn_root{
-  /* \u5DE6\u680F\uFF08\u76EE\u5F55\u6811\uFF09\uFF1A\u5F88\u6DF1\u7684\u84DD */
-  --dshgn-deep:#0a2a52;
-  --dshgn-deep2:#071d3b;
+  /* \u6D45\u8272\u6A21\u5F0F\u8D70\u300C\u7EB8\u4E0E\u58A8\u300D\uFF1A\u53C2\u7167\u7528\u6237 DSH \u91CC\u300C\u5F97\u5230\u5927\u8111\u300D\u90A3\u5957\u914D\u8272
+     \uFF08\u7EB8 #f7f1e1/#f3ebd7/#ece1c8\uFF0C\u58A8 #101f3c/#1c3560/#3a5580\uFF0C\u754C\u680F #c9b791\uFF09\u3002
+     \u4EE5\u524D\u7684\u6D45\u8272\u662F\u51B7\u84DD\u8C03\uFF0C\u4E09\u680F\u4E00\u5757\u6BD4\u4E00\u5757\u84DD\uFF0C\u7528\u6237\u8BF4\u300C\u914D\u8272\u5F88\u8BE1\u5F02\u300D\u3002 */
+  /* \u5DE6\u680F\uFF08\u76EE\u5F55\u6811\uFF09\uFF1A\u6700\u6DF1\u7684\u58A8\u84DD */
+  --dshgn-deep:#101f3c;
+  --dshgn-deep2:#0b1730;
   /* \u6DF1\u84DD\u533A\u4E00\u5F8B\u767D\u5B57\uFF1A\u7528\u6237\u660E\u786E\u8981\u6C42\u300C\u6240\u6709\u8FD9\u79CD\u6DF1\u5EA6\u7684\u84DD\u8272\u533A\u57DF\u5185\u7684\u5B57\u4F53\u989C\u8272\u90FD\u6539\u4E3A\u767D\u8272\u300D\u3002
      \u4E4B\u524D\u7528 hslToHex(hue,\u2026) \u63A8\u5BFC\u6D45\u8272\u5B57\uFF0C\u6362\u4E3B\u9898\u8272\u65F6\u4F1A\u504F\u6210\u6DE1\u7EFF/\u6DE1\u7C89\uFF0C\u767D\u5B57\u6700\u7A33\u3002 */
   --dshgn-deepFg:#ffffff;
   --dshgn-deepFg2:rgba(255,255,255,.86);
   --dshgn-deepFg3:rgba(255,255,255,.66);
-  /* \u4E2D\u680F\uFF08\u7B14\u8BB0\u5217\u8868\uFF09\uFF1A\u6D45\u4E00\u70B9\u7684\u84DD */
-  --dshgn-mid:#c5daf3;
-  --dshgn-mid2:#b6cfee;
-  --dshgn-midFg:#102a45;
-  --dshgn-midFg2:#3d5c7e;
-  --dshgn-midFg3:#5d7c9d;
-  /* \u53F3\u680F\uFF08\u9605\u8BFB\u533A\uFF09\uFF1A\u6D45\u84DD\u3002\u539F\u6765\u662F #f7fbff \u90A3\u79CD\u300C\u63A5\u8FD1\u7EAF\u767D\u300D\uFF0C
-     \u5728\u6DF1\u8272\u684C\u9762\u4E0A\u6574\u5757\u4EAE\u5F97\u523A\u773C\uFF0C\u538B\u4E00\u6863\u5230\u660E\u663E\u5E26\u8272\u76F8\u7684\u6D45\u84DD\u3002 */
-  --dshgn-light:#eff5fc;
-  --dshgn-light2:#e6eef9;
-  --dshgn-lightFg:#16283c;
-  --dshgn-lightFg2:#40586f;
-  --dshgn-lightFg3:#6b8298;
-  /* \u5F3A\u8C03\u8272\uFF1A\u6DF1\u680F\u4E0A\u8981\u591F\u4EAE\uFF0C\u6D45\u680F\u4E0A\u8981\u591F\u6C89 */
-  --dshgn-accentOnDark:#7fb8ff;
-  --dshgn-accentOnLight:#1f6fb8;
+  /* \u4E2D\u680F\uFF08\u7B14\u8BB0\u5217\u8868\uFF09\uFF1A\u6BD4\u7EB8\u9762\u6DF1\u4E00\u6863\u7684\u65E7\u7EB8\u8272 */
+  --dshgn-mid:#e3d5b8;
+  --dshgn-mid2:#d8c7a4;
+  --dshgn-midFg:#101f3c;
+  --dshgn-midFg2:#1c3560;
+  --dshgn-midFg3:#3a5580;
+  /* \u53F3\u680F\uFF08\u9605\u8BFB\u533A\uFF09\uFF1A\u7EB8\u9762\u3002\u5361\u7247\u6BD4\u5B83\u518D\u4EAE\u4E00\u6863\uFF0C\u8BFB\u8D77\u6765\u50CF\u7EB8\u4E0A\u538B\u7740\u4E00\u5F20\u66F4\u767D\u7684\u7EB8\u3002 */
+  --dshgn-light:#f3ebd7;
+  --dshgn-light2:#ece1c8;
+  --dshgn-lightFg:#101f3c;
+  --dshgn-lightFg2:#1c3560;
+  --dshgn-lightFg3:#3a5580;
+  /* \u5F3A\u8C03\u8272\uFF1A\u6DF1\u680F\u4E0A\u8981\u591F\u4EAE\uFF08\u6696\u7C73\u767D\uFF09\uFF0C\u6D45\u680F\u4E0A\u7528\u58A8\u84DD\uFF0C\u538B\u5728\u7EB8\u4E0A\u624D\u591F\u6C89 */
+  --dshgn-accentOnDark:#e8d9b6;
+  --dshgn-accentOnLight:#1c3560;
   --dshgn-lineOnDark:rgba(255,255,255,.13);
-  --dshgn-lineOnLight:rgba(var(--dshgn-tintRgb),.13);
+  --dshgn-lineOnLight:#c9b791;
   /* \u9ED8\u8BA4\u4E3B\u9898\u8272\u7684 RGB \u5206\u91CF\u3002\u6240\u6709\u534A\u900F\u660E\u63CF\u8FB9/\u9634\u5F71/\u60AC\u6D6E\u5E95\u8272\u90FD\u7531\u5B83\u63A8\u5BFC\uFF0C
      \u8FD9\u6837\u300C\u81EA\u5B9A\u4E49\u4E3B\u9898\u8272\u300D\u53EA\u9700\u8981\u8986\u76D6\u8FD9\u4E00\u4E2A\u503C + \u4E0A\u9762\u90A3\u6279\u8272\u677F\uFF0C
      \u6563\u843D\u5728 18 \u5904\u7684 rgba(10,42,82,\u2026) \u4F1A\u81EA\u52A8\u8DDF\u7740\u53D8\u3002 */
-  --dshgn-tintRgb:10,42,82;
-  --dshgn-btnFill:#2f7fd4;
-  --dshgn-btnHover:#3d90e8;
-  --dshgn-btnFillSoft:#7fa9d0;
-  --dshgn-btnHoverSoft:#6b99c4;
-  --dshgn-btnFillPale:#a8c6e4;
-  --dshgn-btnHoverPale:#96badd;
+  --dshgn-tintRgb:28,53,96;
+  --dshgn-btnFill:#1c3560;
+  --dshgn-btnHover:#101f3c;
+  --dshgn-btnFillSoft:#4a6a94;
+  --dshgn-btnHoverSoft:#3a5580;
+  --dshgn-btnFillPale:#c3cddc;
+  --dshgn-btnHoverPale:#b3c0d4;
   /* \u5361\u7247/\u5F39\u5C42/\u8F93\u5165\u6846\u7684\u5B9E\u5E95\u8272\u3002\u539F\u6765\u662F\u7EAF\u767D\uFF1A\u8BBE\u7F6E\u9875\u6574\u6392\u5361\u7247\u3001\u5217\u8868\u91CC\u7684\u641C\u7D22\u6846
      \u5168\u662F\u4E00\u5757\u5757 #fff\uFF0C\u5728\u6D45\u84DD\u5E95\u4E0A\u50CF\u8D34\u4E86\u767D\u7EB8\u3002\u6539\u6210\u5E26\u4E00\u70B9\u5E95\u8272\u7684\u6D45\u84DD\u767D\uFF0C
      \u65E2\u8FD8\u5206\u5F97\u51FA\u300C\u8FD9\u662F\u6D6E\u8D77\u6765\u7684\u4E00\u5757\u300D\uFF0C\u53C8\u4E0D\u523A\u773C\u3002\u6DF1\u8272\u7531 themeVars \u6362\u6210\u6DF1\u8272\u3002 */
-  --dshgn-surface:#eef4fb;
-  --dshgn-surfaceStrong:#e3edf8;
+  --dshgn-surface:#ece1c8;
+  --dshgn-surfaceStrong:#e3d5b8;
   /* \u51F9\u8FDB\u53BB\u7684\u8F93\u5165\u69FD\uFF08\u4E2D\u680F\u641C\u7D22\u6846\uFF09\uFF1A\u6BD4\u6240\u5728\u90A3\u4E00\u680F\u7565\u6C89\u4E00\u6863\uFF0C\u50CF\u5D4C\u8FDB\u53BB\u7684\u3002
-     \u6D45\u8272\u7ED9\u4E00\u5C42\u8584\u767D\u7EB1\uFF0C\u6DF1\u8272\u7531 themeVars \u6362\u6210\u66F4\u6697\u7684\u4E00\u6863\u3002 */
-  --dshgn-well:rgba(255,255,255,.42);
-  --dshgn-overlayMask:rgba(4,12,24,.42);
+     \u6D45\u8272\u7ED9\u4E00\u5C42\u534A\u900F\u660E\u7684\u65E7\u7EB8\u8272\uFF0C\u6DF1\u8272\u7531 themeVars \u6362\u6210\u66F4\u6697\u7684\u4E00\u6863\u3002 */
+  --dshgn-well:rgba(236,225,200,.85);
+  --dshgn-overlayMask:rgba(16,31,60,.42);
   /* \u5361\u7247\u9762\uFF1A\u65AD\u94FE/\u5F85\u529E/\u65E5\u5386/\u5927\u7EB2/\u5C5E\u6027\u8FD9\u4E9B\u300C\u4E00\u5757\u4E00\u5757\u7684\u4E1C\u897F\u300D\u7EDF\u4E00\u7528\u8FD9\u4E24\u4E2A\u503C\u3002
      \u4EE5\u524D\u5B83\u4EEC\u5199\u7684\u662F background:transparent \u2014\u2014 \u5728\u6DF1\u8272\u9762\u677F\u91CC\u5C31\u662F\u4E00\u5757\u7EAF\u9ED1\u7684\u6D1E\uFF0C
      \u5B57\u538B\u5728\u4E0A\u9762\u50CF\u6CA1\u52A0\u8F7D\u51FA\u6765\uFF1B\u6D45\u8272\u91CC\u53C8\u5B8C\u5168\u7CCA\u8FDB\u80CC\u666F\uFF0C\u770B\u4E0D\u51FA\u8FB9\u754C\u3002
      \u73B0\u5728\u6D45\u8272\u7ED9\u4E00\u5F20\u5E72\u51C0\u7684\u767D\u5361\uFF0C\u6DF1\u8272\u7531 themeVars \u6362\u6210\u6BD4\u9762\u677F\u4EAE\u4E00\u6863\u7684\u84DD\u7070\u3002 */
-  --dshgn-card:#ffffff;
-  --dshgn-cardLine:rgba(10,42,82,.09);
+  --dshgn-card:#f7f1e1;
+  --dshgn-cardLine:#ded0b0;
   /* \u8F93\u5165\u6846\u7684\u9762\uFF1A\u6BD4\u5361\u7247\u518D\u6C89\u4E00\u6863\uFF0C\u50CF\u5D4C\u8FDB\u5361\u7247\u91CC\uFF0C\u800C\u4E0D\u662F\u53C8\u8D34\u4E00\u5F20\u7EB8\u3002 */
-  --dshgn-input:#f3f8fd;
+  --dshgn-input:#ece1c8;
   /* \u4E0B\u9762\u8FD9\u51E0\u4E2A --dsw-alias-state-* / bg-* / toast-* / elevation-* \u662F\u5BBF\u4E3B\u63D0\u4F9B\u7684
      \u8BED\u4E49 token\uFF0C\u9762\u677F\u91CC\u4E00\u76F4\u5728\u7528\uFF0C\u4F46\u63D2\u4EF6\u81EA\u5DF1\u4ECE\u6765\u6CA1\u5B9A\u4E49\u8FC7\u5B83\u4EEC\u3002\u5BBF\u4E3B\u6CA1\u7ED9\u503C\u65F6
      var() \u4F1A\u6574\u6761\u58F0\u660E\u5931\u6548\uFF1A\u65AD\u94FE\u7684\u7EA2\u5B57\u4E0D\u7EA2\u3001\u63D0\u793A\u6761\u5E95\u8272\u900F\u660E\u3001\u5F39\u7A97\u6CA1\u6709\u9634\u5F71\u3002
      \u8FD9\u91CC\u8865\u4E00\u5957\u6D45\u8272\u9ED8\u8BA4\u503C\uFF0C\u6DF1\u8272\u7531 themeVars \u8986\u76D6\u3002 */
-  --dsw-alias-state-error-primary:#b4232a;
-  --dsw-alias-state-warn-primary:#9a6212;
-  --dsw-alias-state-success-primary:#1d7a4d;
+  /* \u4E09\u4E2A\u72B6\u6001\u8272\u4E5F\u8C03\u6210\u7EB8\u58A8\u91CC\u80FD\u538B\u5F97\u4F4F\u7684\u90A3\u6863\uFF1A\u65AD\u94FE\u7684\u300C\u7EA2\u300D\u7528\u7B14\u7EA2 #8d2f36\uFF0C
+     \u538B\u5728\u7C73\u9EC4\u7EB8\u4E0A\u50CF\u94A2\u7B14\u5199\u7684\uFF0C\u4E0D\u4F1A\u50CF\u9713\u8679\u706F\u3002 */
+  --dsw-alias-state-error-primary:#8d2f36;
+  --dsw-alias-state-warn-primary:#8a5a12;
+  --dsw-alias-state-success-primary:#2f6b46;
   --dsw-alias-bg-primary:var(--dshgn-card);
   --dsw-alias-bg-secondary:var(--dshgn-light2);
   --dsw-alias-bg-base:var(--dshgn-light);
-  --dsw-alias-toast-bg:#16283c;
-  --dsw-alias-toast-label:#ffffff;
-  --dsw-alias-elevation-prominent:0 12px 32px rgba(6,20,40,.18);
+  --dsw-alias-toast-bg:#101f3c;
+  --dsw-alias-toast-label:#f7f1e1;
+  --dsw-alias-elevation-prominent:0 12px 32px rgba(16,31,60,.18);
 }
 
 /* \u2500\u2500 \u9876\u680F\uFF1A\u4E0E\u53F3\u680F\u540C\u8272\u7CFB\uFF0C\u538B\u4E00\u6761\u6D45\u84DD\u5206\u9694 \u2500\u2500 */
@@ -15488,6 +15508,20 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
 .dshgn_pane .dshgn_input,.dshgn_pane .dshgn_textarea{background:var(--dshgn-input)}
 .dshgn_pane .dshgn_log{background:rgba(var(--dshgn-tintRgb),.06)}
 .dshgn_pane .dshgn_stat{background:rgba(var(--dshgn-tintRgb),.08)}
+/* \u65AD\u94FE / \u5F85\u529E\uFF1A\u6574\u9875\u5C31\u662F\u4E00\u5F20\u6D45\u8272\u5927\u5361\uFF0C\u4ECE\u9875\u9876\u4E00\u76F4\u94FA\u5230\u9875\u5E95\u3002
+   \u4EE5\u524D\u6807\u9898\u90A3\u5757\u662F .dshgn_section\u3001\u5217\u8868\u662F .dshgn_cardBox\uFF0C\u4E24\u5757\u662F\u5144\u5F1F\u8282\u70B9\uFF0C
+   \u6D45\u8272\u5E95\u53EA\u5305\u4F4F\u5934\u90E8\uFF0C\u4E0B\u9762\u4E00\u5927\u7247\u662F\u9875\u9762\u5E95\u8272\u2014\u2014\u7528\u6237\u539F\u8BDD\u300C\u90A3\u4E2A\u6D45\u8272\u7684\u5927\u5927\u7684\u6846
+   \u53EA\u8986\u76D6\u5230\u6574\u4E2A\u9875\u9762\u7684\u4E00\u70B9\uFF0C\u6211\u60F3\u8BA9\u5B83\u6574\u4E2A\u8986\u76D6\u4E0B\u53BB\u300D\u3002\u73B0\u5728\u4E24\u5757\u90FD\u653E\u8FDB\u540C\u4E00\u4E2A\u5916\u58F3\u3002 */
+.dshgn_paneSheet{flex:1 0 auto;display:flex;flex-direction:column;gap:12px;min-width:0;
+  padding:14px 15px;border-radius:10px;border:0.5px solid var(--dshgn-cardLine);
+  background:var(--dshgn-card)}
+/* \u5916\u58F3\u672C\u8EAB\u5C31\u662F\u90A3\u5F20\u5361\uFF0C\u91CC\u9762\u7684 section \u4E0D\u518D\u53E0\u4E00\u5C42\u5361\u3001\u4E5F\u4E0D\u518D\u63CF\u8FB9\u3002 */
+.dshgn_paneSheet .dshgn_section{padding:0;border:0;background:transparent;box-shadow:none}
+.dshgn_paneSheet .dshgn_cardBox{max-width:none;margin:0;gap:10px}
+/* \u5916\u58F3\u5DF2\u7ECF\u662F\u4E00\u5F20\u6D45\u8272\u5361\uFF0C\u884C\u518D\u540C\u8272\u5C31\u53EA\u5269\u4E00\u5708\u8FB9\u770B\u4E0D\u51FA\u300C\u4E00\u6761\u4E00\u6761\u300D\u3002
+   \u884C\u6539\u7528\u51F9\u4E00\u6863\u7684\u8F93\u5165\u9762\u8272\uFF0C\u50CF\u5361\u91CC\u538B\u7740\u51E0\u6761\u7EB8\u7B7E\u3002 */
+.dshgn_paneSheet .dshgn_brokenRow,.dshgn_paneSheet .dshgn_todoRow{background:var(--dshgn-input)}
+.dshgn_paneSheet .dshgn_brokenRow:hover,.dshgn_paneSheet .dshgn_todoRow:hover{background:var(--dshgn-surface)}
 .dshgn_root{background:var(--dshgn-light)}
 
 /* \u6DF1\u8272\u680F\u91CC\u7684\u6EDA\u52A8\u6761\uFF08WebKit \u4E0D\u8BA4 scrollbar-color\uFF09 */
@@ -21444,195 +21478,199 @@ function BrokenPane(props) {
     { className: "dshgn_pane" },
     h4(
       "div",
-      { className: "dshgn_section" },
+      { className: "dshgn_paneSheet" },
       h4(
         "div",
-        { className: "dshgn_sectionHead" },
-        h4("div", { className: "dshgn_sectionTitle" }, t4("tab.broken")),
-        // 一条都没有时别摆一颗按了没反应的「复制」——清单空着没有可抄的东西。
-        list.length === 0 ? null : h4(
-          "button",
-          { type: "button", className: "dshgn_btn", title: t4("broken.copyAll"), onClick: () => void copyAll() },
-          h4(Icon, { name: "copy", size: 12 }),
-          t4("broken.copyAll")
-        ),
+        { className: "dshgn_section" },
         h4(
-          "button",
-          { type: "button", className: "dshgn_btn", onClick: () => void load(), disabled: loading },
-          loading ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "refresh", size: 12 }),
-          t4("action.refresh")
-        )
-      ),
-      h4("div", { className: "dshgn_sectionDesc" }, t4("broken.desc")),
-      allHits.length === 0 ? null : h4(
-        "div",
-        { className: "dshgn_brokenFilterRow" },
-        h4(Icon, { name: "search", size: 12 }),
-        h4("input", {
-          type: "text",
-          className: "dshgn_input dshgn_brokenFilter",
-          value: filter,
-          placeholder: t4("broken.filter"),
-          "aria-label": t4("broken.filter"),
-          onInput: (event) => setFilter(String(event.target.value || "")),
-          onKeyDown: (event) => {
-            if (event.key !== "Escape") return;
-            event.preventDefault();
-            event.stopPropagation();
-            setFilter("");
-          }
-        }),
-        filter.trim() === "" ? null : h4(
-          "button",
-          {
-            type: "button",
-            className: "dshgn_btn dshgn_brokenFilterClear",
-            title: t4("broken.filterClear"),
-            onClick: () => setFilter("")
-          },
-          h4(Icon, { name: "close", size: 12 })
-        )
-      ),
-      hits !== null && allHits.length > 0 ? h4("div", { className: "dshgn_sectionDesc" }, summary) : null,
-      // 一处都没筛出来时不报「筛出 0 处」——下面那一屏已经说清没有对得上的了
-      needle === "" || list.length === 0 ? null : h4(
-        "div",
-        { className: "dshgn_sectionDesc dshgn_brokenFiltered" },
-        t4("broken.filtered").replace("{n}", String(list.length)).replace("{total}", String(allHits.length))
-      ),
-      truncated ? h4("div", { className: "dshgn_sectionDesc" }, t4("broken.truncated")) : null
-    ),
-    loading && list.length === 0 ? h4("div", { className: "dshgn_emptyState" }, h4("span", { className: "dshgn_spin" })) : list.length === 0 ? h4(
-      "div",
-      { className: "dshgn_empty" },
-      h4(Icon, { name: needle === "" ? "check" : "search", size: 24 }),
-      // 筛着的时候不能说「库里每一条双链都指得到东西」——那是在说另一件事
-      h4("div", { className: "dshgn_emptyTitle" }, needle === "" ? t4("broken.empty") : t4("broken.filterNone")),
-      h4("div", { className: "dshgn_emptyDesc" }, needle === "" ? t4("broken.emptyHint") : t4("broken.filterNoneHint"))
-    ) : h4(
-      "div",
-      { className: "dshgn_cardBox" },
-      groups.map((group) => {
-        const busyOne = creating === group.target;
-        const editing = retarget !== null && retarget.target === group.target;
-        return h4(
-          b,
-          { key: `group:${group.target}` },
-          h4(
-            "div",
-            { className: "dshgn_brokenGroup", title: group.target },
-            h4("span", { className: "dshgn_brokenGroupName" }, group.target),
-            h4("span", { className: "dshgn_brokenGroupCount" }, t4("broken.times").replace("{n}", String(group.items.length))),
-            // 两颗按钮包在同一层里：以前它们各自 margin-left:auto，
-            // 挤在一行时互相往外推，左边那两颗永远对不齐；包一层之后
-            // 整组靠右对齐，换行时也一起换，右边缘是一条直线。
-            h4(
-              "div",
-              { className: "dshgn_brokenGroupActions" },
-              typeof onRetarget === "function" ? h4(
-                "button",
-                {
-                  type: "button",
-                  className: "dshgn_btn dshgn_brokenGroupAll",
-                  title: t4("broken.retarget"),
-                  "aria-expanded": editing ? "true" : "false",
-                  disabled: retargetBusy,
-                  onClick: () => {
-                    setRetarget(editing ? null : { target: group.target, to: "" });
-                  }
-                },
-                h4(Icon, { name: "link", size: 12 }),
-                t4("broken.retarget")
-              ) : null,
-              typeof onCreate === "function" ? h4(
-                "button",
-                {
-                  type: "button",
-                  className: "dshgn_btn dshgn_brokenGroupAll",
-                  title: t4("broken.writeOneHint"),
-                  disabled: busyOne,
-                  onClick: () => {
-                    setCreating(group.target);
-                    Promise.resolve(onCreate(group.target)).then(
-                      () => setCreating(""),
-                      () => setCreating("")
-                    );
-                  }
-                },
-                busyOne ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "plus", size: 12 }),
-                t4("broken.writeOne")
-              ) : null
-            )
+          "div",
+          { className: "dshgn_sectionHead" },
+          h4("div", { className: "dshgn_sectionTitle" }, t4("tab.broken")),
+          // 一条都没有时别摆一颗按了没反应的「复制」——清单空着没有可抄的东西。
+          list.length === 0 ? null : h4(
+            "button",
+            { type: "button", className: "dshgn_btn", title: t4("broken.copyAll"), onClick: () => void copyAll() },
+            h4(Icon, { name: "copy", size: 12 }),
+            t4("broken.copyAll")
           ),
-          // 摊开的那一行：填对的名字，回车就全库改过去。候选来自库里已有的
-          // 文件名，改错字时多半直接挑一个——比凭记忆再敲一遍少一次打错的机会。
-          editing ? h4(
-            "div",
-            { className: "dshgn_brokenRetarget" },
-            h4("input", {
-              className: "dshgn_input dshgn_brokenRetargetInput",
-              list: "dshgn_brokenNames",
-              value: retarget.to,
-              placeholder: t4("broken.retargetHint"),
-              "aria-label": t4("broken.retargetHint"),
-              disabled: retargetBusy,
-              autoFocus: true,
-              onInput: (event) => setRetarget({ target: group.target, to: event.target.value }),
-              onKeyDown: (event) => {
-                if (event.key === "Escape") {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  setRetarget(null);
-                } else if (event.key === "Enter") {
-                  event.preventDefault();
-                  void runRetarget();
-                }
-              }
-            }),
+          h4(
+            "button",
+            { type: "button", className: "dshgn_btn", onClick: () => void load(), disabled: loading },
+            loading ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "refresh", size: 12 }),
+            t4("action.refresh")
+          )
+        ),
+        h4("div", { className: "dshgn_sectionDesc" }, t4("broken.desc")),
+        allHits.length === 0 ? null : h4(
+          "div",
+          { className: "dshgn_brokenFilterRow" },
+          h4(Icon, { name: "search", size: 12 }),
+          h4("input", {
+            type: "text",
+            className: "dshgn_input dshgn_brokenFilter",
+            value: filter,
+            placeholder: t4("broken.filter"),
+            "aria-label": t4("broken.filter"),
+            onInput: (event) => setFilter(String(event.target.value || "")),
+            onKeyDown: (event) => {
+              if (event.key !== "Escape") return;
+              event.preventDefault();
+              event.stopPropagation();
+              setFilter("");
+            }
+          }),
+          filter.trim() === "" ? null : h4(
+            "button",
+            {
+              type: "button",
+              className: "dshgn_btn dshgn_brokenFilterClear",
+              title: t4("broken.filterClear"),
+              onClick: () => setFilter("")
+            },
+            h4(Icon, { name: "close", size: 12 })
+          )
+        ),
+        hits !== null && allHits.length > 0 ? h4("div", { className: "dshgn_sectionDesc" }, summary) : null,
+        // 一处都没筛出来时不报「筛出 0 处」——下面那一屏已经说清没有对得上的了
+        needle === "" || list.length === 0 ? null : h4(
+          "div",
+          { className: "dshgn_sectionDesc dshgn_brokenFiltered" },
+          t4("broken.filtered").replace("{n}", String(list.length)).replace("{total}", String(allHits.length))
+        ),
+        truncated ? h4("div", { className: "dshgn_sectionDesc" }, t4("broken.truncated")) : null
+      ),
+      loading && list.length === 0 ? h4("div", { className: "dshgn_emptyState" }, h4("span", { className: "dshgn_spin" })) : list.length === 0 ? h4(
+        "div",
+        { className: "dshgn_empty" },
+        h4(Icon, { name: needle === "" ? "check" : "search", size: 24 }),
+        // 筛着的时候不能说「库里每一条双链都指得到东西」——那是在说另一件事
+        h4("div", { className: "dshgn_emptyTitle" }, needle === "" ? t4("broken.empty") : t4("broken.filterNone")),
+        h4("div", { className: "dshgn_emptyDesc" }, needle === "" ? t4("broken.emptyHint") : t4("broken.filterNoneHint"))
+      ) : h4(
+        "div",
+        { className: "dshgn_cardBox" },
+        groups.map((group) => {
+          const busyOne = creating === group.target;
+          const editing = retarget !== null && retarget.target === group.target;
+          return h4(
+            b,
+            { key: `group:${group.target}` },
             h4(
-              "button",
-              {
-                type: "button",
-                className: "dshgn_btn dshgn_btnPri dshgn_brokenRetargetGo",
-                disabled: retargetBusy || String(retarget.to || "").trim() === "",
-                onClick: () => void runRetarget()
-              },
-              retargetBusy ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "check", size: 12 }),
-              t4("broken.retargetGo")
-            )
-          ) : null,
-          group.items.map(
-            (hit) => h4(
               "div",
-              { key: `${hit.path}#${hit.line}#${hit.target}`, className: "dshgn_brokenLine" },
+              { className: "dshgn_brokenGroup", title: group.target },
+              h4("span", { className: "dshgn_brokenGroupName" }, group.target),
+              h4("span", { className: "dshgn_brokenGroupCount" }, t4("broken.times").replace("{n}", String(group.items.length))),
+              // 两颗按钮包在同一层里：以前它们各自 margin-left:auto，
+              // 挤在一行时互相往外推，左边那两颗永远对不齐；包一层之后
+              // 整组靠右对齐，换行时也一起换，右边缘是一条直线。
+              h4(
+                "div",
+                { className: "dshgn_brokenGroupActions" },
+                typeof onRetarget === "function" ? h4(
+                  "button",
+                  {
+                    type: "button",
+                    className: "dshgn_btn dshgn_brokenGroupAll",
+                    title: t4("broken.retarget"),
+                    "aria-expanded": editing ? "true" : "false",
+                    disabled: retargetBusy,
+                    onClick: () => {
+                      setRetarget(editing ? null : { target: group.target, to: "" });
+                    }
+                  },
+                  h4(Icon, { name: "link", size: 12 }),
+                  t4("broken.retarget")
+                ) : null,
+                typeof onCreate === "function" ? h4(
+                  "button",
+                  {
+                    type: "button",
+                    className: "dshgn_btn dshgn_brokenGroupAll",
+                    title: t4("broken.writeOneHint"),
+                    disabled: busyOne,
+                    onClick: () => {
+                      setCreating(group.target);
+                      Promise.resolve(onCreate(group.target)).then(
+                        () => setCreating(""),
+                        () => setCreating("")
+                      );
+                    }
+                  },
+                  busyOne ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "plus", size: 12 }),
+                  t4("broken.writeOne")
+                ) : null
+              )
+            ),
+            // 摊开的那一行：填对的名字，回车就全库改过去。候选来自库里已有的
+            // 文件名，改错字时多半直接挑一个——比凭记忆再敲一遍少一次打错的机会。
+            editing ? h4(
+              "div",
+              { className: "dshgn_brokenRetarget" },
+              h4("input", {
+                className: "dshgn_input dshgn_brokenRetargetInput",
+                list: "dshgn_brokenNames",
+                value: retarget.to,
+                placeholder: t4("broken.retargetHint"),
+                "aria-label": t4("broken.retargetHint"),
+                disabled: retargetBusy,
+                autoFocus: true,
+                onInput: (event) => setRetarget({ target: group.target, to: event.target.value }),
+                onKeyDown: (event) => {
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setRetarget(null);
+                  } else if (event.key === "Enter") {
+                    event.preventDefault();
+                    void runRetarget();
+                  }
+                }
+              }),
               h4(
                 "button",
                 {
                   type: "button",
-                  className: "dshgn_brokenRow",
-                  title: hit.path,
-                  onClick: () => {
-                    if (typeof onOpen === "function") onOpen(hit.path);
-                  }
+                  className: "dshgn_btn dshgn_btnPri dshgn_brokenRetargetGo",
+                  disabled: retargetBusy || String(retarget.to || "").trim() === "",
+                  onClick: () => void runRetarget()
                 },
-                h4("span", { className: "dshgn_brokenTarget" }, hit.target),
-                h4("span", { className: "dshgn_brokenWhere" }, `${hit.title || hit.path} \xB7 ${t4("broken.line")} ${hit.line}`),
-                hit.text === "" ? null : h4("span", { className: "dshgn_brokenSnip" }, hit.text)
-              ),
-              typeof onOpenLine === "function" && hit.text !== "" ? h4(
-                "button",
-                {
-                  type: "button",
-                  className: "dshgn_brokenJump",
-                  title: t4("broken.jump"),
-                  onClick: () => onOpenLine(hit.path, hit.text)
-                },
-                t4("broken.jump")
-              ) : null
+                retargetBusy ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "check", size: 12 }),
+                t4("broken.retargetGo")
+              )
+            ) : null,
+            group.items.map(
+              (hit) => h4(
+                "div",
+                { key: `${hit.path}#${hit.line}#${hit.target}`, className: "dshgn_brokenLine" },
+                h4(
+                  "button",
+                  {
+                    type: "button",
+                    className: "dshgn_brokenRow",
+                    title: hit.path,
+                    onClick: () => {
+                      if (typeof onOpen === "function") onOpen(hit.path);
+                    }
+                  },
+                  h4("span", { className: "dshgn_brokenTarget" }, hit.target),
+                  h4("span", { className: "dshgn_brokenWhere" }, `${hit.title || hit.path} \xB7 ${t4("broken.line")} ${hit.line}`),
+                  hit.text === "" ? null : h4("span", { className: "dshgn_brokenSnip" }, hit.text)
+                ),
+                typeof onOpenLine === "function" && hit.text !== "" ? h4(
+                  "button",
+                  {
+                    type: "button",
+                    className: "dshgn_brokenJump",
+                    title: t4("broken.jump"),
+                    onClick: () => onOpenLine(hit.path, hit.text)
+                  },
+                  t4("broken.jump")
+                ) : null
+              )
             )
-          )
-        );
-      })
+          );
+        })
+      )
     ),
     // 候选名单只写一次：七八组各自摊开时共用同一份，不用每组都挂一遍。
     nameList.length === 0 ? null : h4(
@@ -21785,210 +21823,214 @@ function TodoPane(props) {
     { className: "dshgn_pane" },
     h4(
       "div",
-      { className: "dshgn_section" },
+      { className: "dshgn_paneSheet" },
       h4(
         "div",
-        { className: "dshgn_sectionHead" },
-        h4("div", { className: "dshgn_sectionTitle" }, t4("tab.todos")),
-        // 这一整份清单经常要抄去别处（周报、群里同步、贴进另一个工具）。
-        // 一条条复制等于重新抄一遍，这里按屏幕上这个顺序整份抄走。
-        list.length === 0 ? null : h4(
-          "button",
-          // 抄的是屏幕上这一份：筛着的时候只抄筛出来的那几条，
-          // 不然「抄走清单」会把看不见的几百条一起塞进去。
-          { type: "button", className: "dshgn_btn", title: t4("todo.copyAll"), onClick: () => void copyAll(list) },
-          h4(Icon, { name: "copy", size: 12 }),
-          t4("todo.copyAll")
-        ),
-        // 一篇一篇收太慢：整页一起收起来，先看清「都剩哪几篇」。
-        groups.length < 2 ? null : h4(
-          "button",
-          {
-            type: "button",
-            className: "dshgn_btn dshgn_todoFoldAll",
-            title: allFolded ? t4("todos.unfoldAll") : t4("todos.foldAll"),
-            "aria-pressed": allFolded ? "true" : "false",
-            onClick: toggleAllFold
-          },
-          h4(Icon, { name: "chevron", size: 12 }),
-          allFolded ? t4("todos.unfoldAll") : t4("todos.foldAll")
-        ),
+        { className: "dshgn_section" },
         h4(
-          "button",
-          { type: "button", className: "dshgn_btn", onClick: () => void load(), disabled: loading },
-          loading ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "refresh", size: 12 }),
-          t4("action.refresh")
-        )
-      ),
-      h4("div", { className: "dshgn_sectionDesc" }, t4("todos.desc")),
-      allItems.length === 0 ? null : h4(
-        "div",
-        { className: "dshgn_brokenFilterRow" },
-        h4(Icon, { name: "search", size: 12 }),
-        h4("input", {
-          type: "text",
-          className: "dshgn_input dshgn_brokenFilter",
-          value: filter,
-          placeholder: t4("todos.filter"),
-          "aria-label": t4("todos.filter"),
-          onInput: (event) => setFilter(String(event.target.value || "")),
-          onKeyDown: (event) => {
-            if (event.key !== "Escape") return;
-            event.preventDefault();
-            event.stopPropagation();
-            setFilter("");
-          }
-        }),
-        filter.trim() === "" ? null : h4(
-          "button",
-          {
-            type: "button",
-            className: "dshgn_btn dshgn_brokenFilterClear",
-            title: t4("todos.filterClear"),
-            onClick: () => setFilter("")
-          },
-          h4(Icon, { name: "close", size: 12 })
-        )
-      ),
-      items !== null && allItems.length > 0 ? h4("div", { className: "dshgn_sectionDesc" }, summary) : null,
-      // 一条都没筛出来时不报「筛出 0 条」——下面那一屏已经说清没有对得上的了
-      needle === "" || list.length === 0 ? null : h4(
-        "div",
-        { className: "dshgn_sectionDesc dshgn_todosFiltered" },
-        t4("todos.filtered").replace("{n}", String(list.length)).replace("{total}", String(allItems.length))
-      ),
-      truncated ? h4("div", { className: "dshgn_sectionDesc" }, t4("todos.truncated")) : null
-    ),
-    loading && list.length === 0 ? h4("div", { className: "dshgn_emptyState" }, h4("span", { className: "dshgn_spin" })) : list.length === 0 ? h4(
-      "div",
-      { className: "dshgn_empty" },
-      h4(Icon, { name: needle === "" ? "check" : "search", size: 24 }),
-      // 筛着的时候不能说「库里每一条待办都做完了」——那是在说另一件事
-      h4("div", { className: "dshgn_emptyTitle" }, needle === "" ? t4("todos.empty") : t4("todos.filterNone")),
-      h4("div", { className: "dshgn_emptyDesc" }, needle === "" ? t4("todos.emptyHint") : t4("todos.filterNoneHint"))
-    ) : h4(
-      "div",
-      { className: "dshgn_cardBox" },
-      // 一篇一组：组头写着这是哪一篇、还剩几条，右边一颗把这组一起勾掉。
-      // 几十条待办散在七八篇里时，光看每行「第几行」既不知道还剩几篇，
-      // 也不知道哪几篇其实已经清空了。
-      groups.map((group) => {
-        const groupBusy = busy === `all:${group.path}`;
-        return h4(
-          b,
-          { key: `group:${group.path}` },
-          h4(
-            "div",
-            { className: "dshgn_todoGroup", title: group.path },
-            // 这一篇的几条能一起收起来：一篇里塞十几条时，清单会被它
-            // 一个人撑满，别的篇全被顶出屏幕。收起来之后组头还在，
-            // 数也还在——「这一篇还剩几条」这个信息不能跟着行一起消失。
-            h4(
-              "button",
-              {
-                type: "button",
-                className: "dshgn_todoFold",
-                title: foldedGroups.has(group.path) ? t4("todos.unfold") : t4("todos.fold"),
-                "aria-label": foldedGroups.has(group.path) ? t4("todos.unfold") : t4("todos.fold"),
-                "aria-expanded": foldedGroups.has(group.path) ? "false" : "true",
-                "data-folded": foldedGroups.has(group.path) ? "true" : "false",
-                onClick: () => toggleGroupFold(group.path)
-              },
-              h4(Icon, { name: "chevron", size: 11 })
-            ),
-            h4(
-              "button",
-              {
-                type: "button",
-                className: "dshgn_todoGroupName",
-                title: group.path,
-                onClick: () => {
-                  if (typeof onOpen === "function") onOpen(group.path);
-                }
-              },
-              group.title
-            ),
-            h4("span", { className: "dshgn_todoGroupCount" }, String(group.items.length)),
-            // 和断链组头一样：按钮包一层再靠右，长文案折行时不会把组头撑歪。
-            h4(
-              "div",
-              { className: "dshgn_todoGroupActions" },
-              h4(
-                "button",
-                {
-                  type: "button",
-                  className: "dshgn_btn dshgn_todoGroupAll",
-                  title: t4("todos.unticked").replace("{n}", String(group.items.length)),
-                  disabled: groupBusy,
-                  onClick: () => void untickAll(group)
-                },
-                groupBusy ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "check", size: 12 }),
-                t4("todos.unticked").replace("{n}", String(group.items.length))
-              )
-            )
+          "div",
+          { className: "dshgn_sectionHead" },
+          h4("div", { className: "dshgn_sectionTitle" }, t4("tab.todos")),
+          // 这一整份清单经常要抄去别处（周报、群里同步、贴进另一个工具）。
+          // 一条条复制等于重新抄一遍，这里按屏幕上这个顺序整份抄走。
+          list.length === 0 ? null : h4(
+            "button",
+            // 抄的是屏幕上这一份：筛着的时候只抄筛出来的那几条，
+            // 不然「抄走清单」会把看不见的几百条一起塞进去。
+            { type: "button", className: "dshgn_btn", title: t4("todo.copyAll"), onClick: () => void copyAll(list) },
+            h4(Icon, { name: "copy", size: 12 }),
+            t4("todo.copyAll")
           ),
-          foldedGroups.has(group.path) ? h4(
-            "div",
-            { className: "dshgn_sectionDesc" },
-            t4("todos.folded").replace("{n}", String(group.items.length))
-          ) : null,
-          foldedGroups.has(group.path) ? null : group.items.map((item) => {
-            const key = `${item.path}#${item.index}`;
-            return h4(
+          // 一篇一篇收太慢：整页一起收起来，先看清「都剩哪几篇」。
+          groups.length < 2 ? null : h4(
+            "button",
+            {
+              type: "button",
+              className: "dshgn_btn dshgn_todoFoldAll",
+              title: allFolded ? t4("todos.unfoldAll") : t4("todos.foldAll"),
+              "aria-pressed": allFolded ? "true" : "false",
+              onClick: toggleAllFold
+            },
+            h4(Icon, { name: "chevron", size: 12 }),
+            allFolded ? t4("todos.unfoldAll") : t4("todos.foldAll")
+          ),
+          h4(
+            "button",
+            { type: "button", className: "dshgn_btn", onClick: () => void load(), disabled: loading },
+            loading ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "refresh", size: 12 }),
+            t4("action.refresh")
+          )
+        ),
+        h4("div", { className: "dshgn_sectionDesc" }, t4("todos.desc")),
+        allItems.length === 0 ? null : h4(
+          "div",
+          { className: "dshgn_brokenFilterRow" },
+          h4(Icon, { name: "search", size: 12 }),
+          h4("input", {
+            type: "text",
+            className: "dshgn_input dshgn_brokenFilter",
+            value: filter,
+            placeholder: t4("todos.filter"),
+            "aria-label": t4("todos.filter"),
+            onInput: (event) => setFilter(String(event.target.value || "")),
+            onKeyDown: (event) => {
+              if (event.key !== "Escape") return;
+              event.preventDefault();
+              event.stopPropagation();
+              setFilter("");
+            }
+          }),
+          filter.trim() === "" ? null : h4(
+            "button",
+            {
+              type: "button",
+              className: "dshgn_btn dshgn_brokenFilterClear",
+              title: t4("todos.filterClear"),
+              onClick: () => setFilter("")
+            },
+            h4(Icon, { name: "close", size: 12 })
+          )
+        ),
+        items !== null && allItems.length > 0 ? h4("div", { className: "dshgn_sectionDesc" }, summary) : null,
+        // 一条都没筛出来时不报「筛出 0 条」——下面那一屏已经说清没有对得上的了
+        needle === "" || list.length === 0 ? null : h4(
+          "div",
+          { className: "dshgn_sectionDesc dshgn_todosFiltered" },
+          t4("todos.filtered").replace("{n}", String(list.length)).replace("{total}", String(allItems.length))
+        ),
+        truncated ? h4("div", { className: "dshgn_sectionDesc" }, t4("todos.truncated")) : null
+      ),
+      loading && list.length === 0 ? h4("div", { className: "dshgn_emptyState" }, h4("span", { className: "dshgn_spin" })) : list.length === 0 ? h4(
+        "div",
+        { className: "dshgn_empty" },
+        h4(Icon, { name: needle === "" ? "check" : "search", size: 24 }),
+        // 筛着的时候不能说「库里每一条待办都做完了」——那是在说另一件事
+        h4("div", { className: "dshgn_emptyTitle" }, needle === "" ? t4("todos.empty") : t4("todos.filterNone")),
+        h4("div", { className: "dshgn_emptyDesc" }, needle === "" ? t4("todos.emptyHint") : t4("todos.filterNoneHint"))
+      ) : h4(
+        "div",
+        { className: "dshgn_cardBox" },
+        // 一篇一组：组头写着这是哪一篇、还剩几条，右边一颗把这组一起勾掉。
+        // 几十条待办散在七八篇里时，光看每行「第几行」既不知道还剩几篇，
+        // 也不知道哪几篇其实已经清空了。
+        groups.map((group) => {
+          const groupBusy = busy === `all:${group.path}`;
+          return h4(
+            b,
+            { key: `group:${group.path}` },
+            h4(
               "div",
-              { key, className: "dshgn_todoRow" },
+              { className: "dshgn_todoGroup", title: group.path },
+              // 这一篇的几条能一起收起来：一篇里塞十几条时，清单会被它
+              // 一个人撑满，别的篇全被顶出屏幕。收起来之后组头还在，
+              // 数也还在——「这一篇还剩几条」这个信息不能跟着行一起消失。
               h4(
                 "button",
                 {
                   type: "button",
-                  className: "dshgn_check dshgn_checkHit" + (busy === key ? " dshgn_todoBusy" : ""),
-                  "aria-label": t4("todo.toggle"),
-                  title: t4("todo.toggle"),
-                  disabled: busy === key,
-                  onClick: () => void tick(item)
+                  className: "dshgn_todoFold",
+                  title: foldedGroups.has(group.path) ? t4("todos.unfold") : t4("todos.fold"),
+                  "aria-label": foldedGroups.has(group.path) ? t4("todos.unfold") : t4("todos.fold"),
+                  "aria-expanded": foldedGroups.has(group.path) ? "false" : "true",
+                  "data-folded": foldedGroups.has(group.path) ? "true" : "false",
+                  onClick: () => toggleGroupFold(group.path)
                 },
-                null
+                h4(Icon, { name: "chevron", size: 11 })
               ),
-              // 一条待办摊开来看是「哪一篇的第几行」，可这句话在原文里可能
-              // 埋在几十行之后。跟断链那边一样分两个可点区域：点文字去那一篇，
-              // 点「去这一条」直接落到写着这条待办的那一行。
+              h4(
+                "button",
+                {
+                  type: "button",
+                  className: "dshgn_todoGroupName",
+                  title: group.path,
+                  onClick: () => {
+                    if (typeof onOpen === "function") onOpen(group.path);
+                  }
+                },
+                group.title
+              ),
+              h4("span", { className: "dshgn_todoGroupCount" }, String(group.items.length)),
+              // 和断链组头一样：按钮包一层再靠右，长文案折行时不会把组头撑歪。
               h4(
                 "div",
-                { className: "dshgn_todoLine" },
+                { className: "dshgn_todoGroupActions" },
                 h4(
                   "button",
                   {
                     type: "button",
-                    className: "dshgn_todoText",
-                    title: item.path,
-                    onClick: () => {
-                      if (typeof onOpen === "function") onOpen(item.path);
-                    }
+                    className: "dshgn_btn dshgn_todoGroupAll",
+                    title: t4("todos.unticked").replace("{n}", String(group.items.length)),
+                    disabled: groupBusy,
+                    onClick: () => void untickAll(group)
                   },
-                  h4("span", { className: "dshgn_todoTitle" }, item.text),
-                  // 哪一篇已经写在上面那条组头里了，这里只报「第几行」，
-                  // 一行里塞两遍同一个篇名只是噪声。
-                  h4(
-                    "span",
-                    { className: "dshgn_brokenWhere" },
-                    t4("todos.atLine").replace("{n}", String(item.line))
-                  )
-                ),
-                typeof onOpenLine === "function" && String(item.text || "") !== "" ? h4(
+                  groupBusy ? h4("span", { className: "dshgn_spin" }) : h4(Icon, { name: "check", size: 12 }),
+                  t4("todos.unticked").replace("{n}", String(group.items.length))
+                )
+              )
+            ),
+            foldedGroups.has(group.path) ? h4(
+              "div",
+              { className: "dshgn_sectionDesc" },
+              t4("todos.folded").replace("{n}", String(group.items.length))
+            ) : null,
+            foldedGroups.has(group.path) ? null : group.items.map((item) => {
+              const key = `${item.path}#${item.index}`;
+              return h4(
+                "div",
+                { key, className: "dshgn_todoRow" },
+                h4(
                   "button",
                   {
                     type: "button",
-                    className: "dshgn_brokenJump",
-                    title: t4("todo.jump"),
-                    onClick: () => onOpenLine(item.path, item.text)
+                    className: "dshgn_check dshgn_checkHit" + (busy === key ? " dshgn_todoBusy" : ""),
+                    "aria-label": t4("todo.toggle"),
+                    title: t4("todo.toggle"),
+                    disabled: busy === key,
+                    onClick: () => void tick(item)
                   },
-                  t4("todo.jump")
-                ) : null
-              )
-            );
-          })
-        );
-      })
+                  null
+                ),
+                // 一条待办摊开来看是「哪一篇的第几行」，可这句话在原文里可能
+                // 埋在几十行之后。跟断链那边一样分两个可点区域：点文字去那一篇，
+                // 点「去这一条」直接落到写着这条待办的那一行。
+                h4(
+                  "div",
+                  { className: "dshgn_todoLine" },
+                  h4(
+                    "button",
+                    {
+                      type: "button",
+                      className: "dshgn_todoText",
+                      title: item.path,
+                      onClick: () => {
+                        if (typeof onOpen === "function") onOpen(item.path);
+                      }
+                    },
+                    h4("span", { className: "dshgn_todoTitle" }, item.text),
+                    // 哪一篇已经写在上面那条组头里了，这里只报「第几行」，
+                    // 一行里塞两遍同一个篇名只是噪声。
+                    h4(
+                      "span",
+                      { className: "dshgn_brokenWhere" },
+                      t4("todos.atLine").replace("{n}", String(item.line))
+                    )
+                  ),
+                  typeof onOpenLine === "function" && String(item.text || "") !== "" ? h4(
+                    "button",
+                    {
+                      type: "button",
+                      className: "dshgn_brokenJump",
+                      title: t4("todo.jump"),
+                      onClick: () => onOpenLine(item.path, item.text)
+                    },
+                    t4("todo.jump")
+                  ) : null
+                )
+              );
+            })
+          );
+        })
+      )
     )
   );
 }
@@ -22072,19 +22114,17 @@ function CalendarPane(props) {
         )
       ),
       h4("div", { className: "dshgn_sectionDesc" }, t4("calendar.desc")),
-      // 星期几单独占一行。以前它们和日期格子塞在同一个 grid 里，7 个表头
-      // 被当成第一行 7 列的一部分，日期整体往后错位一格，于是「1 号」落在
-      // 「一」下面、「2 号」落在「二」下面，整张日历看着就是歪的。
-      h4(
-        "div",
-        { className: "dshgn_calWeekRow" },
-        weekdays.map(
-          (label, index) => h4("div", { key: "w" + String(index), className: "dshgn_calWeek" }, label)
-        )
-      ),
+      // 星期几与日期必须同处一个 grid、共用同一套列宽。0.1.11 把表头拆成
+      // 单独一层 grid，两层各自算列宽——日期格子带 padding/border/aspect-ratio，
+      // 表头什么都没有，列宽就分了岔，实测整排表头比日期右偏约三分之一列，
+      // 用户看到的还是「星期一没对着 1 号」。现在表头就是同一个 grid 的头 7 格，
+      // 盒模型也跟日期格子写成一样，两行必然咬住。
       h4(
         "div",
         { className: "dshgn_calGrid" },
+        weekdays.map(
+          (label, index) => h4("div", { key: "w" + String(index), className: "dshgn_calWeek" }, label)
+        ),
         cells.map((day, index) => {
           if (day === null) return h4("span", { key: "e" + String(index) });
           const key = `${monthKey}-${pad2(day)}`;
@@ -23018,7 +23058,8 @@ function HeatmapStrip(props) {
     ),
     h4(
       "div",
-      { className: "dshgn_heatGrid", style: { gridTemplateRows: "repeat(7, 1fr)", gridAutoFlow: "column" } },
+      // 列宽交给样式表均分，这里不再写死行高/流向：写死就会在窄栏里溢出。
+      { className: "dshgn_heatGrid" },
       days.map((day) => {
         const on2 = activeDay === day.date;
         const tip = `${day.date} \xB7 ${day.count} ${t4("heat.unit")}`;
@@ -25497,8 +25538,9 @@ ${t4("tree.menuReveal")}` : absolute,
           {
             type: "button",
             className: "dshgn_outlineToggle",
-            onClick: () => setShowProps((prev) => !prev),
-            title: t4("reader.frontmatter")
+            // 不挂原生 title：那会在鼠标划过时自动弹出一个小窗，
+            // 用户明确要求「点上去再给我看」，所以提示全部走点击展开。
+            onClick: () => setShowProps((prev) => !prev)
           },
           h4(Icon, { name: showProps ? "up" : "file", size: 12 }),
           t4("reader.frontmatter"),
@@ -25511,7 +25553,9 @@ ${t4("tree.menuReveal")}` : absolute,
             (row) => h4(
               "div",
               { key: row.key, className: "dshgn_propRow" },
-              h4("span", { className: "dshgn_propKey", title: row.key }, row.key),
+              // 不挂 title：属性名与属性值鼠标划过就弹窗会挡住正文，
+              // 想看全名点开这一栏即可。
+              h4("span", { className: "dshgn_propKey" }, row.key),
               h4(
                 "span",
                 { className: "dshgn_propVal" },
@@ -25524,7 +25568,6 @@ ${t4("tree.menuReveal")}` : absolute,
                       key: `${index}-${tag}`,
                       type: "button",
                       className: "dshgn_propTag",
-                      title: tag,
                       onClick: () => onPickTag(tag)
                     },
                     tag
@@ -25535,7 +25578,6 @@ ${t4("tree.menuReveal")}` : absolute,
                     key: "link",
                     type: "button",
                     className: "dshgn_propLink",
-                    title: row.link.target + (row.link.anchor === "" ? "" : ` \u203A ${row.link.anchor}`),
                     onClick: () => onOpenWikiLink2(row.link.target, row.link.anchor)
                   },
                   row.link.label || (row.link.anchor === "" ? row.link.target : `${row.link.target} \u203A ${row.link.anchor}`)
@@ -25632,7 +25674,10 @@ ${t4("tree.menuReveal")}` : absolute,
                     title: item.text,
                     onClick: () => jumpToHeading(index)
                   },
-                  item.text
+                  // 一行 = 一颗小圆点 + 标题。圆点是空元素，读屏跳过，
+                  // 也让 textContent 仍然只有标题本身。
+                  h4("span", { className: "dshgn_outlineDot", "aria-hidden": "true" }),
+                  h4("span", { className: "dshgn_outlineText" }, item.text)
                 ),
                 onCopyHeadingLink === null ? null : h4(
                   "button",
