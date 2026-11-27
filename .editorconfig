@@ -1,0 +1,17 @@
+# 统一缩进与行尾，避免不同编辑器互相制造噪音。
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 2
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# 面板是 2 万行手写 JSX，历史上就是 4 空格；改成 2 会重排整份文件。
+[src/view/panel.js]
+indent_size = 4
+
+[*.md]
+trim_trailing_whitespace = false

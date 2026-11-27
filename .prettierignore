@@ -1,0 +1,24 @@
+# 存量文件按各自历史风格书写，这里不做全量重排（会产生巨型 diff，工单明确禁止）。
+# 只对 T6/T8 新增的文件强制 prettier 格式，其余路径排除。
+node_modules/
+package-lock.json
+main.js
+styles.css
+card/
+locale/
+versions.json
+manifest.json
+*.md
+.github/
+src/main.js
+src/core/*
+!src/core/errors.js
+src/host/
+src/view/panel.css
+src/view/panel.js
+src/view/markdown.js
+src/view/view.js
+scripts/
+test/*
+!test/cache.test.mjs
+!test/errors.test.mjs

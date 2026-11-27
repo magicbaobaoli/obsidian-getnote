@@ -24,6 +24,19 @@ jobs:
       # 不一致时这里会直接失败，比让测试跑起来再莫名其妙挂掉好定位。
       - run: npm ci
 
+      # 三条静态门禁放在测试之前：它们比整套测试快得多（几十秒 vs 五六分钟），
+      # 格式/未定义变量/类型这类问题先挡住，能省掉一轮「等五分钟才知道拼错了」。
+      # 类型检查只覆盖 src/core（见 tsconfig.json 的 include），视图层的 JSX
+      # 暂时不查——那里历史包袱重，全开会淹掉真问题。
+      - name: 代码风格
+        run: npm run lint
+
+      - name: 格式
+        run: npm run format:check
+
+      - name: 类型
+        run: npm run typecheck
+
       # 测试脚本自己会先跑一次 build（启动/视图/面板验收加载的是打包产物），
       # 所以这里不需要额外 build 一步。
       - run: npm test

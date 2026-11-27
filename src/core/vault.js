@@ -8,7 +8,7 @@
  * 所有对外路径都用 POSIX 分隔符（`a/b/c.md`）的**相对库根**形式，跨平台一致；
  * 落地读写前统一过 resolveInside() 做包含性校验，防止 `../` 逃逸出库根。
  */
-import { readdir, readFile, writeFile, rename, mkdir, stat, rm, rmdir, realpath, copyFile } from './vfs.js'
+import { readdir, readFile, writeFile, rename, mkdir, stat, rm, rmdir, copyFile } from './vfs.js'
 import { createHash, randomBytes } from 'node:crypto'
 import { coreError } from './errors.js'
 import { moveHistoryEntries } from './history.js'
@@ -376,6 +376,18 @@ async function dirSignature(root) {
  *
  * `options.fresh` 为真时跳过缓存重新扫：同步、归档这类「必须看到磁盘真相」的
  * 路径用它，避免拿着上一次的结果做覆盖写。
+ *
+ * @typedef {object} ScanResult
+ * @property {Array<any>} entries 扫到的笔记
+ * @property {Array<any>} errors 读不了的文件
+ * @property {boolean} truncated 是否因上限被截断
+ * @property {Array<string>} emptyDirs 空目录
+ */
+/**
+ * @param {string} root 库根绝对路径
+ * @param {object} [options]
+ * @param {boolean} [options.fresh] 为真时跳过缓存，直接重扫磁盘
+ * @returns {Promise<ScanResult>} 扫描结果
  */
 export async function scanVault(root, options = {}) {
   const fresh = options !== null && typeof options === 'object' && options.fresh === true
@@ -608,7 +620,7 @@ export async function readNote(root, rel) {
  * 找不到就返回空数组：大多数笔记本来就没有附件，这不是错误。
  */
 export async function listAssets(root, rel, noteId = '') {
-  const { abs, rel: normalized } = resolveInside(root, rel)
+  const { rel: normalized } = resolveInside(root, rel)
   const dir = posix.dirname(normalized)
   const stem = posix.basename(normalized, NOTE_EXT)
   const assetRel = dir === '.' || dir === '' ? 'asset' : `${dir}/asset`
@@ -785,6 +797,15 @@ export function safeFilename(title, fallback = '未命名') {
 /**
  * 新建笔记。默认文件名 `YYYY-MM-DD-<标题>.md`，与用户已有归档库的命名约定一致
  * （这样本插件建的笔记和他手写的归档混在同一个目录里也不会显得突兀）。
+ *
+ * @param {string} root 库根绝对路径
+ * @param {object} [options]
+ * @param {string} [options.dir] 目标子目录（库内相对路径）
+ * @param {string} [options.title] 标题
+ * @param {string} [options.content] 正文
+ * @param {string} [options.date] 文件名前缀用的日期 YYYY-MM-DD，省略用今天
+ * @param {boolean} [options.withDatePrefix] 文件名是否带日期前缀
+ * @returns {Promise<{path: string}>} 新建的笔记（库内相对路径）
  */
 export async function createNote(root, { dir = '', title = '', content = '', date, withDatePrefix = true } = {}) {
   const safeDir = normalizeRel(dir)
@@ -1019,7 +1040,7 @@ export async function restoreNote(root, trashPath, targetRel) {
   if (rel === '' || rel.endsWith('/')) {
     throw coreError("vault.targetEmpty", {}, { status: 400 })
   }
-  const { abs: absTarget } = resolveInside(root, rel, { create: true })
+  resolveInside(root, rel, { create: true })
 
   // 同名冲突时加后缀，绝不覆盖
   let candidate = rel
@@ -2173,9 +2194,8 @@ export async function removeDirTree(root, dirInput) {
   const rel = normalizeRel(dirInput)
   if (rel === '') throw coreError("vault.cannotRemoveRoot", {}, { status: 400 })
   const { abs } = resolveInside(root, rel)
-  let top
   try {
-    top = await readdir(abs, { withFileTypes: true })
+    await readdir(abs, { withFileTypes: true })
   } catch {
     throw coreError("vault.dirMissing", {}, { status: 404 })
   }

@@ -13,7 +13,14 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { configure, reset } from '../src/core/vfs.js'
-import { scanVault, searchNotes, invalidateScan, setTextMemoLimit, textMemoStats, bumpEpoch } from '../src/core/vault.js'
+import {
+  scanVault,
+  searchNotes,
+  invalidateScan,
+  setTextMemoLimit,
+  textMemoStats,
+  bumpEpoch,
+} from '../src/core/vault.js'
 
 const BASE = '/vault'
 const DEFAULT_LIMIT = 64 * 1024 * 1024
@@ -37,12 +44,17 @@ function makeAdapter(files) {
     nodes.set(rel, { text: files[rel] })
   }
   const counts = { read: 0, stat: 0, list: 0 }
-  const norm = (p) => String(p || '').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '')
+  const norm = (p) =>
+    String(p || '')
+      .replace(/\\/g, '/')
+      .replace(/^\/+|\/+$/g, '')
   return {
     counts,
     getBasePath: () => BASE,
     getResourcePath: (p) => `app://fake/${norm(p)}`,
-    async exists(p) { return nodes.has(norm(p)) },
+    async exists(p) {
+      return nodes.has(norm(p))
+    },
     async list(p) {
       counts.list += 1
       const rel = norm(p)
@@ -75,24 +87,40 @@ function makeAdapter(files) {
       if (!n) return null
       return { type: n.dir ? 'folder' : 'file', size: n.text ? n.text.length : 0, mtime: 1, ctime: 1 }
     },
-    async write(p, data) { nodes.set(norm(p), { text: String(data) }) },
-    async writeBinary(p, data) { nodes.set(norm(p), { text: Buffer.from(data).toString('utf8') }) },
+    async write(p, data) {
+      nodes.set(norm(p), { text: String(data) })
+    },
+    async writeBinary(p, data) {
+      nodes.set(norm(p), { text: Buffer.from(data).toString('utf8') })
+    },
     async append(p, data) {
       const rel = norm(p)
       const n = nodes.get(rel)
       nodes.set(rel, { text: (n && n.text ? n.text : '') + String(data) })
     },
-    async appendBinary(p, data) { await this.append(p, data) },
-    async mkdir(p) { nodes.set(norm(p), { dir: true }) },
+    async appendBinary(p, data) {
+      await this.append(p, data)
+    },
+    async mkdir(p) {
+      nodes.set(norm(p), { dir: true })
+    },
     async remove(p) {
       const rel = norm(p)
       for (const key of [...nodes.keys()]) {
         if (key === rel || key.startsWith(rel + '/')) nodes.delete(key)
       }
     },
-    async rmdir(p) { await this.remove(p) },
-    async rename(a, b) { const n = nodes.get(norm(a)); nodes.delete(norm(a)); nodes.set(norm(b), n) },
-    async copy(a, b) { nodes.set(norm(b), { ...nodes.get(norm(a)) }) },
+    async rmdir(p) {
+      await this.remove(p)
+    },
+    async rename(a, b) {
+      const n = nodes.get(norm(a))
+      nodes.delete(norm(a))
+      nodes.set(norm(b), n)
+    },
+    async copy(a, b) {
+      nodes.set(norm(b), { ...nodes.get(norm(a)) })
+    },
   }
 }
 
@@ -125,7 +153,10 @@ test('同一查询连打两次，第二次一次盘都不读', async () => {
     adapter.counts.read = 0
     const second = await searchNotes(BASE, '菠萝蜜')
     assert.equal(adapter.counts.read, 0, '第二次搜索不该再读盘')
-    assert.deepEqual(second.hits.map((h) => h.path), first.hits.map((h) => h.path))
+    assert.deepEqual(
+      second.hits.map((h) => h.path),
+      first.hits.map((h) => h.path),
+    )
   })
 })
 
@@ -172,10 +203,7 @@ test('两次扫库之间没有事件，第二次连一次 stat 都不用打', as
     const second = await scanVault(BASE)
     assert.equal(adapter.counts.stat, 0, '命中缓存就不该再对每篇笔记 stat')
     assert.equal(adapter.counts.read, 0, '命中缓存也不该再读正文')
-    assert.deepEqual(
-      second.entries.map((e) => e.path).sort(),
-      first.entries.map((e) => e.path).sort(),
-    )
+    assert.deepEqual(second.entries.map((e) => e.path).sort(), first.entries.map((e) => e.path).sort())
   })
 })
 

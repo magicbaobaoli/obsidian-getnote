@@ -35,7 +35,7 @@ import { extractAudio, extractOriginal, normalizeNote } from './openapi.js'
 /** 把 MCP 的错误统一成带 status 的 Error，便于 index.js 的 fail() 分流。 */
 function wrapError(what, error) {
   const message = error && error.message ? error.message : String(error)
-  const e = new Error(`得到大脑 ${what} 失败：${message}`)
+  const e = /** @type {Error & {status?: number, cause?: unknown}} */ (new Error(`得到大脑 ${what} 失败：${message}`))
   // MCP 的 401 多半是令牌失效；其余当上游错误
   e.status = /401|unauthorized|no bearer token/i.test(message) ? 401 : 502
   e.cause = error
@@ -66,6 +66,10 @@ function bridgeAudio(raw) {
  * 建一个「形如 Open API 客户端」的 MCP 客户端。
  *
  * 返回的方法名与 openapi.js createClient() 完全一致，index.js 无缝切换。
+ *
+ * @param {object} [options]
+ * @param {string} [options.accessToken] MCP 的 OAuth access_token
+ * @param {string} [options.url]         MCP 端点地址，省略用默认值
  */
 export function createMcpCloudClient({ accessToken, url } = {}) {
   const mcp = new McpClient(accessToken, url ? { url } : undefined)
@@ -93,6 +97,13 @@ export function createMcpCloudClient({ accessToken, url } = {}) {
 
   // ── 笔记 ────────────────────────────────────────────────────────────────
 
+  /**
+   * 笔记列表（游标分页）。
+   *
+   * @param {object} [options]
+   * @param {string} [options.cursor]
+   * @param {number} [options.limit]
+   */
   async function listNotes({ cursor, limit } = {}) {
     const pageSize = typeof limit === 'number' && limit > 0 ? Math.min(limit, 100) : 20
     const args = { page_size: pageSize }
@@ -119,6 +130,13 @@ export function createMcpCloudClient({ accessToken, url } = {}) {
     return bridgeAudio(note) ?? null
   }
 
+  /**
+   * 录音类笔记列表。
+   *
+   * @param {object} [options]
+   * @param {number} [options.sinceId]
+   * @param {number} [options.limit]
+   */
   async function listRecorderNotes({ sinceId = 0, limit = 20 } = {}) {
     // MCP 没有独立的「录音卡」列表：按 note_type 过滤即可拿到同一批数据
     const data = await tool('list_notes', { note_type: 'recorder_audio', page_size: Math.min(limit, 100), ...(sinceId ? {} : {}) })
@@ -128,6 +146,20 @@ export function createMcpCloudClient({ accessToken, url } = {}) {
 
   const getRecorderNote = getNote
 
+  /**
+   * 新建笔记。
+   *
+   * @param {object} [options]
+   * @param {string} [options.noteType]
+   * @param {string} [options.title]
+   * @param {string} [options.content]
+   * @param {string} [options.linkUrl]
+   * @param {string[]} [options.imageUrls]
+   * @param {string[]} [options.tags]
+   * @param {string} [options.topicId]
+   * @param {string} [options.parentId]
+   * @param {string} [options.clientRequestId]
+   */
   async function createNote({ noteType, title, content, linkUrl, imageUrls, tags, topicId, parentId, clientRequestId } = {}) {
     const args = {}
     if (title !== undefined) args.title = String(title)
@@ -143,6 +175,15 @@ export function createMcpCloudClient({ accessToken, url } = {}) {
     return { noteId: data?.note_id != null ? String(data.note_id) : null, tasks: data?.tasks ?? null, raw: data }
   }
 
+  /**
+   * 更新笔记。
+   *
+   * @param {object} [options]
+   * @param {string} [options.noteId]
+   * @param {string} [options.title]
+   * @param {string} [options.content]
+   * @param {string[]} [options.tags]
+   */
   async function updateNote({ noteId, title, content, tags } = {}) {
     const args = { note_id: String(noteId) }
     if (title !== undefined) args.title = String(title)
@@ -175,25 +216,60 @@ export function createMcpCloudClient({ accessToken, url } = {}) {
     return { topics, hasMore: data?.has_more === true, total: typeof data?.total === 'number' ? data.total : null }
   }
 
+  /**
+   * 新建知识库。
+   *
+   * @param {object} [options]
+   * @param {string} [options.name]
+   * @param {string} [options.description]
+   */
   async function createTopic({ name, description } = {}) {
     return tool('create_topic', { name: String(name), ...(description ? { description: String(description) } : {}) })
   }
 
+  /**
+   * 某知识库下的笔记（页码分页）。
+   *
+   * @param {object} [options]
+   * @param {string} [options.topicId]
+   * @param {number} [options.page]
+   */
   async function listTopicNotes({ topicId, page = 1 } = {}) {
     const data = await tool('list_topic_notes', { topic_id: String(topicId), page: Math.max(1, Number(page) || 1), page_size: 20 })
     const notes = Array.isArray(data?.notes) ? data.notes : []
     return { notes, hasMore: data?.has_more === true, total: typeof data?.total === 'number' ? data.total : null }
   }
 
+  /**
+   * 知识库目录树（MCP 没有真目录，这里只回笔记）。
+   *
+   * @param {object} [options]
+   * @param {string} [options.topicId]
+   * @param {string} [options.directoryId]
+   */
   async function browseTopic({ topicId, directoryId } = {}) {
     const data = await tool('list_topic_notes', { topic_id: String(topicId), page: 1, page_size: 20 })
     return { notes: Array.isArray(data?.notes) ? data.notes : [], directories: [], topicId, directoryId }
   }
 
+  /**
+   * 把一批笔记加进知识库。
+   *
+   * @param {object} [options]
+   * @param {string} [options.topicId]
+   * @param {Array<string|number>} [options.noteIds]
+   */
   async function addNotesToTopic({ topicId, noteIds } = {}) {
     return tool('batch_add_notes_to_topic', { topic_id: String(topicId), note_ids: (noteIds || []).map(String) })
   }
 
+  /**
+   * 把一批笔记从知识库移除（MCP 只能一篇一篇来）。
+   *
+   * @param {object} [options]
+   * @param {string} [options.topicId]
+   * @param {Array<string|number>} [options.noteIds]
+   */
   async function removeNotesFromTopic({ topicId, noteIds } = {}) {
     const results = []
     for (const id of noteIds || []) {
@@ -210,6 +286,14 @@ export function createMcpCloudClient({ accessToken, url } = {}) {
     return { results: results.map((r) => ({ ...bridgeAudio(r.note ?? r), score: r.score, snippet: r.snippet ?? null, noteId: r.note_id ?? r.note?.note_id ?? null })), raw: data }
   }
 
+  /**
+   * 在某个知识库内做语义召回。
+   *
+   * @param {object} [options]
+   * @param {string} [options.topicId]
+   * @param {string} [options.query]
+   * @param {number} [options.topK]
+   */
   async function recallInTopic({ topicId, query, topK = 5 } = {}) {
     const data = await tool('recall_knowledge', { topic_id: String(topicId), query: String(query), top_k: Math.max(1, Math.min(Number(topK) || 5, 20)) })
     const results = Array.isArray(data?.results) ? data.results : []
@@ -218,6 +302,13 @@ export function createMcpCloudClient({ accessToken, url } = {}) {
 
   // ── 分享 ────────────────────────────────────────────────────────────────
 
+  /**
+   * 给一篇笔记建分享链接。
+   *
+   * @param {object} [options]
+   * @param {string} [options.noteId]
+   * @param {boolean} [options.excludeAudio]
+   */
   async function createShareLink({ noteId, excludeAudio } = {}) {
     const args = { note_id: String(noteId) }
     if (excludeAudio === true) args.share_exclude_audio = true

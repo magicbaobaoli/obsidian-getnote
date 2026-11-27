@@ -53,10 +53,6 @@ function eexist(p) {
   return Object.assign(new Error(`EEXIST: file already exists, '${p}'`), { code: 'EEXIST', path: p })
 }
 
-function enotdir(p) {
-  return Object.assign(new Error(`ENOTDIR: not a directory, '${p}'`), { code: 'ENOTDIR', path: p })
-}
-
 /** 绝对路径 → 库内相对路径（POSIX）。越界直接抛 400，和 DSH 版的 resolveInside 同一套语义。 */
 function relOf(abs) {
   const raw = String(abs == null ? '' : abs).replace(/\\/g, '/')

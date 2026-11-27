@@ -8,7 +8,7 @@
 import { ItemView, MarkdownRenderer, WorkspaceLeaf } from 'obsidian'
 import * as React from 'preact/compat'
 import { createRoot } from 'preact/compat/client'
-import { PanelRoot, PanelIcon, injectCss, removeAllCss } from './panel.js'
+import { PanelRoot, PanelIcon, injectCss } from './panel.js'
 import { setMarkdownHost, clearMarkdownHost } from './markdown.js'
 
 export const VIEW_TYPE_GETNOTE = 'getnote-brain-view'
@@ -68,7 +68,6 @@ export class GetnoteView extends ItemView {
       .split('\n')
       .slice(0, 8)
       .join('\n')
-    // eslint-disable-next-line no-console
     console.error('得到大脑：面板打开失败', error)
     // 同时落一份到插件目录：用户不一定愿意去翻控制台，而这一份文件
     // 下次排查时能直接读到，不用来回问「屏幕上写了什么」。
@@ -219,7 +218,7 @@ export class GetnoteView extends ItemView {
     // 先铺一层纯内联样式的占位字。它不依赖任何 CSS、不依赖 React、也不等数据：
     // 面板首帧真要挂住（异步分支卡死、渲染进程报错被吞），用户至少看得见一句话，
     // 而不是对着一片黑猜「是不是插件没装上」。面板一画出来就把它删掉。
-    const placeholder = this.placeholder(container)
+    this.placeholder(container)
     this.note('容器已就绪，开始首帧渲染')
     this.root = createRoot(mount)
     this.root.render(React.createElement(PanelRoot, { plugin: this.plugin }))

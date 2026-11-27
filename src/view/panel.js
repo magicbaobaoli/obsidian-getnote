@@ -6,7 +6,7 @@
  */
 
 import * as React from 'preact/compat'
-import { error as logError, setDebugLogging } from '../core/log.js'
+import { error as logError } from '../core/log.js'
 
 import { MarkdownView, hasMarkdownHost, openLinkInVault, hoverLink } from './markdown.js'
 
@@ -517,9 +517,6 @@ async function saveFile(url, filename) {
     export function setVaultGraph(fn) {
       __graph = typeof fn === 'function' ? fn : null
     }
-    function hasVaultGraph() {
-      return __graph !== null
-    }
     function backlinksViaHost(path) {
       if (__graph === null) return null
       try {
@@ -544,8 +541,6 @@ async function saveFile(url, filename) {
 
     const h = React.createElement
     const NS = 'dsh-getnote'
-    const PANEL_ID = 'dsh-getnote'
-    const PANEL_ORDER = 7
     const STYLE_ID = 'dshgn-style'
 
     /**
@@ -672,9 +667,6 @@ async function saveFile(url, filename) {
      * 缓存下来的 bound 会永远返回 key，界面就整片英文键名了。
      */
     let boundCtx = null
-    function setLocaleCtx(ctx) {
-      boundCtx = ctx
-    }
     function makeT(ctx) {
       const bound = () => {
         // ctx 优先，其次用 apply 时记下的那个；都在调用时才解析，
@@ -1041,10 +1033,6 @@ async function saveFile(url, filename) {
         if (win && wins.indexOf(win) === -1) wins.push(win)
       }
       return wins
-    }
-    function panelWindow() {
-      const wins = panelWindows()
-      return wins.length === 0 ? null : wins[0]
     }
     /** 记住一个面板根节点，之后所有 DOM 查找都从它所在的 document 出发。 */
     export function setPanelRootEl(el) {
@@ -1440,7 +1428,7 @@ async function saveFile(url, filename) {
                 label ||
                   (isBlockAnchor(anchor)
                     ? target === ''
-                      ? t('note.blockRef')
+                      ? getT()('note.blockRef')
                       : target
                     : target === ''
                       ? anchor
@@ -6307,7 +6295,7 @@ async function saveFile(url, filename) {
             },
             onRenameDir: async (from, to) => {
               try {
-                const json = await api('/dir/rename', {
+                await api('/dir/rename', {
                   method: 'POST',
                   headers: { 'content-type': 'application/json' },
                   body: JSON.stringify({ from, to }),
@@ -7447,7 +7435,7 @@ async function saveFile(url, filename) {
                                   title: link,
                                   onClick: (event) => {
                                     event.stopPropagation()
-                                    onOpenWikiLink(link)
+                                    openWikiLink(link)
                                   },
                                 },
                                 link,
@@ -9453,7 +9441,7 @@ async function saveFile(url, filename) {
      * 开关单独拎出来默认关着，且打开时要再确认一次。
      */
     function CardPane(props) {
-      const { t, status, showToast, onError, onChanged } = props
+      const { t, showToast, onError, onChanged } = props
       const [env, setEnv] = React.useState(null)
       const [envBusy, setEnvBusy] = React.useState(false)
       // 一键装依赖：pip 跑起来要一两分钟，得有个独立的 busy 和一段可读的输出，
@@ -10026,7 +10014,7 @@ async function saveFile(url, filename) {
     }
 
     function ArchiveCard(props) {
-      const { t, status, onChanged, onError, showToast } = props
+      const { t, onChanged, onError, showToast } = props
       const [info, setInfo] = React.useState(null)
       const [busy, setBusy] = React.useState(false)
       const [importMode, setImportMode] = React.useState('rename')
@@ -10183,7 +10171,7 @@ async function saveFile(url, filename) {
     // .conflicts/ 而正文写云端版。原来用户只能在文件管理器里翻那个目录，
     // 这里给并排比对 + 一键采纳任意一边。
     function ConflictPane(props) {
-      const { t, status, onChanged, onError, showToast } = props
+      const { t, onChanged, onError, showToast } = props
       const [items, setItems] = React.useState(null)
       const [loading, setLoading] = React.useState(false)
       const [busy, setBusy] = React.useState(false)
@@ -10586,7 +10574,7 @@ async function saveFile(url, filename) {
      * 所以把它当路标写在旁边）。
      */
     function BrokenPane(props) {
-      const { t, status, onError, onOpen, onOpenLine, onCreate, onRetarget, showToast } = props
+      const { t, onError, onOpen, onOpenLine, onCreate, onRetarget, showToast } = props
       const [hits, setHits] = React.useState(null)
       const [scanned, setScanned] = React.useState(0)
       const [truncated, setTruncated] = React.useState(false)
@@ -10975,7 +10963,7 @@ async function saveFile(url, filename) {
      * 勾选用的是 /todo/toggle 的序号，与阅读区那个方框完全同一个口径。
      */
     function TodoPane(props) {
-      const { t, status, onError, onOpen, onOpenLine, onChanged, showToast } = props
+      const { t, onError, onOpen, onOpenLine, onChanged, showToast } = props
       const [items, setItems] = React.useState(null)
       const [scanned, setScanned] = React.useState(0)
       const [truncated, setTruncated] = React.useState(false)
@@ -11558,7 +11546,7 @@ async function saveFile(url, filename) {
     }
 
     function TrashPane(props) {
-      const { t, status, dirs, onChanged, onError, showToast } = props
+      const { t, dirs, onChanged, onError, showToast } = props
       const [items, setItems] = React.useState(null)
       const [loading, setLoading] = React.useState(false)
       const [busy, setBusy] = React.useState(false)
@@ -12966,7 +12954,6 @@ async function saveFile(url, filename) {
         onNewNoteIn,
         heatmap,
         showHeatmap,
-        currentNoteId,
         onNarrowPick,
         onMoveNoteTo,
         onAddTagTo,
@@ -13117,25 +13104,6 @@ async function saveFile(url, filename) {
         }
         return filterTreeRows(list, treeFilter)
       }, [tree, dirs, entries, dirSort, folded, treeFilter])
-
-      const sortedTags = React.useMemo(() => {
-        const copy = [...tagCounts]
-        if (tagSort === 'name') {
-          copy.sort((a, b) => a[0].localeCompare(b[0], 'zh'))
-        } else if (tagSort === 'count') {
-          copy.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh'))
-        } else {
-          const latest = (tag) => {
-            let max = 0
-            for (const entry of entries) {
-              if ((entry.tags || []).includes(tag) && entry.mtimeMs > max) max = entry.mtimeMs
-            }
-            return max
-          }
-          copy.sort((a, b) => latest(b[0]) - latest(a[0]) || a[0].localeCompare(b[0], 'zh'))
-        }
-        return copy
-      }, [tagCounts, entries, tagSort])
 
       // 嵌套标签（#读书/摘抄）按斜杠拆成层级摊开，子标签自己占一行、缩进一格。
       // 以前标签云是「一个标签一颗胶囊」平铺，父标签「读书」与它下面的
@@ -17063,7 +17031,6 @@ async function saveFile(url, filename) {
 
       componentDidCatch(error, info) {
         // 不静默吞：控制台留痕，便于把「哪个组件把面板打挂」定位到具体栈。
-        // eslint-disable-next-line no-console
         logError('面板渲染异常，已降级显示：', error, info && info.componentStack)
       }
 

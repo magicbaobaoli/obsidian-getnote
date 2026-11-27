@@ -2766,6 +2766,13 @@ export function createHandler(config) {
  * 三重防重入：running 标志 + 自动同步的最短间隔 + 定时器 tick 自己的 autoRunning。
  * 理由很实际：用户手动点了同步、同时定时器也醒了，两轮并发会把同一篇笔记写两遍，
  * 读配额也会翻倍。
+ *
+ * @param {object} [options]
+ * @param {boolean} [options.full] true = 全量扫描
+ * @param {string} [options.reason] 'manual' / 'auto'
+ * @param {object} [options.config]
+ * @param {string} [options.config.vaultPath] 库根（设置里没写时的兜底）
+ * @returns {Promise<any>} 这一轮的结果
  */
 async function performSyncImpl({ full = false, reason = 'manual', config = {} } = {}) {
   if (syncState.running) {

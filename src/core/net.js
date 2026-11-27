@@ -116,7 +116,9 @@ function once(url, init, redirectsLeft) {
     )
 
     req.on('error', (cause) => {
-      const error = new Error(`连不上 ${target.hostname}（${cause && cause.message ? cause.message : '网络错误'}）`)
+      const error = /** @type {Error & {status?: number, cause?: unknown}} */ (
+        new Error(`连不上 ${target.hostname}（${cause && cause.message ? cause.message : '网络错误'}）`)
+      )
       error.status = 502
       error.cause = cause
       reject(error)

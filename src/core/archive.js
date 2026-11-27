@@ -486,7 +486,7 @@ async function indexNoteIds(absRoot) {
  * 把库根目录下的所有文件打成一个 zip。
  *
  * @param {string} root 库根绝对路径
- * @param {{maxBytes?: number, maxFileBytes?: number, maxTotalBytes?: number}} [options]
+ * @param {{maxBytes?: number, maxFileBytes?: number, maxTotalBytes?: number, scope?: 'all'|'notes'|'assets', dir?: string}} [options]
  * @returns {Promise<{buffer: Buffer, entries: Array<{path: string, bytes: number, method: number, crc: number}>, bytes: number, sourceBytes: number}>}
  *          `bytes` 是归档本身的大小；`sourceBytes` 是被打进去的原始字节总数。
  */

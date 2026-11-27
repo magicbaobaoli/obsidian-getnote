@@ -129,7 +129,6 @@ export default class GetnoteObsidianPlugin extends Plugin {
     // 面板默认跟随宿主界面语言。用户在面板里显式选过语言就以他的为准，
     // 这里只是把「宿主现在说的是什么语言」告诉面板。
     try {
-      // eslint-disable-next-line global-require
       const moment = typeof require === 'function' ? require('moment') : null
       setHostLocale(moment && typeof moment.locale === 'function' ? moment.locale() : null)
     } catch {
@@ -192,7 +191,6 @@ export default class GetnoteObsidianPlugin extends Plugin {
     // 行为不可靠。Obsidian 桌面版能拿到 electron 的 shell，直接交给它。
     setOpenExternal((url) => {
       try {
-        // eslint-disable-next-line global-require
         const electron = typeof require === 'function' ? require('electron') : null
         if (electron && electron.shell && typeof electron.shell.openExternal === 'function') {
           void electron.shell.openExternal(url)
@@ -224,7 +222,6 @@ export default class GetnoteObsidianPlugin extends Plugin {
       const target = join(dir, filename)
       await writeFile(target, bytes)
       try {
-        // eslint-disable-next-line global-require
         const electron = typeof require === 'function' ? require('electron') : null
         if (electron && electron.shell && typeof electron.shell.showItemInFolder === 'function') {
           electron.shell.showItemInFolder(target)

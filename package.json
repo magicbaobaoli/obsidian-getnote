@@ -8,6 +8,9 @@
     "build": "node scripts/build.mjs",
     "dev": "node scripts/build.mjs --watch",
     "test": "node scripts/build.mjs && node --import ./test/css-hooks.mjs --test test/*.test.mjs",
+    "lint": "eslint src scripts test",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
     "check:market": "node scripts/check-market.mjs"
   },
   "keywords": [
@@ -26,8 +29,14 @@
     "url": "git+https://github.com/magicbaobaoli/obsidian-getnote.git"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.20.7",
     "esbuild": "^0.25.0",
-    "jsdom": "^31.0.1"
+    "eslint": "^10.16.0",
+    "globals": "^17.14.0",
+    "jsdom": "^31.0.1",
+    "prettier": "^3.10.1",
+    "typescript": "^7.0.2"
   },
   "engines": {
     "node": ">=22"

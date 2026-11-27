@@ -49,7 +49,9 @@ function toError(status, payload, what) {
   if (message) parts.push(message)
   if (status) parts.push(`HTTP ${status}`)
   if (hint) parts.push(hint)
-  const e = new Error(parts.join('：').replace(/(：)+/g, '：'))
+  const e = /** @type {Error & {status?: number, code?: number|null, reason?: string|null, requestId?: string|null, partial?: object}} */ (
+    new Error(parts.join('：').replace(/(：)+/g, '：'))
+  )
   e.status = status || 502
   e.code = typeof err.code === 'number' ? err.code : null
   e.reason = reason || null
@@ -107,6 +109,14 @@ export class OpenApiError extends Error {}
  * 得到大脑 Open API 客户端。
  *
  * 只依赖注入进来的 fetch ——这样测试里能塞一个假的，不打真网络。
+ *
+ * @param {object} [options]
+ * @param {string} [options.apiKey]     个人 API Key（gk_live_xxx）
+ * @param {string} [options.clientId]   应用 Client ID（cli_xxx）
+ * @param {string} [options.grantId]    企业代授权的 Grant ID，可省
+ * @param {string} [options.baseUrl]
+ * @param {typeof fetch} [options.fetchImpl]
+ * @param {number} [options.timeoutMs]
  */
 export function createClient({ apiKey, clientId, grantId, baseUrl = API_BASE, fetchImpl = globalThis.fetch, timeoutMs = 30000 } = {}) {
   if (typeof apiKey !== 'string' || apiKey.trim() === '') {
@@ -133,6 +143,12 @@ export function createClient({ apiKey, clientId, grantId, baseUrl = API_BASE, fe
    *
    * 注意：官方错误里 `401` 和 `success:false` 都可能出现，两者都要转成人话错误，
    * 否则前端只能显示「HTTP 401」这种对用户没用的东西。
+   *
+   * @param {string} method
+   * @param {string} path
+   * @param {object} [options]
+   * @param {object} [options.query]
+   * @param {object} [options.body]
    */
   async function request(method, path, { query, body } = {}) {
     let url = `${baseUrl.replace(/\/+$/, '')}${path}`
@@ -154,7 +170,9 @@ export function createClient({ apiKey, clientId, grantId, baseUrl = API_BASE, fe
     try {
       res = await fetchImpl(url, init)
     } catch (cause) {
-      const e = new Error(`连不上得到大脑（${cause && cause.name === 'TimeoutError' ? '请求超时' : (cause && cause.message) || '网络错误'}）。检查网络或代理。`)
+      const e = /** @type {Error & {status?: number}} */ (
+        new Error(`连不上得到大脑（${cause && cause.name === 'TimeoutError' ? '请求超时' : (cause && cause.message) || '网络错误'}）。检查网络或代理。`)
+      )
       e.status = 502
       throw e
     }
@@ -174,6 +192,10 @@ export function createClient({ apiKey, clientId, grantId, baseUrl = API_BASE, fe
    *
    * 首次不传 cursor，之后传上一页的 cursor，直到 has_more 为 false。
    * 不用 since_id：官方已标注「不推荐，请改用 cursor」。
+   *
+   * @param {object} [options]
+   * @param {string} [options.cursor]
+   * @param {number} [options.limit]
    */
   async function listNotes({ cursor, limit } = {}) {
     const data = await get('/resource/note/list', { cursor, limit })
@@ -191,7 +213,13 @@ export function createClient({ apiKey, clientId, grantId, baseUrl = API_BASE, fe
     return data?.note ?? null
   }
 
-  /** 录音卡笔记列表（需 note.recorder.read + X-Grant-ID）。 */
+  /**
+   * 录音卡笔记列表（需 note.recorder.read + X-Grant-ID）。
+   *
+   * @param {object} [options]
+   * @param {number} [options.sinceId]
+   * @param {number} [options.limit]
+   */
   async function listRecorderNotes({ sinceId = 0, limit = 20 } = {}) {
     const data = await get('/resource/note/recorder/list', { since_id: sinceId, limit })
     return {
@@ -213,6 +241,17 @@ export function createClient({ apiKey, clientId, grantId, baseUrl = API_BASE, fe
    *
    * `clientRequestId` 是幂等键：重试同一个请求不会产生两条笔记。写操作一律带上，
    * 断网重试时尤其重要。
+   *
+   * @param {object} [options]
+   * @param {string} [options.noteType]
+   * @param {string} [options.title]
+   * @param {string} [options.content]
+   * @param {string} [options.linkUrl]
+   * @param {string[]} [options.imageUrls]
+   * @param {string[]} [options.tags]
+   * @param {string} [options.topicId]
+   * @param {string} [options.parentId]
+   * @param {string} [options.clientRequestId]
    */
   async function createNote({ noteType = 'plain_text', title, content, linkUrl, imageUrls, tags, topicId, parentId, clientRequestId } = {}) {
     const body = { note_type: noteType }
@@ -231,7 +270,15 @@ export function createClient({ apiKey, clientId, grantId, baseUrl = API_BASE, fe
     }
   }
 
-  /** 更新笔记。title / content / tags 至少要给一个，且 tags 是完整替换。 */
+  /**
+   * 更新笔记。title / content / tags 至少要给一个，且 tags 是完整替换。
+   *
+   * @param {object} [options]
+   * @param {string} [options.noteId]
+   * @param {string} [options.title]
+   * @param {string} [options.content]
+   * @param {string[]} [options.tags]
+   */
   async function updateNote({ noteId, title, content, tags } = {}) {
     if (title === undefined && content === undefined && tags === undefined) {
       throw Object.assign(new Error('更新笔记至少要改标题、内容或标签之一'), { status: 400 })
@@ -283,13 +330,26 @@ export function createClient({ apiKey, clientId, grantId, baseUrl = API_BASE, fe
     }
   }
 
+  /**
+   * 新建知识库。
+   *
+   * @param {object} [options]
+   * @param {string} [options.name]
+   * @param {string} [options.description]
+   */
   async function createTopic({ name, description } = {}) {
     if (!name) throw Object.assign(new Error('知识库要有名字'), { status: 400 })
     const data = await post('/resource/knowledge/create', { name, description })
     return { id: String(data?.topic_id ?? data?.id ?? ''), name }
   }
 
-  /** 某知识库下的笔记（页码分页）。 */
+  /**
+   * 某知识库下的笔记（页码分页）。
+   *
+   * @param {object} [options]
+   * @param {string} [options.topicId]
+   * @param {number} [options.page]
+   */
   async function listTopicNotes({ topicId, page = 1 } = {}) {
     const data = await get('/resource/knowledge/notes', { topic_id: topicId, page })
     return {
@@ -299,7 +359,13 @@ export function createClient({ apiKey, clientId, grantId, baseUrl = API_BASE, fe
     }
   }
 
-  /** 知识库目录树（逐层：传 directoryId 看下一层）。 */
+  /**
+   * 知识库目录树（逐层：传 directoryId 看下一层）。
+   *
+   * @param {object} [options]
+   * @param {string} [options.topicId]
+   * @param {string} [options.directoryId]
+   */
   async function browseTopic({ topicId, directoryId } = {}) {
     const data = await get('/resource/knowledge/directories', { topic_id: topicId, directory_id: directoryId })
     return {
@@ -308,11 +374,25 @@ export function createClient({ apiKey, clientId, grantId, baseUrl = API_BASE, fe
     }
   }
 
+  /**
+   * 把一批笔记加进知识库。
+   *
+   * @param {object} options
+   * @param {string} options.topicId
+   * @param {Array<string|number>} options.noteIds
+   */
   async function addNotesToTopic({ topicId, noteIds }) {
     await post('/resource/knowledge/note/batch-add', { topic_id: topicId, note_ids: noteIds.map(String) })
     return true
   }
 
+  /**
+   * 把一批笔记从知识库移除。
+   *
+   * @param {object} options
+   * @param {string} options.topicId
+   * @param {Array<string|number>} options.noteIds
+   */
   async function removeNotesFromTopic({ topicId, noteIds }) {
     await post('/resource/knowledge/note/remove', { topic_id: topicId, note_ids: noteIds.map(String) })
     return true
@@ -327,6 +407,14 @@ export function createClient({ apiKey, clientId, grantId, baseUrl = API_BASE, fe
     return list
   }
 
+  /**
+   * 在某个知识库内做语义召回。
+   *
+   * @param {object} [options]
+   * @param {string} [options.topicId]
+   * @param {string} [options.query]
+   * @param {number} [options.topK]
+   */
   async function recallInTopic({ topicId, query, topK = 5 } = {}) {
     const data = await post('/resource/recall/knowledge', { topic_id: topicId, query, top_k: Math.min(Math.max(topK, 1), 10) })
     return Array.isArray(data?.results) ? data.results : Array.isArray(data?.notes) ? data.notes : []
@@ -334,6 +422,13 @@ export function createClient({ apiKey, clientId, grantId, baseUrl = API_BASE, fe
 
   // ── 分享 ──────────────────────────────────────────────────────────────────
 
+  /**
+   * 给一篇笔记建分享链接。
+   *
+   * @param {object} [options]
+   * @param {string} [options.noteId]
+   * @param {boolean} [options.excludeAudio]
+   */
   async function createShareLink({ noteId, excludeAudio = false } = {}) {
     const data = await post('/resource/note/sharing', { note_id: String(noteId), share_exclude_audio: excludeAudio === true })
     return data?.share_url ?? data?.url ?? null
@@ -442,6 +537,10 @@ export function extractOriginal(note) {
  * 列表接口和详情接口字段不完全一样（列表没有 audio/timeline），所以这里对每个
  * 字段都做回退，缺失就给安全默认值。**绝不为了好看编造字段**——前端会按
  * `hasAudio` / `hasTranscript` 决定显示什么，编一个空音频反而让人以为丢数据。
+ *
+ * @param {any} raw
+ * @param {object} [options]
+ * @param {string} [options.topicName]
  */
 export function normalizeNote(raw, { topicName } = {}) {
   if (!raw || typeof raw !== 'object') return null

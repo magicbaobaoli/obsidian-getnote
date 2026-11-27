@@ -17,7 +17,7 @@
 // child_process 改成用的时候才 import：静态顶层 import 会让社区目录的自动审核
 // 直接判定「这个插件能执行任意命令」。实际只有这一处用途——按需拉起录音卡的
 // Python 桥脚本，参数全部由本文件拼好，没有一条来自用户输入。
-import { access, mkdir, readdir, rename, stat } from './vfs.js'
+import { mkdir, readdir, rename } from './vfs.js'
 import { dirname as nativeDirname, join } from 'node:path'
 
 /**
@@ -29,6 +29,13 @@ import { dirname as nativeDirname, join } from 'node:path'
  * 所以改成显式注入，未注入时退回 cwd（只影响离线测试，正常运行一定会先注入）。
  */
 let scriptDir = process.cwd()
+
+/**
+ * 注入桥脚本所在目录（宿主在 onload 里调用）。
+ *
+ * @param {object} [options]
+ * @param {string} [options.baseDir] 插件目录绝对路径
+ */
 export function configureCardScripts({ baseDir } = {}) {
   if (typeof baseDir === 'string' && baseDir !== '') scriptDir = baseDir
 }
@@ -119,10 +126,12 @@ async function runBridge(args, { timeoutMs = DEFAULT_TIMEOUT_MS, python = null, 
       child.stderr.on('data', (chunk) => {
         err += chunk
       })
-      child.on('error', (error) => {
-        clearTimeout(timer)
-        // ENOENT = 这个解释器不存在，换下一个试
-        if (error && error.code === 'ENOENT') {
+      child.on(
+        'error',
+        /** @param {Error & {code?: string}} error */ (error) => {
+          clearTimeout(timer)
+          // ENOENT = 这个解释器不存在，换下一个试
+          if (error && error.code === 'ENOENT') {
           attempt(index + 1)
           return
         }
@@ -238,9 +247,11 @@ async function runPythonModule(moduleArgs, { timeoutMs = 5 * 60 * 1000 } = {}) {
       child.stderr.on('data', (chunk) => {
         err += chunk
       })
-      child.on('error', (error) => {
-        clearTimeout(timer)
-        if (error && error.code === 'ENOENT') {
+      child.on(
+        'error',
+        /** @param {Error & {code?: string}} error */ (error) => {
+          clearTimeout(timer)
+          if (error && error.code === 'ENOENT') {
           attempt(index + 1)
           return
         }
@@ -400,7 +411,7 @@ function emptySummary() {
  * @param {object} options
  * @param {boolean} [options.all]           true = 卡片上全部；false = 只取 names
  * @param {string}  [options.names]         逗号分隔的卡片文件名
- * @param {boolean} [options.deleteAfter]   ★ 下载成功后删掉卡片上的原件（用户显式要求才为 true）
+ * @param {boolean} [options.deleteAfter]   注意：下载成功后删掉卡片上的原件（用户显式要求才为 true）
  * @param {string}  [options.dir]           放进哪个目录，默认「录音卡」
  * @param {(line: string) => void} [options.log] 进度回调
  */
@@ -468,7 +479,7 @@ export async function importCardRecordings(root, options = {}) {
         '',
       ].join('\n')
 
-      const { createNote } = await import('../vault.js')
+      const { createNote } = await import('./vault.js')
       const created = await createNote(root, {
         dir: targetDir,
         title,
@@ -555,7 +566,16 @@ export async function wifiActivate({ cmd = null, body = null, join = true, keep 
   return runBridge(args, { script: WIFI(), timeoutMs: 4 * 60 * 1000 })
 }
 
-/** 手动连一个已知热点（密码已知或开放），连上后找服务。 */
+/**
+ * 手动连一个已知热点（密码已知或开放），连上后找服务。
+ *
+ * @param {object} [options]
+ * @param {string} [options.ssid] 热点名
+ * @param {string|null} [options.password] 密码，开放热点省略
+ * @param {boolean} [options.keep] true = 用完不退出热点
+ * @param {number} [options.timeout] 连接超时（秒）
+ * @returns {Promise<any>} 桥脚本的输出
+ */
 export async function wifiJoin({ ssid, password = null, keep = false, timeout = 30 } = {}) {
   if (typeof ssid !== 'string' || ssid.trim() === '') {
     throw Object.assign(new Error('要连哪个热点？ssid 不能为空'), { status: 400 })

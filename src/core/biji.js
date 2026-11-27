@@ -32,7 +32,9 @@ const REQUEST_TIMEOUT = 45_000
 /** 统一的远端错误：把 HTTP 状态与响应体前缀带出来，方便面板直接显示。 */
 function remoteError(what, status, body) {
   const snippet = String(body || '').replace(/\s+/g, ' ').slice(0, 300)
-  const error = new Error(`${what} 失败（HTTP ${status}）${snippet ? `：${snippet}` : ''}`)
+  const error = /** @type {Error & {status?: number}} */ (
+    new Error(`${what} 失败（HTTP ${status}）${snippet ? `：${snippet}` : ''}`)
+  )
   error.status = status
   return error
 }
@@ -283,7 +285,9 @@ export class McpClient {
     const message = this.parseBody(text, res.headers.get('content-type'))
     if (!message) throw new Error(`MCP ${name} 无有效响应`)
     if (message.error) {
-      const err = new Error(`MCP ${name} 错误：${message.error.message || JSON.stringify(message.error)}`)
+      const err = /** @type {Error & {mcpError?: object}} */ (
+        new Error(`MCP ${name} 错误：${message.error.message || JSON.stringify(message.error)}`)
+      )
       err.mcpError = message.error
       throw err
     }

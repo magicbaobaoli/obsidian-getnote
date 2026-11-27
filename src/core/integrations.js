@@ -59,6 +59,15 @@ function randomId() {
  *
  * 返回**新的**对象，不改传进来的那份：调用方可能还拿着旧引用去做对比，
  * 就地改会让「有没有变」的判断永远为假。
+ *
+ * @param {any} canvas 画布
+ * @param {object} [options]
+ * @param {string} [options.file] 库内相对路径
+ * @param {number} [options.x]
+ * @param {number} [options.y]
+ * @param {number} [options.width]
+ * @param {number} [options.height]
+ * @returns {object} 新的画布
  */
 export function addFileNode(canvas, { file, x = 0, y = 0, width = 400, height = 400 } = {}) {
   const source = canvas && typeof canvas === 'object' ? canvas : emptyCanvas()

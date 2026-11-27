@@ -10,7 +10,7 @@
  * 起一个真的本地服务（和 smoke.mjs 一样），不能 mock 掉。
  */
 
-import { after, before, test } from 'node:test'
+import { after, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -2008,7 +2008,7 @@ test('双链带小节时跳到那一节，找不到就明说', async () => {
     return json.path
   }
 
-  const target = await seed('锚点目标', '## 乙节\n\n被跳到的地方\n', 'seed-anchor-target')
+  await seed('锚点目标', '## 乙节\n\n被跳到的地方\n', 'seed-anchor-target')
   const source = await seed(
     '锚点来源',
     '## 第一节\n\n开头\n\n## 第二节\n\n跳到 [[#第二节]]\n\n还有 [[锚点目标#乙节]]\n\n坏链 [[#没有这一节]]\n',
@@ -4804,7 +4804,6 @@ test('搜索卡片上把用户敲的词标出来，tag:/dir: 限定词不去染�
 })
 
 test('一篇里命中好几处时，卡片上先摆两行，点「还有几处」就地摊全，再点收回去', async () => {
-  const rootNode = () => window.document.querySelector('.dshgn_root')
   const allRow = () =>
     Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
       const name = el.querySelector('.dshgn_treeName')
@@ -5071,7 +5070,7 @@ test('读到哪儿记到哪儿，回来还停在那儿；没记过的那篇从�
 
   // 打开、往下翻到 720，等防抖把它记下来
   const liveScroller = () => window.document.querySelector('.dshgn_note .dshgn_scroll')
-  let scroller = await openCard(seeded.path)
+  await openCard(seeded.path)
   await sleep(150)
   assert.equal(liveScroller().scrollTop, 0, '没记过的那篇从头开始')
   liveScroller().scrollTop = 720
@@ -5093,7 +5092,7 @@ test('读到哪儿记到哪儿，回来还停在那儿；没记过的那篇从�
   assert.equal(liveScroller().scrollTop, 0, '没记过的那篇从头开始，不能停在上一篇读到的地方')
   await back()
 
-  scroller = await openCard(seeded.path)
+  await openCard(seeded.path)
   await sleep(250)
   assert.equal(liveScroller().scrollTop, 720, '回来还停在上次读到的地方')
 
@@ -10657,7 +10656,7 @@ test('头部里那个值是双链时点得开，不用自己去左栏翻', async
   await sleep(300)
 
   // 被指向的那一篇
-  const target = await seed('头部链接验收', '头部链接-被指向的那一篇', '# 头部链接-被指向的那一篇\n\n这边是被指的那一篇。\n', 'seed-prop-link-target')
+  await seed('头部链接验收', '头部链接-被指向的那一篇', '# 头部链接-被指向的那一篇\n\n这边是被指的那一篇。\n', 'seed-prop-link-target')
   // 头部里挂着一条双链，正文里一次都没提它——只能从属性区点过去
   const source = await seed(
     '头部链接验收',
@@ -12248,7 +12247,7 @@ test('回收站里能就地看一眼删掉的那篇写的是什么，不用先�
   assert.equal(peekBtn.getAttribute('aria-expanded'), 'false', '没摊开时 aria-expanded 是 false')
 
   peekBtn.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
-  const preview = await waitFor(() => window.document.querySelector('.dshgn_trashPreview'), 8000, '摊开那一块')
+  await waitFor(() => window.document.querySelector('.dshgn_trashPreview'), 8000, '摊开那一块')
   const previewBody = () => {
     const node = window.document.querySelector('.dshgn_trashPreviewBody')
     return node === null ? '' : node.textContent || ''
@@ -14224,8 +14223,6 @@ test('字号是这一篇的事：调大了这篇，换一篇还是原来那档�
     })
     return res.json()
   }
-  const smallPath = '字号按篇验收/字号按篇-小字那篇.md'
-  const plainPath = '字号按篇验收/字号按篇-普通那篇.md'
   await post('/getnote/create', {
     dir: '字号按篇验收',
     title: '字号按篇-小字那篇',
@@ -16427,7 +16424,6 @@ test('单篇字节数按 UTF-8 算，超了编辑态脚下就说，保存被 413
 })
 
 test('冲突攒多了，顶上那行筛能筛到想找的那一条，清掉就回全量', async () => {
-  const rootNode = () => window.document.querySelector('.dshgn_root')
   const allRow = () =>
     Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
       const name = el.querySelector('.dshgn_treeName')
@@ -16509,7 +16505,6 @@ test('冲突攒多了，顶上那行筛能筛到想找的那一条，清掉就�
 })
 
 test('换了目录或者搜索词，中栏列表的滚动位置回到顶上', async () => {
-  const rootNode = () => window.document.querySelector('.dshgn_root')
   const allRow = () =>
     Array.from(window.document.querySelectorAll('.dshgn_treeRow')).find((el) => {
       const name = el.querySelector('.dshgn_treeName')
@@ -17250,7 +17245,6 @@ test('界面偏好写在宿主给的存储里，不再往 localStorage 里塞', 
  * pip 的原话摊出来、装成之后那颗按钮收不收起来。
  */
 test('录音卡缺环境时有一颗「一键装依赖」，装没成会把 pip 的原话摊出来', async () => {
-  const rootNode = () => window.document.querySelector('.dshgn_root')
   const wrapped = window.fetch
   let installCalls = 0
   window.fetch = globalThis.fetch = async (input, init) => {

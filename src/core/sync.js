@@ -15,9 +15,8 @@
  * 加了批注。同步只负责把**云端新出现的**笔记补进来；已经存在的文件原样保留，
  * 并把「因本地已有而跳过」如实报给用户。
  */
-import { readdir, readFile, stat } from './vfs.js'
-import { join } from 'node:path'
-import { createNote, safeFilename, scanVault, writeNote } from './vault.js'
+import { readdir } from './vfs.js'
+import { createNote, safeFilename, scanVault } from './vault.js'
 
 const NOTE_PAGE_SIZE = 50
 const TOOL_DELAY_MS = 350            // 得到大脑写入/读取限速：约 3 次/秒，留余量
@@ -167,6 +166,10 @@ async function existingNoteIds(root) {
  *
  * 拿到失败不致命：用户可能只授权了部分 scope。此时用「上次导入时记下的知识库
  * 列表」或空列表继续，让 list_notes（全局）仍然能跑。
+ *
+ * @param {any} client MCP 客户端
+ * @param {(line: string) => void} log 进度回调
+ * @returns {Promise<Array<{id: string, name: string}>>} 知识库清单
  */
 async function listTopics(client, log) {
   const topics = []
@@ -198,6 +201,11 @@ async function listTopics(client, log) {
  *
  * 首选 `list_notes`（全局、带 topic 归属），失败再退回逐知识库 `list_topic_notes`。
  * 两条路都走不通就抛出——此时用户需要知道「是授权没了还是网络问题」。
+ *
+ * @param {any} client MCP 客户端
+ * @param {Array<{id: string, name: string}>} topics 知识库清单
+ * @param {(line: string) => void} log 进度回调
+ * @returns {Promise<Array<{note: object, topicName: string|null}>>} 云端笔记
  */
 async function fetchAllNotes(client, topics, log) {
   const notes = []
@@ -292,9 +300,12 @@ async function enrichNote(client, note) {
 /**
  * 主流程：登录态 + 本地库 → 一批新 Markdown 文件。
  *
- * @param client        已 initialize 的 McpClient
- * @param root          本地库根（绝对路径，已 realpath）
- * @param options.log   进度回调（字符串）
+ * @param {any} client 已 initialize 的 McpClient
+ * @param {string} root 本地库根（绝对路径，已 realpath）
+ * @param {object} [options]
+ * @param {(line: string) => void} [options.log] 进度回调（字符串）
+ * @param {number} [options.maxNotes] 本次最多写入多少篇
+ * @returns {Promise<any>} 导入统计
  */
 export async function importAllNotes(client, root, { log = () => {}, maxNotes = MAX_NOTES_PER_RUN } = {}) {
   const startedAt = Date.now()

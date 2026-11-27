@@ -272,14 +272,16 @@ async function buildIndex(root) {
 /**
  * 跑一轮同步。
  *
- * @param {object} opts
- * @param {object} opts.client      openapi.js 的客户端
- * @param {string} opts.root        本地库根（绝对路径）
- * @param {object} opts.state       readSyncState() 的结果（不会被原地修改）
- * @param {boolean} opts.full       true = 全量扫描（能发现云端删除），false = 增量
- * @param {(line:string)=>void} opts.log
- * @param {Map<string,string>} opts.index  note_id → 相对路径。省略时自动扫描库建立
- * @returns {Promise<{pulled:number, skipped:number, adopted:number, conflicts:number, deleted:number, errors:Array, notes:object, scanned:number}>}
+ * @param {object} [options]
+ * @param {any} [options.client]      openapi.js 的客户端
+ * @param {string} [options.root]        本地库根（绝对路径）
+ * @param {any} [options.state]       readSyncState() 的结果（不会被原地修改）
+ * @param {boolean} [options.full]       true = 全量扫描（能发现云端删除），false = 增量
+ * @param {(line:string)=>void} [options.log] 进度回调
+ * @param {Map<string,string>|null} [options.index]  note_id → 相对路径。省略时自动扫描库建立
+ * @param {number} [options.maxNotes]    本次最多处理多少篇
+ * @param {object} [options.topicNames]  topic_id → 知识库名
+ * @returns {Promise<{pulled:number, skipped:number, adopted:number, conflicts:number, deleted:number, errors:Array, notes:object, scanned:number, pages:number, full:boolean}>}
  */
 export async function runSync({ client, root, state, full = false, log = () => {}, index = null, maxNotes = MAX_NOTES_PER_RUN, topicNames = {} } = {}) {
   const prev = state && typeof state === 'object' && state.notes ? state.notes : {}
@@ -542,6 +544,16 @@ async function pullNote({ client, root, note, relPath, known, log, archiveDate, 
  *
  * 不能靠「跑一轮增量、只取第一篇」来糊弄：增量扫描是分页的，目标笔记可能在
  * 第五页，实际会把别的笔记也一起覆盖掉。这里直接拉这一篇的详情。
+ *
+ * @param {object} [options]
+ * @param {any} [options.client]  openapi.js 的客户端
+ * @param {string} [options.root]    本地库根（绝对路径）
+ * @param {any} [options.state]   readSyncState() 的结果
+ * @param {string} [options.noteId]  云端笔记 id
+ * @param {(line:string)=>void} [options.log] 进度回调
+ * @param {Map<string,string>|null} [options.index] note_id → 相对路径
+ * @param {object} [options.topicNames] topic_id → 知识库名
+ * @returns {Promise<any>} 这一篇的同步结果
  */
 export async function syncSingleNote({ client, root, state, noteId, log = () => {}, index = null, topicNames = {} } = {}) {
   const prev = state && state.notes ? state.notes : {}
@@ -595,6 +607,16 @@ export function pushPayloadOf(fileText) {
   return { noteId, title, content, tags }
 }
 
+/**
+ * 把本地一篇笔记推到云端。
+ *
+ * @param {object} [options]
+ * @param {any} [options.client]  openapi.js 的客户端
+ * @param {string} [options.root]    本地库根（绝对路径）
+ * @param {string} [options.relPath] 库内相对路径
+ * @param {string|null} [options.noteId] 云端笔记 id，本地新建的省略
+ * @returns {Promise<any>} 推送结果
+ */
 export async function pushNote({ client, root, relPath, noteId } = {}) {
   // readNote 返回 { content, body, frontmatter, title, ... }，没有 text 字段。
   // 解构成 text 会拿到 undefined，于是正文和 frontmatter 全是空，推上去等于把

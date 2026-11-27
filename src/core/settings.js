@@ -18,7 +18,7 @@
 import { stat as vfsStat, mkdir as vfsMkdir } from './vfs.js'
 import { randomBytes } from 'node:crypto'
 import { homedir } from 'node:os'
-import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
+import { dirname, isAbsolute, join } from 'node:path'
 import { HISTORY_LIMIT, HISTORY_LIMIT_MAX } from './history.js'
 
 const SETTINGS_FILENAME = 'dsh-getnote.json'
@@ -137,7 +137,6 @@ function nodeFs() {
   // 那个执行环境没有动态 import 的回调，import('node:…') 会直接抛
   // ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING —— 插件在宿主眼里就是「加载失败」。
   // 打成 CJS 之后 require 就是最普通的那条路。只有离线测试（ESM）才走 import()。
-  // eslint-disable-next-line global-require
   return typeof require === 'function' ? require('node:fs/promises') : import('node:fs/promises')
 }
 

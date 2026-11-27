@@ -60,7 +60,8 @@ export const ERROR_TEMPLATES = {
   'service.bodyTooLarge': '请求内容过大',
   'service.badJson': '请求内容不是合法 JSON',
   'service.notLoggedIn': '尚未登录得到大脑（或授权已过期），先在面板里点「登录并导入」',
-  'service.noCredentials': '还没有接入得到大脑。最省事的是去「同步」页点「登录得到大脑」（一次授权，之后自动同步）；也可以在「设置 → 云端接入」填 API Key 与 Client ID（在 openapi.biji.com 控制台创建）。',
+  'service.noCredentials':
+    '还没有接入得到大脑。最省事的是去「同步」页点「登录得到大脑」（一次授权，之后自动同步）；也可以在「设置 → 云端接入」填 API Key 与 Client ID（在 openapi.biji.com 控制台创建）。',
   'service.vaultMissing': '本地库目录不存在：{path}',
   'service.needFromRename': '需要 from（原来指的那个名字）',
   'service.needPath': '需要 path',
@@ -116,11 +117,16 @@ export function fillErrorTemplate(template, params) {
  * 造一条带 code / lexKey / params 的错误。
  * `extra` 里的字段（status、conflict、reason…）原样挂上去，调用方写法与
  * `Object.assign(new Error(...), { status })` 时期完全一致。
+ *
+ * @param {string} code 错误码，形如 'vault.pathEscapes'
+ * @param {object} [params] 模板占位符的取值
+ * @param {object} [extra] 额外挂到 Error 上的字段（status、conflict、path…）
+ * @returns {Error & {code: string, lexKey: string, params?: object}} 带码的错误
  */
 export function coreError(code, params = {}, extra = {}) {
   const template = ERROR_TEMPLATES[code]
   const message = template === undefined ? String(code) : fillErrorTemplate(template, params)
-  const error = new Error(message)
+  const error = /** @type {Error & {code: string, lexKey: string, params?: object}} */ (new Error(message))
   error.code = code
   error.lexKey = `err.${code}`
   if (params !== null && typeof params === 'object' && Object.keys(params).length > 0) {
