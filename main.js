@@ -12190,7 +12190,12 @@ function themeVars(input, dark = false) {
       "--dshgn-card": hslToHex(hue, tint(0.2, 0.38), 0.205),
       "--dshgn-cardLine": "rgba(255,255,255,.10)",
       // 输入框的面：比卡片沉一档，像嵌在卡片里。
-      "--dshgn-input": hslToHex(hue, tint(0.2, 0.38), 0.125)
+      "--dshgn-input": hslToHex(hue, tint(0.2, 0.38), 0.125),
+      // 藏青填充件：深色下不能再给 #101f3c（那是黑的），提一档到能看见边界的
+      // 蓝灰，字仍用近白。
+      "--dshgn-navy": hslToHex(hue, tint(0.34, 0.6), 0.28),
+      "--dshgn-navyHover": hslToHex(hue, tint(0.34, 0.6), 0.34),
+      "--dshgn-navyFg": "rgba(255,255,255,.94)"
     };
   }
   return {
@@ -12240,7 +12245,11 @@ function themeVars(input, dark = false) {
     "--dshgn-card": hslToHex(hue, tint(0.12, 0.34), 0.995),
     "--dshgn-cardLine": `rgba(${Math.round(rgb.r)},${Math.round(rgb.g)},${Math.round(rgb.b)},.10)`,
     // 输入框的面：比卡片沉一档，看得出是能打字的地方。
-    "--dshgn-input": hslToHex(hue, tint(0.22, 0.5), 0.945)
+    "--dshgn-input": hslToHex(hue, tint(0.22, 0.5), 0.945),
+    // 藏青填充件：跟着主题色走同一套推导，明度压到 0.15 保证白字够对比。
+    "--dshgn-navy": hslToHex(hue, tint(0.42, 0.82), 0.16),
+    "--dshgn-navyHover": hslToHex(hue, tint(0.44, 0.84), 0.24),
+    "--dshgn-navyFg": "#f7f9fd"
   };
 }
 function formatTime(iso) {
@@ -13874,14 +13883,21 @@ var CSS = `
 /* \u5927\u7EB2\u4E0D\u518D\u662F\u4E00\u5F20\u5E26\u8FB9\u6846\u7684\u5361\uFF1A\u7528\u6237\u539F\u8BDD\u300C\u4E0D\u8981\u6BCF\u6B21\u90FD\u6709\u4E00\u4E2A\u5355\u72EC\u7684\u9ED1\u8272\u6846\u6846\uFF0C
    \u53EF\u4EE5\u76F4\u63A5\u53BB\u6389\u90A3\u4E2A\u9ED1\u8272\u6846\uFF0C\u6362\u6210\u4E00\u4E2A\u70B9\u300D\u3002\u73B0\u5728\u6574\u5757\u900F\u660E\uFF0C\u53EA\u6709\u6BCF\u884C\u524D\u9762\u4E00\u9897\u70B9\uFF0C
    \u9F20\u6807\u505C\u4E0A\u53BB\u624D\u628A\u90A3\u4E00\u884C\u586B\u6210\u6D45\u84DD\u3002 */
-.dshgn_outline{margin:0 0 10px;border:0;background:transparent}
+/* \u4E0E\u6B63\u6587\u540C\u4E00\u4E2A\u5BBD\u5EA6\u4E0A\u9650\uFF1A\u4E09\u5757\uFF08\u5C5E\u6027 / \u5927\u7EB2 / \u6B63\u6587\uFF09\u5DE6\u53F3\u8FB9\u754C\u5BF9\u9F50\uFF0C
+   \u5426\u5219\u5BBD\u9762\u677F\u4E0B\u6B63\u6587\u88AB\u6536\u7A84\u3001\u5927\u7EB2\u5374\u94FA\u6EE1\uFF0C\u770B\u4E0A\u53BB\u50CF\u4E24\u5957\u6392\u7248\u3002 */
+.dshgn_outline{margin:0 auto 10px;max-width:1200px;border:0;background:transparent}
+/* \u5C5E\u6027 / \u5927\u7EB2\u8FD9\u4E24\u6761\u6298\u53E0\u6761\u586B\u6210\u6DF1\u85CF\u9752\u3001\u5B57\u7528\u7C73\u767D\u3002\u7528\u6237\u539F\u8BDD\u300C\u6D45\u8272\u6A21\u5F0F\u4E0B\u6240\u6709\u7528\u5230\u7684
+   \u68D5\u9ED1\u8272\u5168\u90FD\u6539\u6210\u85CF\u9752\u8272\u586B\u5145\u300D\u2014\u2014\u539F\u6765\u5B83\u662F\u4E00\u6761\u900F\u660E\u7684\u7070\u5B57\uFF0C\u538B\u5728\u6D45\u5E95\u4E0A\u50CF\u4E00\u884C\u6279\u6CE8\uFF1B
+   \u586B\u6210\u85CF\u9752\u4E4B\u540E\u5B83\u624D\u50CF\u300C\u8FD9\u4E00\u680F\u7684\u6807\u9898\u6761\u300D\uFF0C\u548C\u4E0B\u9762\u7684\u6B63\u6587\u4E00\u773C\u5206\u5F97\u5F00\u3002
+   \u6DF1\u8272\u6A21\u5F0F\u4E0B --dshgn-navy \u7531 themeVars \u6362\u6210\u4E00\u6863\u66F4\u4EAE\u7684\u85CF\u9752\uFF0C\u4E0D\u81F3\u4E8E\u53D8\u6210\u4E00\u5757\u9ED1\u3002 */
 .dshgn_outlineToggle{appearance:none;display:flex;align-items:center;gap:6px;width:100%;
-  padding:7px 10px;border:0;background:transparent;font:inherit;font-size:11px;
-  color:var(--dsw-alias-label-secondary);cursor:pointer;text-align:left}
-.dshgn_outlineToggle:hover{background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-label-primary)}
-.dshgn_outlineCount{margin-left:auto;min-width:16px;text-align:center;padding:0 4px;border-radius:7px;
-  background:rgba(var(--dshgn-tintRgb),.1);font-size:10px;line-height:15px;
-  color:var(--dsw-alias-label-tertiary)}
+  padding:6px 10px;border:0;border-radius:7px;background:var(--dshgn-navy);font:inherit;
+  font-size:11px;font-weight:500;color:var(--dshgn-navyFg);cursor:pointer;text-align:left}
+.dshgn_outlineToggle:hover{background:var(--dshgn-navyHover)}
+.dshgn_outlineToggle:focus-visible{outline:1px solid var(--dshgn-navy);outline-offset:1px}
+.dshgn_outlineToggle svg{opacity:.8}
+.dshgn_outlineCount{margin-left:auto;min-width:16px;text-align:center;padding:0 5px;border-radius:7px;
+  background:rgba(255,255,255,.18);font-size:10px;line-height:15px;color:var(--dshgn-navyFg)}
 /* \u5927\u7EB2\u9876\u4E0A\u90A3\u884C\u7B5B\uFF1A\u53EA\u5728\u8282\u6570\u591A\u7684\u65F6\u5019\u51FA\u73B0\uFF0C\u6240\u4EE5\u505A\u5F97\u77EE\u4E00\u70B9\uFF0C\u522B\u5360\u6389\u4E24\u884C\u6807\u9898\u7684\u4F4D\u7F6E\u3002 */
 .dshgn_outlineFilterRow{display:flex;align-items:center;gap:5px;padding:0 8px 4px;
   color:var(--dsw-alias-label-tertiary)}
@@ -13922,7 +13938,7 @@ var CSS = `
 /* \u5C5E\u6027\u533A\uFF1A\u7B14\u8BB0\u5934\u90E8\u90A3\u4E9B\u952E\u503C\uFF08tags / aliases / \u81EA\u5B9A\u4E49\u5B57\u6BB5\uFF09\u3002
    \u653E\u5728\u6B63\u6587\u4E0A\u65B9\u3001\u6BD4\u5927\u7EB2\u66F4\u6DE1\u2014\u2014\u5B83\u662F\u300C\u8FD9\u7BC7\u662F\u4EC0\u4E48\u300D\uFF0C\u4E0D\u662F\u300C\u8FD9\u7BC7\u5199\u4E86\u4EC0\u4E48\u300D\uFF0C
    \u8BFB\u6B63\u6587\u65F6\u5B83\u5E94\u8BE5\u9000\u5230\u80CC\u666F\u91CC\uFF0C\u4F46\u8981\u4E00\u773C\u80FD\u626B\u5230\u3002 */
-.dshgn_props{margin:0 0 12px;border:0.5px solid var(--dshgn-cardLine);
+.dshgn_props{margin:0 auto 12px;max-width:1200px;border:0.5px solid var(--dshgn-cardLine);
   border-radius:8px;background:var(--dshgn-card);overflow:hidden;font-size:11.5px}
 .dshgn_propsBody{padding:0 8px 7px}
 .dshgn_propRow{display:flex;align-items:flex-start;gap:8px;padding:2px 0;line-height:1.6}
@@ -13931,9 +13947,9 @@ var CSS = `
 .dshgn_propVal{flex:1 1 auto;min-width:0;color:var(--dsw-alias-label-secondary);
   word-break:break-word;white-space:pre-wrap}
 .dshgn_propTag{appearance:none;border:0;border-radius:9px;padding:1px 7px;margin:0 4px 4px 0;
-  background:rgba(var(--dshgn-tintRgb),.1);font:inherit;font-size:11px;
-  color:var(--dsw-alias-brand-primary);cursor:pointer}
-.dshgn_propTag:hover{background:var(--dsw-alias-interactive-bg-hover-accent)}
+  background:var(--dshgn-navy);font:inherit;font-size:11px;
+  color:var(--dshgn-navyFg);cursor:pointer}
+.dshgn_propTag:hover{background:var(--dshgn-navyHover)}
 /* \u5934\u90E8\u91CC\u90A3\u4E2A\u503C\u662F\u53CC\u94FE\u65F6\uFF1A\u8DDF\u6807\u7B7E\u80F6\u56CA\u540C\u6B3E\uFF0C\u4F46\u989C\u8272\u8D70\u94FE\u63A5\u8272\uFF0C\u4E00\u773C\u5206\u5F97\u6E05\u300C\u70B9\u4E86\u4F1A\u8DF3\u300D\u548C\u300C\u70B9\u4E86\u4F1A\u7B5B\u300D */
 .dshgn_propLink{appearance:none;border:0;border-radius:9px;padding:1px 7px;margin:0 4px 4px 0;
   background:transparent;color:var(--dsw-alias-brand-primary);font:inherit;font-size:11px;
@@ -14588,7 +14604,10 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 .dshgn_notePathLink:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);
   outline-offset:1px;border-radius:3px}
 .dshgn_scroll{flex:1;overflow-y:auto;padding:16px clamp(16px,3vw,32px) 48px}
-.dshgn_md{max-width:760px;margin:0 auto;color:var(--dsw-alias-label-primary);
+/* \u6B63\u6587\u5BBD\u5EA6\uFF1A\u4EE5\u524D\u56FA\u5B9A 760px \u5C45\u4E2D\uFF0C\u9762\u677F\u4E00\u5BBD\u4E24\u4FA7\u5C31\u7A7A\u51FA\u4E24\u5927\u5757\uFF08\u7528\u6237\u8BF4\u300C\u5E95\u4E0B\u5185\u5BB9\u7684\u6846
+   \u8BA9\u5B83\u4E00\u76F4\u8D2F\u7A7F\u5230\u53F3\u4FA7\u6587\u672C\u5927\u7EB2\u7684\u6846\uFF0C\u4E0D\u8981\u6709\u6BB5\u5927\u7A7A\u767D\u300D\uFF09\u3002\u73B0\u5728\u6491\u6EE1\u9605\u8BFB\u533A\uFF0C\u53EA\u7559\u4E00\u4E2A
+   1200px \u4E0A\u9650\u2014\u2014\u8D85\u5BBD\u5C4F\u4E0A\u4ECD\u7136\u4E0D\u8BA9\u4E00\u884C\u957F\u5230\u8BFB\u4E0D\u4E0B\u53BB\u3002 */
+.dshgn_md{max-width:1200px;margin:0 auto;color:var(--dsw-alias-label-primary);
   font-family:var(--dshgn-fontText);font-size:var(--font-text-size,13px);
   line-height:var(--line-height-normal,1.75)}
 .dshgn_h{font-size:1em;margin:18px 0 8px;line-height:1.4;font-weight:600;color:var(--dsw-alias-label-primary)}
@@ -15200,23 +15219,26 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
   --dshgn-deepFg:#ffffff;
   --dshgn-deepFg2:rgba(255,255,255,.86);
   --dshgn-deepFg3:rgba(255,255,255,.66);
-  /* \u4E2D\u680F\uFF08\u7B14\u8BB0\u5217\u8868\uFF09\uFF1A\u6BD4\u7EB8\u9762\u6DF1\u4E00\u6863\u7684\u65E7\u7EB8\u8272 */
-  --dshgn-mid:#e3d5b8;
-  --dshgn-mid2:#d8c7a4;
+  /* \u4E2D\u680F\uFF08\u7B14\u8BB0\u5217\u8868\uFF09\uFF1A\u6D45\u85CF\u9752\u3002\u539F\u6765\u662F\u65E7\u7EB8\u7684\u68D5\u9EC4\uFF08#e3d5b8\u2192#d8c7a4\uFF09\uFF0C
+     \u662F\u6574\u5757\u9762\u677F\u91CC\u6700\u5927\u7684\u4E00\u7247\u300C\u68D5\u300D\u2014\u2014\u7528\u6237\u8BF4\u300C\u68D5\u9ED1\u8272\u592A\u4E11\u300D\u3002\u6362\u6210\u540C\u4E00\u65CF\u7684\u6D45\u85CF\u9752\u540E\uFF0C
+     \u4E09\u680F\u662F\u300C\u6DF1\u85CF\u9752 \u2192 \u6D45\u85CF\u9752 \u2192 \u85CF\u9752\u767D\u300D\uFF0C\u5C42\u6B21\u7167\u65E7\uFF0C\u7EB8\u9EC4\u4E00\u70B9\u4E0D\u5269\u3002
+     \u8FD9\u4E00\u680F\u4ECD\u662F\u6D45\u5E95\uFF0C\u6240\u4EE5\u5B57\u7EE7\u7EED\u7528\u58A8\u8272\uFF1B\u6DF1\u85CF\u9752\u53EA\u7ED9\u6298\u53E0\u6761\u3001\u80F6\u56CA\u3001\u5206\u7EC4\u6807\u9898\u90A3\u4E9B\u5C0F\u5757\u3002 */
+  --dshgn-mid:#dde5f0;
+  --dshgn-mid2:#d2dded;
   --dshgn-midFg:#101f3c;
   --dshgn-midFg2:#1c3560;
   --dshgn-midFg3:#3a5580;
-  /* \u53F3\u680F\uFF08\u9605\u8BFB\u533A\uFF09\uFF1A\u7EB8\u9762\u3002\u5361\u7247\u6BD4\u5B83\u518D\u4EAE\u4E00\u6863\uFF0C\u8BFB\u8D77\u6765\u50CF\u7EB8\u4E0A\u538B\u7740\u4E00\u5F20\u66F4\u767D\u7684\u7EB8\u3002 */
-  --dshgn-light:#f3ebd7;
-  --dshgn-light2:#ece1c8;
+  /* \u53F3\u680F\uFF08\u9605\u8BFB\u533A\uFF09\uFF1A\u6781\u6D45\u7684\u85CF\u9752\u767D\u3002\u539F\u6765\u7684\u7EB8\u9762 #f3ebd7 \u4E5F\u662F\u68D5\u7CFB\uFF0C\u4E00\u5E76\u6362\u6389\u3002 */
+  --dshgn-light:#eef2f8;
+  --dshgn-light2:#e3eaf4;
   --dshgn-lightFg:#101f3c;
   --dshgn-lightFg2:#1c3560;
   --dshgn-lightFg3:#3a5580;
-  /* \u5F3A\u8C03\u8272\uFF1A\u6DF1\u680F\u4E0A\u8981\u591F\u4EAE\uFF08\u6696\u7C73\u767D\uFF09\uFF0C\u6D45\u680F\u4E0A\u7528\u58A8\u84DD\uFF0C\u538B\u5728\u7EB8\u4E0A\u624D\u591F\u6C89 */
-  --dshgn-accentOnDark:#e8d9b6;
+  /* \u5F3A\u8C03\u8272\uFF1A\u6DF1\u680F\u4E0A\u8981\u591F\u4EAE\uFF08\u51B7\u767D\u84DD\uFF09\uFF0C\u6D45\u680F\u4E0A\u7528\u58A8\u84DD\uFF0C\u538B\u5728\u6D45\u5E95\u4E0A\u624D\u591F\u6C89 */
+  --dshgn-accentOnDark:#cfe0f7;
   --dshgn-accentOnLight:#1c3560;
   --dshgn-lineOnDark:rgba(255,255,255,.13);
-  --dshgn-lineOnLight:#c9b791;
+  --dshgn-lineOnLight:#c2cfe2;
   /* \u9ED8\u8BA4\u4E3B\u9898\u8272\u7684 RGB \u5206\u91CF\u3002\u6240\u6709\u534A\u900F\u660E\u63CF\u8FB9/\u9634\u5F71/\u60AC\u6D6E\u5E95\u8272\u90FD\u7531\u5B83\u63A8\u5BFC\uFF0C
      \u8FD9\u6837\u300C\u81EA\u5B9A\u4E49\u4E3B\u9898\u8272\u300D\u53EA\u9700\u8981\u8986\u76D6\u8FD9\u4E00\u4E2A\u503C + \u4E0A\u9762\u90A3\u6279\u8272\u677F\uFF0C
      \u6563\u843D\u5728 18 \u5904\u7684 rgba(10,42,82,\u2026) \u4F1A\u81EA\u52A8\u8DDF\u7740\u53D8\u3002 */
@@ -15230,20 +15252,26 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
   /* \u5361\u7247/\u5F39\u5C42/\u8F93\u5165\u6846\u7684\u5B9E\u5E95\u8272\u3002\u539F\u6765\u662F\u7EAF\u767D\uFF1A\u8BBE\u7F6E\u9875\u6574\u6392\u5361\u7247\u3001\u5217\u8868\u91CC\u7684\u641C\u7D22\u6846
      \u5168\u662F\u4E00\u5757\u5757 #fff\uFF0C\u5728\u6D45\u84DD\u5E95\u4E0A\u50CF\u8D34\u4E86\u767D\u7EB8\u3002\u6539\u6210\u5E26\u4E00\u70B9\u5E95\u8272\u7684\u6D45\u84DD\u767D\uFF0C
      \u65E2\u8FD8\u5206\u5F97\u51FA\u300C\u8FD9\u662F\u6D6E\u8D77\u6765\u7684\u4E00\u5757\u300D\uFF0C\u53C8\u4E0D\u523A\u773C\u3002\u6DF1\u8272\u7531 themeVars \u6362\u6210\u6DF1\u8272\u3002 */
-  --dshgn-surface:#ece1c8;
-  --dshgn-surfaceStrong:#e3d5b8;
+  --dshgn-surface:#e6ecf5;
+  --dshgn-surfaceStrong:#dbe4f1;
   /* \u51F9\u8FDB\u53BB\u7684\u8F93\u5165\u69FD\uFF08\u4E2D\u680F\u641C\u7D22\u6846\uFF09\uFF1A\u6BD4\u6240\u5728\u90A3\u4E00\u680F\u7565\u6C89\u4E00\u6863\uFF0C\u50CF\u5D4C\u8FDB\u53BB\u7684\u3002
      \u6D45\u8272\u7ED9\u4E00\u5C42\u534A\u900F\u660E\u7684\u65E7\u7EB8\u8272\uFF0C\u6DF1\u8272\u7531 themeVars \u6362\u6210\u66F4\u6697\u7684\u4E00\u6863\u3002 */
-  --dshgn-well:rgba(236,225,200,.85);
+  --dshgn-well:rgba(233,238,246,.85);
   --dshgn-overlayMask:rgba(16,31,60,.42);
   /* \u5361\u7247\u9762\uFF1A\u65AD\u94FE/\u5F85\u529E/\u65E5\u5386/\u5927\u7EB2/\u5C5E\u6027\u8FD9\u4E9B\u300C\u4E00\u5757\u4E00\u5757\u7684\u4E1C\u897F\u300D\u7EDF\u4E00\u7528\u8FD9\u4E24\u4E2A\u503C\u3002
      \u4EE5\u524D\u5B83\u4EEC\u5199\u7684\u662F background:transparent \u2014\u2014 \u5728\u6DF1\u8272\u9762\u677F\u91CC\u5C31\u662F\u4E00\u5757\u7EAF\u9ED1\u7684\u6D1E\uFF0C
      \u5B57\u538B\u5728\u4E0A\u9762\u50CF\u6CA1\u52A0\u8F7D\u51FA\u6765\uFF1B\u6D45\u8272\u91CC\u53C8\u5B8C\u5168\u7CCA\u8FDB\u80CC\u666F\uFF0C\u770B\u4E0D\u51FA\u8FB9\u754C\u3002
      \u73B0\u5728\u6D45\u8272\u7ED9\u4E00\u5F20\u5E72\u51C0\u7684\u767D\u5361\uFF0C\u6DF1\u8272\u7531 themeVars \u6362\u6210\u6BD4\u9762\u677F\u4EAE\u4E00\u6863\u7684\u84DD\u7070\u3002 */
-  --dshgn-card:#f7f1e1;
-  --dshgn-cardLine:#ded0b0;
+  --dshgn-card:#ffffff;
+  --dshgn-cardLine:#cdd8e8;
   /* \u8F93\u5165\u6846\u7684\u9762\uFF1A\u6BD4\u5361\u7247\u518D\u6C89\u4E00\u6863\uFF0C\u50CF\u5D4C\u8FDB\u5361\u7247\u91CC\uFF0C\u800C\u4E0D\u662F\u53C8\u8D34\u4E00\u5F20\u7EB8\u3002 */
-  --dshgn-input:#ece1c8;
+  --dshgn-input:#e9eef6;
+  /* \u85CF\u9752\u586B\u5145\u4EF6\uFF1A\u5C5E\u6027/\u5927\u7EB2\u7684\u6298\u53E0\u6761\u3001\u5C5E\u6027\u503C\u91CC\u7684\u6807\u7B7E\u80F6\u56CA\u3001\u5DE6\u680F\u7684\u5206\u7EC4\u6807\u9898\u3002
+     \u7528\u6237\u8981\u7684\u5C31\u662F\u300C\u6DF1\u85CF\u9752\u5E95 + \u767D\u5B57\u300D\u8FD9\u4E00\u79CD\uFF0C\u6240\u4EE5\u4E09\u5904\u5171\u7528\u4E00\u7EC4\u53D8\u91CF\uFF0C
+     \u6362\u4E3B\u9898\u8272/\u6DF1\u8272\u6A21\u5F0F\u65F6\u4E00\u8D77\u8D70\u3002 */
+  --dshgn-navy:#101f3c;
+  --dshgn-navyHover:#1c3560;
+  --dshgn-navyFg:#f4f7fc;
   /* \u4E0B\u9762\u8FD9\u51E0\u4E2A --dsw-alias-state-* / bg-* / toast-* / elevation-* \u662F\u5BBF\u4E3B\u63D0\u4F9B\u7684
      \u8BED\u4E49 token\uFF0C\u9762\u677F\u91CC\u4E00\u76F4\u5728\u7528\uFF0C\u4F46\u63D2\u4EF6\u81EA\u5DF1\u4ECE\u6765\u6CA1\u5B9A\u4E49\u8FC7\u5B83\u4EEC\u3002\u5BBF\u4E3B\u6CA1\u7ED9\u503C\u65F6
      var() \u4F1A\u6574\u6761\u58F0\u660E\u5931\u6548\uFF1A\u65AD\u94FE\u7684\u7EA2\u5B57\u4E0D\u7EA2\u3001\u63D0\u793A\u6761\u5E95\u8272\u900F\u660E\u3001\u5F39\u7A97\u6CA1\u6709\u9634\u5F71\u3002
@@ -15304,11 +15332,18 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
   --dsw-alias-button-primary-fill:var(--dshgn-btnFill);
   --dsw-alias-button-primary-hover:var(--dshgn-btnHover);
 }
-/* \u680F\u5185\u5C0F\u6807\u9898\uFF08\u76EE\u5F55/\u6807\u7B7E\uFF09\uFF1A\u52A0\u5B57\u8DDD\uFF0C\u50CF\u4FA7\u8FB9\u680F\u5206\u7EC4 */
+/* \u680F\u5185\u5C0F\u6807\u9898\uFF08\u76EE\u5F55 / \u6807\u7B7E\uFF09\u3002
+   \u4EE5\u524D\u5B83\u662F\u4E00\u6761\u53EA\u6709 10px \u5C0F\u5B57 + \u5B57\u8DDD 0.06em \u7684\u900F\u660E\u884C\uFF0C\u8D77\u70B9 padding \u662F 6px\uFF0C
+   \u800C\u4E0B\u9762\u7684\u300C\u5168\u90E8\u7B14\u8BB0\u300D\u884C\u548C\u76EE\u5F55\u884C\u662F 9px\u2014\u2014\u5DEE 3px\uFF0C\u4E2D\u6587\u53EA\u6709\u4E24\u4E2A\u5B57\uFF0C\u770B\u4E0A\u53BB\u5C31\u662F
+   \u300C\u8FD9\u4E00\u5757\u6574\u4F53\u5F80\u5DE6\u6B6A\u4E86\u4E00\u70B9\u300D\u3002\u73B0\u5728\u4E09\u4EF6\u4E8B\u4E00\u8D77\u6539\uFF1A
+   \u2460 \u5185\u8FB9\u8DDD\u5BF9\u9F50\u5230 9px\uFF0C\u548C\u6BCF\u4E00\u884C\u540C\u4E00\u4E2A\u8D77\u70B9\uFF1B\u2461 \u53BB\u6389\u5B57\u8DDD\u4E0E\u5927\u5199\uFF08\u4E2D\u6587\u52A0\u5B57\u8DDD\u53EA\u4F1A\u6563\u67B6\uFF09\uFF1B
+   \u2462 \u586B\u6210\u6DF1\u85CF\u9752\u3001\u5B57\u7528\u7C73\u767D\uFF0C\u8BA9\u5B83\u660E\u786E\u662F\u4E00\u6761\u300C\u5206\u7EC4\u6761\u300D\u800C\u4E0D\u662F\u4E00\u884C\u7070\u6279\u6CE8\u3002 */
 .dshgn_tree .dshgn_treeHead{
-  margin-top:6px;padding-top:9px;border-top:1px solid rgba(255,255,255,.09);
-  letter-spacing:.06em;text-transform:uppercase;font-size:10px;
+  margin-top:8px;padding:5px 9px;border:0;border-radius:7px;
+  background:var(--dshgn-navy);color:var(--dshgn-navyFg);
+  font-size:10.5px;font-weight:600;letter-spacing:0;text-transform:none;
 }
+.dshgn_tree .dshgn_treeHead .dshgn_treeHeadTitle{color:var(--dshgn-navyFg);opacity:.92}
 .dshgn_tree .dshgn_treeRow[data-on="true"]{box-shadow:inset 2px 0 0 var(--dshgn-accentOnDark)}
 .dshgn_tree .dshgn_treeCount{
   min-width:18px;text-align:center;padding:0 4px;border-radius:8px;
@@ -25598,8 +25633,8 @@ ${t4("tree.menuReveal")}` : absolute,
           {
             type: "button",
             className: "dshgn_outlineToggle",
-            onClick: () => setShowOutline((prev) => !prev),
-            title: t4("note.outline")
+            // 同样不挂原生 title：鼠标虚停就弹小窗正是用户要消掉的那个。
+            onClick: () => setShowOutline((prev) => !prev)
           },
           h4(Icon, { name: showOutline ? "up" : "file", size: 12 }),
           t4("note.outline"),

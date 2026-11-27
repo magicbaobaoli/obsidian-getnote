@@ -3227,6 +3227,11 @@ async function saveFile(url, filename) {
           '--dshgn-cardLine': 'rgba(255,255,255,.10)',
           // 输入框的面：比卡片沉一档，像嵌在卡片里。
           '--dshgn-input': hslToHex(hue, tint(0.20, 0.38), 0.125),
+          // 藏青填充件：深色下不能再给 #101f3c（那是黑的），提一档到能看见边界的
+          // 蓝灰，字仍用近白。
+          '--dshgn-navy': hslToHex(hue, tint(0.34, 0.60), 0.28),
+          '--dshgn-navyHover': hslToHex(hue, tint(0.34, 0.60), 0.34),
+          '--dshgn-navyFg': 'rgba(255,255,255,.94)',
         }
       }
       return {
@@ -3277,6 +3282,10 @@ async function saveFile(url, filename) {
         '--dshgn-cardLine': `rgba(${Math.round(rgb.r)},${Math.round(rgb.g)},${Math.round(rgb.b)},.10)`,
         // 输入框的面：比卡片沉一档，看得出是能打字的地方。
         '--dshgn-input': hslToHex(hue, tint(0.22, 0.50), 0.945),
+        // 藏青填充件：跟着主题色走同一套推导，明度压到 0.15 保证白字够对比。
+        '--dshgn-navy': hslToHex(hue, tint(0.42, 0.82), 0.16),
+        '--dshgn-navyHover': hslToHex(hue, tint(0.44, 0.84), 0.24),
+        '--dshgn-navyFg': '#f7f9fd',
       }
     }
 
@@ -5598,14 +5607,21 @@ async function saveFile(url, filename) {
 /* 大纲不再是一张带边框的卡：用户原话「不要每次都有一个单独的黑色框框，
    可以直接去掉那个黑色框，换成一个点」。现在整块透明，只有每行前面一颗点，
    鼠标停上去才把那一行填成浅蓝。 */
-.dshgn_outline{margin:0 0 10px;border:0;background:transparent}
+/* 与正文同一个宽度上限：三块（属性 / 大纲 / 正文）左右边界对齐，
+   否则宽面板下正文被收窄、大纲却铺满，看上去像两套排版。 */
+.dshgn_outline{margin:0 auto 10px;max-width:1200px;border:0;background:transparent}
+/* 属性 / 大纲这两条折叠条填成深藏青、字用米白。用户原话「浅色模式下所有用到的
+   棕黑色全都改成藏青色填充」——原来它是一条透明的灰字，压在浅底上像一行批注；
+   填成藏青之后它才像「这一栏的标题条」，和下面的正文一眼分得开。
+   深色模式下 --dshgn-navy 由 themeVars 换成一档更亮的藏青，不至于变成一块黑。 */
 .dshgn_outlineToggle{appearance:none;display:flex;align-items:center;gap:6px;width:100%;
-  padding:7px 10px;border:0;background:transparent;font:inherit;font-size:11px;
-  color:var(--dsw-alias-label-secondary);cursor:pointer;text-align:left}
-.dshgn_outlineToggle:hover{background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-label-primary)}
-.dshgn_outlineCount{margin-left:auto;min-width:16px;text-align:center;padding:0 4px;border-radius:7px;
-  background:rgba(var(--dshgn-tintRgb),.1);font-size:10px;line-height:15px;
-  color:var(--dsw-alias-label-tertiary)}
+  padding:6px 10px;border:0;border-radius:7px;background:var(--dshgn-navy);font:inherit;
+  font-size:11px;font-weight:500;color:var(--dshgn-navyFg);cursor:pointer;text-align:left}
+.dshgn_outlineToggle:hover{background:var(--dshgn-navyHover)}
+.dshgn_outlineToggle:focus-visible{outline:1px solid var(--dshgn-navy);outline-offset:1px}
+.dshgn_outlineToggle svg{opacity:.8}
+.dshgn_outlineCount{margin-left:auto;min-width:16px;text-align:center;padding:0 5px;border-radius:7px;
+  background:rgba(255,255,255,.18);font-size:10px;line-height:15px;color:var(--dshgn-navyFg)}
 /* 大纲顶上那行筛：只在节数多的时候出现，所以做得矮一点，别占掉两行标题的位置。 */
 .dshgn_outlineFilterRow{display:flex;align-items:center;gap:5px;padding:0 8px 4px;
   color:var(--dsw-alias-label-tertiary)}
@@ -5646,7 +5662,7 @@ async function saveFile(url, filename) {
 /* 属性区：笔记头部那些键值（tags / aliases / 自定义字段）。
    放在正文上方、比大纲更淡——它是「这篇是什么」，不是「这篇写了什么」，
    读正文时它应该退到背景里，但要一眼能扫到。 */
-.dshgn_props{margin:0 0 12px;border:0.5px solid var(--dshgn-cardLine);
+.dshgn_props{margin:0 auto 12px;max-width:1200px;border:0.5px solid var(--dshgn-cardLine);
   border-radius:8px;background:var(--dshgn-card);overflow:hidden;font-size:11.5px}
 .dshgn_propsBody{padding:0 8px 7px}
 .dshgn_propRow{display:flex;align-items:flex-start;gap:8px;padding:2px 0;line-height:1.6}
@@ -5655,9 +5671,9 @@ async function saveFile(url, filename) {
 .dshgn_propVal{flex:1 1 auto;min-width:0;color:var(--dsw-alias-label-secondary);
   word-break:break-word;white-space:pre-wrap}
 .dshgn_propTag{appearance:none;border:0;border-radius:9px;padding:1px 7px;margin:0 4px 4px 0;
-  background:rgba(var(--dshgn-tintRgb),.1);font:inherit;font-size:11px;
-  color:var(--dsw-alias-brand-primary);cursor:pointer}
-.dshgn_propTag:hover{background:var(--dsw-alias-interactive-bg-hover-accent)}
+  background:var(--dshgn-navy);font:inherit;font-size:11px;
+  color:var(--dshgn-navyFg);cursor:pointer}
+.dshgn_propTag:hover{background:var(--dshgn-navyHover)}
 /* 头部里那个值是双链时：跟标签胶囊同款，但颜色走链接色，一眼分得清「点了会跳」和「点了会筛」 */
 .dshgn_propLink{appearance:none;border:0;border-radius:9px;padding:1px 7px;margin:0 4px 4px 0;
   background:transparent;color:var(--dsw-alias-brand-primary);font:inherit;font-size:11px;
@@ -6312,7 +6328,10 @@ button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);
 .dshgn_notePathLink:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);
   outline-offset:1px;border-radius:3px}
 .dshgn_scroll{flex:1;overflow-y:auto;padding:16px clamp(16px,3vw,32px) 48px}
-.dshgn_md{max-width:760px;margin:0 auto;color:var(--dsw-alias-label-primary);
+/* 正文宽度：以前固定 760px 居中，面板一宽两侧就空出两大块（用户说「底下内容的框
+   让它一直贯穿到右侧文本大纲的框，不要有段大空白」）。现在撑满阅读区，只留一个
+   1200px 上限——超宽屏上仍然不让一行长到读不下去。 */
+.dshgn_md{max-width:1200px;margin:0 auto;color:var(--dsw-alias-label-primary);
   font-family:var(--dshgn-fontText);font-size:var(--font-text-size,13px);
   line-height:var(--line-height-normal,1.75)}
 .dshgn_h{font-size:1em;margin:18px 0 8px;line-height:1.4;font-weight:600;color:var(--dsw-alias-label-primary)}
@@ -6924,23 +6943,26 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
   --dshgn-deepFg:#ffffff;
   --dshgn-deepFg2:rgba(255,255,255,.86);
   --dshgn-deepFg3:rgba(255,255,255,.66);
-  /* 中栏（笔记列表）：比纸面深一档的旧纸色 */
-  --dshgn-mid:#e3d5b8;
-  --dshgn-mid2:#d8c7a4;
+  /* 中栏（笔记列表）：浅藏青。原来是旧纸的棕黄（#e3d5b8→#d8c7a4），
+     是整块面板里最大的一片「棕」——用户说「棕黑色太丑」。换成同一族的浅藏青后，
+     三栏是「深藏青 → 浅藏青 → 藏青白」，层次照旧，纸黄一点不剩。
+     这一栏仍是浅底，所以字继续用墨色；深藏青只给折叠条、胶囊、分组标题那些小块。 */
+  --dshgn-mid:#dde5f0;
+  --dshgn-mid2:#d2dded;
   --dshgn-midFg:#101f3c;
   --dshgn-midFg2:#1c3560;
   --dshgn-midFg3:#3a5580;
-  /* 右栏（阅读区）：纸面。卡片比它再亮一档，读起来像纸上压着一张更白的纸。 */
-  --dshgn-light:#f3ebd7;
-  --dshgn-light2:#ece1c8;
+  /* 右栏（阅读区）：极浅的藏青白。原来的纸面 #f3ebd7 也是棕系，一并换掉。 */
+  --dshgn-light:#eef2f8;
+  --dshgn-light2:#e3eaf4;
   --dshgn-lightFg:#101f3c;
   --dshgn-lightFg2:#1c3560;
   --dshgn-lightFg3:#3a5580;
-  /* 强调色：深栏上要够亮（暖米白），浅栏上用墨蓝，压在纸上才够沉 */
-  --dshgn-accentOnDark:#e8d9b6;
+  /* 强调色：深栏上要够亮（冷白蓝），浅栏上用墨蓝，压在浅底上才够沉 */
+  --dshgn-accentOnDark:#cfe0f7;
   --dshgn-accentOnLight:#1c3560;
   --dshgn-lineOnDark:rgba(255,255,255,.13);
-  --dshgn-lineOnLight:#c9b791;
+  --dshgn-lineOnLight:#c2cfe2;
   /* 默认主题色的 RGB 分量。所有半透明描边/阴影/悬浮底色都由它推导，
      这样「自定义主题色」只需要覆盖这一个值 + 上面那批色板，
      散落在 18 处的 rgba(10,42,82,…) 会自动跟着变。 */
@@ -6954,20 +6976,26 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
   /* 卡片/弹层/输入框的实底色。原来是纯白：设置页整排卡片、列表里的搜索框
      全是一块块 #fff，在浅蓝底上像贴了白纸。改成带一点底色的浅蓝白，
      既还分得出「这是浮起来的一块」，又不刺眼。深色由 themeVars 换成深色。 */
-  --dshgn-surface:#ece1c8;
-  --dshgn-surfaceStrong:#e3d5b8;
+  --dshgn-surface:#e6ecf5;
+  --dshgn-surfaceStrong:#dbe4f1;
   /* 凹进去的输入槽（中栏搜索框）：比所在那一栏略沉一档，像嵌进去的。
      浅色给一层半透明的旧纸色，深色由 themeVars 换成更暗的一档。 */
-  --dshgn-well:rgba(236,225,200,.85);
+  --dshgn-well:rgba(233,238,246,.85);
   --dshgn-overlayMask:rgba(16,31,60,.42);
   /* 卡片面：断链/待办/日历/大纲/属性这些「一块一块的东西」统一用这两个值。
      以前它们写的是 background:transparent —— 在深色面板里就是一块纯黑的洞，
      字压在上面像没加载出来；浅色里又完全糊进背景，看不出边界。
      现在浅色给一张干净的白卡，深色由 themeVars 换成比面板亮一档的蓝灰。 */
-  --dshgn-card:#f7f1e1;
-  --dshgn-cardLine:#ded0b0;
+  --dshgn-card:#ffffff;
+  --dshgn-cardLine:#cdd8e8;
   /* 输入框的面：比卡片再沉一档，像嵌进卡片里，而不是又贴一张纸。 */
-  --dshgn-input:#ece1c8;
+  --dshgn-input:#e9eef6;
+  /* 藏青填充件：属性/大纲的折叠条、属性值里的标签胶囊、左栏的分组标题。
+     用户要的就是「深藏青底 + 白字」这一种，所以三处共用一组变量，
+     换主题色/深色模式时一起走。 */
+  --dshgn-navy:#101f3c;
+  --dshgn-navyHover:#1c3560;
+  --dshgn-navyFg:#f4f7fc;
   /* 下面这几个 --dsw-alias-state-* / bg-* / toast-* / elevation-* 是宿主提供的
      语义 token，面板里一直在用，但插件自己从来没定义过它们。宿主没给值时
      var() 会整条声明失效：断链的红字不红、提示条底色透明、弹窗没有阴影。
@@ -7028,11 +7056,18 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
   --dsw-alias-button-primary-fill:var(--dshgn-btnFill);
   --dsw-alias-button-primary-hover:var(--dshgn-btnHover);
 }
-/* 栏内小标题（目录/标签）：加字距，像侧边栏分组 */
+/* 栏内小标题（目录 / 标签）。
+   以前它是一条只有 10px 小字 + 字距 0.06em 的透明行，起点 padding 是 6px，
+   而下面的「全部笔记」行和目录行是 9px——差 3px，中文只有两个字，看上去就是
+   「这一块整体往左歪了一点」。现在三件事一起改：
+   ① 内边距对齐到 9px，和每一行同一个起点；② 去掉字距与大写（中文加字距只会散架）；
+   ③ 填成深藏青、字用米白，让它明确是一条「分组条」而不是一行灰批注。 */
 .dshgn_tree .dshgn_treeHead{
-  margin-top:6px;padding-top:9px;border-top:1px solid rgba(255,255,255,.09);
-  letter-spacing:.06em;text-transform:uppercase;font-size:10px;
+  margin-top:8px;padding:5px 9px;border:0;border-radius:7px;
+  background:var(--dshgn-navy);color:var(--dshgn-navyFg);
+  font-size:10.5px;font-weight:600;letter-spacing:0;text-transform:none;
 }
+.dshgn_tree .dshgn_treeHead .dshgn_treeHeadTitle{color:var(--dshgn-navyFg);opacity:.92}
 .dshgn_tree .dshgn_treeRow[data-on="true"]{box-shadow:inset 2px 0 0 var(--dshgn-accentOnDark)}
 .dshgn_tree .dshgn_treeCount{
   min-width:18px;text-align:center;padding:0 4px;border-radius:8px;
@@ -19523,8 +19558,8 @@ button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-acc
                       {
                         type: 'button',
                         className: 'dshgn_outlineToggle',
+                        // 同样不挂原生 title：鼠标虚停就弹小窗正是用户要消掉的那个。
                         onClick: () => setShowOutline((prev) => !prev),
-                        title: t('note.outline'),
                       },
                       h(Icon, { name: showOutline ? 'up' : 'file', size: 12 }),
                       t('note.outline'),
