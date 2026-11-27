@@ -32,8 +32,13 @@ const options = {
   define: { 'process.env.NODE_ENV': '"production"' },
   // 录音卡的 .py 桥脚本当成字符串打进 bundle：社区目录只下载 main.js / manifest.json /
   // styles.css 三个文件，挂在 Release 里的 card/ 目录不会被取走。加载时再解到插件目录。
-  loader: { '.py': 'text' },
-  logLevel: 'info',
+  // .py 是录音卡的桥脚本、.css 是面板样式表：两者都当字符串打进 bundle。
+  // 社区目录只下载 main.js / manifest.json / styles.css，源码里的 panel.css
+  // 不会跟着走，所以必须内联进 main.js。
+  loader: { '.py': 'text', '.css': 'text' },
+  // 警告当错误：esbuild 的黄字（重复键、语法降级、loader 未配置…）没人会看第二眼，
+  // 于是重复键在 LEX 里活了好几个版本。这里把它们抬成构建失败。
+  logLevel: 'silent',
 }
 
 /** 把 python 桥与语言包放进插件目录：它们要在运行时按相对路径读。 */
@@ -49,11 +54,29 @@ async function copyAssets() {
 }
 
 if (watch) {
-  const ctx = await context({ ...options, plugins: [{ name: 'assets', setup(b) { b.onEnd(() => copyAssets()) } }] })
+  // watch 下照常打印，改错了要能看见红字。
+  const ctx = await context({ ...options, logLevel: 'info', plugins: [{ name: 'assets', setup(b) { b.onEnd(() => copyAssets()) } }] })
   await ctx.watch()
   console.log('watching...')
 } else {
-  await build(options)
+  let result
+  try {
+    result = await build(options)
+  } catch (error) {
+    console.error(`构建失败：${error.message}`)
+    process.exit(1)
+  }
+  const warnings = result.warnings || []
+  if (warnings.length > 0) {
+    for (const w of warnings) {
+      const where = w.location === undefined || w.location === null
+        ? ''
+        : `${w.location.file}:${w.location.line}: `
+      console.error(`构建警告 ${where}${w.text}`)
+    }
+    console.error(`构建失败：${warnings.length} 条警告`)
+    process.exit(1)
+  }
   await copyAssets()
   const bytes = (await readFile(join(root, 'main.js'))).byteLength
   console.log(`main.js ${(bytes / 1024).toFixed(1)} KB`)
