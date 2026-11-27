@@ -293,6 +293,7 @@ test('onClose 会把 React 树卸载干净，不给叶子留残余节点', async
   assert.ok(!window.document.querySelector('.dshgn_root'), 'DOM 里不该留下面板根节点')
 })
 
+
 test('渲染失败时把原因画到屏幕上，而不是留一片黑', async () => {
   const { factory } = calls.views[0]
   const view = factory({})
@@ -367,6 +368,54 @@ test('启动轨迹落在 boot.txt 里：插件加载、服务就绪、视图挂�
 
   await view.onClose()
 })
+
+test('onClose 之后样式表要从 document 里摘掉，不能留在宿主窗口里', async () => {
+  const { factory } = calls.views[0]
+  const view = factory({})
+  await view.onOpen()
+  assert.equal(
+    window.document.querySelectorAll('style#dshgn-style').length,
+    1,
+    '打开时应该注入了样式表',
+  )
+  await view.onClose()
+  // 样式表是我们自己 append 到 document 上的，不属于 React 树：
+  // 以前 injectCss 返回的是空清理函数，关掉视图后这坨样式会一直留着。
+  assert.equal(
+    window.document.querySelectorAll('style#dshgn-style').length,
+    0,
+    '关掉视图后样式表应该被摘掉',
+  )
+})
+
+test('两个面板同时开着时，关掉一个不能把另一个的样式抽走', async () => {
+  const { factory } = calls.views[0]
+  const first = factory({})
+  const second = factory({})
+  await first.onOpen()
+  await second.onOpen()
+  assert.equal(
+    window.document.querySelectorAll('style#dshgn-style').length,
+    1,
+    '同一份文档只该有一份样式表（按 id 去重）',
+  )
+  await first.onClose()
+  assert.equal(
+    window.document.querySelectorAll('style#dshgn-style').length,
+    1,
+    '另一个面板还开着，样式不能跟着第一个一起走',
+  )
+  assert.ok(
+    (second.contentEl.textContent || '').length > 0,
+    '第二个面板应该还在渲染',
+  )
+  await second.onClose()
+  assert.equal(
+    window.document.querySelectorAll('style#dshgn-style').length,
+    0,
+    '最后一个面板关掉后样式才该消失',
+  )
+})
 test('宿主把视图挂上却不调 onOpen 时，插件自己补一次，面板照样画出来', async () => {
   // 用户库里真的卡成这样过：setViewState 回来了、视图构造函数也跑了，boot.txt 里
   // 就是没有「视图 onOpen 被调用」——宿主把视图挂上就再也不管了，屏幕上一片黑。
@@ -421,7 +470,26 @@ test('视图不去动宿主的 containerEl —— 动了就是把面板画在屏
 })
 
 test('收尾：卸载插件，别把临时目录和监听留着', async () => {
+  // 先开一个面板，让 <style id="dshgn-style"> 挂到 document 上。
+  // 以前 injectCss 返回的是空清理函数，插件被禁用后这坨样式会跟着宿主窗口
+  // 一直活到重启；onunload 里那句兜底就是给这个（以及 popout 窗口）用的。
+  const { factory } = calls.views[0]
+  const view = factory({})
+  await view.onOpen()
+  assert.equal(
+    window.document.querySelectorAll('style#dshgn-style').length,
+    1,
+    '卸载前样式表应该还在',
+  )
   plugin.onunload()
+  assert.equal(
+    window.document.querySelectorAll('style#dshgn-style').length,
+    0,
+    '插件卸载后不该再把面板样式留在宿主窗口里',
+  )
+  // 收干净：onOpen 起过看门狗定时器，不关掉的话 node --test 会因为还有
+  // 活着的 handle 一直不退出（整套跑会卡在最后一个文件上）。
+  await view.onClose()
   await rm(BASE, { recursive: true, force: true })
   await rm(bundleDir, { recursive: true, force: true })
 })

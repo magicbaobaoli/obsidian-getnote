@@ -1,0 +1,1806 @@
+.dshgn_root{
+  /* 字体只有两套：正文一套、等宽一套。
+     以前 17 处各写一遍字体栈（有的带 Consolas、有的不带、逐字稿还硬编码了
+     一长串中文字体名），换宿主字体或加一种语言就得挨个找。收敛成两个变量后，
+     想调只改这里；面板里任何地方要字体也只认这两个名字。 */
+  --dshgn-fontText:var(--font-text,var(--dsw-font-sans,var(--font-interface,inherit)));
+  --dshgn-fontMono:var(--font-monospace,var(--dsw-font-mono,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace));
+  box-sizing:border-box;display:flex;flex-direction:column;height:100%;min-height:0;
+  background:var(--dsw-alias-bg-base,transparent);color:var(--dsw-alias-label-primary);
+  font-family:var(--dshgn-fontText);font-size:var(--font-ui-small,13px)}
+/* 面板里一律按 border-box 量盒子。以前只有几处局部写了，其余元素用默认的
+   content-box：一个 height:22px、上下内边距 2px 的胶囊实际占 26px，宽度同理
+   ——写成 width:100% 的输入框会比自己所在的格子宽出一圈，看起来就是
+   「字跑到框外面去了」。这一条兜住全部后代，不用再逐个补。 */
+.dshgn_root,.dshgn_root *,.dshgn_root *::before,.dshgn_root *::after{box-sizing:border-box}
+/* 顶栏排成一行：标题、动作、页签、帮助依次排开，和「得到大脑」在同一条水平线上。
+   不换行，但页签那一条自己横向滚——不换行的前提是「挤不下时只有页签让路」：
+   标题与动作 flex:none 保持原宽，页签 flex:1 1 auto + min-width:0 + overflow-x:auto，
+   这样面板再窄也只是页签滚起来，不会把标题盖掉一半、也不会把每个字压成两行。 */
+.dshgn_head{flex:none;display:flex;align-items:center;flex-wrap:nowrap;gap:8px;padding:8px 12px;
+  border-bottom:0.5px solid var(--dsw-alias-border-l2);box-sizing:border-box}
+.dshgn_headMain{display:flex;flex-direction:column;gap:1px;min-width:0;flex:0 1 auto}
+.dshgn_title{font-size:13px;font-weight:600;line-height:18px;color:var(--dsw-alias-label-primary)}
+.dshgn_sub{font-size:11px;line-height:15px;color:var(--dsw-alias-label-tertiary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}
+/* 页签跟着标题站在同一行，但**靠右**：标题在左，动作与页签都贴着右边那一头。
+   靠右靠的是 .dshgn_actions 的 margin-left:auto（把后面这一串一起推过去），
+   页签自己 flex:0 1 auto —— 挤不下时它收缩并横向滚，标题不会被盖掉。
+   以前页签是 flex:1 1 auto，等于把它撑满整条顶栏，看着就像页签从左边开始排。 */
+.dshgn_tabs{flex:0 1 auto;min-width:0;display:flex;gap:2px;padding:3px;border-radius:9px;
+  background:var(--dsw-alias-interactive-bg-hover);overflow-x:auto;scrollbar-width:none;
+  box-sizing:border-box}
+.dshgn_tabs::-webkit-scrollbar{display:none}
+.dshgn_tab{appearance:none;border:0;flex:none;height:24px;padding:0 10px;border-radius:7px;background:transparent;
+  color:var(--dsw-alias-label-secondary);cursor:pointer;font:inherit;font-size:12px;line-height:24px;
+  display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.dshgn_tab:hover{color:var(--dsw-alias-label-primary)}
+.dshgn_tab[data-on="true"]{background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary)}
+/* 页签上的数字小标：跟文字同一行、排在右边。用 pill 而不是右上角角标，
+   是因为角标要绝对定位，会把「冲突」两个字的右内边距吃掉、跟后面页签挤在一起。 */
+.dshgn_tabLabel{display:inline-block}
+.dshgn_tabBadge{display:inline-flex;align-items:center;justify-content:center;
+  min-width:16px;height:16px;padding:0 5px;border-radius:8px;
+  background:var(--dsw-alias-state-error-primary);color:#fff;
+  font-size:10px;font-weight:600;line-height:16px;letter-spacing:0;
+  font-variant-numeric:tabular-nums}
+/* margin-left:auto 是承重的：它把动作区连同后面的页签一起推到顶栏右侧，
+   标题留在左边。去掉它，页签又会从标题右边紧贴着排过去。 */
+.dshgn_actions{display:flex;align-items:center;gap:4px;flex:none;margin-left:auto}
+/* 切换页签的入场动画：淡入 + 轻微上浮。180ms 是从「能感觉到」到「不挡手」之间的
+   经验值——再慢就有拖沓感，再快就看不出来。只做 opacity/transform，走 GPU 合成，
+   不触发重排，面板里同时有列表和正文也不会掉帧。 */
+/* 切页签时给内容一个淡入上移。这里只加动画，不要重写 display/flex-direction：
+   三栏横排的布局由后面那条 .dshgn_body{flex:1;display:flex;min-height:0} 决定，
+   在这里写 flex-direction:column 会把它顶成竖排，三栏就叠成一列了。 */
+.dshgn_body{animation:dshgn_tabIn 180ms cubic-bezier(.22,.61,.36,1)}
+/* 从左到右滑入：横排三栏的阅读方向是横向的，左右位移比上下位移更贴合
+   「翻到下一页」的感觉；上下位移在宽面板里会显得像整块往下掉。
+   刻意不做透明度渐变：左栏是深蓝底，从 opacity:0 淡入时透出的是接近白的面板
+   底色，看起来就是「深色那一栏先白闪一下再变深」。只做位移没有这个问题，
+   位移本身已经足够让人感到「换了一页」。 */
+@keyframes dshgn_tabIn{
+  from{transform:translateX(-16px)}
+  to{transform:translateX(0)}
+}
+/* 用户系统里开了「减少动效」就完全别动：这类前庭敏感的用户看到位移会不适，
+   而且他们开这个开关本来就是为了让界面别动。 */
+@media (prefers-reduced-motion:reduce){
+  .dshgn_body{animation:none}
+  .dshgn_root *{transition-duration:0ms !important}
+}
+/* 主题色色板：8 个圆形色块 + 一个「自定义」按钮。
+   色块本身用内联 background（每个颜色不一样），所以这里只管形状与选中环。 */
+.dshgn_themeRow{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:4px}
+.dshgn_swatch{appearance:none;width:26px;height:26px;border-radius:50%;cursor:pointer;
+  border:0;padding:0;box-shadow:inset 0 0 0 1px rgba(255,255,255,.22);
+  transition:transform 120ms ease,box-shadow 120ms ease}
+.dshgn_swatch:hover{transform:scale(1.08)}
+/* 选中环用外发光而不是 border：border 会把色块撑大 2px，一排圆点就大小不一了 */
+.dshgn_swatchOn{box-shadow:inset 0 0 0 1px rgba(255,255,255,.22),0 0 0 2px var(--dshgn-accentOnLight),
+  0 0 0 4px var(--dshgn-light)}
+.dshgn_colorInput{width:44px;height:28px;padding:2px;border-radius:7px;cursor:pointer;
+  border:0.5px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-overlay)}
+/* 三栏效果预览条：三格按真实层次排开，让用户在设置页里就能看出「左深中浅右白」。
+   高 30px 是因为要放得下 11px 的字，再矮文字会被挤成一条线。 */
+.dshgn_previewBar{display:flex;gap:0;margin-top:10px;border-radius:8px;overflow:hidden;
+  border:0.5px solid var(--dsw-alias-border-l2)}
+.dshgn_previewCell{flex:1;height:30px;display:flex;align-items:center;justify-content:center;
+  font-size:11px;letter-spacing:.02em}
+.dshgn_iconBtn{appearance:none;display:inline-flex;align-items:center;justify-content:center;
+  width:28px;height:28px;border:0;border-radius:8px;background:transparent;
+  color:var(--dsw-alias-label-secondary);cursor:pointer}
+.dshgn_iconBtn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dshgn_iconBtn:disabled{opacity:.45;cursor:default}
+.dshgn_iconBtn[data-on="true"]{background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-brand-primary)}
+/* 刷新反馈：顺时针转 5 圈 = 「收到了」，变绿/变红 = 「成没成」，5 秒后回到中性灰。
+   正角度 = 顺时针。
+   缓动故意用 ease-out 而不是 linear：先快后慢才像「转起来再停下」，
+   匀速转会让人以为它会一直转下去。 */
+.dshgn_refreshSpin{display:inline-flex;align-items:center;justify-content:center}
+.dshgn_refreshSpinOn{animation:dshgn_spin 1400ms cubic-bezier(.16,.84,.24,1) 1 both}
+@keyframes dshgn_spin{
+  from{transform:rotate(0deg)}
+  to{transform:rotate(1800deg)}
+}
+/* 成功/失败用颜色说话，不弹 toast：用户视线就在那个小图标上，冒出来的提示
+   反而会让他去找「刚才发生了什么」。
+   平时是中性灰（和「+」同一个颜色），只有结果揭晓的那 5 秒才着色。 */
+.dshgn_iconBtnOk{color:var(--dsw-alias-state-success-primary)}
+.dshgn_iconBtnFail{color:var(--dsw-alias-state-error-primary)}
+/* 「+」和「刷新」必须同色：两个并排的图标按钮一旦一个灰一个蓝，
+   用户会以为蓝色的那个是主操作、灰色那个不可用。 */
+.dshgn_head .dshgn_iconBtn{color:var(--dsw-alias-label-tertiary)}
+.dshgn_head .dshgn_iconBtn:hover{color:var(--dsw-alias-label-primary)}
+.dshgn_head .dshgn_iconBtn.dshgn_iconBtnOk{color:var(--dsw-alias-state-success-primary)}
+.dshgn_head .dshgn_iconBtn.dshgn_iconBtnFail{color:var(--dsw-alias-state-error-primary)}
+/* 大纲：贴着阅读区顶部的一条可折叠目录。层级靠左内边距区分，不做竖线树状，
+   因为阅读区本来就窄，画树线会把标题文字挤到很短。 */
+/* 大纲不再是一张带边框的卡：用户原话「不要每次都有一个单独的黑色框框，
+   可以直接去掉那个黑色框，换成一个点」。现在整块透明，只有每行前面一颗点，
+   鼠标停上去才把那一行填成浅蓝。 */
+/* 与正文同一个宽度上限：三块（属性 / 大纲 / 正文）左右边界对齐，
+   否则宽面板下正文被收窄、大纲却铺满，看上去像两套排版。 */
+.dshgn_outline{margin:0 auto 10px;max-width:1200px;border:0;background:transparent}
+/* 属性 / 大纲这两条折叠条填成深藏青、字用米白。用户原话「浅色模式下所有用到的
+   棕黑色全都改成藏青色填充」——原来它是一条透明的灰字，压在浅底上像一行批注；
+   填成藏青之后它才像「这一栏的标题条」，和下面的正文一眼分得开。
+   深色模式下 --dshgn-navy 由 themeVars 换成一档更亮的藏青，不至于变成一块黑。 */
+.dshgn_outlineToggle{appearance:none;display:flex;align-items:center;gap:6px;width:100%;
+  padding:6px 10px;border:0;border-radius:7px;background:var(--dshgn-navy);font:inherit;
+  font-size:11px;font-weight:500;color:var(--dshgn-navyFg);cursor:pointer;text-align:left}
+.dshgn_outlineToggle:hover{background:var(--dshgn-navyHover)}
+.dshgn_outlineToggle:focus-visible{outline:1px solid var(--dshgn-navy);outline-offset:1px}
+.dshgn_outlineToggle svg{opacity:.8}
+.dshgn_outlineCount{margin-left:auto;min-width:16px;text-align:center;padding:0 5px;border-radius:7px;
+  background:rgba(255,255,255,.18);font-size:10px;line-height:15px;color:var(--dshgn-navyFg)}
+/* 大纲顶上那行筛：只在节数多的时候出现，所以做得矮一点，别占掉两行标题的位置。 */
+.dshgn_outlineFilterRow{display:flex;align-items:center;gap:5px;padding:0 8px 4px;
+  color:var(--dsw-alias-label-tertiary)}
+.dshgn_outlineFilter{flex:1 1 auto;min-width:0;height:22px;font-size:11px}
+.dshgn_outlineFilterClear{flex:none;width:22px;height:22px}
+.dshgn_outlineEmpty{padding:6px 8px;font-size:11px;color:var(--dsw-alias-label-dimmed)}
+.dshgn_outlineList{padding:0 0 5px;max-height:220px;overflow-y:auto}
+/* 一行 = 标题 + 一颗「抄链接」的小按钮。按钮平时不显形，鼠标停在那一行
+   或者用键盘聚焦到它才出现——大纲本来就是一列纯文字，多十几颗图标会把
+   「读标题」这件事搅乱。 */
+.dshgn_outlineRow{display:flex;align-items:center;gap:2px}
+/* 一行 = 一颗小圆点 + 标题，不再是一行一个实底小方块。以前每条都套着
+   透明底 + block 布局，在浅色卡上看着就是「一行一个黑框」，很重。
+   现在只有文字和一颗点，鼠标停上去才用浅蓝底把这一行框出来。 */
+.dshgn_outlineItem{appearance:none;display:flex;align-items:center;gap:6px;flex:1;min-width:0;
+  padding:3px 8px;border:0;border-radius:6px;background:transparent;font:inherit;font-size:12px;
+  line-height:1.5;color:var(--dsw-alias-label-secondary);cursor:pointer;text-align:left}
+.dshgn_outlineDot{flex:none;width:4px;height:4px;border-radius:50%;background:currentColor;
+  opacity:.45}
+.dshgn_outlineText{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_outlineCopy{appearance:none;flex:none;display:inline-flex;align-items:center;
+  justify-content:center;width:20px;height:20px;margin-right:4px;padding:0;border:0;
+  border-radius:5px;background:transparent;color:var(--dsw-alias-label-tertiary);
+  cursor:pointer;opacity:0;transition:opacity .12s}
+.dshgn_outlineRow:hover .dshgn_outlineCopy,
+.dshgn_outlineCopy:focus-visible{opacity:1}
+.dshgn_outlineCopy:hover{background:var(--dsw-alias-interactive-bg-hover-accent);
+  color:var(--dsw-alias-brand-primary)}
+.dshgn_outlineCopy:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+/* 悬停：一整行铺一层浅蓝（纸墨色系里最淡的那档），这是「这一行可以被点」的信号；
+   底色是填充的，不是描边——描边在窄栏里会把文字挤窄。 */
+.dshgn_outlineItem:hover{background:rgba(var(--dshgn-tintRgb),.10);color:var(--dsw-alias-brand-primary)}
+.dshgn_outlineItem:hover .dshgn_outlineDot{opacity:.8}
+/* 正在读的那一节：左侧一道竖线 + 主色文字。只加粗上色不动背景，
+   否则和「悬停」抢视觉，用户分不清「我点过」和「鼠标正停在这」。 */
+.dshgn_outlineItem[data-on='true']{color:var(--dsw-alias-brand-primary);font-weight:600;
+  box-shadow:inset 2px 0 0 var(--dsw-alias-brand-primary)}
+/* 属性区：笔记头部那些键值（tags / aliases / 自定义字段）。
+   放在正文上方、比大纲更淡——它是「这篇是什么」，不是「这篇写了什么」，
+   读正文时它应该退到背景里，但要一眼能扫到。 */
+.dshgn_props{margin:0 auto 12px;max-width:1200px;border:0.5px solid var(--dshgn-cardLine);
+  border-radius:8px;background:var(--dshgn-card);overflow:hidden;font-size:11.5px}
+.dshgn_propsBody{padding:0 8px 7px}
+.dshgn_propRow{display:flex;align-items:flex-start;gap:8px;padding:2px 0;line-height:1.6}
+.dshgn_propKey{flex:0 0 auto;min-width:52px;max-width:110px;color:var(--dsw-alias-label-tertiary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_propVal{flex:1 1 auto;min-width:0;color:var(--dsw-alias-label-secondary);
+  word-break:break-word;white-space:pre-wrap}
+.dshgn_propTag{appearance:none;border:0;border-radius:9px;padding:1px 7px;margin:0 4px 4px 0;
+  background:var(--dshgn-navy);font:inherit;font-size:11px;
+  color:var(--dshgn-navyFg);cursor:pointer}
+.dshgn_propTag:hover{background:var(--dshgn-navyHover)}
+/* 头部里那个值是双链时：跟标签胶囊同款，但颜色走链接色，一眼分得清「点了会跳」和「点了会筛」 */
+.dshgn_propLink{appearance:none;border:0;border-radius:9px;padding:1px 7px;margin:0 4px 4px 0;
+  background:transparent;color:var(--dsw-alias-brand-primary);font:inherit;font-size:11px;
+  line-height:1.5;cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_propLink:hover{background:var(--dsw-alias-interactive-bg-hover-accent)}
+.dshgn_propLink:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+/* 关联笔记：正文读完才出现，所以样式比大纲更轻——它是一条补充信息，不该抢正文视线。 */
+/* 断链清单：一行一处。目标名字用错误色，因为这一行本身就是「这里有问题」；
+   底下的位置与上下文用淡色，扫一眼就能跳过正常的那些。 */
+.dshgn_brokenRow{appearance:none;display:flex;flex-direction:column;gap:3px;width:100%;
+  text-align:left;padding:8px 10px;border:0.5px solid var(--dshgn-cardLine);
+  border-radius:8px;background:var(--dshgn-card);font:inherit;cursor:pointer}
+.dshgn_brokenRow:hover{background:var(--dshgn-surface);border-color:var(--dsw-alias-brand-primary)}
+.dshgn_brokenTarget{font-size:12px;font-weight:600;color:var(--dsw-alias-state-error-primary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_brokenWhere{font-size:10.5px;color:var(--dsw-alias-label-dimmed);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_brokenSnip{font-size:11px;line-height:1.5;color:var(--dsw-alias-label-secondary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 一行断链 = 主体（点了打开那一篇）+ 一颗「去这一句」。拆成两个可点区域是因为
+   「打开这篇」和「滚到那一行」是两个动作，而按钮里再套按钮不是合法结构。 */
+.dshgn_brokenLine{display:flex;align-items:stretch;gap:6px;width:100%}
+.dshgn_brokenLine .dshgn_brokenRow{flex:1 1 auto;min-width:0}
+.dshgn_brokenJump{flex:none;align-self:center;appearance:none;padding:2px 8px;
+  border:0.5px solid var(--dshgn-cardLine);border-radius:999px;background:var(--dshgn-card);
+  color:var(--dsw-alias-label-secondary);font:inherit;font-size:10.5px;line-height:1.7;
+  white-space:nowrap;cursor:pointer}
+.dshgn_brokenJump:hover{color:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary)}
+.dshgn_brokenJump:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+/* 断链按「指不到的那个名字」分组：同一个名字在七八篇里各写一次，就是七八条一模一样的
+   红字；分组之后一处名字一行头，写着它被写错了几处，右边一颗「写一篇」当场把那一篇补出来。 */
+.dshgn_brokenGroup{display:flex;align-items:center;flex-wrap:wrap;gap:2px 6px;padding:2px 2px 0;min-width:0}
+/* 组头右边那一簇按钮：整簇靠右、内部等距，换行时一起掉到下一行，
+   两颗按钮的左边缘因此永远对齐（以前各自 margin-left:auto 会互相推）。 */
+.dshgn_brokenGroupActions{display:flex;align-items:center;flex-wrap:wrap;gap:4px;
+  margin-left:auto;min-width:0}
+.dshgn_brokenGroupName{flex:0 1 auto;min-width:0;font-size:11px;font-weight:600;
+  color:var(--dsw-alias-state-error-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_brokenGroupCount{flex:none;font-size:10px;color:var(--dsw-alias-label-dimmed)}
+/* 组头这颗按钮的文案是「改指到已有那篇」这种七八个字的长句，加上「写一篇」一起摆在
+   名字右边，窄一点的面板里就顶出容器了。让它跟着组头换行、自己也能折行，
+   高度跟着长，不再靠 nowrap 硬撑。 */
+.dshgn_brokenGroupAll{flex:0 1 auto;max-width:100%;height:auto;min-height:22px;
+  padding:2px 8px;font-size:11px;white-space:normal;line-height:1.45;text-align:left;
+  border-color:var(--dshgn-cardLine);background:var(--dshgn-card)}
+.dshgn_brokenGroupAll:hover{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary)}
+/* 改指到已有的那一篇：一行输入 + 一颗「全库改过去」。名字多半是从库里挑的，
+   所以挂上候选；回车就提交，Esc 收起。 */
+.dshgn_brokenRetarget{display:flex;align-items:center;gap:6px;padding:4px 2px 2px}
+.dshgn_brokenRetargetInput{flex:1 1 auto;min-width:0;height:24px;font-size:11.5px}
+.dshgn_brokenRetargetGo{flex:none;height:24px;padding:0 8px;font-size:11px}
+/* 断链页自己的筛：只按这一页的清单挑一处，不碰中栏那个搜索框。
+   上限 500 处，一屏翻不完；想修的那一条常常只记得半个名字。 */
+.dshgn_brokenFilterRow{display:flex;align-items:center;gap:6px;padding:2px 10px 6px;
+  color:var(--dsw-alias-label-dimmed)}
+.dshgn_brokenFilter{flex:1 1 auto;min-width:0;height:24px;font-size:11.5px}
+.dshgn_brokenFilterClear{flex:none;height:24px;padding:0 6px;font-size:11px}
+/* 待办页和回收站那一行筛也复用上面这三条（同一副样子：一个放大镜、一行输入、一颗清掉）。 */
+/* 待办清单：一行一条。方框复用阅读区那个（同样大小、同样能点），右边是正文与出处。
+   方框外面套一层透明按钮，是为了让整块方框连周边的点击热区一起可点——12px 的方框
+   直接点很难点中，手机上尤其。 */
+.dshgn_todoRow{display:flex;align-items:flex-start;gap:8px;padding:7px 10px;
+  border:0.5px solid var(--dshgn-cardLine);border-radius:8px;background:var(--dshgn-card)}
+.dshgn_todoRow:hover{background:var(--dshgn-surface);border-color:var(--dsw-alias-brand-primary)}
+.dshgn_todoRow .dshgn_check{margin-top:3px}
+/* 待办那行里的文字与「去这一条」并排：文字自己是个按钮，不能把按钮套进按钮。 */
+.dshgn_todoLine{display:flex;align-items:center;gap:6px;flex:1;min-width:0}
+.dshgn_todoBusy{opacity:.45}
+.dshgn_todoText{appearance:none;display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;
+  text-align:left;padding:0;border:0;background:transparent;font:inherit;cursor:pointer;color:inherit}
+.dshgn_todoTitle{font-size:12.5px;line-height:1.5;color:var(--dsw-alias-label-primary);
+  overflow-wrap:anywhere;word-break:break-word}
+/* 待办按篇分组：组头是这一篇的名字（点一下打开它）、还剩几条、以及一颗把这一组
+   一起勾掉的按钮。组头本身不做成按钮——名字和按钮各自可点，按钮不能套按钮。 */
+.dshgn_todoGroup{display:flex;align-items:center;flex-wrap:wrap;gap:2px 6px;padding:2px 2px 0;min-width:0}
+.dshgn_todoGroupActions{display:flex;align-items:center;flex-wrap:wrap;gap:4px;
+  margin-left:auto;min-width:0}
+.dshgn_todoGroupName{appearance:none;flex:0 1 auto;min-width:0;padding:0;border:0;background:transparent;
+  font:inherit;font-size:11px;font-weight:600;color:var(--dsw-alias-label-secondary);cursor:pointer;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
+.dshgn_todoGroupName:hover{color:var(--dsw-alias-label-primary);text-decoration:underline}
+.dshgn_todoGroupCount{flex:none;font-size:10px;color:var(--dsw-alias-label-dimmed)}
+/* 和断链那页同一个道理：「勾掉这一篇的 12 条」是长句，窄面板里得能折行。 */
+.dshgn_todoGroupAll{flex:0 1 auto;max-width:100%;height:auto;min-height:22px;
+  padding:2px 8px;font-size:11px;white-space:normal;line-height:1.45;text-align:left;
+  border-color:var(--dshgn-cardLine);background:var(--dshgn-card)}
+.dshgn_todoGroupAll:hover{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary)}
+.dshgn_backlinks{margin-top:18px;padding-top:12px;border-top:0.5px solid var(--dsw-alias-border-l1)}
+.dshgn_backlinksHead{display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:11px;
+  color:var(--dsw-alias-label-tertiary)}
+.dshgn_backlinkItem{appearance:none;display:flex;flex-direction:column;gap:2px;width:100%;
+  padding:6px 9px;margin-bottom:3px;border:0;border-radius:7px;
+  background:var(--dsw-alias-interactive-bg-hover);font:inherit;cursor:pointer;text-align:left}
+.dshgn_backlinkItem:hover{background:var(--dsw-alias-interactive-bg-hover-accent)}
+.dshgn_backlinkTitle{font-size:12px;color:var(--dsw-alias-brand-primary);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dshgn_backlinkSnip{font-size:11px;line-height:1.5;color:var(--dsw-alias-label-secondary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 上下文那一行点得动：虚线下划线是「这里能点」里最不吵的一种，不动字号不动色 */
+.dshgn_backlinkSnipLink{cursor:pointer;text-decoration:underline;text-decoration-style:dotted;
+  text-underline-offset:2px}
+.dshgn_backlinkSnipLink:hover{color:var(--dsw-alias-brand-primary)}
+.dshgn_backlinkSnipLink:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);
+  outline-offset:1px;border-radius:3px}
+.dshgn_backlinkPath{font-size:10px;color:var(--dsw-alias-label-dimmed);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 「还有 N 处」：和卡片里出链那颗虚线胶囊同一副样子，但整行居中——反链底下
+   这一行只有它一个，靠左会显得像没画完。 */
+.dshgn_backlinkMore{appearance:none;display:block;width:100%;margin:2px 0 0;padding:3px 0;
+  border:0.5px dashed var(--dsw-alias-border-l2);border-radius:999px;background:transparent;
+  color:var(--dsw-alias-label-dimmed);font:inherit;font-size:10px;line-height:1.6;cursor:pointer}
+.dshgn_backlinkMore:hover{color:var(--dsw-alias-label-secondary)}
+.dshgn_backlinkMore:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_backlinkMore[data-open="true"]{border-style:solid;color:var(--dsw-alias-label-secondary)}
+/* 出链：这篇自己引用了谁。一条条竖排太占地方（出链常常十几条），排成一行胶囊。 */
+.dshgn_outlinks{margin-top:14px;padding-top:10px;border-top:0.5px solid var(--dsw-alias-border-l1)}
+.dshgn_outlinksHead{display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:11px;
+  color:var(--dsw-alias-label-tertiary)}
+.dshgn_outlinkRow{display:flex;flex-wrap:wrap;gap:4px}
+.dshgn_outlinkChip{appearance:none;border:0;border-radius:6px;padding:3px 8px;font:inherit;font-size:11px;
+  max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;
+  background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-brand-primary)}
+.dshgn_outlinkChip:hover{background:var(--dsw-alias-interactive-bg-hover-accent)}
+/* 出链里指向还不存在的笔记：和正文里的死链同一套观感（灰下去、边框虚线），
+   而不是整条藏起来——「我想写但还没写」本身就是要看见的信息。 */
+.dshgn_outlinkDead{background:transparent;color:var(--dsw-alias-label-tertiary);
+  box-shadow:inset 0 0 0 0.5px var(--dsw-alias-border-l2)}
+.dshgn_outlinkDead:hover{background:var(--dsw-alias-interactive-bg-hover);
+  color:var(--dsw-alias-label-secondary)}
+/* 出链超过六颗时最后那颗「+N」：和反链底下那颗同一个意思，只是排在同一行里，
+   所以做成胶囊而不是整行按钮。虚线边是为了让人一眼看出它不是一条链接。 */
+.dshgn_outlinkMore{background:transparent;color:var(--dsw-alias-label-dimmed);
+  box-shadow:inset 0 0 0 0.5px var(--dsw-alias-border-l2);border:0;border-style:dashed}
+.dshgn_outlinkMore:hover{background:var(--dsw-alias-interactive-bg-hover);
+  color:var(--dsw-alias-label-secondary)}
+.dshgn_outlinkMore:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_outlinkMore[data-open="true"]{color:var(--dsw-alias-label-secondary)}
+/* 搜索增强：命中次数用一个小胶囊标在标题右边，命中行带行号——
+   用户判断「这篇是不是我要的」靠的就是这两样东西。 */
+.dshgn_pickBox{flex:none;width:14px;height:14px;border-radius:4px;display:flex;
+  align-items:center;justify-content:center;cursor:pointer;opacity:0;
+  border:1px solid var(--dsw-alias-border-l2);background:transparent;
+  transition:opacity 120ms ease,background 120ms ease}
+.dshgn_card:hover .dshgn_pickBox,.dshgn_pickBoxOn{opacity:1}
+.dshgn_pickBoxOn{background:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary);
+  color:var(--dsw-alias-label-primary-foreground)}
+.dshgn_batchBar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px 8px;
+  border-bottom:0.5px solid rgba(var(--dshgn-tintRgb),.14);background:rgba(var(--dshgn-tintRgb),.07)}
+.dshgn_batchCount{font-size:11px;font-weight:600;color:var(--dsw-alias-label-secondary)}
+.dshgn_batchBtn{appearance:none;border:0;background:transparent;cursor:pointer;
+  font:inherit;font-size:11px;padding:2px 6px;border-radius:5px;
+  color:var(--dsw-alias-label-secondary)}
+.dshgn_batchBtn:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.dshgn_batchMenu{flex-basis:100%;display:flex;flex-direction:column;gap:6px;
+  padding:8px;margin-top:2px;border-radius:8px;background:var(--dshgn-surface);
+  box-shadow:0 2px 10px rgba(var(--dshgn-tintRgb),.14)}
+/* 批量没成的清单：整行摊开，路径长的能折行，不挤成一句看不出是哪几篇 */
+.dshgn_batchFails{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;padding:6px 8px;
+  border-bottom:0.5px solid rgba(var(--dshgn-tintRgb),.14);
+  background:var(--dsw-alias-interactive-bg-hover);font-size:11px;line-height:1.5}
+.dshgn_batchFailsTitle{flex:none;font-weight:600;color:var(--dsw-alias-state-error-primary)}
+.dshgn_batchFailItem{display:inline-flex;align-items:baseline;gap:4px;max-width:100%;
+  padding:1px 6px;border-radius:5px;word-break:break-all;
+  color:var(--dsw-alias-label-secondary);box-shadow:inset 0 0 0 0.5px var(--dsw-alias-border-l2)}
+/* 清单只摆前八条时，底下那颗虚线胶囊写着还剩几篇 */
+.dshgn_batchFailMore{appearance:none;flex:none;padding:1px 7px;border:0.5px dashed var(--dsw-alias-border-l2);
+  border-radius:999px;background:transparent;color:var(--dsw-alias-label-dimmed);
+  font:inherit;font-size:10px;line-height:16px;cursor:pointer}
+.dshgn_batchFailMore:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-brand-primary)}
+.dshgn_batchFailMore:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_batchRow{display:flex;gap:6px;align-items:center}
+.dshgn_batchInput{flex:1;min-width:0;height:26px;font-size:12px}
+/* 版本历史版数：一个窄格子，数字靠右，免得和旁边那个「版」字隔老远。 */
+.dshgn_historyLimitInput{flex:none;width:72px;height:26px;font-size:12px;text-align:right}
+.dshgn_cardTitleRow{display:flex;align-items:center;gap:6px}
+.dshgn_cardTitleRow .dshgn_cardTitle{flex:1;min-width:0}
+/* 中栏笔记卡：勾选框从行内挪到左侧留白里。
+   原来它占着标题行首的位置，把标题文字往右推了 20px，而下面的日期与正文
+   直接从卡片内边距起——三行左边缘对不齐，看着像缩进错乱。现在整张卡统一
+   多留 20px 左内边距，勾选框绝对定位停在留白里，标题/日期/正文左端一致。 */
+.dshgn_card[data-pick="true"]{position:relative;padding-left:28px}
+.dshgn_card[data-pick="true"] .dshgn_pickBox{position:absolute;left:8px;top:9px}
+.dshgn_hitCount{flex:none;min-width:17px;text-align:center;padding:0 4px;border-radius:7px;
+  background:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-primary-foreground);
+  font-size:10px;line-height:15px;font-weight:600}
+.dshgn_cardMatches{margin-top:3px;display:flex;flex-direction:column;gap:2px}
+.dshgn_matchLine{display:flex;gap:5px;align-items:baseline;width:100%;appearance:none;border:0;background:transparent;padding:1px 3px;margin:0 -3px;border-radius:4px;font:inherit;font-size:11px;line-height:1.45;color:var(--dsw-alias-label-secondary);text-align:left;cursor:pointer}
+.dshgn_matchLine:hover{background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-label-primary)}
+.dshgn_matchNo{flex:none;min-width:18px;text-align:right;font-variant-numeric:tabular-nums;
+  color:var(--dsw-alias-label-dimmed);font-size:10px;padding-top:1px}
+.dshgn_matchText{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_matchHit{padding:0 1px;border-radius:3px;background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-label-primary);font-weight:600}
+/* 命中行摊开之后会长出好几行，卡片跟着变高，这里给那颗「还有 N 处」
+   一个比命中行更淡的样子：它是入口，不是一条命中。 */
+.dshgn_matchMore{align-self:flex-start;appearance:none;margin:1px 0 0 21px;padding:0 6px;border:0.5px dashed var(--dsw-alias-border-l2);border-radius:999px;background:transparent;color:var(--dsw-alias-label-dimmed);font:inherit;font-size:10px;line-height:1.6;cursor:pointer;white-space:nowrap}
+.dshgn_matchMore:hover{color:var(--dsw-alias-label-secondary)}
+.dshgn_matchMore:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_cardLinks{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.dshgn_cardLinks[data-open="true"]{overflow:visible}
+.dshgn_cardLinkChip{appearance:none;border:0;background:rgba(var(--dshgn-tintRgb),.08);
+  color:var(--dsw-alias-brand-primary);border-radius:6px;padding:1px 6px;font-size:10px;
+  cursor:pointer;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_cardLinkChip:hover{background:var(--dsw-alias-interactive-bg-hover-accent)}
+.dshgn_cardLinkMore{appearance:none;flex:none;align-self:center;padding:0 4px;border:0.5px dashed var(--dsw-alias-border-l2);border-radius:999px;background:transparent;color:var(--dsw-alias-label-dimmed);font:inherit;font-size:10px;line-height:1.6;cursor:pointer;white-space:nowrap}
+.dshgn_cardLinkMore:hover{color:var(--dsw-alias-label-secondary);border-color:var(--dsw-alias-border-l2)}
+.dshgn_cardLinkMore:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_cardLinkMore[data-open="true"]{border-style:solid;color:var(--dsw-alias-label-secondary)}
+.dshgn_searchHint{padding:0 10px 7px;font-size:10px;line-height:1.5;
+  color:var(--dsw-alias-label-dimmed)}
+/* 搜完报一句：扫了多少篇、对上多少篇、有没有被上限截掉。
+   截掉时换成警示色，免得人以为「库里就这四十篇」。 */
+.dshgn_searchScan{padding:0 10px 7px;font-size:10px;line-height:1.5;
+  color:var(--dsw-alias-label-tertiary)}
+.dshgn_searchScan[data-cut="true"]{color:var(--dsw-alias-label-secondary)}
+/* 这次按什么在筛：限定词 / 正文词 / 排除词各一颗，点一颗就去掉那一段。
+   和「最近搜过」那排同一个视觉语言，但底色更淡——它是状态，不是入口。 */
+.dshgn_queryBits{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:4px;
+  padding:0 10px 7px}
+.dshgn_queryBitsLabel{flex:none;font-size:10px;color:var(--dsw-alias-label-tertiary);
+  margin-right:1px}
+.dshgn_queryBit{appearance:none;display:inline-flex;align-items:center;gap:3px;
+  max-width:180px;padding:1px 7px;border:0.5px solid var(--dsw-alias-border-l2);
+  border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary);
+  font:inherit;font-size:10px;line-height:1.7;cursor:pointer}
+.dshgn_queryBit:hover{background:var(--dsw-alias-interactive-bg-hover);
+  color:var(--dsw-alias-label-primary)}
+.dshgn_queryBit:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+/* 排除词那颗说清是「不要它」，不然一排胶囊里分不出正负 */
+.dshgn_queryBit[data-kind="not"]{text-decoration:line-through;
+  color:var(--dsw-alias-label-tertiary)}
+.dshgn_queryBit[data-kind="dir"]{border-color:var(--dsw-alias-border-l1)}
+.dshgn_queryBit[data-kind="tag"]{border-color:var(--dsw-alias-border-l1)}
+.dshgn_queryBitName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 最近搜过的词：搜索框空着时摆在它下面一行。只摆词不摆结果——结果会过期，
+   重搜一遍拿到的才是当下的库。整条用一排小胶囊，和补全候选同一个视觉语言。 */
+.dshgn_recent{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:4px;
+  padding:0 10px 7px}
+.dshgn_recentLabel{flex:none;font-size:10px;color:var(--dsw-alias-label-tertiary);
+  margin-right:1px}
+.dshgn_recentChip{appearance:none;max-width:150px;padding:1px 7px;
+  border:0.5px solid var(--dsw-alias-border-l2);border-radius:999px;
+  background:rgba(var(--dshgn-tintRgb),.06);color:var(--dsw-alias-label-secondary);
+  font:inherit;font-size:10px;line-height:1.7;cursor:pointer;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_recentChip:hover{background:var(--dsw-alias-interactive-bg-hover);
+  color:var(--dsw-alias-label-primary)}
+.dshgn_recentChip:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+/* 一颗记录 = 胶囊 + 它自己的小叉。整条清空是重手，只想去掉一个时用这颗。 */
+.dshgn_recentItem{display:inline-flex;align-items:center;gap:0;max-width:100%}
+.dshgn_recentDrop{appearance:none;flex:none;display:inline-flex;align-items:center;
+  justify-content:center;width:14px;height:14px;padding:0;margin-left:-3px;border:0;
+  border-radius:50%;background:transparent;color:var(--dsw-alias-label-dimmed);
+  cursor:pointer;opacity:.65}
+.dshgn_recentDrop:hover{opacity:1;background:var(--dsw-alias-interactive-bg-hover);
+  color:var(--dsw-alias-label-primary)}
+.dshgn_recentDrop:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_recentClear{appearance:none;flex:none;display:inline-flex;align-items:center;
+  justify-content:center;width:16px;height:16px;padding:0;border:0;border-radius:50%;
+  background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer}
+.dshgn_recentClear:hover{background:var(--dsw-alias-interactive-bg-hover);
+  color:var(--dsw-alias-label-primary)}
+.dshgn_recentClear:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+/* 搜索补全候选：把库里已有的目录名与标签名摆出来，省得凭记忆猜拼写。
+   摆在搜索行正下方、与搜索框同宽，和列表卡片区分开（不占卡片的位置感）。 */
+.dshgn_suggest{flex:none;display:flex;flex-wrap:wrap;gap:4px;padding:0 10px 7px}
+.dshgn_suggestItem{appearance:none;display:inline-flex;align-items:center;gap:3px;
+  max-width:100%;padding:1px 7px;border:0.5px solid var(--dsw-alias-border-l2);
+  border-radius:999px;background:rgba(var(--dshgn-tintRgb),.06);
+  color:var(--dsw-alias-label-secondary);font:inherit;font-size:10px;line-height:1.7;
+  cursor:pointer}
+.dshgn_suggestItem:hover{background:var(--dsw-alias-interactive-bg-hover);
+  color:var(--dsw-alias-brand-primary)}
+.dshgn_suggestItem[data-on="true"]{border-color:var(--dsw-alias-brand-primary);
+  color:var(--dsw-alias-brand-primary)}
+.dshgn_suggestItem:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);
+  outline-offset:1px}
+.dshgn_suggestName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_searching{flex:none;font-size:10px;color:var(--dsw-alias-label-tertiary)}
+/* 筛选条：左栏点了目录/标签之后，中栏得说清「现在筛的是什么、怎么退出去」。
+   以前只是卡片悄悄少了，换过目录再回来的人会以为笔记丢了。 */
+.dshgn_filterBar{flex:none;display:flex;align-items:center;flex-wrap:wrap;gap:4px;
+  padding:0 10px 7px}
+.dshgn_filterChip{appearance:none;display:inline-flex;align-items:center;gap:3px;
+  max-width:100%;padding:1px 4px 1px 6px;border:0.5px solid var(--dsw-alias-border-l2);
+  border-radius:999px;background:rgba(var(--dshgn-tintRgb),.08);
+  color:var(--dsw-alias-label-secondary);font:inherit;font-size:10px;line-height:1.6;
+  cursor:pointer}
+.dshgn_filterChip:hover{background:var(--dsw-alias-interactive-bg-hover);
+  color:var(--dsw-alias-label-primary)}
+.dshgn_filterChip:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_filterChip[data-kind="tag"]{color:var(--dsw-alias-brand-primary)}
+.dshgn_filterChipName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_filterChipX{flex:none;display:inline-flex;align-items:center}
+
+/* 字号三档：只改 .dshgn_md 的字号与行距，标题和代码块用 em 相对放大，
+   整篇比例保持一致——如果标题写死 px，放大正文字号后标题会显得比正文还小。 */
+.dshgn_scaleGroup{display:inline-flex;align-items:center;gap:1px;margin-left:auto;
+  padding:1px;border-radius:6px;background:var(--dsw-alias-interactive-bg-hover)}
+.dshgn_scaleBtn{appearance:none;display:inline-flex;align-items:flex-end;justify-content:center;
+  width:20px;height:20px;border:0;border-radius:5px;background:transparent;
+  color:var(--dsw-alias-label-tertiary);cursor:pointer;font-family:inherit;padding-bottom:2px}
+.dshgn_scaleBtn:hover{color:var(--dsw-alias-label-primary)}
+.dshgn_scaleBtnOn{background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-brand-primary);
+  box-shadow:0 1px 2px rgba(var(--dshgn-tintRgb),.14)}
+/* 新建模板菜单：点「+」弹一层小菜单。遮罩用透明 div 而不是监听 document 点击，
+   因为面板是 slot 里的子树，document 级监听在 React 卸载时容易漏摘。 */
+.dshgn_newWrap{position:relative;display:inline-flex}
+.dshgn_menuMask{position:fixed;inset:0;z-index:40;background:transparent}
+.dshgn_menu{position:absolute;top:32px;left:0;z-index:41;min-width:190px;padding:5px;
+  border-radius:9px;background:var(--dsw-alias-bg-overlay);
+  border:0.5px solid var(--dsw-alias-border-l2);box-shadow:0 6px 20px rgba(var(--dshgn-tintRgb),.18)}
+.dshgn_menuTitle{padding:4px 8px 6px;font-size:10px;letter-spacing:.04em;
+  color:var(--dsw-alias-label-dimmed)}
+.dshgn_menuItem{appearance:none;display:flex;align-items:center;gap:8px;width:100%;
+  padding:6px 8px;border:0;border-radius:6px;background:transparent;font:inherit;
+  font-size:12px;color:var(--dsw-alias-label-primary);cursor:pointer;text-align:left}
+.dshgn_menuItem:hover{background:var(--dsw-alias-interactive-bg-hover-accent);
+  color:var(--dsw-alias-brand-primary)}
+.dshgn_menuHint{margin-left:auto;font-size:10px;color:var(--dsw-alias-label-dimmed)}
+/* 菜单里的输入行与候选条：菜单自带 5px 内边距，这里不再各加一圈，只把
+   左右对齐到标题文字的 8px 起。 */
+.dshgn_menuRow{display:flex;padding:0 3px 5px}
+.dshgn_menu .dshgn_suggest{padding:0 3px 5px}
+.dshgn_menu .dshgn_input{height:26px;font-size:12px}
+/* 骨架屏：用一条脉动的浅色块占位。动画只改 opacity，不改尺寸——
+   改尺寸会触发重排，三栏骨架一起抖看着像卡住。 */
+.dshgn_skTree,.dshgn_skList,.dshgn_skNote{padding:14px 12px;gap:9px}
+.dshgn_skTree{display:flex;flex-direction:column}
+.dshgn_skList{display:flex;flex-direction:column;gap:10px}
+.dshgn_skNote{display:flex;flex-direction:column;gap:11px}
+.dshgn_skCard{display:flex;flex-direction:column;gap:7px;padding:10px 11px;border-radius:8px;
+  background:rgba(var(--dshgn-tintRgb),.10)}
+.dshgn_skRow{border-radius:5px;background:var(--dsw-alias-interactive-bg-hover);
+  animation:dshgn_skPulse 1.4s ease-in-out infinite}
+.dshgn_skTree .dshgn_skRow{background:rgba(var(--dshgn-tintRgb),.07)}
+@keyframes dshgn_skPulse{
+  0%,100%{opacity:.55}
+  50%{opacity:1}
+}
+@media (prefers-reduced-motion:reduce){
+  .dshgn_skRow{animation:none;opacity:.7}
+}
+/* 骨架顶上那行字。色块在深色主题里可能和背景几乎同色，光看色块分不出
+   「在加载」和「挂了」——这行字是那块黑屏里唯一的确定信息，颜色不走
+   主题变量，直接给一个两侧都能看清的中性色。 */
+.dshgn_skTop{flex:none;display:flex;align-items:center;gap:7px;padding:12px 14px 0;
+  font-size:11px;color:var(--dsw-alias-label-secondary)}
+.dshgn_skSlow{flex:none;display:flex;flex-direction:column;gap:8px;margin:10px 14px 0;
+  padding:10px 12px;border-radius:8px;background:rgba(var(--dshgn-tintRgb),.08);
+  box-shadow:inset 0 0 0 0.5px var(--dsw-alias-border-l2)}
+.dshgn_skSlowHint{font-size:11px;line-height:1.6;color:var(--dsw-alias-label-secondary)}
+.dshgn_skSlowRow{display:flex;gap:6px}
+/* 冲突比对：左右两列各自滚动。默认走 Markdown 渲染（.dshgn_diffMd），
+   和「笔记」「云端」页读起来一致；切到「原文」时才用 .dshgn_diffBody 的等宽 pre，
+   那种模式是为抠空格/换行差异准备的。 */
+.dshgn_diffRow{display:flex;gap:10px;flex:1;min-height:0;overflow:hidden}
+.dshgn_diffCol{flex:1;min-width:0;display:flex;flex-direction:column;
+  border:0.5px solid var(--dshgn-cardLine);border-radius:9px;overflow:hidden;
+  background:var(--dshgn-card)}
+.dshgn_diffHead{flex:none;padding:6px 10px;font-size:11px;font-weight:600;
+  background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);
+  border-bottom:0.5px solid var(--dsw-alias-border-l1)}
+.dshgn_diffBody{flex:1;min-height:0;margin:0;padding:10px 12px;overflow:auto;
+  font-family:var(--dshgn-fontMono);font-size:11.5px;
+  line-height:1.65;white-space:pre-wrap;word-break:break-word;
+  color:var(--dsw-alias-label-primary)}
+/* 渲染模式：沿用 .dshgn_md 的排版规则（标题层级/表格/引用/围栏），
+   但去掉 max-width 居中——两列各占一半宽度，居中会让正文缩在中间一窄条。 */
+.dshgn_diffMd{font-family:inherit;font-size:12.5px;line-height:1.7;white-space:normal}
+.dshgn_diffMd .dshgn_md{max-width:none;margin:0;font-size:inherit}
+.dshgn_diffMd .dshgn_h{margin:12px 0 6px}
+.dshgn_diffMd .dshgn_h1{font-size:1.3em}
+.dshgn_diffMd .dshgn_h2{font-size:1.15em}
+.dshgn_diffMd .dshgn_h3{font-size:1.02em}
+.dshgn_diffEmpty{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;
+  padding:20px;font-size:12px;line-height:1.7;text-align:center;
+  color:var(--dsw-alias-label-tertiary)}
+.dshgn_dot{color:var(--dsw-alias-label-dimmed)}
+/* 版本历史：占满阅读区，用列表 + 预览两段式。时间用等宽数字对齐，
+   一列扫下来能立刻看出「哪个是我要的那次保存」。 */
+.dshgn_historyPane{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+/* 这一版和现在差多少：跟在保存时间后面的一小段灰字，不抢正文。 */
+.dshgn_historyDiff{flex:none;padding:0 6px;border-radius:999px;font-size:10px;
+  background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}
+.dshgn_historyHead{flex:none;display:flex;align-items:center;gap:6px;padding:8px 12px;
+  font-size:12px;color:var(--dsw-alias-label-secondary);
+  border-bottom:0.5px solid var(--dsw-alias-border-l1)}
+/* 撞到「留几版」上限时的一句解释：细一档，跟在条数后面，不跟标题抢。 */
+.dshgn_historyCap{flex:none;font-size:10px;color:var(--dsw-alias-label-dimmed)}
+.dshgn_historyList{flex:1;min-height:0;overflow-y:auto;padding:8px 12px}
+.dshgn_historyItem{appearance:none;display:flex;align-items:center;gap:10px;width:100%;
+  padding:8px 10px;margin-bottom:4px;border:0;border-radius:7px;
+  background:var(--dsw-alias-interactive-bg-hover);font:inherit;cursor:pointer;text-align:left}
+.dshgn_historyItem:hover{background:var(--dsw-alias-interactive-bg-hover-accent)}
+.dshgn_historyTime{flex:1;min-width:0;font-size:12px;font-variant-numeric:tabular-nums;
+  color:var(--dsw-alias-label-primary)}
+.dshgn_historyMeta{flex:none;font-size:11px;color:var(--dsw-alias-label-dimmed)}
+.dshgn_mdS{font-size:12px;line-height:1.7}
+.dshgn_mdL{font-size:15px;line-height:1.9}
+/* 用 !important 是为了盖过 .dshgn_note .dshgn_md 的 13.5px —— 那条规则
+   多一层选择器，普通写法压不住它，档位会「点了没反应」。
+   （CSS 注释里不能写反引号：整个样式表是一个 JS 模板字符串，反引号会提前收尾。） */
+.dshgn_note .dshgn_md.dshgn_mdS{font-size:12px !important;line-height:1.7}
+.dshgn_note .dshgn_md.dshgn_mdL{font-size:15px !important;line-height:1.9}
+.dshgn_btn{appearance:none;display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 11px;
+  border:0.5px solid var(--dshgn-cardLine);border-radius:7px;background:var(--dshgn-card);
+  color:var(--dsw-alias-label-primary);cursor:pointer;font:inherit;font-size:12px;white-space:nowrap;
+  max-width:100%;box-sizing:border-box}
+.dshgn_btn:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);
+  border-color:var(--dsw-alias-border-l2)}
+.dshgn_btn:disabled{opacity:.5;cursor:default}
+/* 键盘走到哪一颗，哪一颗亮一圈。文件里另外 40 来颗小按钮各自写了这条，
+   偏偏最常用的 .dshgn_btn / .dshgn_chip / 左栏目录行漏了——Tab 过去什么都看不见。 */
+.dshgn_btn:focus-visible,.dshgn_chip:focus-visible{
+  outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_btnDanger{color:var(--dsw-alias-state-error-primary)}
+/* overflow:hidden 是承重的：三栏各自内部滚动，外层绝不能滚。
+   少了它，正文里一块超宽的代码表格会把整个 .dshgn_body 撑出横向滚动条，
+   点大纲跳转时浏览器把外层的横向滚动一起带走，看起来就是「整个插件往左移、变形」。 */
+.dshgn_body{flex:1;display:flex;min-height:0;min-width:0;overflow:hidden}
+.dshgn_tree{flex:none;width:var(--dshgn-treeW,204px);display:flex;flex-direction:column;min-height:0;
+  border-right:0.5px solid var(--dsw-alias-border-l2);overflow-y:auto;overflow-x:hidden;padding:8px 6px}
+/* 左栏是纵向 flex 容器，行又写死了 height——flex 子项默认 flex-shrink:1，
+   行数一多（目录二十几个、标签几十个）它们会先被压扁、而不是让容器滚起来。
+   压扁之后 26px 的行只剩几像素，中文就叠在一起，看起来像「字竖着排、互相
+   盖住」。这里一律不许收缩：装不下就让 .dshgn_tree 自己滚。 */
+.dshgn_tree>*{flex-shrink:0}
+.dshgn_treeHead{flex:none;display:flex;align-items:center;justify-content:space-between;gap:6px;
+  padding:4px 6px;font-size:11px;color:var(--dsw-alias-label-tertiary);user-select:none}
+.dshgn_treeRow{flex:none;display:flex;align-items:center;gap:6px;height:26px;padding:0 9px;border-radius:7px;
+  color:var(--dsw-alias-label-secondary);cursor:pointer;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;user-select:none}
+.dshgn_treeRow:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.dshgn_treeRow[data-on="true"]{background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-label-primary)}
+/* 卡片正拖到这一行上面：虚线框 + 品牌色，和「当前选中的目录」那种实底区分开，
+   否则拖到已选中的目录上会看不出有没有接住。 */
+.dshgn_treeFold{appearance:none;flex:none;display:inline-flex;align-items:center;justify-content:center;width:12px;height:16px;margin-left:-12px;padding:0;border:0;border-radius:3px;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer}
+.dshgn_treeFold:hover{color:var(--dsw-alias-label-primary);background:rgba(var(--dshgn-tintRgb),.10)}
+.dshgn_treeFold:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_treeFold svg{transform:rotate(90deg);transition:transform .12s ease}
+.dshgn_treeFold[data-folded="true"] svg{transform:rotate(0deg)}
+.dshgn_treeFoldGap{flex:none;display:inline-block;width:12px;margin-left:-12px}
+.dshgn_treeRow[data-drop="true"]{background:rgba(var(--dshgn-tintRgb),.10);color:var(--dsw-alias-brand-primary);
+  box-shadow:inset 0 0 0 1px var(--dsw-alias-brand-primary)}
+/* 左栏自己的筛：细一号的输入框，压在「全部笔记」下面、热力图上面。
+   min-width:0 是承重的——输入框默认有自己的最小宽度，不写会把左栏撑破。 */
+.dshgn_treeFilter{flex:none;display:flex;align-items:center;gap:4px;height:26px;margin:2px 0 4px;padding:0 9px;
+  border-radius:7px;background:var(--dsw-alias-interactive-bg-hover)}
+.dshgn_treeFilterInput{flex:1;min-width:0;height:24px;padding:0;border:0;background:transparent;
+  color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;outline:none}
+.dshgn_treeFilterInput::placeholder{color:var(--dsw-alias-label-tertiary)}
+.dshgn_treeFilterClear{appearance:none;flex:none;display:inline-flex;align-items:center;justify-content:center;
+  width:16px;height:16px;padding:0;border:0;border-radius:50%;background:transparent;
+  color:var(--dsw-alias-label-tertiary);cursor:pointer}
+.dshgn_treeFilterClear:hover{color:var(--dsw-alias-label-primary);background:rgba(var(--dshgn-tintRgb),.10)}
+.dshgn_treeFilterClear:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_treeName{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+.dshgn_treeCount{flex:none;font-size:10px;color:var(--dsw-alias-label-dimmed)}
+/* max-width + 省略号是承重的：标签名是用户随手起的，一个长标签在 190px 的左栏里
+   会把胶囊撑得比栏还宽，而 .dshgn_tree 只设了 overflow-y，横向就溢到栏外面去了
+   ——看起来就是「字跑到标签圈外面」。胶囊自己截断，宽度永远不超过所在行。 */
+.dshgn_tagRow{display:inline-flex;align-items:center;gap:4px;height:22px;margin:0 4px 4px 0;padding:0 8px;
+  border-radius:11px;border:0.5px solid var(--dsw-alias-border-l2);background:transparent;
+  color:var(--dsw-alias-label-secondary);cursor:pointer;font:inherit;font-size:11px;
+  max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_tagRow:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.dshgn_tagRow[data-on="true"]{border-color:transparent;background:var(--dsw-alias-interactive-bg-hover-accent);
+  color:var(--dsw-alias-brand-primary)}
+/* 卡片拖到胶囊上：只加一圈实线边框、不换底色。胶囊本身就是「选中」的
+   样子（data-on 换底色），用底色表示「要贴上去」会和「已经按这个筛着」
+   混成一种状态。 */
+.dshgn_tagRow[data-drop="true"]{border-color:var(--dsw-alias-brand-primary);
+  color:var(--dsw-alias-brand-primary);
+  box-shadow:0 0 0 1px var(--dsw-alias-brand-primary)}
+.dshgn_tagLabel{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_treeTags{display:flex;flex-wrap:wrap;padding:2px 4px}
+/* 嵌套标签摊平后，子标签的胶囊只写最后一段，靠缩进表示层级 */
+.dshgn_treeTags .dshgn_tagRow[data-nest="true"]{border-style:dashed}
+/* 写作热力图：16 周 × 7 天的小方格。格子用 grid-auto-flow:column 按列铺，
+   所以 DOM 顺序是「一天接一天」，视觉上是「一周一列」——顺序对了不用重排。 */
+.dshgn_heat{flex:none;margin:6px 6px 10px;padding:9px 10px 8px;border-radius:9px;
+  background:rgba(255,255,255,.06);box-shadow:inset 0 0 0 1px rgba(255,255,255,.05);
+  overflow:hidden}
+.dshgn_heatHead{display:flex;align-items:baseline;justify-content:space-between;gap:6px;
+  margin-bottom:6px}
+.dshgn_heatTitle{font-size:10px;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--dsw-alias-label-tertiary)}
+.dshgn_heatStat{font-size:10px;font-weight:600;color:var(--dsw-alias-label-secondary);
+  font-variant-numeric:tabular-nums}
+/* 16 周 × 7 天的小方格。以前格子写死 8px、列宽由内容撑，16 列一共 158px
+   加内外边距约 184px——左栏一窄或用户把栏拖小，最后那几列就顶出卡片右边界，
+   用户看到的正是「最后一行竖着超出去」。现在列宽按可用宽度均分（1fr），
+   格子随列宽自适应、保持正方形，左栏再窄也只是变小，不会溢出。 */
+.dshgn_heatGrid{display:grid;grid-template-rows:repeat(7,1fr);grid-auto-flow:column;
+  grid-auto-columns:minmax(0,1fr);gap:2px}
+.dshgn_heatCell{width:100%;height:auto;min-width:0;aspect-ratio:1/1;border-radius:2.5px;
+  background:rgba(255,255,255,.10)}
+.dshgn_heatCell[data-lv="1"]{background:rgba(255,255,255,.34)}
+.dshgn_heatCell[data-lv="2"]{background:rgba(255,255,255,.54)}
+.dshgn_heatCell[data-lv="3"]{background:rgba(255,255,255,.74)}
+.dshgn_heatCell[data-lv="4"]{background:rgba(255,255,255,.94)}
+/* 未来日期画成虚线空框：实心空框会被误读成「那天写 0 篇」 */
+.dshgn_heatCell[data-future="true"]{background:transparent;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+/* 写过字的那一天是颗按钮（点一下按日期筛）。7px 的小方块当按钮用，
+   浏览器默认的边框和内边距必须清掉，否则格子会被撑成 9px 以上、整张图错位。 */
+button.dshgn_heatCell{appearance:none;padding:0;border:0;cursor:pointer}
+button.dshgn_heatCell:hover{box-shadow:0 0 0 1px var(--dshgn-accentOnDark)}
+button.dshgn_heatCell:focus-visible{outline:1px solid var(--dshgn-accentOnDark);outline-offset:1px}
+/* 选中的那一天亮一圈：只加外圈不改底色，否则会和 data-lv 的深浅打架 */
+.dshgn_heatCell[data-on="true"]{box-shadow:0 0 0 1.5px var(--dshgn-accentOnDark)}
+.dshgn_list{flex:none;width:var(--dshgn-listW,260px);display:flex;flex-direction:column;min-height:0;
+  border-right:0.5px solid var(--dsw-alias-border-l2)}
+/* 三栏之间的拖拽手柄：常态是一条 1px 的发丝线，悬停/拖动时才亮起来。
+   宽度 5px 而不是 1px——1px 的目标在触控板上几乎抓不住。 */
+.dshgn_splitter{flex:none;width:5px;margin:0 -2px;cursor:col-resize;position:relative;z-index:2;
+  background:transparent;border:0;padding:0}
+.dshgn_splitter::after{content:"";position:absolute;top:0;bottom:0;left:2px;width:1px;
+  background:var(--dsw-alias-border-l2);transition:background .12s}
+.dshgn_splitter:hover::after,.dshgn_splitterOn::after{background:var(--dsw-alias-brand-primary)}
+.dshgn_splitter:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}
+/* 窄窗口：Obsidian 的侧栏可以只有两三百像素宽，popout 窗口也能随便拉。
+   视口宽度判断不了这件事——窗口很宽、侧栏很窄是常态，所以用容器查询盯
+   面板根节点的**实际宽度**：左栏收成抽屉，再窄就把中栏也让出来。 */
+.dshgn_treeToggle,.dshgn_noteBack{display:none}
+@container dshgn (max-width:760px){
+  .dshgn_treeToggle{display:inline-flex}
+  .dshgn_splitter{display:none}
+  /* 左栏改成浮在列表上的抽屉：宽度固定，点完目录就自己收回去 */
+  .dshgn_body{position:relative}
+  .dshgn_tree{position:absolute;left:0;top:0;bottom:0;z-index:20;display:none;
+    width:min(240px,72%);box-shadow:0 8px 28px rgba(0,0,0,.28)}
+  .dshgn_root[data-narrow-tree="true"] .dshgn_tree{display:flex}
+}
+@container dshgn (max-width:560px){
+  /* 一篇笔记开着的时候，列表让位：两栏挤在一起谁都读不了 */
+  .dshgn_noteBack{display:inline-flex}
+  .dshgn_root[data-has-note="true"] .dshgn_list{display:none}
+  .dshgn_head{padding:8px 10px;gap:6px}
+  .dshgn_sub{display:none}
+  .dshgn_tabs{overflow-x:auto;scrollbar-width:none}
+  .dshgn_tabs::-webkit-scrollbar{display:none}
+}
+/* 左右 6px 与左栏 .dshgn_tree 的 padding 一致：「全部笔记」那一行和这个搜索框
+   在各自的栏里都从同一条竖线起头，两边宽度也一样，不再一宽一窄。 */
+.dshgn_searchWrap{flex:none;display:flex;align-items:center;gap:6px;padding:8px 6px;
+  border-bottom:0.5px solid var(--dsw-alias-border-l2)}
+.dshgn_search{flex:1;min-width:0;height:26px;padding:0 9px;border:0.5px solid var(--dshgn-cardLine);
+  border-radius:7px;background:var(--dshgn-input);color:var(--dsw-alias-label-primary);font:inherit;
+  font-size:12px;outline:none;box-sizing:border-box}
+.dshgn_search:focus{border-color:var(--dsw-alias-brand-primary)}
+/* 浏览器自带的那个 × 各家长得不一样、位置也不受控，我们自己摆一颗，把它藏掉 */
+.dshgn_search::-webkit-search-cancel-button{display:none}
+/* 搜索框左侧的放大镜：以前没有规则，图标会被 input 的 flex:1 挤到贴边 */
+.dshgn_searchIcon{flex:none;color:var(--dsw-alias-label-tertiary);pointer-events:none}
+/* 清空：有字才摆。搜索框里那点东西删起来看着容易，真删过一整句才知道费劲。 */
+.dshgn_searchClear{flex:none;display:inline-flex;align-items:center;justify-content:center;
+  width:18px;height:18px;margin-left:-2px;padding:0;border:0;border-radius:50%;
+  background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer}
+.dshgn_searchClear:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dshgn_searchClear:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+/* 列表排序开关：与左栏那两颗同款小方钮，但列表底色是浅的，所以颜色走别名 */
+.dshgn_listSort{flex:none;display:inline-flex;align-items:center;justify-content:center;
+  height:20px;min-width:20px;padding:0 4px;border:0;border-radius:5px;background:transparent;
+  color:var(--dsw-alias-label-tertiary);font:inherit;font-size:9px;line-height:1;cursor:pointer;
+  letter-spacing:0;text-transform:none}
+.dshgn_listSort:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dshgn_listSort:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+/* 全勾/全不勾：与排序开关并排的同款小方钮，但类名分开——
+   排序开关在搜索态要收起来，这颗恰恰在搜索态最有用，共用一个类会互相牵连。 */
+.dshgn_pickAll{flex:none;display:inline-flex;align-items:center;justify-content:center;
+  height:20px;min-width:20px;padding:0 4px;border:0;border-radius:5px;background:transparent;
+  color:var(--dsw-alias-label-tertiary);font:inherit;font-size:9px;line-height:1;cursor:pointer;
+  letter-spacing:0;text-transform:none}
+.dshgn_pickAll:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dshgn_pickAll:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+/* 复制搜索结果：和上面那颗同款，同样单独一个类——它只在搜索态出现，
+   和「全勾」不是一件事，共用类会让按类名查的断言互相牵连。 */
+.dshgn_searchCopy{flex:none;display:inline-flex;align-items:center;justify-content:center;
+  height:20px;min-width:20px;padding:0 4px;border:0;border-radius:5px;background:transparent;
+  color:var(--dsw-alias-label-tertiary);font:inherit;font-size:9px;line-height:1;cursor:pointer}
+.dshgn_searchCopy:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dshgn_searchCopy:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+/* 勾着的时候底色亮起来，否则看不出一按会发生什么。配色沿用左栏那些 data-on 的小方钮。 */
+.dshgn_pickAll[data-on="true"]{background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-brand-primary)}
+/* 侧栏入口图标（ownerProps.size 决定尺寸，这里只保证块级对齐） */
+.dshgn_sideIcon{display:block;flex:none}
+.dshgn_listBody{flex:1;overflow-y:auto;padding:6px}
+/* 「显示更多」与「全部显示」并排：库大起来之后一屏一屏点下去要点很多次，
+   而「全部」是那种偶尔才按一次、按了就要一次看完的按钮。 */
+.dshgn_moreRow{display:flex;gap:6px;margin:6px 0 2px}
+.dshgn_moreRow .dshgn_btn{flex:1 1 auto;justify-content:center;min-width:0}
+/* 搜索态那颗「再多看几篇」：它属于上面那行「扫了多少篇」，所以跟着那行的
+   左右边距走，别缩进成列表卡片那样——它说的是搜索本身，不是结果。 */
+.dshgn_searchMoreRow{padding:0 9px 7px;margin:0}
+.dshgn_moreBtn{display:block;width:100%;margin:6px 0 2px;justify-content:center}
+.dshgn_card{flex:none;display:flex;flex-direction:column;gap:3px;padding:9px 9px;border-radius:8px;cursor:pointer;
+  border-left:2px solid transparent;user-select:none}
+.dshgn_card:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.dshgn_card[data-on="true"]{background:var(--dsw-alias-interactive-bg-hover-accent);
+  border-left-color:var(--dsw-alias-brand-primary)}
+.dshgn_cardTitle{font-size:12px;line-height:17px;color:var(--dsw-alias-label-primary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* min-width:0 是承重的：这一行里日期是 flex:none、目录和标签是可收缩的，
+   以前没有 min-width:0，目录名长一点就把整行顶出卡片边界、文字压到边框外面。
+   现在目录与标签各自 ellipsis，宁可截断也不越界。 */
+.dshgn_cardMeta{display:flex;align-items:center;gap:6px;min-width:0;font-size:10px;
+  color:var(--dsw-alias-label-tertiary);overflow:hidden;white-space:nowrap}
+/* 卡片上的标签：和日期、目录挤在同一行，所以只给到能看清的最小尺寸；
+   多了就收成 +N，宁可不显示也不让目录被挤掉。 */
+/* 日期做成可点的：和热力图点某一天同一个动作，落在日期那一栏。 */
+.dshgn_cardDay{appearance:none;flex:none;padding:0;border:0;background:transparent;
+  color:inherit;font:inherit;cursor:pointer}
+.dshgn_cardDay:hover{color:var(--dsw-alias-brand-primary);text-decoration:underline}
+.dshgn_cardDay:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_cardDay[data-on="true"]{color:var(--dsw-alias-brand-primary);text-decoration:underline}
+/* 目录做成可点的：和标签胶囊同一个动作（按它筛），只是落在目录那一栏。 */
+.dshgn_cardDir{appearance:none;flex:0 1 auto;min-width:0;max-width:120px;padding:0;border:0;
+  background:transparent;color:inherit;font:inherit;cursor:pointer;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.dshgn_cardDir:hover{color:var(--dsw-alias-brand-primary);text-decoration:underline}
+.dshgn_cardDir:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+/* 标签挪到日期那一行**底下**，写成一行小字，每颗前面带一个 #。
+   以前是塞在日期右边的一串胶囊：日期、目录、标签抢同一行的宽度，标签一多
+   就横着溢出卡片边框（用户原话「放在一个圆点内有点诡异然后很容易超出」）。
+   现在这一行自己占一行、能换行，长标签按字断行，不会再顶出卡片。 */
+.dshgn_cardTags{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 8px;min-width:0;
+  font-size:10px;line-height:15px;color:var(--dsw-alias-label-tertiary)}
+.dshgn_cardTag{appearance:none;max-width:100%;padding:0;border:0;background:transparent;
+  color:inherit;font:inherit;font-size:10px;line-height:15px;text-align:left;cursor:pointer;
+  overflow-wrap:anywhere}
+.dshgn_cardTag:hover{color:var(--dsw-alias-brand-primary);text-decoration:underline}
+.dshgn_cardTag:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+/* 收起来时只摆前几颗，超出的那几颗靠这颗「+N」摊开；摊开之后就在同一行里换行。 */
+.dshgn_cardTagMore{appearance:none;flex:none;padding:0;border:0;background:transparent;
+  color:var(--dsw-alias-label-dimmed);font:inherit;font-size:10px;line-height:15px;
+  cursor:pointer;white-space:nowrap}
+.dshgn_cardTagMore:hover{color:var(--dsw-alias-brand-primary);text-decoration:underline}
+.dshgn_cardTagMore:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_cardTagMore[data-open="true"]{color:var(--dsw-alias-label-secondary)}
+.dshgn_cardExcerpt{font-size:11px;line-height:15px;color:var(--dsw-alias-label-tertiary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_note{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;position:relative}
+.dshgn_noteHead{flex:none;display:flex;align-items:center;gap:8px;padding:8px 14px;
+  border-bottom:0.5px solid var(--dsw-alias-border-l2)}
+.dshgn_notePath{flex:1;min-width:0;font-size:11px;color:var(--dsw-alias-label-tertiary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 能点的那一版：下划虚线是「这里可以点」的最小代价，不占宽度也不改字号 */
+.dshgn_notePathLink{cursor:pointer;text-decoration:underline;text-decoration-style:dotted;
+  text-underline-offset:2px}
+.dshgn_notePathLink:hover{color:var(--dsw-alias-brand-primary)}
+.dshgn_notePathLink:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);
+  outline-offset:1px;border-radius:3px}
+.dshgn_scroll{flex:1;overflow-y:auto;padding:16px clamp(16px,3vw,32px) 48px}
+/* 正文宽度：以前固定 760px 居中，面板一宽两侧就空出两大块（用户说「底下内容的框
+   让它一直贯穿到右侧文本大纲的框，不要有段大空白」）。现在撑满阅读区，只留一个
+   1200px 上限——超宽屏上仍然不让一行长到读不下去。 */
+.dshgn_md{max-width:1200px;margin:0 auto;color:var(--dsw-alias-label-primary);
+  font-family:var(--dshgn-fontText);font-size:var(--font-text-size,13px);
+  line-height:var(--line-height-normal,1.75)}
+.dshgn_h{font-size:1em;margin:18px 0 8px;line-height:1.4;font-weight:600;color:var(--dsw-alias-label-primary)}
+/* 标题用 em 而不是 px：字号三档只改 .dshgn_md 的基准字号，标题按比例跟着放大，
+   整篇层级关系不变。写死 px 的话把正文调到 15px，二级标题反而比正文还小。 */
+.dshgn_h1{font-size:1.48em;margin-top:0}
+.dshgn_h2{font-size:1.19em;padding-bottom:5px;border-bottom:0.5px solid var(--dsw-alias-border-l2)}
+.dshgn_h3{font-size:1.05em}
+.dshgn_h4,.dshgn_h5,.dshgn_h6{font-size:.96em}
+.dshgn_p{margin:8px 0;white-space:normal;word-break:break-word}
+.dshgn_hr{border:0;border-top:0.5px solid var(--dsw-alias-border-l2);margin:16px 0}
+.dshgn_link{color:var(--dsw-alias-brand-primary);text-decoration:none}
+.dshgn_link:hover{text-decoration:underline}
+/* 外链按钮：外观照链接走，行为是按钮（避免自定义视图里点外链把应用导航走） */
+.dshgn_linkBtn{background:none;border:0;padding:0;font:inherit;cursor:pointer;text-align:left}
+.dshgn_del{text-decoration:line-through;opacity:.72}
+.dshgn_mark{padding:0 2px;border-radius:3px;background:rgba(255,208,0,.34);color:inherit}
+.dshgn_code{padding:1px 5px;border-radius:4px;background:var(--dsw-alias-interactive-bg-hover);
+  font-family:var(--dshgn-fontMono);font-size:12px}
+.dshgn_pre{position:relative;margin:10px 0;padding:11px 12px;border-radius:9px;overflow-x:auto;
+  background:var(--dsw-alias-interactive-bg-hover);border:0.5px solid var(--dsw-alias-border-l1)}
+.dshgn_pre code{font-family:var(--dshgn-fontMono);font-size:12px;
+  line-height:1.65;white-space:pre;color:var(--dsw-alias-label-primary)}
+.dshgn_preLang{position:absolute;top:4px;right:8px;font-size:10px;color:var(--dsw-alias-label-dimmed)}
+/* 有「复制」按钮时把语言标签让开一点，两个都挤在右上角会叠在一起 */
+.dshgn_pre:has(.dshgn_preCopy) .dshgn_preLang{right:58px}
+.dshgn_preCopy{position:absolute;top:4px;right:8px;appearance:none;padding:1px 7px;border:0.5px solid var(--dsw-alias-border-l1);border-radius:6px;background:var(--dsw-alias-bg-primary);font:inherit;font-size:10px;line-height:16px;color:var(--dsw-alias-label-tertiary);cursor:pointer;opacity:.7}
+.dshgn_preCopy:hover{opacity:1;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}
+/* 逐字稿单独一套排版：它是一段段中文口语，不是代码。
+   以前复用 .dshgn_pre 的等宽字体，中文全部回落到宋体/雅黑，等宽对中文毫无作用，
+   加上 white-space:pre 不折行，长句在窄栏里被横向裁掉，只能拖滚动条看——这就是「字体太丑」的由来。
+   现在跟正文一样认 --dshgn-fontText（宿主设的正文字体，中文落到苹方/雅黑也好看），
+   放大字号、放宽行距，并允许自动折行；每段之间用细分隔线，方便对着时间戳找位置。 */
+.dshgn_transcript{margin:10px 0;padding:2px 0 2px 0;border:0;background:transparent;
+  font-family:var(--dshgn-fontText);
+  font-size:13px;line-height:1.9;color:var(--dsw-alias-label-primary);white-space:pre-wrap;
+  word-break:break-word;overflow-wrap:anywhere}
+.dshgn_transcript p{margin:0;padding:5px 0;border-bottom:0.5px solid var(--dsw-alias-border-l1)}
+.dshgn_transcript p:last-child{border-bottom:0}
+.dshgn_transcript .dshgn_ts{display:inline-block;min-width:56px;margin-right:8px;
+  font-family:var(--dshgn-fontMono);
+  font-size:11px;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary);
+  user-select:none}
+.dshgn_transcript .dshgn_speaker{color:var(--dsw-alias-brand-primary);font-weight:600;margin-right:6px}
+/* 时间戳做成按钮：点一下跳到那句话。以前它只是个 span，用户看着时间戳
+   却只能自己拖进度条去找位置。样式上仍保持「一列小字」的观感，只在悬停
+   和聚焦时露出可点的线索，免得整段逐字稿变成一片蓝色按钮。 */
+.dshgn_transcript .dshgn_tsBtn{background:none;border:0;padding:1px 4px;margin-left:-4px;border-radius:4px;
+  font:inherit;font-family:var(--dshgn-fontMono);
+  font-size:11px;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary);
+  cursor:pointer;text-align:left;user-select:none}
+.dshgn_transcript .dshgn_tsBtn:hover{background:var(--dsw-alias-interactive-bg-hover);
+  color:var(--dsw-alias-brand-primary)}
+.dshgn_transcript .dshgn_tsBtn:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+/* 正在播放的那一句：时间戳加重、整段左侧留一道竖线，扫读时视线不会跑丢 */
+.dshgn_transcript .dshgn_tsOn{color:var(--dsw-alias-brand-primary);font-weight:600}
+.dshgn_transcript p.dshgn_tpOn{background:rgba(var(--dshgn-tintRgb),.06);box-shadow:inset 2px 0 0 var(--dsw-alias-brand-primary);
+  padding-left:8px;margin-left:-8px}
+.dshgn_quote{margin:10px 0;padding:2px 0 2px 12px;border-left:2px solid var(--dsw-alias-border-l2);
+  color:var(--dsw-alias-label-secondary)}
+/* 脚注：正文里留一个上标，定义收在篇尾一小块里。
+   定义行原样显示的话，读者会看到一串 [^1]: ... 混在正文中间。 */
+.dshgn_footRef{font-size:9px;line-height:1;vertical-align:super;color:var(--dsw-alias-brand-primary);cursor:pointer;padding:0 1px}
+.dshgn_footRef:hover{text-decoration:underline}
+.dshgn_footnotes{margin:14px 0 0;padding-top:8px;border-top:0.5px solid var(--dsw-alias-border-l1);display:flex;flex-direction:column;gap:4px}
+.dshgn_footnote{display:flex;gap:6px;font-size:11px;line-height:1.6;color:var(--dsw-alias-label-secondary);cursor:pointer;border-radius:4px;margin:0 -3px;padding:1px 3px}
+.dshgn_footnote:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.dshgn_footnote:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_footnoteNo{flex:0 0 auto;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}
+.dshgn_footnoteText{flex:1 1 auto;min-width:0;word-break:break-word}
+/* callout：跟宿主一样「左竖线 + 淡底 + 一行标题」。类型只影响竖线与标题的颜色，
+   正文一律用常规色——整块染成警告色会让人以为笔记本身出错了。 */
+.dshgn_callout{margin:10px 0;padding:7px 11px;border-radius:0 8px 8px 0;
+  border-left:2.5px solid var(--dsw-alias-border-l2);
+  background:var(--dsw-alias-interactive-bg-hover)}
+.dshgn_callout-info{border-left-color:var(--dsw-alias-brand-primary)}
+.dshgn_callout-success{border-left-color:var(--dsw-alias-state-success-primary)}
+.dshgn_callout-warn{border-left-color:var(--dsw-alias-state-warn-primary)}
+.dshgn_callout-error{border-left-color:var(--dsw-alias-state-error-primary)}
+.dshgn_calloutHead{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;
+  color:var(--dsw-alias-label-primary);line-height:17px}
+.dshgn_callout-info .dshgn_calloutHead{color:var(--dsw-alias-brand-primary)}
+.dshgn_callout-success .dshgn_calloutHead{color:var(--dsw-alias-state-success-primary)}
+.dshgn_callout-warn .dshgn_calloutHead{color:var(--dsw-alias-state-warn-primary)}
+.dshgn_callout-error .dshgn_calloutHead{color:var(--dsw-alias-state-error-primary)}
+/* 可折叠时标题是按钮：去掉按钮默认样式，只留 hover 的一点底色，
+   让人能看出这一行能点。 */
+.dshgn_calloutFold{appearance:none;border:0;background:transparent;padding:0;margin:0;
+  width:100%;font:inherit;font-size:12px;font-weight:600;text-align:left;cursor:pointer;
+  border-radius:5px}
+.dshgn_calloutFold:hover{background:var(--dsw-alias-interactive-bg-hover-accent)}
+.dshgn_calloutIcon{flex:none}
+.dshgn_calloutTitle{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_calloutBody{margin-top:5px;color:var(--dsw-alias-label-secondary);font-size:12.5px}
+.dshgn_calloutBody .dshgn_p:first-child{margin-top:0}
+.dshgn_calloutBody .dshgn_p:last-child{margin-bottom:0}
+.dshgn_mdList{margin:8px 0;padding-left:22px}
+.dshgn_li{margin:3px 0;line-height:1.7}
+.dshgn_liCont{color:var(--dsw-alias-label-secondary)}
+.dshgn_task{list-style:none;margin-left:-18px;display:flex;align-items:flex-start;gap:6px}
+.dshgn_check{flex:none;width:12px;height:12px;margin-top:5px;border-radius:3px;
+  border:1.5px solid var(--dsw-alias-label-tertiary);background:var(--dshgn-input);
+  display:inline-block;box-sizing:border-box}
+.dshgn_checkOn{background:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary)}
+/* 可点的待办方框：12px 的方块在桌面上太难点中，用透明 outline 把命中区撑到 26px，
+   视觉上还是一个 12px 的框。cursor 与 hover 是唯一能告诉用户「这个能点」的信号。 */
+.dshgn_checkHit{cursor:pointer;position:relative;transition:background .12s ease,border-color .12s ease}
+.dshgn_checkHit:hover{border-color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-interactive-bg-hover)}
+.dshgn_checkHit.dshgn_checkOn:hover{background:var(--dsw-alias-button-primary-hover)}
+.dshgn_checkHit::after{content:'';position:absolute;inset:-7px}
+.dshgn_tableWrap{overflow-x:auto;margin:10px 0}
+/* 长表格单独滚，表头钉在顶上：读到第 30 行还知道这一列是什么。 */
+.dshgn_tableTall{max-height:min(70vh,520px);overflow-y:auto}
+.dshgn_tableTall .dshgn_table th{position:sticky;top:0;z-index:1}
+.dshgn_table{border-collapse:collapse;font-size:12px;min-width:100%}
+.dshgn_table th,.dshgn_table td{padding:6px 10px;text-align:left;
+  border-bottom:0.5px solid var(--dsw-alias-border-l2);vertical-align:top}
+.dshgn_table th{color:var(--dsw-alias-label-secondary);font-weight:600;
+  background:var(--dsw-alias-interactive-bg-hover)}
+.dshgn_editor{flex:1;width:100%;box-sizing:border-box;resize:none;border:0;outline:none;padding:16px clamp(16px,3vw,32px);
+  background:transparent;color:var(--dsw-alias-label-primary);
+  font-family:var(--dshgn-fontText);font-size:var(--font-text-size,13px);
+  line-height:var(--line-height-normal,1.7)}
+.dshgn_editorFoot{display:flex;align-items:center;gap:10px;padding:5px clamp(16px,3vw,32px);
+  border-top:0.5px solid var(--dsw-alias-border-l1);font-size:10.5px;
+  color:var(--dsw-alias-label-tertiary);flex:0 0 auto}
+.dshgn_editorHint{margin-left:auto;opacity:.75}
+/* 草稿超过单篇上限：混在这条灰字里，别抢了字数，但要一眼看得见 */
+.dshgn_editorBig{flex:none;color:var(--dsw-alias-state-error-primary)}
+.dshgn_readFoot{color:var(--dsw-alias-label-tertiary)}
+.dshgn_readPos{flex:none;font-size:10px;color:var(--dsw-alias-label-dimmed)}
+/* 正文滚下去之后浮在右下角那颗：只占一小块，不挡字也不挤排版 */
+.dshgn_toTop{position:absolute;right:18px;bottom:16px;z-index:20;appearance:none;
+  display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:999px;
+  border:0.5px solid var(--dsw-alias-border-l2);background:var(--dshgn-surface);
+  color:var(--dsw-alias-label-secondary);font:inherit;font-size:11px;line-height:18px;
+  cursor:pointer;box-shadow:0 2px 8px rgba(var(--dshgn-tintRgb),.16)}
+.dshgn_toTop:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-brand-primary)}
+.dshgn_toTop:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+
+.dshgn_linkPick{display:flex;flex-wrap:wrap;gap:6px;padding:6px clamp(16px,3vw,32px);border-top:0.5px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-secondary);max-height:112px;overflow-y:auto}
+.dshgn_linkPickItem{display:inline-flex;align-items:center;gap:5px;appearance:none;max-width:100%;padding:2px 9px;border:0.5px solid var(--dsw-alias-border-l1);border-radius:999px;background:var(--dsw-alias-bg-primary);font:inherit;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary);cursor:pointer}
+.dshgn_linkPickItem:hover{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-primary)}
+.dshgn_linkPickItem[data-on='true']{border-color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-label-primary)}
+.dshgn_linkPickName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_findBar{display:flex;align-items:center;gap:6px;padding:5px clamp(16px,3vw,32px);
+  border-bottom:0.5px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-secondary);
+  color:var(--dsw-alias-label-tertiary);flex:0 0 auto}
+.dshgn_findInput{flex:1;min-width:0;box-sizing:border-box;padding:3px 8px;border:0.5px solid var(--dsw-alias-border-l1);
+  border-radius:6px;outline:none;background:var(--dsw-alias-bg-primary);font:inherit;font-size:12px;
+  color:var(--dsw-alias-label-primary)}
+.dshgn_findInput:focus{border-color:var(--dsw-alias-brand-primary)}
+/* 「第几处 / 共几处」：等宽数字，按回车时这一串不跟着左右跳 */
+.dshgn_findCount{flex:none;font-size:11px;line-height:1.6;color:var(--dsw-alias-label-tertiary);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+/* 救回来的草稿提示条：比查找条更「安静」，它只是提一句，不该抢阅读的注意力 */
+.dshgn_draftBar{display:flex;align-items:center;gap:8px;padding:5px clamp(16px,3vw,32px);
+  border-bottom:0.5px solid var(--dsw-alias-border-l1);
+  background:rgba(var(--dshgn-tintRgb),.06);color:var(--dsw-alias-label-secondary);flex:0 0 auto}
+.dshgn_draftText{flex:1;min-width:0;font-size:11.5px;line-height:1.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_draftBtn{flex:none;appearance:none;padding:1px 9px;border:0.5px solid var(--dsw-alias-border-l2);border-radius:999px;
+  background:var(--dsw-alias-bg-primary);font:inherit;font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary);cursor:pointer}
+.dshgn_draftBtn:hover{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-primary)}
+.dshgn_draftBtn:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+/* 划选正文时弹出来的小条：位置按视口坐标钉住（松手那一刻算好的），
+   不参与排版，所以浮在正文上方一层，且不该被正文的 overflow 裁掉 */
+.dshgn_selPop{position:fixed;z-index:60;display:flex;align-items:center;gap:2px;
+  padding:2px;border:0.5px solid var(--dsw-alias-border-l2);border-radius:8px;
+  background:var(--dsw-alias-bg-primary);box-shadow:0 4px 14px rgba(0,0,0,.16);
+  transform:translate(-50%,-100%) translateY(-6px)}
+.dshgn_selPopBtn{appearance:none;display:inline-flex;align-items:center;gap:4px;padding:2px 8px;
+  border:0;border-radius:6px;background:transparent;font:inherit;font-size:11px;line-height:1.7;
+  color:var(--dsw-alias-label-secondary);cursor:pointer;white-space:nowrap}
+.dshgn_selPopBtn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dshgn_selPopBtn:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:10px;padding:32px 18px;text-align:center;color:var(--dsw-alias-label-tertiary)}
+.dshgn_emptyTitle{font-size:13.5px;font-weight:500;color:var(--dsw-alias-label-secondary);
+  letter-spacing:.01em}
+.dshgn_emptyDesc{font-size:12px;line-height:1.75;max-width:360px}
+.dshgn_emptyBtn{appearance:none;display:inline-flex;align-items:center;gap:4px;margin-top:10px;
+  padding:4px 10px;border:0.5px solid var(--dsw-alias-border-l2);border-radius:6px;
+  background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;cursor:pointer}
+.dshgn_emptyBtn:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.dshgn_emptyActions{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px;margin-top:4px}
+/* 回收站的「恢复到哪个目录」：一行输入 + 候选，和批量条那套同宽同高 */
+/* 回收站里的勾选框一开始就摆着：这一页的用处就是挑东西，
+   不像笔记卡片那样要等悬停才显形。 */
+.dshgn_trashPick{opacity:1;margin-top:1px}
+/* 「原来在」那一行：比时间那行再淡一点，它是提示不是主信息。 */
+.dshgn_trashOrigin{margin-top:1px;font-size:10px;color:var(--dsw-alias-label-dimmed);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_trashTarget{display:flex;flex-direction:column;gap:4px;margin:8px 0 2px;min-width:0}
+.dshgn_trashPreview{display:flex;flex-direction:column;gap:4px;margin:0 0 8px;padding:8px 10px;border-radius:7px;background:var(--dshgn-input);border:0.5px solid var(--dshgn-cardLine);min-width:0}
+.dshgn_trashPreviewBody{font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary);white-space:pre-wrap;word-break:break-word;max-height:160px;overflow:hidden}
+.dshgn_trashPreviewHint{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--dsw-alias-label-tertiary)}
+/* 摊全之后别再拿 160px 卡着——那等于换了个地方继续截 */
+.dshgn_trashPreviewBody[data-all="true"]{max-height:none;overflow:visible}
+.dshgn_trashPeekMore{appearance:none;flex:none;margin-left:auto;padding:1px 7px;border:0.5px dashed var(--dsw-alias-border-l2);border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:10px;line-height:16px;cursor:pointer}
+.dshgn_trashPeekMore:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-brand-primary)}
+.dshgn_trashPeekMore:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+/* 页签页统一居中：pane 是 flex 列，直接子元素（section / cardBox / paneInner /
+   banner）一律 width:100% + margin:0 auto + 一个上限宽度。
+   以前只有录音卡和设置页自己写 max-width，冲突页/待办页/回收站页是光秃秃一个
+   section，在宽面板里整块贴左边、右边空一大片，看着像没加载完。 */
+.dshgn_pane{flex:1;display:flex;flex-direction:column;align-items:center;
+  overflow-y:auto;padding:18px clamp(16px,3vw,28px) 40px}
+/* 只定宽度上限与居中，不碰 flex-grow：空态那几块自己是 flex:1 的，
+   这里写成 flex:none 会把它们压成一行高。 */
+.dshgn_pane > *{width:100%;max-width:760px;margin-left:auto;margin-right:auto}
+.dshgn_cardBox{max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+/* 日历页：一张真月历。七列等宽格子，有笔记的日子右下角挂一个篇数；
+   没笔记的日子淡掉且点不动（点开只会得到一片空白，不如不让点）。
+   格子用 aspect-ratio 撑成近正方形——写死高度在窄面板里会变成扁条，
+   写死宽度在宽面板里会撑出一排大空块。 */
+.dshgn_calHead{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:2px}
+.dshgn_calMonth{flex:none;font-size:14px;font-weight:600;letter-spacing:.02em;
+  color:var(--dsw-alias-label-primary);font-variant-numeric:tabular-nums}
+.dshgn_calHead .dshgn_sectionDesc{margin-left:auto}
+/* 表头与日期同处一个 grid、同一套列宽——这是唯一能保证「星期几对着几号」的写法。
+   0.1.11 曾把表头拆成独立一层 grid，两层各自算列宽，日期格子带 padding/border
+   而表头没有，列宽分了岔，实测表头整体右偏约三分之一列。 */
+.dshgn_calGrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+/* 表头就是同一个 grid 的头 7 格：列宽由 1fr 均分，跟日期格子逐列咬住。
+   这里不写 aspect-ratio——表头不该跟日期格子一样高，只保留与格子一致的
+   左右内边距，文字才落在格子的中线上。 */
+.dshgn_calWeek{display:flex;align-items:center;justify-content:center;min-width:0;
+  padding:0 2px 4px;box-sizing:border-box;font-size:10px;line-height:16px;
+  text-align:center;color:var(--dsw-alias-label-tertiary);font-weight:500}
+.dshgn_calCell{appearance:none;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:1px;min-width:0;aspect-ratio:1/1;padding:2px;border:0.5px solid transparent;border-radius:8px;
+  background:transparent;color:var(--dsw-alias-label-dimmed);font:inherit;cursor:default;
+  font-variant-numeric:tabular-nums}
+.dshgn_calCell[data-has="true"]{cursor:pointer;color:var(--dsw-alias-label-primary);
+  background:var(--dshgn-card);border-color:var(--dshgn-cardLine)}
+.dshgn_calCell[data-has="true"]:hover{background:var(--dsw-alias-interactive-bg-hover-accent);
+  border-color:var(--dsw-alias-brand-primary)}
+.dshgn_calCell[data-has="true"]:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_calCell[data-on="true"]{background:var(--dsw-alias-interactive-bg-hover-accent);
+  border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-primary);font-weight:600}
+/* 有笔记的日子右下角那颗篇数，选中/悬停时不能跟着淡下去——它就是「这天有几篇」。 */
+.dshgn_calCell[data-has="true"] .dshgn_calNum{color:var(--dsw-alias-brand-primary);font-weight:600}
+/* 今天只描一圈边，不抢「选中」的那块底色——两者同时出现时得能分清。 */
+.dshgn_calCell[data-today="true"]{box-shadow:inset 0 0 0 1px var(--dsw-alias-brand-primary)}
+.dshgn_calDay{font-size:12px;line-height:16px}
+.dshgn_calNum{font-size:9px;line-height:11px;color:var(--dsw-alias-label-secondary)}
+.dshgn_calDayList{display:flex;flex-direction:column;gap:4px;min-width:0}
+.dshgn_calNote{appearance:none;display:flex;align-items:center;gap:8px;width:100%;min-width:0;
+  padding:7px 9px;border:0.5px solid var(--dshgn-cardLine);border-radius:8px;
+  background:var(--dshgn-card);color:inherit;font:inherit;text-align:left;cursor:pointer}
+.dshgn_calNote:hover{background:var(--dshgn-surface);border-color:var(--dsw-alias-brand-primary)}
+.dshgn_calNote:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_calNoteTitle{flex:1;min-width:0;font-size:12.5px;line-height:1.5;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_calNoteDir{flex:none;max-width:40%;font-size:10px;color:var(--dsw-alias-label-tertiary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 页签页上那一块块内容卡：浅色给白卡，深色给比面板亮一档的蓝灰。
+   以前写的是 bg-overlay（半透明），深色里透出底色，看着像「一块没画完的黑框」。 */
+.dshgn_section{display:flex;flex-direction:column;gap:8px;padding:14px 15px;border-radius:10px;
+  border:0.5px solid var(--dshgn-cardLine);background:var(--dshgn-card)}
+/* 标题本身也可能很长（话题名、断链里那个指不到的篇名），得让它先收缩，
+   而不是把徽章/按钮挤出卡片右边。 */
+.dshgn_sectionTitle{flex:0 1 auto;min-width:0;font-size:12px;font-weight:600;
+  color:var(--dsw-alias-label-primary);overflow-wrap:anywhere}
+/* 卡片标题行：标题 + 右侧状态徽章。以前徽章只能挂在下一行，读起来像两个独立信息。
+   挤不下时允许换行：一行里塞标题 + 两颗按钮 + 一颗徽章，窄面板必然顶出去。 */
+.dshgn_sectionHead{display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;
+  gap:4px 8px;margin-bottom:2px;min-width:0}
+.dshgn_sectionDesc{font-size:11.5px;line-height:1.7;color:var(--dsw-alias-label-secondary)}
+.dshgn_rowLine{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+/* 输入框的面：比所在卡片沉一档，一眼看得出「这里能打字」。
+   以前是 transparent，深色里就是一条几乎看不见的线，像没加载出来。 */
+.dshgn_input{flex:1;min-width:180px;height:28px;padding:0 9px;border:0.5px solid var(--dshgn-cardLine);
+  border-radius:7px;background:var(--dshgn-input);color:var(--dsw-alias-label-primary);font:inherit;
+  font-size:12px;outline:none;box-sizing:border-box}
+.dshgn_input::placeholder{color:var(--dsw-alias-label-dimmed)}
+.dshgn_input:focus{border-color:var(--dsw-alias-brand-primary)}
+/* 工具栏里的小下拉：不该像正文输入框那样抢走半行宽度 */
+.dshgn_selectSm{flex:none;min-width:0;width:auto;height:24px;padding:0 6px;font-size:11.5px;cursor:pointer}
+/* 徽章里常塞的是话题名、登录态、版本号这类不定长的字符串。以前没有宽度上限，
+   一个长话题名就能把 sectionHead 撑破（标题被挤成两行、徽章自己顶出卡片右边）。
+   现在它最多占满一行，超了省略号收尾，高度也跟着内容走而不是写死 20px。 */
+.dshgn_badge{display:inline-flex;align-items:center;gap:4px;min-height:20px;max-width:100%;
+  padding:1px 7px;border-radius:10px;font-size:10.5px;line-height:1.5;
+  background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_badgeOk{background:var(--dsw-alias-interactive-bg-hover-accent);color:var(--dsw-alias-brand-primary)}
+.dshgn_badgeWarn{background:transparent;color:var(--dsw-alias-state-warn-primary);
+  box-shadow:inset 0 0 0 0.5px var(--dsw-alias-state-warn-primary)}
+.dshgn_badgeErr{color:var(--dsw-alias-state-error-primary)}
+.dshgn_log{max-height:220px;overflow-y:auto;padding:8px 10px;border-radius:8px;
+  background:var(--dsw-alias-interactive-bg-hover);font-family:var(--dshgn-fontMono);
+  font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary);white-space:pre-wrap}
+.dshgn_error{padding:8px 10px;border-radius:8px;font-size:11.5px;line-height:1.6;
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  color:var(--dsw-alias-state-error-primary);background:var(--dsw-alias-interactive-bg-hover)}
+/* 报错行里那颗补救按钮：文案用主色而不是错误色，它是一条出路不是又一句坏消息 */
+.dshgn_errorBtn{flex:none;height:24px;padding:0 9px;font-size:11px;
+  color:var(--dsw-alias-brand-primary);box-shadow:inset 0 0 0 0.5px var(--dsw-alias-brand-primary)}
+/* 收起键贴着右边：报错行是 flex + wrap，margin-left:auto 让它自己跑到行尾 */
+.dshgn_errorClose{flex:none;margin-left:auto;width:22px;height:22px;opacity:.7;
+  color:var(--dsw-alias-state-error-primary)}
+.dshgn_errorClose:hover{opacity:1;background:var(--dsw-alias-interactive-bg-hover)}
+.dshgn_toast{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);z-index:20;
+  display:flex;align-items:center;gap:6px;padding:7px 13px;border-radius:9px;
+  background:var(--dsw-alias-toast-bg);color:var(--dsw-alias-toast-label);
+  font-size:12px;box-shadow:0 6px 22px rgba(0,0,0,.16)}
+.dshgn_rel{position:relative;height:100%;container-type:inline-size;container-name:dshgn}
+.dshgn_spin{display:inline-block;width:12px;height:12px;border-radius:50%;
+  border:1.5px solid var(--dsw-alias-border-l2);border-top-color:var(--dsw-alias-brand-primary);
+  animation:dshgn-spin .8s linear infinite}
+@keyframes dshgn-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){.dshgn_spin{animation:none}}
+.dshgn_emptyState{display:flex;align-items:center;justify-content:center;height:100%;
+  color:var(--dsw-alias-label-tertiary);font-size:12px}
+/* 错误边界：渲染异常时的降级界面。不做成居中空状态——用户需要一眼看出这是
+   「坏了」而不是「没有内容」，所以左对齐、留白收紧、错误原文用等宽字体可选中。 */
+.dshgn_boundary{display:flex;flex-direction:column;gap:10px;padding:28px 32px;
+  align-items:flex-start;justify-content:flex-start;overflow:auto}
+.dshgn_boundaryTitle{font-size:14px;font-weight:600;
+  color:var(--dsw-alias-state-error-primary)}
+.dshgn_boundaryMsg{font-size:13px;line-height:1.7;color:var(--dsw-alias-label-primary);
+  word-break:break-word;max-width:100%}
+.dshgn_boundaryStack{margin:0;padding:10px 12px;border-radius:8px;max-width:100%;
+  overflow:auto;background:var(--dsw-alias-interactive-bg-hover);
+  border:0.5px solid var(--dsw-alias-border-l1);font-size:11.5px;line-height:1.6;
+  color:var(--dsw-alias-label-secondary);
+  font-family:var(--dshgn-fontMono);white-space:pre-wrap}
+/* 正文这一层的边界：坏掉的只是一篇笔记的正文，不该把整个面板换掉。
+   一行搞定——标题（「这一篇的正文没能渲染出来」）+ 错误原文（可悬停看全，
+   超长自动省略）+ 重试。不摆栈：这一层是给普通用户看的，栈留给控制台。 */
+.dshgn_boundaryInline{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  margin:8px 0;padding:9px 11px;border-radius:8px;
+  border:0.5px solid var(--dsw-alias-state-error-primary);
+  background:var(--dsw-alias-interactive-bg-hover);
+  color:var(--dsw-alias-state-error-primary);font-size:12px;line-height:1.6}
+.dshgn_boundaryInlineRow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;width:100%}
+.dshgn_boundaryInlineMsg{flex:none;font-weight:500}
+.dshgn_boundaryInlineDetail{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;color:var(--dsw-alias-label-secondary);
+  font-family:var(--dshgn-fontMono);font-size:11px}
+/* ── 音频播放器 ── */
+.dshgn_audioCard{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-radius:10px;
+  border:0.5px solid var(--dshgn-cardLine);background:var(--dshgn-card)}
+.dshgn_audioBar{display:flex;align-items:center;gap:10px}
+.dshgn_audioBtn{flex:none;display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;
+  border-radius:50%;border:0;background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-foreground);
+  cursor:pointer;padding:0}
+.dshgn_audioBtn:hover{background:var(--dsw-alias-button-primary-hover)}
+.dshgn_audioBtn:disabled{opacity:.5;cursor:default}
+/* 进度条改成自绘的 div，不再用 <input type=range>。
+   原因：原生 range 在这套面板里实测「怎么拖都没反应」——元素只有 4px 高时鼠标抓不住拇指；
+   把高度撑到 18px 也只是提高了命中率，受控 value 还会被 timeupdate 打回原位。
+   自绘之后整条 18px 都是命中区，按下就能抓，setPointerCapture 保证拖出元素也不丢事件。
+   touch-action:none 是必须的：不写的话触摸/触控板手势会抢走 pointermove，
+   表现同样是「拖不动」。 */
+.dshgn_audioSeek{position:relative;flex:1;min-width:0;height:18px;display:flex;align-items:center;
+  cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none;outline:none;
+  border-radius:9px}
+.dshgn_audioSeek:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-brand-primary)}
+.dshgn_audioTrack{position:relative;width:100%;height:4px;border-radius:2px;
+  background:var(--dsw-alias-border-l2);overflow:visible}
+.dshgn_audioFill{position:absolute;left:0;top:0;height:100%;border-radius:2px;
+  background:var(--dsw-alias-brand-primary)}
+.dshgn_audioThumb{position:absolute;top:50%;width:13px;height:13px;border-radius:50%;
+  background:var(--dsw-alias-brand-primary);border:2px solid var(--dsw-alias-bg-overlay);
+  box-shadow:0 1px 3px rgba(var(--dshgn-tintRgb),.28);transform:translate(-50%,-50%);pointer-events:none}
+.dshgn_audioSeek:hover .dshgn_audioThumb{transform:translate(-50%,-50%) scale(1.12)}
+.dshgn_audioTime{flex:none;font-size:11px;font-variant-numeric:tabular-nums;
+  color:var(--dsw-alias-label-tertiary)}
+.dshgn_audioLabel{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--dsw-alias-label-secondary)}
+/* ── 开关 ── */
+.dshgn_toggle{position:relative;flex:none;width:34px;height:19px;border-radius:10px;border:0;padding:0;
+  background:var(--dsw-alias-border-l2);cursor:pointer;transition:background .15s}
+.dshgn_toggle[data-on="true"]{background:var(--dsw-alias-brand-primary)}
+.dshgn_toggle::after{content:"";position:absolute;top:2.5px;left:2.5px;width:14px;height:14px;
+  border-radius:50%;background:Canvas;transition:transform .15s}
+.dshgn_toggle[data-on="true"]::after{transform:translateX(15px)}
+.dshgn_toggleRow{display:flex;align-items:center;gap:10px;justify-content:space-between}
+.dshgn_toggleLabel{display:flex;flex-direction:column;gap:2px;min-width:0}
+.dshgn_toggleTitle{font-size:12px;color:var(--dsw-alias-label-primary)}
+.dshgn_toggleDesc{font-size:11px;line-height:1.6;color:var(--dsw-alias-label-tertiary)}
+/* ── 表单字段 ── */
+.dshgn_field{display:flex;flex-direction:column;gap:5px}
+.dshgn_fieldLabel{font-size:11.5px;color:var(--dsw-alias-label-secondary)}
+.dshgn_fieldHint{font-size:11px;line-height:1.6;color:var(--dsw-alias-label-tertiary)}
+/* 自定义模板列表：模板名一行、骨架预览两行截断。预览要截断是因为骨架可能有几十行，
+   整段铺开会把设置页撑得老长，而用户在这一屏只需要认出「这是哪个模板」。 */
+.dshgn_sectionHint{font-size:11px;font-weight:400;color:var(--dsw-alias-label-tertiary);margin-left:auto}
+.dshgn_emptyRow{font-size:12px;color:var(--dsw-alias-label-tertiary);padding:6px 0}
+.dshgn_tplList{display:flex;flex-direction:column;gap:6px}
+.dshgn_tplRow{display:flex;align-items:flex-start;gap:8px;padding:7px 9px;border-radius:7px;
+  background:var(--dsw-alias-interactive-bg-hover);border:0.5px solid var(--dsw-alias-border-l1)}
+.dshgn_tplMain{flex:1;min-width:0}
+.dshgn_tplName{font-size:12px;font-weight:600;color:var(--dsw-alias-label-primary)}
+.dshgn_tplBody{font-size:11px;line-height:1.6;color:var(--dsw-alias-label-tertiary);margin-top:2px;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap}
+/* 摊开全文那一块：保留换行、自己滚，不把设置页撑长。 */
+.dshgn_tplFull{margin:2px 0 0;max-height:220px;overflow:auto;padding:7px 8px;border-radius:6px;
+  background:var(--dsw-alias-bg-base,#0000);border:0.5px solid var(--dsw-alias-border-l1);
+  font-family:var(--dshgn-fontMono);font-size:11px;line-height:1.65;
+  color:var(--dsw-alias-label-secondary);white-space:pre-wrap;word-break:break-word}
+.dshgn_tplForm{display:flex;flex-direction:column;gap:6px}
+.dshgn_btnRow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.dshgn_textarea{width:100%;box-sizing:border-box;min-height:180px;resize:vertical;padding:9px 10px;
+  border:0.5px solid var(--dshgn-cardLine);border-radius:8px;background:var(--dshgn-input);
+  color:var(--dsw-alias-label-primary);font-family:var(--dshgn-fontMono);
+  font-size:12px;line-height:1.65;outline:none}
+.dshgn_textarea:focus{border-color:var(--dsw-alias-brand-primary)}
+/* .dshgn_btn 的底子在文件更上面那一段（一份就够）。这里以前又写了一遍，
+   圆角 7px 对 8px、hover 一个带 :not(:disabled) 一个不带——同一个类名两份定义，
+   后一份把前一份的圆角悄悄改掉，47 颗按钮里哪颗是 7px 取决于它渲染在哪个区块。
+   现在只留上面那一份。 */
+.dshgn_btnPri,.dshgn_btnPrimary{border-color:transparent;background:var(--dsw-alias-button-primary-fill);
+  color:var(--dsw-alias-label-primary-foreground)}
+.dshgn_btnPri:hover:not(:disabled),.dshgn_btnPrimary:hover:not(:disabled){
+  background:var(--dsw-alias-button-primary-hover)}
+/* 淡一档的强调按钮：给「用我的本地版 / 用云端版」这种二选一用。
+   满饱和的主色在这两个按钮上会抢掉比对正文的注意力——用户是来读差异的，
+   不是来看按钮的。这里改用柔和的填充 + 同色系深字，选中感还在但不刺眼。 */
+.dshgn_btnSoft{border-color:transparent;background:var(--dshgn-btnFillSoft);
+  color:var(--dsw-alias-label-primary-foreground)}
+.dshgn_btnSoft:hover:not(:disabled){background:var(--dshgn-btnHoverSoft)}
+/* 冲突页的采纳按钮：未处理时用红色描边提醒「这里需要你做个决定」，
+   两个按钮都红，谁都不像默认选项；选过之后红框消失、填成浅色，
+   填充本身就是「我当初选了这一边」的记号。 */
+.dshgn_btnWarn{border-color:var(--dsw-alias-state-error-primary);
+  color:var(--dsw-alias-state-error-primary);background:transparent}
+.dshgn_btnWarn:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
+.dshgn_btnPale{border-color:transparent;background:var(--dshgn-btnFillPale);
+  color:var(--dsw-alias-label-primary-foreground)}
+.dshgn_btnPale:hover:not(:disabled){background:var(--dshgn-btnHoverPale)}
+/* 已处理区的折叠标题行：整行可点，箭头跟着开合转 90°。 */
+.dshgn_foldHead{display:flex;align-items:center;gap:6px;padding:8px 2px;cursor:pointer;
+  border:0;background:transparent;font:inherit;font-size:12px;width:100%;text-align:left;
+  color:var(--dsw-alias-label-secondary)}
+.dshgn_foldHead:hover{color:var(--dsw-alias-label-primary)}
+.dshgn_foldArrow{display:inline-flex;transition:transform 140ms ease}
+.dshgn_foldArrow[data-open="true"]{transform:rotate(90deg)}
+.dshgn_foldCount{font-size:11px;color:var(--dsw-alias-label-dimmed);
+  font-variant-numeric:tabular-nums}
+.dshgn_btnDanger{color:var(--dsw-alias-state-error-primary)}
+/* 录音卡面板：卡片上的文件列表与危险开关。
+   「导入后删原件」那一行刻意做成普通 checkbox 而不是花哨开关——它旁边写着
+   「永久删除」，越朴素越好，别让人误以为是某种推荐设置。 */
+/* margin:0 auto 是承重的：录音卡这一页只有 720px 宽，不居中时整页贴在左边，
+   右边空出一大片，看着像没加载完。滚动交给外层 .dshgn_pane，这里再套一层
+   overflow 会出现「滚到一半卡住」的双层滚动条。
+   padding 必须是 0：外层的 .dshgn_pane 已经有 18px/40px 的留白，这里再垫一遍
+   就变成标题上方空 36px、末尾空 80px，整页看着像被挤在中间一小条。 */
+.dshgn_paneInner{display:flex;flex-direction:column;gap:12px;padding:0;max-width:720px;margin:0 auto}
+/* 大标题自带 margin-top:18px，外层已经有 18px 留白，叠起来标题离顶 36px，
+   整页像被往下推了一截。首个子元素把这段让出去。 */
+.dshgn_paneInner > .dshgn_h:first-child{margin-top:0}
+.dshgn_paneDesc{font-size:12px;line-height:1.7;color:var(--dsw-alias-label-tertiary)}
+.dshgn_row{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px}
+.dshgn_fileList{display:flex;flex-direction:column;gap:2px;margin-top:8px;max-height:260px;overflow-y:auto}
+.dshgn_fileRow{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:5px 8px;border-radius:6px;background:var(--dsw-alias-interactive-bg-hover);
+  font-size:11.5px;font-variant-numeric:tabular-nums}
+.dshgn_fileName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--dsw-alias-label-primary)}
+.dshgn_fileMeta{flex:none;color:var(--dsw-alias-label-tertiary)}
+.dshgn_checkRow{display:flex;align-items:center;gap:7px;margin-top:10px;font-size:12px;
+  color:var(--dsw-alias-label-primary);cursor:pointer}
+.dshgn_checkRow input{width:13px;height:13px;margin:0;cursor:pointer}
+/* 胶囊/预设按钮：必须显式清掉 UA 的按钮底色与字体，
+   否则在深色主题里会画成一块灰底（文字是主题色，底是浏览器默认灰）。 */
+.dshgn_chip{display:inline-flex;align-items:center;gap:4px;height:21px;padding:0 9px;border-radius:11px;
+  border:0.5px solid var(--dsw-alias-border-l2);background:transparent;font:inherit;
+  font-size:11px;color:var(--dsw-alias-label-secondary);cursor:pointer;white-space:nowrap}
+.dshgn_chip:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);
+  color:var(--dsw-alias-label-primary)}
+.dshgn_chip:disabled{opacity:.5;cursor:default}
+.dshgn_chipOn{border-color:transparent;background:var(--dsw-alias-brand-primary);
+  color:var(--dsw-alias-label-primary-foreground);font-weight:500}
+.dshgn_chipOn:hover:not(:disabled){background:var(--dsw-alias-brand-primary);
+  color:var(--dsw-alias-label-primary-foreground)}
+/* 只读的标签胶囊（云端详情里的标签）：形状同 chip，但不假装可点 */
+/* 语言选择行：四个胶囊横排，窄面板时自动折行（Nederlands 比中文长得多） */
+.dshgn_langRow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px}
+.dshgn_tagPill{display:inline-flex;align-items:center;height:21px;padding:0 9px;border-radius:11px;
+  border:0.5px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-interactive-bg-hover);
+  font-size:11px;color:var(--dsw-alias-label-secondary);white-space:nowrap}
+/* 标签胶囊上的「×」：只让那个叉可点，整块胶囊不响应点击——否则想点标签看详情的人
+   会一不小心把标签删掉。 */
+.dshgn_tagX{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;
+  margin-left:5px;border:0;border-radius:50%;padding:0;cursor:pointer;font-size:11px;
+  line-height:1;background:transparent;color:var(--dsw-alias-label-tertiary);font-family:inherit}
+.dshgn_tagX:hover{background:var(--dsw-alias-state-error-primary);color:#fff}
+/* 云端知识库筛选行：横向可滚，不换行——知识库多的账号换行后会占掉半屏。
+   左内边距对齐笔记卡标题的首字：卡片是 listBody 6px + 卡片左边框 2px + 卡片内边距 8px
+   = 16px，筛选行不补这个值就会比下面的标题往左凸出 16px，看起来像没对齐的悬挂缩进。 */
+.dshgn_topicRow{display:flex;gap:6px;overflow-x:auto;padding:2px 10px 6px 16px;flex:none}
+.dshgn_topicChip{display:inline-flex;align-items:center;height:22px;padding:0 10px;border-radius:11px;
+  border:0.5px solid var(--dsw-alias-border-l2);background:transparent;font:inherit;font-size:11px;
+  color:var(--dsw-alias-label-secondary);cursor:pointer;white-space:nowrap;flex:none}
+.dshgn_topicChip:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dshgn_topicChip[data-on="true"]{border-color:transparent;background:var(--dsw-alias-brand-primary);
+  color:var(--dsw-alias-label-primary-foreground);font-weight:500}
+/* 图片附件：一行横向排，单张最高 200px，避免一张竖构图手机截图把整篇文章推到屏幕外。 */
+.dshgn_imgRow{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+/* 附件里的逐字稿：一行小标签，点一下在面板里打开那一份 */
+.dshgn_assetRow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:8px 0;
+  font-size:11px;color:var(--dsw-alias-label-secondary)}
+.dshgn_assetLabel{flex:none;opacity:.8}
+.dshgn_assetChip{appearance:none;flex:none;max-width:240px;padding:1px 8px;border:0.5px solid var(--dsw-alias-border-l2);
+  border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;
+  font-size:11px;line-height:1.7;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_assetChip:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dshgn_assetChip:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_imgOpen{cursor:zoom-in}
+/* 写了尺寸的图按写的来：object-fit 保持比例，不要被缩略图那条 max-height 压扁。 */
+.dshgn_imgSized{object-fit:contain}
+    .dshgn_img{max-width:100%;max-height:200px;border-radius:8px;object-fit:contain;
+  border:0.5px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-interactive-bg-hover)}
+/* 放大查看：遮罩压暗到接近全黑，让图本身成为唯一亮的东西。
+   z-index 比二次确认弹窗（70）高一档——用户是在看图的途中，不该被面板自己的
+   浮层盖住；同时比 toast（20）高，避免「已复制」这类提示飘在图上。 */
+.dshgn_zoomMask{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;
+  padding:24px;background:rgba(6,10,18,.82);cursor:zoom-out}
+.dshgn_zoomImg{max-width:100%;max-height:100%;object-fit:contain;border-radius:6px;cursor:default;
+  background:var(--dshgn-surface);box-shadow:0 12px 40px rgba(0,0,0,.45)}
+.dshgn_zoomClose{position:absolute;top:14px;right:14px;display:inline-flex;align-items:center;justify-content:center;
+  width:28px;height:28px;border:0;border-radius:8px;background:rgba(255,255,255,.14);
+  color:#fff;cursor:pointer}
+.dshgn_zoomClose:hover{background:rgba(255,255,255,.26)}
+/* 大图之间左右走：一篇笔记里常有好几张图，看完一张想接着看下一张时不该
+   先关掉、再回正文里找那张缩略图点开。计数放在按钮中间，用户得知道还剩几张。 */
+.dshgn_zoomBar{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);
+  display:flex;align-items:center;gap:10px;padding:4px 8px;border-radius:999px;
+  background:rgba(255,255,255,.14);color:#fff}
+.dshgn_zoomStep{appearance:none;display:inline-flex;align-items:center;justify-content:center;
+  width:26px;height:26px;border:0;border-radius:50%;background:rgba(255,255,255,.10);
+  color:#fff;cursor:pointer}
+.dshgn_zoomStep:hover{background:rgba(255,255,255,.26)}
+.dshgn_zoomStep:focus-visible{outline:1px solid #fff;outline-offset:1px}
+.dshgn_zoomCount{font-size:11px;line-height:1.6;font-variant-numeric:tabular-nums;white-space:nowrap}
+/* Obsidian 双链：外观要像链接但不能真跳（库内跳转由 JS 处理），所以用 button 而不是 a。 */
+.dshgn_wikilink{display:inline;padding:0;margin:0;border:0;background:transparent;font:inherit;
+  color:var(--dsw-alias-brand-primary);cursor:pointer;text-decoration:none;
+  border-bottom:0.5px solid currentColor}
+.dshgn_wikilink:hover{color:var(--dsw-alias-brand-primary);border-bottom-color:transparent}
+/* 指向还不存在的笔记：宿主里也是暗一档 + 虚下划线，一眼分得出哪些还没写。
+   只改外观，点了仍会走原来那条路报一句「库里找不到」。 */
+.dshgn_wikilinkDead{color:var(--dsw-alias-label-tertiary);border-bottom-style:dashed}
+.dshgn_wikilinkDead:hover{color:var(--dsw-alias-label-secondary);border-bottom-color:currentColor}
+/* 正文里的 #标签：形状跟笔记头属性区那几颗胶囊一致，让人一眼看出「这是标签，
+   不是正文里的一个井号」。span 与 button 共用这套样式，前者只上色。 */
+.dshgn_inlineTag{display:inline;padding:0 4px;margin:0 1px;border:0;border-radius:6px;
+  background:rgba(var(--dshgn-tintRgb),.1);font:inherit;font-size:.94em;
+  color:var(--dsw-alias-brand-primary);text-decoration:none;white-space:nowrap}
+button.dshgn_inlineTag{cursor:pointer}
+button.dshgn_inlineTag:hover{background:var(--dsw-alias-interactive-bg-hover-accent)}
+/* 嵌入的非图片附件（![[x.pdf]] 这类）：只显示成一颗文件名胶囊，点不开也不假装能点。 */
+.dshgn_embed{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;
+  border-radius:10px;border:0.5px solid var(--dsw-alias-border-l2);
+  background:var(--dsw-alias-interactive-bg-hover);font-size:11px;
+  color:var(--dsw-alias-label-secondary);white-space:nowrap;vertical-align:middle}
+.dshgn_embedFile{font-size:11px;color:var(--dsw-alias-label-tertiary)}
+/* 嵌入的另一篇笔记：左边一道竖线把它和这一篇的正文分开，看起来像「引用了一段」。 */
+.dshgn_noteEmbed{display:block;margin:8px 0;padding:6px 10px;border-left:2px solid var(--dsw-alias-border-l2);
+  background:var(--dsw-alias-interactive-bg-hover);border-radius:0 8px 8px 0}
+.dshgn_embedHead{display:flex;align-items:center;gap:5px;margin-bottom:4px;
+  color:var(--dsw-alias-label-tertiary)}
+.dshgn_embedTitle{appearance:none;border:0;background:transparent;padding:0;font:inherit;
+  font-size:11px;font-weight:600;color:var(--dsw-alias-brand-primary);cursor:pointer;
+  max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dshgn_embedTitle:hover{text-decoration:underline}
+.dshgn_embedBody{font-size:12.5px;color:var(--dsw-alias-label-secondary)}
+.dshgn_embedEmpty{font-size:11px;color:var(--dsw-alias-label-tertiary)}
+.dshgn_noteDrop{position:relative}
+.dshgn_statGrid{display:flex;flex-wrap:wrap;gap:8px}
+.dshgn_stat{display:flex;flex-direction:column;gap:1px;padding:7px 11px;border-radius:8px;
+  background:var(--dsw-alias-interactive-bg-hover);min-width:66px}
+.dshgn_statNum{font-size:15px;font-weight:600;color:var(--dsw-alias-label-primary);
+  font-variant-numeric:tabular-nums}
+.dshgn_statLabel{font-size:10.5px;color:var(--dsw-alias-label-tertiary)}
+.dshgn_moment{display:flex;gap:10px;padding:5px 0;font-size:12px;line-height:1.65;
+  border-bottom:0.5px solid var(--dsw-alias-border-l1)}
+.dshgn_moment:last-child{border-bottom:0}
+.dshgn_momentAt{flex:none;width:44px;font-variant-numeric:tabular-nums;
+  color:var(--dsw-alias-brand-primary);cursor:pointer;font-size:11px}
+.dshgn_momentAt:hover{text-decoration:underline}
+.dshgn_banner{display:flex;flex-direction:column;gap:8px;padding:14px;border-radius:10px;
+  border:0.5px solid var(--dshgn-cardLine);background:var(--dshgn-card);text-align:center;
+  align-items:center}
+/* 警告型横幅：左对齐、带色边。用于「Key 被拒」这类要用户动手处理的提示，
+   居中的空状态样式会让它看起来像普通说明文字而被划过去。 */
+.dshgn_bannerWarn{align-items:stretch;text-align:left;
+  border-left:3px solid var(--dsw-alias-state-warn-primary)}
+.dshgn_bannerTitle{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary)}
+.dshgn_bannerWarn .dshgn_bannerTitle{color:var(--dsw-alias-state-warn-primary)}
+.dshgn_bannerDesc{font-size:12px;line-height:1.6;color:var(--dsw-alias-label-tertiary)}
+
+/* ══ 三栏配色：深蓝 → 浅蓝 → 极浅近白蓝 ══════════════════════════════════════
+   做法：不改每个组件里的 token 用法，而是在各栏容器上**局部重定义** --dsw-alias-*
+   变量。自定义属性沿 DOM 继承，于是这一栏里所有用 token 的字色/底色/边框色会
+   自动跟着变，只有真正需要「换一种颜色」的地方才写显式规则。
+   好处：以后调色只改这里一组变量，不会漏掉某个还在用旧 token 的角落。 */
+.dshgn_root{
+  /* 浅色模式走「纸与墨」：参照用户 DSH 里「得到大脑」那套配色
+     （纸 #f7f1e1/#f3ebd7/#ece1c8，墨 #101f3c/#1c3560/#3a5580，界栏 #c9b791）。
+     以前的浅色是冷蓝调，三栏一块比一块蓝，用户说「配色很诡异」。 */
+  /* 左栏（目录树）：最深的墨蓝 */
+  --dshgn-deep:#101f3c;
+  --dshgn-deep2:#0b1730;
+  /* 深蓝区一律白字：用户明确要求「所有这种深度的蓝色区域内的字体颜色都改为白色」。
+     之前用 hslToHex(hue,…) 推导浅色字，换主题色时会偏成淡绿/淡粉，白字最稳。 */
+  --dshgn-deepFg:#ffffff;
+  --dshgn-deepFg2:rgba(255,255,255,.86);
+  --dshgn-deepFg3:rgba(255,255,255,.66);
+  /* 中栏（笔记列表）：浅藏青。原来是旧纸的棕黄（#e3d5b8→#d8c7a4），
+     是整块面板里最大的一片「棕」——用户说「棕黑色太丑」。换成同一族的浅藏青后，
+     三栏是「深藏青 → 浅藏青 → 藏青白」，层次照旧，纸黄一点不剩。
+     这一栏仍是浅底，所以字继续用墨色；深藏青只给折叠条、胶囊、分组标题那些小块。 */
+  --dshgn-mid:#dde5f0;
+  --dshgn-mid2:#d2dded;
+  --dshgn-midFg:#101f3c;
+  --dshgn-midFg2:#1c3560;
+  --dshgn-midFg3:#3a5580;
+  /* 右栏（阅读区）：极浅的藏青白。原来的纸面 #f3ebd7 也是棕系，一并换掉。 */
+  --dshgn-light:#eef2f8;
+  --dshgn-light2:#e3eaf4;
+  --dshgn-lightFg:#101f3c;
+  --dshgn-lightFg2:#1c3560;
+  --dshgn-lightFg3:#3a5580;
+  /* 强调色：深栏上要够亮（冷白蓝），浅栏上用墨蓝，压在浅底上才够沉 */
+  --dshgn-accentOnDark:#cfe0f7;
+  --dshgn-accentOnLight:#1c3560;
+  --dshgn-lineOnDark:rgba(255,255,255,.13);
+  --dshgn-lineOnLight:#c2cfe2;
+  /* 默认主题色的 RGB 分量。所有半透明描边/阴影/悬浮底色都由它推导，
+     这样「自定义主题色」只需要覆盖这一个值 + 上面那批色板，
+     散落在 18 处的 rgba(10,42,82,…) 会自动跟着变。 */
+  --dshgn-tintRgb:28,53,96;
+  --dshgn-btnFill:#1c3560;
+  --dshgn-btnHover:#101f3c;
+  --dshgn-btnFillSoft:#4a6a94;
+  --dshgn-btnHoverSoft:#3a5580;
+  --dshgn-btnFillPale:#c3cddc;
+  --dshgn-btnHoverPale:#b3c0d4;
+  /* 卡片/弹层/输入框的实底色。原来是纯白：设置页整排卡片、列表里的搜索框
+     全是一块块 #fff，在浅蓝底上像贴了白纸。改成带一点底色的浅蓝白，
+     既还分得出「这是浮起来的一块」，又不刺眼。深色由 themeVars 换成深色。 */
+  --dshgn-surface:#e6ecf5;
+  --dshgn-surfaceStrong:#dbe4f1;
+  /* 凹进去的输入槽（中栏搜索框）：比所在那一栏略沉一档，像嵌进去的。
+     浅色给一层半透明的旧纸色，深色由 themeVars 换成更暗的一档。 */
+  --dshgn-well:rgba(233,238,246,.85);
+  --dshgn-overlayMask:rgba(16,31,60,.42);
+  /* 卡片面：断链/待办/日历/大纲/属性这些「一块一块的东西」统一用这两个值。
+     以前它们写的是 background:transparent —— 在深色面板里就是一块纯黑的洞，
+     字压在上面像没加载出来；浅色里又完全糊进背景，看不出边界。
+     现在浅色给一张干净的白卡，深色由 themeVars 换成比面板亮一档的蓝灰。 */
+  --dshgn-card:#ffffff;
+  --dshgn-cardLine:#cdd8e8;
+  /* 输入框的面：比卡片再沉一档，像嵌进卡片里，而不是又贴一张纸。 */
+  --dshgn-input:#e9eef6;
+  /* 藏青填充件：属性/大纲的折叠条、属性值里的标签胶囊、左栏的分组标题。
+     用户要的就是「深藏青底 + 白字」这一种，所以三处共用一组变量，
+     换主题色/深色模式时一起走。 */
+  --dshgn-navy:#101f3c;
+  --dshgn-navyHover:#1c3560;
+  --dshgn-navyFg:#f4f7fc;
+  /* 下面这几个 --dsw-alias-state-* / bg-* / toast-* / elevation-* 是宿主提供的
+     语义 token，面板里一直在用，但插件自己从来没定义过它们。宿主没给值时
+     var() 会整条声明失效：断链的红字不红、提示条底色透明、弹窗没有阴影。
+     这里补一套浅色默认值，深色由 themeVars 覆盖。 */
+  /* 三个状态色也调成纸墨里能压得住的那档：断链的「红」用笔红 #8d2f36，
+     压在米黄纸上像钢笔写的，不会像霓虹灯。 */
+  --dsw-alias-state-error-primary:#8d2f36;
+  --dsw-alias-state-warn-primary:#8a5a12;
+  --dsw-alias-state-success-primary:#2f6b46;
+  --dsw-alias-bg-primary:var(--dshgn-card);
+  --dsw-alias-bg-secondary:var(--dshgn-light2);
+  --dsw-alias-bg-base:var(--dshgn-light);
+  --dsw-alias-toast-bg:#101f3c;
+  --dsw-alias-toast-label:#f7f1e1;
+  --dsw-alias-elevation-prominent:0 12px 32px rgba(16,31,60,.18);
+}
+
+/* ── 顶栏：与右栏同色系，压一条浅蓝分隔 ── */
+.dshgn_head{
+  background:linear-gradient(180deg,var(--dshgn-light) 0%,var(--dshgn-light2) 100%);
+  border-bottom:1px solid var(--dshgn-lineOnLight);
+  color:var(--dshgn-lightFg);
+  --dsw-alias-label-primary:var(--dshgn-lightFg);
+  --dsw-alias-label-secondary:var(--dshgn-lightFg2);
+  --dsw-alias-label-tertiary:var(--dshgn-lightFg3);
+  --dsw-alias-label-dimmed:var(--dshgn-lightFg3);
+  --dsw-alias-border-l2:var(--dshgn-lineOnLight);
+  --dsw-alias-interactive-bg-hover:rgba(var(--dshgn-tintRgb),.07);
+  /* 这里原来是写死的 rgba(31,111,184,.16)。换成墨绿/酒红主题色之后，
+     页签的高亮底色还是那块蓝，和整条顶栏对不上。跟着 tintRgb 走。 */
+  --dsw-alias-interactive-bg-hover-accent:rgba(var(--dshgn-tintRgb),.16);
+  --dsw-alias-bg-overlay:var(--dshgn-surface);
+  --dsw-alias-brand-primary:var(--dshgn-accentOnLight);
+}
+.dshgn_tabs{background:rgba(var(--dshgn-tintRgb),.07);border-radius:10px}
+.dshgn_tab[data-on="true"]{background:var(--dshgn-surface);box-shadow:0 1px 3px rgba(var(--dshgn-tintRgb),.14)}
+
+/* ── 左栏：深蓝。整栏用上深下更深的渐变，边界靠一条亮线收住 ── */
+.dshgn_tree{
+  width:var(--dshgn-treeW,204px);
+  background:linear-gradient(180deg,var(--dshgn-deep) 0%,var(--dshgn-deep2) 100%);
+  color:var(--dshgn-deepFg);
+  border-right:1px solid rgba(0,0,0,.28);
+  box-shadow:inset -1px 0 0 rgba(255,255,255,.06);
+  scrollbar-color:rgba(255,255,255,.24) transparent;
+  /* 局部把主题 token 翻成「深底浅字」，栏内一切 token 用法自动跟随 */
+  --dsw-alias-label-primary:var(--dshgn-deepFg);
+  --dsw-alias-label-secondary:var(--dshgn-deepFg2);
+  --dsw-alias-label-tertiary:var(--dshgn-deepFg3);
+  --dsw-alias-label-dimmed:var(--dshgn-deepFg3);
+  --dsw-alias-label-primary-foreground:#08182c;
+  --dsw-alias-border-l1:var(--dshgn-lineOnDark);
+  --dsw-alias-border-l2:var(--dshgn-lineOnDark);
+  --dsw-alias-interactive-bg-hover:rgba(255,255,255,.09);
+  --dsw-alias-interactive-bg-hover-accent:rgba(255,255,255,.17);
+  --dsw-alias-interactive-bg-active:rgba(255,255,255,.22);
+  --dsw-alias-brand-primary:var(--dshgn-accentOnDark);
+  --dsw-alias-button-primary-fill:var(--dshgn-btnFill);
+  --dsw-alias-button-primary-hover:var(--dshgn-btnHover);
+}
+/* 栏内小标题（目录 / 标签）。
+   以前它是一条只有 10px 小字 + 字距 0.06em 的透明行，起点 padding 是 6px，
+   而下面的「全部笔记」行和目录行是 9px——差 3px，中文只有两个字，看上去就是
+   「这一块整体往左歪了一点」。现在三件事一起改：
+   ① 内边距对齐到 9px，和每一行同一个起点；② 去掉字距与大写（中文加字距只会散架）；
+   ③ 填成深藏青、字用米白，让它明确是一条「分组条」而不是一行灰批注。 */
+.dshgn_tree .dshgn_treeHead{
+  margin-top:8px;padding:5px 9px;border:0;border-radius:7px;
+  background:var(--dshgn-navy);color:var(--dshgn-navyFg);
+  font-size:10.5px;font-weight:600;letter-spacing:0;text-transform:none;
+}
+.dshgn_tree .dshgn_treeHead .dshgn_treeHeadTitle{color:var(--dshgn-navyFg);opacity:.92}
+.dshgn_tree .dshgn_treeRow[data-on="true"]{box-shadow:inset 2px 0 0 var(--dshgn-accentOnDark)}
+.dshgn_tree .dshgn_treeCount{
+  min-width:18px;text-align:center;padding:0 4px;border-radius:8px;
+  background:rgba(255,255,255,.11);font-size:10px;line-height:15px;
+}
+.dshgn_tree .dshgn_tagRow{
+  background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.12);
+}
+.dshgn_tree .dshgn_tagRow:hover{background:rgba(255,255,255,.15)}
+.dshgn_tree .dshgn_tagRow[data-on="true"]{
+  background:var(--dshgn-accentOnDark);border-color:transparent;color:#08182c;font-weight:600;
+}
+/* 标题行右侧的动作组：排序 + 「+」。
+   用 flex:1 的 spacer 把动作推到最右，与标题文字之间留出距离——紧贴标题
+   会让它看起来像标题的一部分，用户不会想到那是个按钮。 */
+.dshgn_treeHeadRight{display:flex;align-items:center;gap:2px;flex:none;margin-left:auto}
+.dshgn_treeHeadTitle{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* 「全部收起 / 全部展开」：一个小三角，收着的时候转回水平，和行里的箭头
+   用同一个方向语言（朝下=还收着，朝右=已收起）。 */
+.dshgn_treeFoldAll{
+  display:inline-flex;align-items:center;justify-content:center;
+  height:18px;min-width:18px;padding:0 3px;border:0;border-radius:5px;
+  background:transparent;color:var(--dsw-alias-label-tertiary);
+  font:inherit;cursor:pointer;
+}
+.dshgn_treeFoldAll:hover{background:rgba(255,255,255,.14);color:var(--dsw-alias-label-primary)}
+.dshgn_treeFoldAll:focus-visible{outline:1px solid var(--dshgn-accentOnDark);outline-offset:1px}
+.dshgn_treeFoldAll svg{transform:rotate(90deg);transition:transform .12s ease}
+.dshgn_treeFoldAll[data-folded="true"] svg{transform:rotate(0deg)}
+.dshgn_treeSort,
+.dshgn_treeAdd{
+  display:inline-flex;align-items:center;justify-content:center;
+  height:18px;min-width:18px;padding:0 4px;border:0;border-radius:5px;
+  background:transparent;color:var(--dsw-alias-label-tertiary);
+  font:inherit;font-size:9px;line-height:1;cursor:pointer;
+  letter-spacing:0;text-transform:none;
+}
+.dshgn_treeSort:hover,
+.dshgn_treeAdd:hover{background:rgba(255,255,255,.14);color:var(--dsw-alias-label-primary)}
+.dshgn_treeSort:focus-visible,
+.dshgn_treeAdd:focus-visible{outline:1px solid var(--dshgn-accentOnDark);outline-offset:1px}
+/* 新建目录 / 标签的输入行 */
+.dshgn_treeNew{display:flex;align-items:center;gap:3px;padding:2px 4px 4px}
+.dshgn_treeNewInput{
+  flex:1;min-width:0;height:22px;padding:0 6px;border-radius:6px;
+  border:0.5px solid var(--dsw-alias-border-l2);background:rgba(0,0,0,.22);
+  color:var(--dsw-alias-label-primary);font:inherit;font-size:11px;outline:none;
+}
+.dshgn_treeNewInput::placeholder{color:var(--dsw-alias-label-dimmed)}
+.dshgn_treeNewInput:focus{border-color:var(--dshgn-accentOnDark)}
+.dshgn_treeNewOk,
+.dshgn_treeNewCancel{
+  display:inline-flex;align-items:center;justify-content:center;flex:none;
+  width:20px;height:22px;border:0;border-radius:6px;background:transparent;
+  color:var(--dsw-alias-label-tertiary);cursor:pointer;
+}
+.dshgn_treeNewOk:hover{background:rgba(255,255,255,.16);color:var(--dsw-alias-label-primary)}
+.dshgn_treeNewCancel:hover{background:rgba(255,255,255,.16);color:var(--dsw-alias-state-error-primary)}
+/* 行内删除/取消：画在被右键的那一行里接替计数徽章的位置。
+   不再用 position:fixed 的浮层——.dshgn_body 挂着 animation ... both，
+   动画播完后 transform 仍留着，带 transform 的祖先会成为 fixed 的包含块，
+   菜单的坐标基准从视口变成 .dshgn_body 的左上角，于是飘到很远的地方。 */
+.dshgn_rowMenu{display:inline-flex;align-items:center;gap:2px;flex:none}
+.dshgn_rowBtn{
+  display:inline-flex;align-items:center;gap:3px;height:18px;padding:0 5px;
+  border:0;border-radius:5px;background:transparent;font:inherit;font-size:10px;
+  line-height:18px;color:var(--dsw-alias-label-secondary);cursor:pointer;
+}
+.dshgn_rowBtn:hover{background:rgba(255,255,255,.18);color:var(--dsw-alias-label-primary)}
+.dshgn_rowBtnDanger{color:var(--dsw-alias-state-error-primary)}
+.dshgn_rowBtnDanger:hover{background:rgba(255,255,255,.18);color:var(--dsw-alias-state-error-primary)}
+/* 标签项外层：给行内菜单留位置，同时避免 button 套 button */
+.dshgn_tagWrap{display:inline-flex;align-items:center;gap:2px;max-width:100%;min-width:0}
+.dshgn_todoFold{appearance:none;flex:none;display:inline-flex;align-items:center;justify-content:center;width:12px;height:16px;padding:0;border:0;border-radius:3px;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer}
+.dshgn_todoFold:hover{color:var(--dsw-alias-label-primary);background:rgba(255,255,255,.14)}
+.dshgn_todoFold:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_todoFold svg{transform:rotate(90deg);transition:transform .12s ease}
+.dshgn_todoFold[data-folded="true"] svg{transform:rotate(0deg)}
+.dshgn_tagFold{appearance:none;flex:none;display:inline-flex;align-items:center;justify-content:center;width:12px;height:16px;padding:0;border:0;border-radius:3px;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer}
+.dshgn_tagFold:hover{color:var(--dsw-alias-label-primary);background:rgba(255,255,255,.14)}
+.dshgn_tagFold:focus-visible{outline:1px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.dshgn_tagFold svg{transform:rotate(90deg);transition:transform .12s ease}
+.dshgn_tagFold[data-folded="true"] svg{transform:rotate(0deg)}
+/* 标签区是 flex-wrap 容器，改名输入行必须自己占满一整行，
+   否则它会挤在上一个标签右边，输入框被压成几十像素宽。 */
+.dshgn_treeTags .dshgn_treeNew{width:100%;margin:0 0 4px;box-sizing:border-box}
+/* 二次确认弹窗：遮住整个面板，避免用户误点背后的东西 */
+.dshgn_modalMask{
+  position:fixed;inset:0;z-index:70;display:flex;align-items:center;justify-content:center;
+  padding:24px;background:var(--dshgn-overlayMask);
+}
+.dshgn_modal{
+  width:100%;max-width:320px;padding:16px 18px;border-radius:12px;
+  border:0.5px solid var(--dsw-alias-border-l2);
+  background:var(--dsw-alias-bg-overlay);box-shadow:var(--dsw-alias-elevation-prominent);
+  display:flex;flex-direction:column;gap:10px;
+}
+.dshgn_modalTitle{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary)}
+.dshgn_modalBody{font-size:12px;line-height:1.7;color:var(--dsw-alias-label-secondary);word-break:break-word}
+.dshgn_modalActions{display:flex;justify-content:flex-end;gap:8px;margin-top:2px}
+/* 快捷键速查表：两列（键位 + 干什么），键位用等宽字对齐，扫一眼就找得到 */
+.dshgn_helpModal{width:100%;max-width:420px;max-height:min(70vh,520px);overflow:auto}
+.dshgn_helpHint{font-size:11px;line-height:1.6;color:var(--dsw-alias-label-tertiary)}
+.dshgn_helpList{display:flex;flex-direction:column;gap:2px}
+.dshgn_helpRow{display:flex;align-items:baseline;gap:10px;padding:3px 0}
+.dshgn_helpKeys{flex:none;min-width:104px;display:inline-flex;flex-wrap:wrap;gap:3px}
+.dshgn_helpKey{display:inline-block;padding:0 5px;border:0.5px solid var(--dsw-alias-border-l2);
+  border-radius:4px;background:var(--dsw-alias-interactive-bg-hover);
+  font-family:var(--dshgn-fontMono);
+  font-size:10px;line-height:1.7;color:var(--dsw-alias-label-secondary);white-space:nowrap}
+.dshgn_helpWhat{min-width:0;font-size:12px;line-height:1.6;color:var(--dsw-alias-label-secondary)}
+
+/* ── 中栏：浅蓝。留一条稍深的右边线把它和阅读区区分开 ── */
+.dshgn_list{
+  width:272px;
+  background:linear-gradient(180deg,var(--dshgn-mid) 0%,var(--dshgn-mid2) 100%);
+  color:var(--dshgn-midFg);
+  border-right:1px solid rgba(var(--dshgn-tintRgb),.16);
+  scrollbar-color:rgba(var(--dshgn-tintRgb),.26) transparent;
+  --dsw-alias-label-primary:var(--dshgn-midFg);
+  --dsw-alias-label-secondary:var(--dshgn-midFg2);
+  --dsw-alias-label-tertiary:var(--dshgn-midFg3);
+  --dsw-alias-label-dimmed:var(--dshgn-midFg3);
+  --dsw-alias-label-primary-foreground:#ffffff;
+  --dsw-alias-border-l1:var(--dshgn-lineOnLight);
+  --dsw-alias-border-l2:var(--dshgn-lineOnLight);
+  --dsw-alias-interactive-bg-hover:rgba(var(--dshgn-tintRgb),.09);
+  --dsw-alias-interactive-bg-hover-accent:rgba(var(--dshgn-tintRgb),.16);
+  --dsw-alias-bg-overlay:var(--dshgn-surface);
+  --dsw-alias-brand-primary:var(--dshgn-accentOnLight);
+  --dsw-alias-button-primary-fill:var(--dshgn-btnFill);
+  --dsw-alias-button-primary-hover:var(--dshgn-btnHover);
+}
+.dshgn_list .dshgn_searchWrap{border-bottom-color:rgba(var(--dshgn-tintRgb),.14)}
+.dshgn_list .dshgn_search{
+  /* 搜索框原来是纯白（surfaceStrong），在中栏浅蓝上白得发亮；
+     现在走 --dshgn-well：一层薄纱，和底色同一个色系，只是略沉一点。 */
+  background:var(--dshgn-well);border-color:rgba(var(--dshgn-tintRgb),.22);
+}
+.dshgn_list .dshgn_search::placeholder{color:var(--dshgn-midFg3)}
+.dshgn_list .dshgn_card{border-radius:9px;margin-bottom:2px}
+.dshgn_list .dshgn_card[data-on="true"]{
+  background:var(--dshgn-surface);box-shadow:0 1px 4px rgba(var(--dshgn-tintRgb),.14);
+  border-left-color:var(--dshgn-accentOnLight);
+}
+.dshgn_list .dshgn_cardTitle{font-weight:500}
+
+/* ── 右栏：极浅近白蓝 ── */
+.dshgn_note{
+  background:var(--dshgn-light);
+  color:var(--dshgn-lightFg);
+  --dsw-alias-label-primary:var(--dshgn-lightFg);
+  --dsw-alias-label-secondary:var(--dshgn-lightFg2);
+  --dsw-alias-label-tertiary:var(--dshgn-lightFg3);
+  --dsw-alias-label-dimmed:var(--dshgn-lightFg3);
+  /* 同 .dshgn_pane：播放按钮、主按钮这类深蓝填充上的字必须是白的。 */
+  --dsw-alias-label-primary-foreground:#ffffff;
+  --dsw-alias-border-l1:var(--dshgn-lineOnLight);
+  --dsw-alias-border-l2:var(--dshgn-lineOnLight);
+  --dsw-alias-interactive-bg-hover:rgba(var(--dshgn-tintRgb),.055);
+  --dsw-alias-interactive-bg-hover-accent:rgba(var(--dshgn-tintRgb),.14);
+  --dsw-alias-bg-overlay:var(--dshgn-surface);
+  --dsw-alias-brand-primary:var(--dshgn-accentOnLight);
+  --dsw-alias-button-primary-fill:var(--dshgn-btnFill);
+  --dsw-alias-button-primary-hover:var(--dshgn-btnHover);
+  scrollbar-color:rgba(var(--dshgn-tintRgb),.22) transparent;
+}
+.dshgn_note .dshgn_noteHead{background:var(--dshgn-light2)}
+.dshgn_note .dshgn_md{font-size:13.5px;line-height:1.8}
+.dshgn_note .dshgn_md .dshgn_pre{background:rgba(var(--dshgn-tintRgb),.08)}
+.dshgn_note .dshgn_md .dshgn_table th{background:rgba(var(--dshgn-tintRgb),.10)}
+.dshgn_note .dshgn_md .dshgn_h2{border-bottom-color:rgba(var(--dshgn-tintRgb),.14)}
+
+/* ── 其它页签（云端/同步/设置）：整页用极浅蓝，卡片纯白 ── */
+.dshgn_pane{
+  background:linear-gradient(180deg,var(--dshgn-light) 0%,var(--dshgn-light2) 100%);
+  color:var(--dshgn-lightFg);
+  --dsw-alias-label-primary:var(--dshgn-lightFg);
+  --dsw-alias-label-secondary:var(--dshgn-lightFg2);
+  --dsw-alias-label-tertiary:var(--dshgn-lightFg3);
+  --dsw-alias-label-dimmed:var(--dshgn-lightFg3);
+  /* 深蓝填充上的字一律白：主按钮、选中的 chip、选中的知识库都是深色底，
+     没这一行它们就落到应用默认的深色前景色上——白底页面里看着还凑合，
+     一旦按钮被填成深蓝就变成「深字压深底」，几乎读不出来。 */
+  --dsw-alias-label-primary-foreground:#ffffff;
+  --dsw-alias-border-l1:var(--dshgn-lineOnLight);
+  --dsw-alias-border-l2:var(--dshgn-lineOnLight);
+  --dsw-alias-interactive-bg-hover:rgba(var(--dshgn-tintRgb),.055);
+  --dsw-alias-interactive-bg-hover-accent:rgba(var(--dshgn-tintRgb),.14);
+  --dsw-alias-bg-overlay:var(--dshgn-surface);
+  --dsw-alias-brand-primary:var(--dshgn-accentOnLight);
+  --dsw-alias-button-primary-fill:var(--dshgn-btnFill);
+  --dsw-alias-button-primary-hover:var(--dshgn-btnHover);
+}
+.dshgn_pane .dshgn_section{box-shadow:0 1px 2px rgba(var(--dshgn-tintRgb),.06)}
+/* 输入槽走 --dshgn-input：比卡片底色沉一点，看着像嵌进卡片里，不是又贴一张白纸。 */
+.dshgn_pane .dshgn_input,.dshgn_pane .dshgn_textarea{background:var(--dshgn-input)}
+.dshgn_pane .dshgn_log{background:rgba(var(--dshgn-tintRgb),.06)}
+.dshgn_pane .dshgn_stat{background:rgba(var(--dshgn-tintRgb),.08)}
+/* 断链 / 待办：整页就是一张浅色大卡，从页顶一直铺到页底。
+   以前标题那块是 .dshgn_section、列表是 .dshgn_cardBox，两块是兄弟节点，
+   浅色底只包住头部，下面一大片是页面底色——用户原话「那个浅色的大大的框
+   只覆盖到整个页面的一点，我想让它整个覆盖下去」。现在两块都放进同一个外壳。 */
+.dshgn_paneSheet{flex:1 0 auto;display:flex;flex-direction:column;gap:12px;min-width:0;
+  padding:14px 15px;border-radius:10px;border:0.5px solid var(--dshgn-cardLine);
+  background:var(--dshgn-card)}
+/* 外壳本身就是那张卡，里面的 section 不再叠一层卡、也不再描边。 */
+.dshgn_paneSheet .dshgn_section{padding:0;border:0;background:transparent;box-shadow:none}
+.dshgn_paneSheet .dshgn_cardBox{max-width:none;margin:0;gap:10px}
+/* 外壳已经是一张浅色卡，行再同色就只剩一圈边看不出「一条一条」。
+   行改用凹一档的输入面色，像卡里压着几条纸签。 */
+.dshgn_paneSheet .dshgn_brokenRow,.dshgn_paneSheet .dshgn_todoRow{background:var(--dshgn-input)}
+.dshgn_paneSheet .dshgn_brokenRow:hover,.dshgn_paneSheet .dshgn_todoRow:hover{background:var(--dshgn-surface)}
+.dshgn_root{background:var(--dshgn-light)}
+
+/* 深色栏里的滚动条（WebKit 不认 scrollbar-color） */
+.dshgn_tree::-webkit-scrollbar,.dshgn_list::-webkit-scrollbar,
+.dshgn_note .dshgn_scroll::-webkit-scrollbar,.dshgn_pane::-webkit-scrollbar{width:9px;height:9px}
+.dshgn_tree::-webkit-scrollbar-thumb{background:rgba(255,255,255,.22);border-radius:5px}
+.dshgn_list::-webkit-scrollbar-thumb{background:rgba(var(--dshgn-tintRgb),.24);border-radius:5px}
+.dshgn_note .dshgn_scroll::-webkit-scrollbar-thumb,
+.dshgn_pane::-webkit-scrollbar-thumb{background:rgba(var(--dshgn-tintRgb),.18);border-radius:5px}
+.dshgn_tree::-webkit-scrollbar-track,.dshgn_list::-webkit-scrollbar-track,
+.dshgn_note .dshgn_scroll::-webkit-scrollbar-track,.dshgn_pane::-webkit-scrollbar-track{background:transparent}

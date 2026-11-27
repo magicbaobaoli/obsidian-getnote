@@ -64,6 +64,7 @@ import {
   setStatusReport,
   notifyCssChange,
   notifyVaultChange,
+  removeAllCss,
 } from './view/panel.js'
 import { GetnoteView, VIEW_TYPE_GETNOTE, PanelIcon } from './view/view.js'
 import { setHoverSource } from './view/markdown.js'
@@ -959,6 +960,10 @@ export default class GetnoteObsidianPlugin extends Plugin {
     }
     setApiOrigin('')
     setApiToken('')
+    // 兜底：正常路径是每个视图 onClose 摘自己的那份，但插件被禁用时
+    // Obsidian 不保证逐个走 onClose（还开着的 popout 尤其不保证），
+    // 所以这里把见过的窗口上的 <style id="dshgn-style"> 再扫一遍。
+    removeAllCss()
   }
 
   /**

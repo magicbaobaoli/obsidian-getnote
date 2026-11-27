@@ -8,7 +8,7 @@
 import { ItemView, MarkdownRenderer, WorkspaceLeaf } from 'obsidian'
 import * as React from 'preact/compat'
 import { createRoot } from 'preact/compat/client'
-import { PanelRoot, PanelIcon, injectCss } from './panel.js'
+import { PanelRoot, PanelIcon, injectCss, removeAllCss } from './panel.js'
 import { setMarkdownHost, clearMarkdownHost } from './markdown.js'
 
 export const VIEW_TYPE_GETNOTE = 'getnote-brain-view'
@@ -26,6 +26,8 @@ export class GetnoteView extends ItemView {
     // 元素里，用户看到的永远是整片黑。这是「全黑」真正的根因。
     this.panelEl = null
     this.heartbeat = null
+    // injectCss() 返回的清理函数：样式挂在 document 上，React 卸载带不走。
+    this.removeCss = null
     // onOpen 只会生效一次：宿主偶尔会把视图挂上却不调 onOpen，插件这边会自己补一次，
     // 之后宿主再调一次时这个标记把第二次挡掉，免得同一棵树被画两遍。
     this.opened = false
@@ -197,7 +199,10 @@ export class GetnoteView extends ItemView {
 
   /** 真正的挂载流程；异常交给 onOpen 兜住并画到屏幕上。 */
   async openPanel(container) {
-    injectCss()
+    // 样式表挂在 document 上，不属于这棵 React 树，所以清理函数得自己收着，
+    // 关视图时调用——不然 <style id="dshgn-style"> 会一直留在宿主窗口里。
+    if (this.removeCss !== null && this.removeCss !== undefined) this.removeCss()
+    this.removeCss = injectCss()
 
     // 正文交给 Obsidian 自己的渲染器：callout、公式、Mermaid、脚注、嵌入块、
     // 双链、以及 Dataview/Bases 的查询块才能出得来。渲染器要在 'obsidian'
@@ -285,6 +290,11 @@ export class GetnoteView extends ItemView {
     // 叶子被复用时（Obsidian 会重开同一个视图对象）得允许再画一次。
     this.opened = false
     clearMarkdownHost()
+    // 样式是我们自己注进 document 的，React 卸载不会带走它，得手动摘。
+    if (this.removeCss !== null && this.removeCss !== undefined) {
+      this.removeCss()
+      this.removeCss = null
+    }
     // 占位那行字是 onOpen 自己摆的，不属于 React 树：视图关掉时它得跟着走，
     // 否则叶子被复用时上一次的「正在打开…」会留在新面板底下。
     try {
