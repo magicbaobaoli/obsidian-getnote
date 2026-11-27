@@ -511,6 +511,7 @@ __export(vault_exports, {
   applyInlineTagEdit: () => applyInlineTagEdit,
   backlinkSnippets: () => backlinkSnippets,
   buildTree: () => buildTree,
+  bumpEpoch: () => bumpEpoch,
   conflictArchiveName: () => conflictArchiveName,
   createDir: () => createDir,
   createNote: () => createNote,
@@ -672,6 +673,16 @@ function excerptOf(body, limit = 140) {
   const text = stripComments(body).replace(/^---[\s\S]*?\n---\s*\n?/, "").replace(/```[\s\S]*?```/g, " ").replace(/!\[[^\]]*\]\([^)]*\)/g, " ").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/^#{1,6}\s+/gm, "").replace(/[*_`>]/g, "").replace(/\s+/g, " ").trim();
   return text.length > limit ? `${text.slice(0, limit).trimEnd()}\u2026` : text;
 }
+function bumpEpoch(root) {
+  if (typeof root !== "string" || root === "") {
+    vaultEpoch.clear();
+    scanHits.clear();
+    return 0;
+  }
+  const next = (vaultEpoch.get(root) || 0) + 1;
+  vaultEpoch.set(root, next);
+  return next;
+}
 function textMemoStats() {
   return { entries: textMemo.size, bytes: textMemoBytes, limit: textMemoLimit };
 }
@@ -712,14 +723,17 @@ function invalidateScan(root) {
     textMemoBytes = 0;
   }
   if (typeof root === "string" && root !== "") {
+    bumpEpoch(root);
+    scanHits.delete(root);
     for (const key of [...scanCache.keys()]) {
       if (key === root || key.startsWith(root)) scanCache.delete(key);
     }
     return;
   }
   scanCache.clear();
+  bumpEpoch("");
 }
-async function fingerprintVault(root) {
+async function dirSignature(root) {
   const parts = [];
   async function walk(dir, relDir, depth) {
     if (depth > MAX_DEPTH) return;
@@ -740,13 +754,7 @@ async function fingerprintVault(root) {
       }
       if (!dirent2.isFile()) continue;
       if ((0, import_node_path5.extname)(name).toLowerCase() !== NOTE_EXT) continue;
-      const rel = relDir === "" ? name : `${relDir}/${name}`;
-      try {
-        const st = await stat2((0, import_node_path5.join)(dir, name));
-        names.push(`${rel}:${st.mtimeMs}:${st.size}`);
-      } catch {
-        names.push(`${rel}:?`);
-      }
+      names.push(name);
     }
     names.sort();
     parts.push(`${relDir}|${names.join(",")}`);
@@ -759,9 +767,16 @@ async function scanVault(root, options = {}) {
   let key = null;
   if (!fresh) {
     try {
-      key = `${root}\0${await fingerprintVault(root)}`;
+      key = `${root}\0${vaultEpoch.get(root) || 0}\0${await dirSignature(root)}`;
       const hit = scanCache.get(key);
-      if (hit !== void 0) return hit;
+      if (hit !== void 0) {
+        const hits = (scanHits.get(root) || 0) + 1;
+        if (hits < SCAN_HIT_REFRESH) {
+          scanHits.set(root, hits);
+          return hit;
+        }
+        scanCache.delete(key);
+      }
     } catch {
       key = null;
     }
@@ -851,6 +866,7 @@ async function scanVault(root, options = {}) {
   const emptyDirs = [...allDirs].filter((dir) => !filled.has(dir));
   const result = { entries, errors, truncated, emptyDirs };
   if (key !== null) {
+    scanHits.set(root, 0);
     if (errors.length === 0 && !truncated) {
       scanCache.set(key, result);
       if (scanCache.size > SCAN_CACHE_MAX) {
@@ -2579,7 +2595,7 @@ function listDirs(entries, emptyDirs = []) {
   }
   return [...dirs].sort((a3, b3) => a3.localeCompare(b3, "zh"));
 }
-var import_node_crypto3, import_node_path5, NOTE_EXT, MAX_READ, MAX_WRITE, MAX_SCAN, MAX_DEPTH, IGNORED_DIRS, scanCache, SCAN_CACHE_MAX, entryMemo, ENTRY_MEMO_MAX, textMemo, TEXT_MEMO_MAX_BYTES, textMemoBytes, textMemoLimit, TRASH_DIR, TRASH_NAME_RE, TRASH_INDEX, TRASH_INDEX_MAX, trashIndexQueue, linkMemo, LINK_MEMO_MAX, CONFLICT_DIR, CONFLICT_NAME_RE, CONFLICT_STATE_FILE, TAG_TOKEN_RE;
+var import_node_crypto3, import_node_path5, NOTE_EXT, MAX_READ, MAX_WRITE, MAX_SCAN, MAX_DEPTH, IGNORED_DIRS, scanCache, SCAN_CACHE_MAX, vaultEpoch, scanHits, SCAN_HIT_REFRESH, entryMemo, ENTRY_MEMO_MAX, textMemo, TEXT_MEMO_MAX_BYTES, textMemoBytes, textMemoLimit, TRASH_DIR, TRASH_NAME_RE, TRASH_INDEX, TRASH_INDEX_MAX, trashIndexQueue, linkMemo, LINK_MEMO_MAX, CONFLICT_DIR, CONFLICT_NAME_RE, CONFLICT_STATE_FILE, TAG_TOKEN_RE;
 var init_vault = __esm({
   "src/core/vault.js"() {
     init_vfs();
@@ -2607,6 +2623,9 @@ var init_vault = __esm({
     ]);
     scanCache = /* @__PURE__ */ new Map();
     SCAN_CACHE_MAX = 4;
+    vaultEpoch = /* @__PURE__ */ new Map();
+    scanHits = /* @__PURE__ */ new Map();
+    SCAN_HIT_REFRESH = 50;
     entryMemo = /* @__PURE__ */ new Map();
     ENTRY_MEMO_MAX = 2e4;
     textMemo = /* @__PURE__ */ new Map();
@@ -27392,7 +27411,7 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       });
     }
     this.addSettingTab(new GetnoteSettingTab(this.app, this));
-    const bump = () => invalidateScan();
+    const bump = () => invalidateScan(vaultRoot);
     this.registerEvent(this.app.vault.on("modify", bump));
     this.registerEvent(this.app.vault.on("create", bump));
     this.registerEvent(this.app.vault.on("delete", bump));
@@ -27633,7 +27652,7 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
         return;
       }
       await writeFile2(abs, basesTemplate({ subfolder: subfolder || DEFAULT_SUBFOLDER }));
-      invalidateScan();
+      invalidateScan((0, import_node_path8.join)(runtime2.vaultBase, subfolder));
       if (await this.openVaultFile(target)) new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A\u5DF2\u751F\u6210\u5E76\u6253\u5F00 ${target}`);
       else new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A\u5DF2\u751F\u6210 ${target}`);
     } catch (error2) {
@@ -27664,7 +27683,7 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
         return;
       }
       await writeFile2(canvasAbs, serializeCanvas(next));
-      invalidateScan();
+      invalidateScan((0, import_node_path8.join)(runtime2.vaultBase, subfolder));
       if (await this.openVaultFile(canvasRel)) new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A\u5DF2\u653E\u8FDB ${canvasRel}`);
       else new import_obsidian2.Notice(`\u5F97\u5230\u5927\u8111\uFF1A\u5DF2\u653E\u8FDB ${canvasRel}\uFF08\u6253\u5F00\u753B\u5E03\u5C31\u80FD\u770B\u5230\uFF09`);
     } catch (error2) {

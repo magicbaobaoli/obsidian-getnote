@@ -13,7 +13,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { configure, reset } from '../src/core/vfs.js'
-import { scanVault, searchNotes, invalidateScan, setTextMemoLimit, textMemoStats } from '../src/core/vault.js'
+import { scanVault, searchNotes, invalidateScan, setTextMemoLimit, textMemoStats, bumpEpoch } from '../src/core/vault.js'
 
 const BASE = '/vault'
 const DEFAULT_LIMIT = 64 * 1024 * 1024
@@ -158,6 +158,56 @@ test('正文缓存超字节上限时按 LRU 淘汰，淘汰后结果仍然正确
     const second = await searchNotes(BASE, '菠萝蜜')
     assert.deepEqual(second.hits.map((h) => h.path).sort(), first.hits.map((h) => h.path).sort())
     assert.ok(textMemoStats().bytes <= 120)
+  })
+})
+
+test('两次扫库之间没有事件，第二次连一次 stat 都不用打', async () => {
+  await withVault(FILES, async (adapter) => {
+    const first = await scanVault(BASE)
+    assert.equal(first.entries.length, 2)
+    assert.ok(adapter.counts.stat > 0, '第一次扫库总得 stat 一遍')
+
+    adapter.counts.stat = 0
+    adapter.counts.read = 0
+    const second = await scanVault(BASE)
+    assert.equal(adapter.counts.stat, 0, '命中缓存就不该再对每篇笔记 stat')
+    assert.equal(adapter.counts.read, 0, '命中缓存也不该再读正文')
+    assert.deepEqual(
+      second.entries.map((e) => e.path).sort(),
+      first.entries.map((e) => e.path).sort(),
+    )
+  })
+})
+
+test('宿主报了一次改动之后，第二次扫库必须重新扫（不再吃旧缓存）', async () => {
+  await withVault(FILES, async (adapter) => {
+    const first = await scanVault(BASE)
+    assert.equal(first.entries.length, 2)
+
+    // 模拟「用户在宿主编辑器里改了正文，宿主发了 modify 事件」：
+    // 名单没变（还是那两篇），但纪元 +1，缓存必须作废。
+    await adapter.write('随手记/另一篇.md', '# 另一篇\n\n现在也有菠萝蜜了。\n')
+    bumpEpoch(BASE)
+
+    adapter.counts.stat = 0
+    adapter.counts.read = 0
+    const second = await scanVault(BASE)
+    assert.ok(adapter.counts.stat > 0, '纪元变了就必须重新扫')
+    assert.ok(adapter.counts.read > 0, '重新扫要重新读正文')
+    const found = second.entries.find((e) => e.path === '随手记/另一篇.md')
+    assert.ok(found, '改过的那篇还在')
+    assert.match(found.excerpt, /菠萝蜜/, '要看到改过之后的内容，不能是旧快照')
+  })
+})
+
+test('新增文件即使没收到事件也会被目录签名发现', async () => {
+  await withVault(FILES, async (adapter) => {
+    await scanVault(BASE)
+    // 不 bumpEpoch：模拟宿主事件漏报，只剩目录签名这一道兜底。
+    await adapter.write('随手记/第三篇.md', '# 第三篇\n\n刚落地。\n')
+    const again = await scanVault(BASE)
+    assert.equal(again.entries.length, 3, '目录名单变了，签名就该变')
+    assert.ok(again.entries.some((e) => e.path === '随手记/第三篇.md'))
   })
 })
 

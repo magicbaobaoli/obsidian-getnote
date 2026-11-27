@@ -495,12 +495,14 @@ export default class GetnoteObsidianPlugin extends Plugin {
 
     // 库变了就让扫描缓存失效。
     //
-    // scanVault 的缓存键是「全库文件的 mtime + size 指纹」，所以它本来就不会
-    // 给出过期的数据——但算指纹本身要遍历一遍目录。用户在 Obsidian 里正常
-    // 编辑笔记（不走我们面板）时，文件事件会告诉我们「变了」，这时直接把整库
-    // 那一层丢掉，下一次扫描只需重新读变过的那几篇（逐文件记忆还在）。
-    // 这是纯优化：即使事件漏了，指纹比较仍然保证不会读到旧内容。
-    const bump = () => invalidateScan()
+    // scanVault 的缓存键现在是「库根 + 失效纪元 + 目录签名」：事件把纪元 +1，
+    // 于是下一次扫描不必先算一遍全库指纹就知道该重扫（重扫本身仍然只读变过的
+    // 那几篇，逐文件记忆还在）。事件漏报时还有目录签名与「连续命中 50 次就强扫
+    // 一次」兜底，不会一直读到旧内容。
+    //
+    // 传库根而不是空串：空串是「全清」，多库/测试收尾才用；日常一次改动只该
+    // 作废自己那个库。
+    const bump = () => invalidateScan(vaultRoot)
     this.registerEvent(this.app.vault.on('modify', bump))
     this.registerEvent(this.app.vault.on('create', bump))
     this.registerEvent(this.app.vault.on('delete', bump))
@@ -808,7 +810,7 @@ export default class GetnoteObsidianPlugin extends Plugin {
         return
       }
       await vfsWrite(abs, basesTemplate({ subfolder: subfolder || DEFAULT_SUBFOLDER }))
-      invalidateScan()
+      invalidateScan(join(runtime.vaultBase, subfolder))
       // 生成完直接打开：只写一个文件、什么都不发生，用户会以为命令没生效。
       if (await this.openVaultFile(target)) new Notice(`得到大脑：已生成并打开 ${target}`)
       else new Notice(`得到大脑：已生成 ${target}`)
@@ -845,7 +847,7 @@ export default class GetnoteObsidianPlugin extends Plugin {
         return
       }
       await vfsWrite(canvasAbs, serializeCanvas(next))
-      invalidateScan()
+      invalidateScan(join(runtime.vaultBase, subfolder))
       // 画布是拿来「摆」的：写完直接打开，用户才能接着拖、接着连。
       if (await this.openVaultFile(canvasRel)) new Notice(`得到大脑：已放进 ${canvasRel}`)
       else new Notice(`得到大脑：已放进 ${canvasRel}（打开画布就能看到）`)

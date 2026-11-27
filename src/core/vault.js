@@ -213,6 +213,32 @@ export function excerptOf(body, limit = 140) {
 const scanCache = new Map()
 const SCAN_CACHE_MAX = 4
 
+// 失效纪元：宿主每报一次库内改动（modify/create/delete/rename）就把该库根的
+// 纪元 +1。缓存键里带上它，于是「事件说变了」时不必再去算指纹就知道缓存不能用了。
+// 这是把「有没有变」从「每次都问一遍磁盘」换成「事件告诉我们」。
+const vaultEpoch = new Map()
+// 每个库根连续命中缓存的次数。命中到上限就强制作废一次，重新问磁盘——
+// 宿主事件漏报（外部工具改库、同步盘落地、git checkout）时靠它兜底。
+const scanHits = new Map()
+const SCAN_HIT_REFRESH = 50
+
+/**
+ * 把某个库根的失效纪元 +1，返回新纪元。
+ *
+ * 宿主侧的文件事件调它；离线测试（直调 core、不经过宿主）也用它手动制造
+ * 「库变了」。传空串等于全清（换库、测试收尾）。
+ */
+export function bumpEpoch(root) {
+  if (typeof root !== 'string' || root === '') {
+    vaultEpoch.clear()
+    scanHits.clear()
+    return 0
+  }
+  const next = (vaultEpoch.get(root) || 0) + 1
+  vaultEpoch.set(root, next)
+  return next
+}
+
 // 逐文件记忆：指纹变了（库里改了一篇）时，整库只有那一篇需要重新读+解析。
 // 键里带 mtime 和 size，所以任何真实的文件改动都会让它失效——这不是「缓存
 // 多久」的问题，而是「这份文件还是不是那一份」的判断。
@@ -290,22 +316,31 @@ export function invalidateScan(root) {
     textMemoBytes = 0
   }
   if (typeof root === 'string' && root !== '') {
+    // 纪元 +1：缓存键里带着它，所以「事件说这个库变了」之后，即使目录签名
+    // 一个字符都没变（只改了正文），下一次 scanVault 也必然重新扫。
+    bumpEpoch(root)
+    scanHits.delete(root)
     for (const key of [...scanCache.keys()]) {
       if (key === root || key.startsWith(root)) scanCache.delete(key)
     }
     return
   }
   scanCache.clear()
+  bumpEpoch('')
 }
 
 /**
- * 指纹：目录结构 + 每个文件的 mtimeMs/size。
+ * 目录签名：整棵目录树的「每层有哪些 .md」。
  *
- * 只 stat 不读内容，成本远低于重新解析全库。指纹里带上文件大小是因为
- * 有些文件系统（尤其网络盘、FAT）的 mtime 精度只有 2 秒，同一秒内改两次
- * 大小不同的内容时 mtime 不变。
+ * 以前这里连每个文件的 mtimeMs/size 都 stat 一遍，8000 篇的库等于每次
+ * /status、/list 打 8000 次 stat。现在只列目录（readdir 比 stat 便宜一个
+ * 量级，而且一次拿一整层）：
+ *   · 新增 / 删除 / 改名会改变某一层的名单 → 签名变 → 缓存失效；
+ *   · 正文被改（名单没变）由宿主事件（bumpEpoch）+ 逐文件 mtime 记忆兜底，
+ *     再加上「连续命中 SCAN_HIT_REFRESH 次就强扫一次」，漏报也不会一直陈旧。
+ * 换句话说：签名负责「有哪些文件」，纪元与事件负责「文件什么时候变了」。
  */
-async function fingerprintVault(root) {
+async function dirSignature(root) {
   const parts = []
   async function walk(dir, relDir, depth) {
     if (depth > MAX_DEPTH) return
@@ -326,13 +361,7 @@ async function fingerprintVault(root) {
       }
       if (!dirent.isFile()) continue
       if (extname(name).toLowerCase() !== NOTE_EXT) continue
-      const rel = relDir === '' ? name : `${relDir}/${name}`
-      try {
-        const st = await stat(join(dir, name))
-        names.push(`${rel}:${st.mtimeMs}:${st.size}`)
-      } catch {
-        names.push(`${rel}:?`)
-      }
+      names.push(name)
     }
     names.sort()
     parts.push(`${relDir}|${names.join(',')}`)
@@ -352,11 +381,23 @@ export async function scanVault(root, options = {}) {
   let key = null
   if (!fresh) {
     try {
-      key = `${root}\u0000${await fingerprintVault(root)}`
+      // 键 = 库根 + 失效纪元 + 目录签名。纪元由宿主事件推动（改一个字的正文也
+      // 会 +1），签名由目录名单推动（新增/删除/改名）。两者都不动，才认为可以
+      // 直接拿上次的结果。
+      key = `${root}\u0000${vaultEpoch.get(root) || 0}\u0000${await dirSignature(root)}`
       const hit = scanCache.get(key)
-      if (hit !== undefined) return hit
+      if (hit !== undefined) {
+        const hits = (scanHits.get(root) || 0) + 1
+        if (hits < SCAN_HIT_REFRESH) {
+          scanHits.set(root, hits)
+          return hit
+        }
+        // 连着命中太多次：宿主事件可能漏报（外部工具、同步盘、git checkout），
+        // 这一轮不走缓存，真扫一遍把磁盘真相捞回来。
+        scanCache.delete(key)
+      }
     } catch {
-      // 指纹算不出来（库被删了之类）就走完整扫描，让它把错误报出来
+      // 签名算不出来（库被删了之类）就走完整扫描，让它把错误报出来
       key = null
     }
   }
@@ -456,6 +497,8 @@ export async function scanVault(root, options = {}) {
   const emptyDirs = [...allDirs].filter((dir) => !filled.has(dir))
   const result = { entries, errors, truncated, emptyDirs }
   if (key !== null) {
+    // 真扫过一轮，命中计数归零（下一次重新开始数）。
+    scanHits.set(root, 0)
     // 只缓存「扫得干净」的结果：有错误或截断时下一次应当重试，而不是把
     // 一次不完整的快照当成真相缓存下来。
     if (errors.length === 0 && !truncated) {
