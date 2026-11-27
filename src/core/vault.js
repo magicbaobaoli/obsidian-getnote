@@ -219,12 +219,76 @@ const SCAN_CACHE_MAX = 4
 const entryMemo = new Map()
 const ENTRY_MEMO_MAX = 20000
 
+// 正文记忆：entryMemo 记住的是「解析后的条目」（标题/日期/标签/摘录），可搜索
+// 要的是原文本身，于是同一批文件在扫库之后还要被搜索再读一遍。这里用同一套
+// 键（绝对路径 + mtimeMs + size）记住原文，扫库与搜索共用。
+//
+// 必须另加字节闸：ENTRY_MEMO_MAX 限的是「条目数」，一篇 2MB 的笔记乘两万就是
+// 40GB —— 条目数上限挡不住内存被正文撑爆。默认 64MB，按 LRU 淘汰。
+const textMemo = new Map()
+const TEXT_MEMO_MAX_BYTES = 64 * 1024 * 1024
+let textMemoBytes = 0
+let textMemoLimit = TEXT_MEMO_MAX_BYTES
+
+/** 正文缓存当前占用（诊断与测试用）。 */
+export function textMemoStats() {
+  return { entries: textMemo.size, bytes: textMemoBytes, limit: textMemoLimit }
+}
+
+/**
+ * 只给测试用：把正文缓存的字节上限调小，好在几百字节的库里验证 LRU 淘汰。
+ * 传非数字或负数不生效，避免误调把缓存彻底关掉。
+ */
+export function setTextMemoLimit(bytes) {
+  const next = Number(bytes)
+  if (!Number.isFinite(next) || next < 0) return
+  textMemoLimit = next
+  trimTextMemo()
+}
+
+/** 从最久没用过的那头开始丢，直到占用回到上限以内。 */
+function trimTextMemo() {
+  while (textMemoBytes > textMemoLimit && textMemo.size > 0) {
+    const oldest = textMemo.keys().next()
+    if (oldest.done) break
+    const record = textMemo.get(oldest.value)
+    textMemoBytes -= record.bytes
+    textMemo.delete(oldest.value)
+  }
+}
+
+/**
+ * 取一篇正文：先看正文缓存，未命中才读盘并回填。
+ *
+ * 命中时要把它挪到 Map 尾部 —— Map 的插入顺序就是 LRU 的「最近使用」顺序，
+ * 不挪的话热门笔记会被冷门笔记按插入顺序挤出去。
+ */
+async function getEntryText(abs, mtimeMs, size) {
+  const key = `${abs}\u0000${mtimeMs}\u0000${size}`
+  const hit = textMemo.get(key)
+  if (hit !== undefined) {
+    textMemo.delete(key)
+    textMemo.set(key, hit)
+    return hit.text
+  }
+  const text = await readFile(abs, 'utf8')
+  const bytes = Number(size) > 0 ? Number(size) : text.length
+  textMemo.set(key, { text, bytes })
+  textMemoBytes += bytes
+  trimTextMemo()
+  return text
+}
+
 /** 丢掉某个库根的扫描缓存；不传就全丢。插件写完文件后调它。 */
 export function invalidateScan(root) {
   // 只丢「整库指纹 → 扫描结果」这一层。逐文件记忆不用清：它的键里带着
   // mtime 和 size，文件真变了自然就换键，没变的那些还留着省一次读盘+解析。
   // 不传 root 是彻底重置（换库、测试收尾时用）。
-  if (typeof root !== 'string' || root === '') entryMemo.clear()
+  if (typeof root !== 'string' || root === '') {
+    entryMemo.clear()
+    textMemo.clear()
+    textMemoBytes = 0
+  }
   if (typeof root === 'string' && root !== '') {
     for (const key of [...scanCache.keys()]) {
       if (key === root || key.startsWith(root)) scanCache.delete(key)
@@ -347,7 +411,7 @@ export async function scanVault(root, options = {}) {
           entries.push({ ...memo, path: rel, name, dir: relDir })
           continue
         }
-        const text = await readFile(abs, 'utf8')
+        const text = await getEntryText(abs, st.mtimeMs, st.size)
         const { data, body } = parseFrontmatter(text)
         const entry = {
           path: rel,
@@ -1141,7 +1205,11 @@ export async function searchNotes(root, query, { limit = 60, perFile = 3, sort =
       scanned += 1
       let text
       try {
-        text = await readFile(join(dir, name), 'utf8')
+        // 搜索只关心正文，和扫库共用同一份「正文记忆」：同样的查询连打两次、
+        // 或者刚扫过库再搜，都不必再读一遍盘，只花一次 stat 确认文件没变。
+        const abs = join(dir, name)
+        const st = await stat(abs)
+        text = await getEntryText(abs, st.mtimeMs, st.size)
       } catch {
         continue
       }

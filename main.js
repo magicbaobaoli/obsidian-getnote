@@ -558,7 +558,9 @@ __export(vault_exports, {
   saveAsset: () => saveAsset,
   scanVault: () => scanVault,
   searchNotes: () => searchNotes,
+  setTextMemoLimit: () => setTextMemoLimit,
   stripComments: () => stripComments,
+  textMemoStats: () => textMemoStats,
   toPosix: () => toPosix,
   toggleTodo: () => toggleTodo,
   trashNote: () => trashNote,
@@ -670,8 +672,45 @@ function excerptOf(body, limit = 140) {
   const text = stripComments(body).replace(/^---[\s\S]*?\n---\s*\n?/, "").replace(/```[\s\S]*?```/g, " ").replace(/!\[[^\]]*\]\([^)]*\)/g, " ").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/^#{1,6}\s+/gm, "").replace(/[*_`>]/g, "").replace(/\s+/g, " ").trim();
   return text.length > limit ? `${text.slice(0, limit).trimEnd()}\u2026` : text;
 }
+function textMemoStats() {
+  return { entries: textMemo.size, bytes: textMemoBytes, limit: textMemoLimit };
+}
+function setTextMemoLimit(bytes) {
+  const next = Number(bytes);
+  if (!Number.isFinite(next) || next < 0) return;
+  textMemoLimit = next;
+  trimTextMemo();
+}
+function trimTextMemo() {
+  while (textMemoBytes > textMemoLimit && textMemo.size > 0) {
+    const oldest = textMemo.keys().next();
+    if (oldest.done) break;
+    const record = textMemo.get(oldest.value);
+    textMemoBytes -= record.bytes;
+    textMemo.delete(oldest.value);
+  }
+}
+async function getEntryText(abs, mtimeMs, size) {
+  const key = `${abs}\0${mtimeMs}\0${size}`;
+  const hit = textMemo.get(key);
+  if (hit !== void 0) {
+    textMemo.delete(key);
+    textMemo.set(key, hit);
+    return hit.text;
+  }
+  const text = await readFile2(abs, "utf8");
+  const bytes = Number(size) > 0 ? Number(size) : text.length;
+  textMemo.set(key, { text, bytes });
+  textMemoBytes += bytes;
+  trimTextMemo();
+  return text;
+}
 function invalidateScan(root) {
-  if (typeof root !== "string" || root === "") entryMemo.clear();
+  if (typeof root !== "string" || root === "") {
+    entryMemo.clear();
+    textMemo.clear();
+    textMemoBytes = 0;
+  }
   if (typeof root === "string" && root !== "") {
     for (const key of [...scanCache.keys()]) {
       if (key === root || key.startsWith(root)) scanCache.delete(key);
@@ -771,7 +810,7 @@ async function scanVault(root, options = {}) {
           entries.push({ ...memo, path: rel, name, dir: relDir });
           continue;
         }
-        const text = await readFile2(abs, "utf8");
+        const text = await getEntryText(abs, st.mtimeMs, st.size);
         const { data, body } = parseFrontmatter(text);
         const entry = {
           path: rel,
@@ -1358,7 +1397,9 @@ async function searchNotes(root, query, { limit = 60, perFile = 3, sort = "relev
       scanned += 1;
       let text;
       try {
-        text = await readFile2((0, import_node_path5.join)(dir, name), "utf8");
+        const abs = (0, import_node_path5.join)(dir, name);
+        const st = await stat2(abs);
+        text = await getEntryText(abs, st.mtimeMs, st.size);
       } catch {
         continue;
       }
@@ -2538,7 +2579,7 @@ function listDirs(entries, emptyDirs = []) {
   }
   return [...dirs].sort((a3, b3) => a3.localeCompare(b3, "zh"));
 }
-var import_node_crypto3, import_node_path5, NOTE_EXT, MAX_READ, MAX_WRITE, MAX_SCAN, MAX_DEPTH, IGNORED_DIRS, scanCache, SCAN_CACHE_MAX, entryMemo, ENTRY_MEMO_MAX, TRASH_DIR, TRASH_NAME_RE, TRASH_INDEX, TRASH_INDEX_MAX, trashIndexQueue, linkMemo, LINK_MEMO_MAX, CONFLICT_DIR, CONFLICT_NAME_RE, CONFLICT_STATE_FILE, TAG_TOKEN_RE;
+var import_node_crypto3, import_node_path5, NOTE_EXT, MAX_READ, MAX_WRITE, MAX_SCAN, MAX_DEPTH, IGNORED_DIRS, scanCache, SCAN_CACHE_MAX, entryMemo, ENTRY_MEMO_MAX, textMemo, TEXT_MEMO_MAX_BYTES, textMemoBytes, textMemoLimit, TRASH_DIR, TRASH_NAME_RE, TRASH_INDEX, TRASH_INDEX_MAX, trashIndexQueue, linkMemo, LINK_MEMO_MAX, CONFLICT_DIR, CONFLICT_NAME_RE, CONFLICT_STATE_FILE, TAG_TOKEN_RE;
 var init_vault = __esm({
   "src/core/vault.js"() {
     init_vfs();
@@ -2568,6 +2609,10 @@ var init_vault = __esm({
     SCAN_CACHE_MAX = 4;
     entryMemo = /* @__PURE__ */ new Map();
     ENTRY_MEMO_MAX = 2e4;
+    textMemo = /* @__PURE__ */ new Map();
+    TEXT_MEMO_MAX_BYTES = 64 * 1024 * 1024;
+    textMemoBytes = 0;
+    textMemoLimit = TEXT_MEMO_MAX_BYTES;
     TRASH_DIR = ".trash";
     TRASH_NAME_RE = /^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})-(\d{3})Z__(.+)$/;
     TRASH_INDEX = ".origins.json";
