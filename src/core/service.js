@@ -13,6 +13,7 @@
  * resolveInside）。云端凭证只存 $DSH_HOME，绝不回传给浏览器。
  */
 import { access, mkdir, readdir, rename, stat, readFile as vfsReadFile } from './vfs.js'
+import { coreError } from './errors.js'
 import { dirname, join } from 'node:path'
 import {
   cardInfo,
@@ -298,7 +299,7 @@ function readBody(req, cap) {
       if (size > cap) {
         // 注意：不能 req.destroy()，否则 413 分支到不了客户端
         req.pause()
-        rejectBody(Object.assign(new Error('request body too large'), { status: 413 }))
+        rejectBody(coreError('service.bodyTooLarge', {}, { status: 413 }))
         return
       }
       chunks.push(chunk)
@@ -322,7 +323,7 @@ function readBufferBody(req, cap) {
       size += chunk.length
       if (size > cap) {
         req.pause()
-        rejectBody(Object.assign(new Error('request body too large'), { status: 413 }))
+        rejectBody(coreError('service.bodyTooLarge', {}, { status: 413 }))
         return
       }
       chunks.push(chunk)
@@ -339,7 +340,7 @@ async function readJsonBody(req, cap = 256 * 1024) {
     const parsed = JSON.parse(text)
     return parsed && typeof parsed === 'object' ? parsed : {}
   } catch {
-    throw Object.assign(new Error('body must be valid JSON'), { status: 400 })
+    throw coreError("service.badJson", {}, { status: 400 })
   }
 }
 
@@ -356,6 +357,9 @@ function fail(res, error) {
   const status = error && typeof error.status === 'number' ? error.status : 500
   const message = error && error.message ? error.message : 'internal error'
   const payload = { error: message }
+  // 面板要按 code 去 LEX 取本地化文案；message 只是中文兜底。
+  if (error && typeof error.code === 'string' && error.code !== '') payload.code = error.code
+  if (error && error.params !== undefined && error.params !== null) payload.params = error.params
   // 保存撞车时把「磁盘上现在是什么」一起带回去：只回一句「被改过了」，
   // 面板只能干瞪眼，用户还得自己去翻那一篇才知道差在哪。
   if (error && error.conflict !== undefined && error.conflict !== null) payload.conflict = error.conflict
@@ -391,7 +395,7 @@ async function ensureAccessToken({ allowRefresh = true } = {}) {
 async function openClient() {
   const token = await ensureAccessToken()
   if (!token) {
-    throw Object.assign(new Error('尚未登录得到大脑（或授权已过期），先在面板里点「登录并导入」'), { status: 401 })
+    throw coreError("service.notLoggedIn", {}, { status: 401 })
   }
   const client = new McpClient(token)
   await client.initialize()
@@ -445,10 +449,7 @@ async function openCloudClient() {
     // Key 被拒过、又没有 MCP 兜底：仍然返回 Open API，让错误如实抛给用户
     return createOpenApiClient({ apiKey: cloud.apiKey, clientId: cloud.clientId, grantId: cloud.grantId, fetchImpl: netFetch })
   }
-  throw Object.assign(
-    new Error('还没有接入得到大脑。最省事的是去「同步」页点「登录得到大脑」（一次授权，之后自动同步）；也可以在「设置 → 云端接入」填 API Key 与 Client ID（在 openapi.biji.com 控制台创建）。'),
-    { status: 401, reason: 'no_credentials' },
-  )
+  throw coreError("service.noCredentials", {}, { status: 401, reason: 'no_credentials' })
 }
 
 /**
@@ -807,7 +808,7 @@ export function createHandler(config) {
 
   async function handleRead(res, url) {
     const { root, missing } = await currentRoot()
-    if (missing) throw Object.assign(new Error(`本地库目录不存在：${missing}`), { status: 404 })
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 })
     const path = url.searchParams.get('path') || ''
     const note = await readNote(root, path)
     // 顺带把这篇笔记自己的附件（录音 / 转写 / 图片）带回去：面板要在阅读区直接
@@ -890,10 +891,10 @@ export function createHandler(config) {
     const body = await readJsonBody(req)
     const from = String(body.from || body.name || '').trim()
     const to = String(body.to || body.target || '').trim()
-    if (from === '') throw Object.assign(new Error('需要 from（原来指的那个名字）'), { status: 400 })
-    if (to === '') throw Object.assign(new Error('要指到哪一篇不能为空'), { status: 400 })
+    if (from === '') throw coreError("service.needFromRename", {}, { status: 400 })
+    if (to === '') throw coreError("vault.toLinkEmpty", {}, { status: 400 })
     const { root, missing } = await currentRoot()
-    if (missing) throw Object.assign(new Error(`本地库目录不存在：${missing}`), { status: 404 })
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 })
     const { entries } = await scanVault(root)
     const limit = await historyLimitNow()
     const result = await rewriteLinkTarget(root, from, to, entries, {
@@ -928,7 +929,7 @@ export function createHandler(config) {
 
   async function handleConflictRead(res, url) {
     const { root, missing } = await currentRoot()
-    if (missing) throw Object.assign(new Error(`本地库目录不存在：${missing}`), { status: 404 })
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 })
     const path = url.searchParams.get('path') || ''
     const detail = await readConflict(root, path)
     // 顺手把候选正本的当前内容带上：比对界面要左右并排显示，再打一次
@@ -948,9 +949,9 @@ export function createHandler(config) {
   async function handleConflictResolve(req, res) {
     const body = await readJsonBody(req)
     const path = String(body.path || '').trim()
-    if (path === '') throw Object.assign(new Error('需要 path'), { status: 400 })
+    if (path === '') throw coreError("service.needPath", {}, { status: 400 })
     const { root, missing } = await currentRoot()
-    if (missing) throw Object.assign(new Error(`本地库目录不存在：${missing}`), { status: 404 })
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 })
     const keepLocal = body.keepLocal === true
     // 采纳云端版会覆盖正本，先留一版历史——冲突解决后想反悔，历史是唯一退路。
     const limit = await historyLimitNow()
@@ -976,9 +977,9 @@ export function createHandler(config) {
   async function handleConflictUnresolve(req, res) {
     const body = await readJsonBody(req)
     const path = String(body.path || '').trim()
-    if (path === '') throw Object.assign(new Error('需要 path'), { status: 400 })
+    if (path === '') throw coreError("service.needPath", {}, { status: 400 })
     const { root, missing } = await currentRoot()
-    if (missing) throw Object.assign(new Error(`本地库目录不存在：${missing}`), { status: 404 })
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 })
     const result = await unresolveConflict(root, path)
     send(res, 200, { ok: true, ...result })
   }
@@ -994,9 +995,9 @@ export function createHandler(config) {
   async function handleCreateDir(req, res) {
     const body = await readJsonBody(req)
     const dir = String(body.dir || body.path || '').trim()
-    if (dir === '') throw Object.assign(new Error('目录名不能为空'), { status: 400 })
+    if (dir === '') throw coreError("vault.dirNameEmpty", {}, { status: 400 })
     const { root, missing } = await currentRoot()
-    if (missing) throw Object.assign(new Error(`本地库目录不存在：${missing}`), { status: 404 })
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 })
     const result = await createDir(root, dir)
     send(res, 200, { ok: true, empty: true, ...result })
   }
@@ -1011,10 +1012,10 @@ export function createHandler(config) {
     const body = await readJsonBody(req)
     const from = String(body.from || body.dir || body.path || '').trim()
     const to = String(body.to || body.name || '').trim()
-    if (from === '') throw Object.assign(new Error('需要 from（原目录路径）'), { status: 400 })
-    if (to === '') throw Object.assign(new Error('新目录名不能为空'), { status: 400 })
+    if (from === '') throw coreError("service.needFromDir", {}, { status: 400 })
+    if (to === '') throw coreError("vault.newDirNameEmpty", {}, { status: 400 })
     const { root, missing } = await currentRoot()
-    if (missing) throw Object.assign(new Error(`本地库目录不存在：${missing}`), { status: 404 })
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 })
     const result = await renameDir(root, from, to)
     send(res, 200, { ok: true, ...result })
   }
@@ -1029,9 +1030,9 @@ export function createHandler(config) {
   async function handleDeleteDir(req, res) {
     const body = await readJsonBody(req)
     const dir = String(body.dir || body.path || '').trim()
-    if (dir === '') throw Object.assign(new Error('需要 dir'), { status: 400 })
+    if (dir === '') throw coreError("service.needDir", {}, { status: 400 })
     const { root, missing } = await currentRoot()
-    if (missing) throw Object.assign(new Error(`本地库目录不存在：${missing}`), { status: 404 })
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 })
     const result = body.recursive === true ? await removeDirTree(root, dir) : await removeDir(root, dir)
     send(res, 200, { ok: true, ...result })
   }
@@ -1044,7 +1045,7 @@ export function createHandler(config) {
    */
   async function handleDirContents(res, url) {
     const dir = String(url.searchParams.get('dir') || '').trim().replace(/^\/+|\/+$/g, '')
-    if (dir === '') throw Object.assign(new Error('需要 dir'), { status: 400 })
+    if (dir === '') throw coreError("service.needDir", {}, { status: 400 })
     const { root, missing } = await currentRoot()
     if (missing) return send(res, 200, { dir, notes: 0, dirs: 0, missing: true })
     const { entries } = await scanVault(root)
@@ -1070,9 +1071,9 @@ export function createHandler(config) {
   async function handleDeleteTag(req, res) {
     const body = await readJsonBody(req)
     const tag = String(body.tag || '').trim()
-    if (tag === '') throw Object.assign(new Error('需要 tag'), { status: 400 })
+    if (tag === '') throw coreError("service.needTag", {}, { status: 400 })
     const { root, missing } = await currentRoot()
-    if (missing) throw Object.assign(new Error(`本地库目录不存在：${missing}`), { status: 404 })
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 })
     const { entries } = await scanVault(root)
     // 走版本历史而不是给每篇留 .bak：批量删标签可能一次改几十篇，
     // 留 .bak 会在库里堆出几十个看不见的副本。
@@ -1095,10 +1096,10 @@ export function createHandler(config) {
     const body = await readJsonBody(req)
     const from = String(body.from || body.tag || '').trim()
     const to = String(body.to || body.name || '').trim()
-    if (from === '') throw Object.assign(new Error('需要 from（原标签名）'), { status: 400 })
-    if (to === '') throw Object.assign(new Error('新标签名不能为空'), { status: 400 })
+    if (from === '') throw coreError("service.needFromTag", {}, { status: 400 })
+    if (to === '') throw coreError("vault.newTagNameEmpty", {}, { status: 400 })
     const { root, missing } = await currentRoot()
-    if (missing) throw Object.assign(new Error(`本地库目录不存在：${missing}`), { status: 404 })
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 })
     const { entries } = await scanVault(root)
     const limit = await historyLimitNow()
     const result = await renameTag(root, from, to, entries, {
@@ -1120,13 +1121,13 @@ export function createHandler(config) {
   async function handleToggleTodo(req, res) {
     const body = await readJsonBody(req)
     const path = String(body.path || '').trim()
-    if (path === '') throw Object.assign(new Error('需要 path（笔记路径）'), { status: 400 })
+    if (path === '') throw coreError("service.needPathNote", {}, { status: 400 })
     const index = Number(body.index)
     if (!Number.isInteger(index) || index < 0) {
-      throw Object.assign(new Error('需要 index（第几个待办，从 0 开始）'), { status: 400 })
+      throw coreError("service.needIndex", {}, { status: 400 })
     }
     const { root, missing } = await currentRoot()
-    if (missing) throw Object.assign(new Error(`本地库目录不存在：${missing}`), { status: 404 })
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 })
     const limit = await historyLimitNow()
     const result = await toggleTodo(root, path, index, {
       snapshot: async (rel) => {
@@ -1150,7 +1151,7 @@ export function createHandler(config) {
 
   async function handleHistoryRead(res, url) {
     const { root, missing } = await currentRoot()
-    if (missing) throw Object.assign(new Error(`本地库目录不存在：${missing}`), { status: 404 })
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 })
     const path = url.searchParams.get('path') || ''
     const name = url.searchParams.get('name') || ''
     const entry = await readHistoryEntry(root, path, name)
@@ -1161,9 +1162,9 @@ export function createHandler(config) {
     const body = await readJsonBody(req)
     const path = String(body.path || '').trim()
     const name = String(body.name || '').trim()
-    if (path === '' || name === '') throw Object.assign(new Error('需要 path 与 name'), { status: 400 })
+    if (path === '' || name === '') throw coreError("service.needPathName", {}, { status: 400 })
     const { root, missing } = await currentRoot()
-    if (missing) throw Object.assign(new Error(`本地库目录不存在：${missing}`), { status: 404 })
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 })
     const result = await restoreHistoryEntry(root, path, name, { keepCurrent: body.keepCurrent !== false })
     send(res, 200, { ok: true, ...result })
   }
@@ -1178,7 +1179,7 @@ export function createHandler(config) {
    */
   async function handleArchiveExport(req, res, url) {
     const { root, missing } = await currentRoot()
-    if (missing) throw Object.assign(new Error(`本地库目录不存在：${missing}`), { status: 404 })
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 })
     // scope=notes 只要文字、scope=assets 只要附件，dir 限定某个子目录。
     // 三个参数都可省，省略即整库全量，与旧行为一致。
     const result = await exportVaultToZip(root, {
@@ -1241,7 +1242,7 @@ export function createHandler(config) {
 
   async function handleArchiveImport(req, res) {
     const { root, missing } = await currentRoot()
-    if (missing) throw Object.assign(new Error(`本地库目录不存在：${missing}`), { status: 404 })
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 })
     // zip 走二进制 body，上限放宽到 512MB（readBody 的默认上限是给 JSON 用的 2MB）
     const buffer = await readBufferBody(req, 512 * 1024 * 1024)
     const mode = req.headers['x-getnote-import-mode'] === 'skip' ? 'skip' : 'rename'
@@ -1297,9 +1298,9 @@ export function createHandler(config) {
    */
   async function handleAsset(req, res, url) {
     const { root, missing } = await currentRoot()
-    if (missing) throw Object.assign(new Error(`本地库目录不存在：${missing}`), { status: 404 })
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 })
     const rel = url.searchParams.get('path') || ''
-    if (rel === '') throw Object.assign(new Error('path 不能为空'), { status: 400 })
+    if (rel === '') throw coreError("service.pathEmpty", {}, { status: 400 })
     const lower = rel.toLowerCase()
     const type = /\.(mp3)$/.test(lower)
       ? 'audio/mpeg'
@@ -1322,10 +1323,10 @@ export function createHandler(config) {
                       : /\.(md)$/.test(lower)
                         ? 'text/markdown; charset=utf-8'
                         : null
-    if (type === null) throw Object.assign(new Error('不支持的文件类型'), { status: 400 })
+    if (type === null) throw coreError("service.unsupportedFileType", {}, { status: 400 })
     const { abs } = resolveInside(root, rel)
     const st = await stat(abs)
-    if (!st.isFile()) throw Object.assign(new Error('不是文件'), { status: 400 })
+    if (!st.isFile()) throw coreError("vault.notAFile", {}, { status: 400 })
     const headers = {
       'content-type': type,
       'accept-ranges': 'bytes',
@@ -1371,12 +1372,12 @@ export function createHandler(config) {
   async function handleAssetUpload(req, res, url) {
     const { root } = await currentRoot()
     const note = url.searchParams.get('path') || ''
-    if (note === '') throw Object.assign(new Error('path 不能为空'), { status: 400 })
+    if (note === '') throw coreError("service.pathEmpty", {}, { status: 400 })
     const header = req.headers['x-getnote-filename']
     const name = typeof header === 'string' ? decodeURIComponent(header) : ''
-    if (name === '') throw Object.assign(new Error('文件名不能为空'), { status: 400 })
+    if (name === '') throw coreError("service.fileNameEmpty", {}, { status: 400 })
     const data = await readBufferBody(req, MAX_UPLOAD)
-    if (data.length === 0) throw Object.assign(new Error('文件是空的'), { status: 400 })
+    if (data.length === 0) throw coreError("vault.emptyFile", {}, { status: 400 })
     const saved = await saveAsset(root, note, name, data)
     return send(res, 200, { ok: true, ...saved })
   }
@@ -1386,7 +1387,7 @@ export function createHandler(config) {
     const { root } = await currentRoot()
     const path = typeof body.path === 'string' ? body.path : ''
     const content = typeof body.content === 'string' ? body.content : ''
-    if (path === '') throw Object.assign(new Error('path 不能为空'), { status: 400 })
+    if (path === '') throw coreError("service.pathEmpty", {}, { status: 400 })
     // 内容没变就什么都不做：双击保存、或者存完又点一次，不该在历史里留下
     // 一串一模一样的版本，把真正想回退的那一版挤出窗口。
     try {
@@ -1423,9 +1424,7 @@ export function createHandler(config) {
         } catch {
           now = null
         }
-        const conflict = Object.assign(new Error('这一篇在别处被改过了'), { status: 409 })
-        conflict.conflict = now
-        throw conflict
+        throw coreError('vault.conflict', {}, { status: 409, conflict: now })
       }
       throw error
     }
@@ -1443,16 +1442,16 @@ export function createHandler(config) {
     const body = await readJsonBody(req, MAX_BODY)
     const action = String(body.action || '')
     const paths = Array.isArray(body.paths) ? body.paths.filter((p) => typeof p === 'string' && p !== '') : []
-    if (paths.length === 0) throw Object.assign(new Error('需要 paths'), { status: 400 })
+    if (paths.length === 0) throw coreError("service.needPaths", {}, { status: 400 })
     if (action !== 'tag' && action !== 'untag' && action !== 'move' && action !== 'delete') {
-      throw Object.assign(new Error('action 只能是 tag / untag / move / delete'), { status: 400 })
+      throw coreError("service.badBatchAction", {}, { status: 400 })
     }
     const tag = typeof body.tag === 'string' ? body.tag.trim() : ''
     const dir = typeof body.dir === 'string' ? body.dir.trim() : ''
-    if ((action === 'tag' || action === 'untag') && tag === '') throw Object.assign(new Error('需要 tag'), { status: 400 })
-    if (action === 'move' && dir === '') throw Object.assign(new Error('需要 dir'), { status: 400 })
+    if ((action === 'tag' || action === 'untag') && tag === '') throw coreError("service.needTag", {}, { status: 400 })
+    if (action === 'move' && dir === '') throw coreError("service.needDir", {}, { status: 400 })
     const { root, missing } = await currentRoot()
-    if (missing) throw Object.assign(new Error(`本地库目录不存在：${missing}`), { status: 404 })
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 })
 
     let changed = 0
     const failed = []
@@ -1578,7 +1577,7 @@ export function createHandler(config) {
     const body = await readJsonBody(req)
     const { root } = await currentRoot()
     const path = typeof body.path === 'string' ? body.path : ''
-    if (path === '') throw Object.assign(new Error('path 不能为空'), { status: 400 })
+    if (path === '') throw coreError("service.pathEmpty", {}, { status: 400 })
     // 删前留一版历史：回收站能救回「整篇被删」，但救不回「删了以后又新建
     // 了同名文件、回收站里那份被顶掉」这种情况；历史是按内容留的，更稳。
     try {
@@ -1603,7 +1602,7 @@ export function createHandler(config) {
     const body = await readJsonBody(req)
     const { root } = await currentRoot()
     const path = typeof body.path === 'string' ? body.path.trim() : ''
-    if (path === '') throw Object.assign(new Error('path 不能为空'), { status: 400 })
+    if (path === '') throw coreError("service.pathEmpty", {}, { status: 400 })
     const target = typeof body.target === 'string' ? body.target : ''
     const result = await restoreNote(root, path, target)
     send(res, 200, { ok: true, ...result })
@@ -1619,7 +1618,7 @@ export function createHandler(config) {
     const body = await readJsonBody(req)
     const { root } = await currentRoot()
     const paths = Array.isArray(body.paths) ? body.paths.filter((one) => typeof one === 'string' && one.trim() !== '') : []
-    if (paths.length === 0) throw Object.assign(new Error('paths 不能为空'), { status: 400 })
+    if (paths.length === 0) throw coreError("service.pathsEmpty", {}, { status: 400 })
     const target = typeof body.target === 'string' ? body.target : ''
     const result = await restoreNotes(root, paths, target)
     send(res, 200, { ok: true, ...result })
@@ -1629,7 +1628,7 @@ export function createHandler(config) {
     const body = await readJsonBody(req)
     const { root } = await currentRoot()
     const paths = Array.isArray(body.paths) ? body.paths.filter((one) => typeof one === 'string' && one.trim() !== '') : []
-    if (paths.length === 0) throw Object.assign(new Error('paths 不能为空'), { status: 400 })
+    if (paths.length === 0) throw coreError("service.pathsEmpty", {}, { status: 400 })
     const result = await purgeTrashMany(root, paths)
     send(res, 200, { ok: true, ...result })
   }
@@ -1669,15 +1668,15 @@ export function createHandler(config) {
     const path = String(body.path || '').trim()
     const noteId = String(body.noteId || '').trim()
     if (path === '' && noteId === '') {
-      throw Object.assign(new Error('需要 path 或 noteId'), { status: 400 })
+      throw coreError("service.needPathOrId", {}, { status: 400 })
     }
     const settings = await readSettings()
     const { root, missing } = await resolveVaultRoot(settings.vaultRoot || config.vaultPath || null)
-    if (missing) throw Object.assign(new Error(`本地库目录不存在：${missing}`), { status: 404 })
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 })
     const client = await openCloudClient()
     const state = await readSyncState()
     const id = noteId !== '' ? noteId : await noteIdOfPath(root, path, state)
-    if (id === '') throw Object.assign(new Error('这篇笔记没有 note_id，无从刷新'), { status: 400 })
+    if (id === '') throw coreError("service.noNoteId", {}, { status: 400 })
     const outcome = await syncSingleNote({ client, root, state, noteId: id })
     await writeSyncState(state)
     let note = null
@@ -1700,10 +1699,10 @@ export function createHandler(config) {
   async function handleSyncPushOne(req, res) {
     const body = await readJsonBody(req)
     const path = String(body.path || '').trim()
-    if (path === '') throw Object.assign(new Error('需要 path'), { status: 400 })
+    if (path === '') throw coreError("service.needPath", {}, { status: 400 })
     const settings = await readSettings()
     const { root, missing } = await resolveVaultRoot(settings.vaultRoot || config.vaultPath || null)
-    if (missing) throw Object.assign(new Error(`本地库目录不存在：${missing}`), { status: 404 })
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 })
     const client = await openCloudClient()
     const result = await pushLocalNote({ client, root, relPath: path })
     // 推送成功后刷新这一篇的指纹记录：只记 note_id 不记指纹的话，下一轮同步
@@ -1748,11 +1747,11 @@ export function createHandler(config) {
    */
   async function handleSyncPushAll(req, res) {
     const body = await readJsonBody(req)
-    if (syncState.running) throw Object.assign(new Error('正在跑一轮同步，等它结束再推'), { status: 409 })
+    if (syncState.running) throw coreError("service.syncRunning", {}, { status: 409 })
     const dir = typeof body.dir === 'string' ? body.dir.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '') : ''
     const limit = Math.min(Math.max(Number(body.limit) || 200, 1), 500)
     const { root, missing } = await currentRoot()
-    if (missing) throw Object.assign(new Error(`本地库目录不存在：${missing}`), { status: 404 })
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 })
     const client = await openCloudClient()
     const scan = await scanVault(root)
     const state = await readSyncState()
@@ -1886,7 +1885,7 @@ export function createHandler(config) {
 
   async function handleAuthStart(req, res) {
     const origin = config.getOrigin()
-    if (!origin) throw Object.assign(new Error('无法确定 DSH Web 的访问地址'), { status: 503 })
+    if (!origin) throw coreError("service.noOrigin", {}, { status: 503 })
     const redirectUri = redirectUriFor(origin)
     // 复用已注册的 client，避免每次登录都在服务端留下一个废弃 client
     // 只有「当初注册时用的回调地址」和这次一致，才能复用 client_id。
@@ -1971,7 +1970,8 @@ export function createHandler(config) {
   async function handleImport(req, res) {
     const body = await readJsonBody(req)
     if (importState.running) {
-      return send(res, 200, { ok: false, running: true, error: '已有一个导入任务在跑，等它结束再试' })
+      const busy = coreError('service.importRunning')
+      return send(res, 200, { ok: false, running: true, error: busy.message, code: busy.code })
     }
     const { root } = await currentRoot()
     let client
@@ -2147,9 +2147,9 @@ export function createHandler(config) {
   async function handleCloudRead(res, url) {
     const client = await openCloudClient()
     const noteId = url.searchParams.get('id') || ''
-    if (noteId === '') throw Object.assign(new Error('id 不能为空'), { status: 400 })
+    if (noteId === '') throw coreError("service.idEmpty", {}, { status: 400 })
     const raw = await client.getNote(noteId)
-    if (!raw) throw Object.assign(new Error('云端没有这篇笔记（可能已被删除）'), { status: 404 })
+    if (!raw) throw coreError("service.cloudNoteMissing", {}, { status: 404 })
     // 顺带告诉前端「这篇在本地库里的哪一个文件」：面板要提供「把本地改动推到云端」
     // 这个动作，没有路径就只能让用户自己找。state 里记的就是同步落点。
     const state = await readSyncState()
@@ -2181,7 +2181,7 @@ export function createHandler(config) {
     const body = await readJsonBody(req, MAX_BODY)
     const client = await openCloudClient()
     const noteId = typeof body.noteId === 'string' ? body.noteId : ''
-    if (noteId === '') throw Object.assign(new Error('noteId 不能为空'), { status: 400 })
+    if (noteId === '') throw coreError("service.noteIdEmpty", {}, { status: 400 })
     await client.updateNote({
       noteId,
       title: typeof body.title === 'string' ? body.title : undefined,
@@ -2203,7 +2203,7 @@ export function createHandler(config) {
     const body = await readJsonBody(req)
     const client = await openCloudClient()
     const noteId = typeof body.noteId === 'string' ? body.noteId : ''
-    if (noteId === '') throw Object.assign(new Error('noteId 不能为空'), { status: 400 })
+    if (noteId === '') throw coreError("service.noteIdEmpty", {}, { status: 400 })
     await client.deleteNote(noteId)
     // 本地对应文件移进回收站（不硬删）
     let local = null
@@ -2228,7 +2228,7 @@ export function createHandler(config) {
     const client = await openCloudClient()
     const noteId = typeof body.noteId === 'string' ? body.noteId : ''
     const tags = Array.isArray(body.tags) ? body.tags.map(String) : []
-    if (noteId === '' || tags.length === 0) throw Object.assign(new Error('noteId 与 tags 都不能为空'), { status: 400 })
+    if (noteId === '' || tags.length === 0) throw coreError("service.noteIdTagsEmpty", {}, { status: 400 })
     await client.addTags(noteId, tags)
     send(res, 200, { ok: true })
   }
@@ -2238,7 +2238,7 @@ export function createHandler(config) {
     const client = await openCloudClient()
     const noteId = typeof body.noteId === 'string' ? body.noteId : ''
     const tagId = typeof body.tagId === 'string' ? body.tagId : ''
-    if (noteId === '' || tagId === '') throw Object.assign(new Error('noteId 与 tagId 都不能为空'), { status: 400 })
+    if (noteId === '' || tagId === '') throw coreError("service.noteIdTagIdEmpty", {}, { status: 400 })
     await client.deleteTag(noteId, tagId)
     send(res, 200, { ok: true })
   }
@@ -2254,7 +2254,7 @@ export function createHandler(config) {
   async function handleCloudTopicNotes(res, url) {
     const client = await openCloudClient()
     const topicId = url.searchParams.get('topicId') || ''
-    if (topicId === '') throw Object.assign(new Error('topicId 不能为空'), { status: 400 })
+    if (topicId === '') throw coreError("service.topicIdEmpty", {}, { status: 400 })
     const page = Number(url.searchParams.get('page')) || 1
     const result = await client.listTopicNotes({ topicId, page })
     send(res, 200, { ...result, notes: result.notes.map((n) => normalizeNote(n, { topicName: '' })).filter(Boolean) })
@@ -2271,7 +2271,7 @@ export function createHandler(config) {
     const body = await readJsonBody(req)
     const client = await openCloudClient()
     const query = typeof body.query === 'string' ? body.query.trim() : ''
-    if (query === '') throw Object.assign(new Error('query 不能为空'), { status: 400 })
+    if (query === '') throw coreError("service.queryEmpty", {}, { status: 400 })
     const topK = Number(body.topK) > 0 ? Math.min(Number(body.topK), 10) : 5
     const results = body.topicId ? await client.recallInTopic({ topicId: body.topicId, query, topK }) : await client.recall(query, topK)
     send(res, 200, {
@@ -2287,7 +2287,7 @@ export function createHandler(config) {
     const body = await readJsonBody(req)
     const client = await openCloudClient()
     const noteId = typeof body.noteId === 'string' ? body.noteId : ''
-    if (noteId === '') throw Object.assign(new Error('noteId 不能为空'), { status: 400 })
+    if (noteId === '') throw coreError("service.noteIdEmpty", {}, { status: 400 })
     const url = await client.createShareLink({ noteId, excludeAudio: body.excludeAudio === true })
     send(res, 200, { ok: true, url })
   }
@@ -2306,17 +2306,17 @@ export function createHandler(config) {
    */
   async function handleAudioProxy(req, res, url) {
     const target = url.searchParams.get('url') || ''
-    if (target === '') throw Object.assign(new Error('url 不能为空'), { status: 400 })
+    if (target === '') throw coreError("service.urlEmpty", {}, { status: 400 })
     let parsed
     try {
       parsed = new URL(target)
     } catch {
-      throw Object.assign(new Error('url 不是合法地址'), { status: 400 })
+      throw coreError("service.urlInvalid", {}, { status: 400 })
     }
-    if (!/^https?:$/.test(parsed.protocol)) throw Object.assign(new Error('只支持 http/https'), { status: 400 })
+    if (!/^https?:$/.test(parsed.protocol)) throw coreError("service.urlScheme", {}, { status: 400 })
     const host = parsed.hostname.toLowerCase()
     if (!AUDIO_HOST_ALLOWLIST.some((suffix) => host === suffix || host.endsWith(`.${suffix}`))) {
-      throw Object.assign(new Error(`不允许代理这个域名：${host}`), { status: 403 })
+      throw coreError("service.hostNotAllowed", { host }, { status: 403 })
     }
 
     const range = req.headers.range
@@ -2382,7 +2382,10 @@ export function createHandler(config) {
   /** 手动触发一轮同步（请求立刻返回，面板轮 `sync/status` 看进度）。 */
   async function handleSyncStart(req, res) {
     const body = await readJsonBody(req)
-    if (syncState.running) return send(res, 200, { ok: false, running: true, error: '已经有一轮同步在跑了' })
+    if (syncState.running) {
+      const busy = coreError('service.syncRunningNow')
+      return send(res, 200, { ok: false, running: true, error: busy.message, code: busy.code })
+    }
     const full = body.full === true
     // 先验证凭证，别让用户点了之后等三十秒才看到「没配置」
     try {
@@ -2457,28 +2460,19 @@ export function createHandler(config) {
    */
   async function handleCardImport(req, res) {
     if (cardState.running) {
-      return send(res, 200, {
-        ok: false,
-        running: true,
-        error: '已经有一个录音卡导入在跑了，等它结束再试',
-      })
+      const busy = coreError('service.cardImportRunning')
+      return send(res, 200, { ok: false, running: true, error: busy.message, code: busy.code })
     }
     const body = await readJsonBody(req)
     // resolveVaultRoot 收的是「配置里的那个路径字符串」，不是 settings 对象。
     const settings = await readSettings()
     const { root, missing } = await resolveVaultRoot(settings.vaultRoot || config.vaultPath || null)
     if (missing || root === null) {
-      throw Object.assign(new Error('笔记库目录不存在，先去设置里选一个目录'), { status: 400 })
+      throw coreError("service.vaultNotConfigured", {}, { status: 400 })
     }
     const env = await checkCardEnvironment()
     if (!env.ready) {
-      throw Object.assign(
-        new Error(
-          env.error ||
-            '录音卡直连需要 Python 3.10+ 和 bleak。装一下：pip install bleak',
-        ),
-        { status: 503, reason: 'no-python' },
-      )
+      throw (env.error ? Object.assign(new Error(env.error), { status: 503, reason: 'no-python' }) : coreError('service.cardPythonMissing', {}, { status: 503, reason: 'no-python' }))
     }
 
     const options = {
@@ -2496,7 +2490,7 @@ export function createHandler(config) {
   async function handleCardDelete(req, res) {
     const body = await readJsonBody(req)
     if (typeof body.names !== 'string' || body.names.trim() === '') {
-      throw Object.assign(new Error('要删哪个文件？names 不能为空'), { status: 400 })
+      throw coreError("service.namesEmpty", {}, { status: 400 })
     }
     const result = await deleteCardFiles(body.names)
     return send(res, 200, { ok: true, ...result })
@@ -2541,7 +2535,7 @@ export function createHandler(config) {
   async function handleCardWifiJoin(req, res) {
     const body = await readJsonBody(req)
     const ssid = typeof body.ssid === 'string' ? body.ssid.trim() : ''
-    if (ssid === '') throw Object.assign(new Error('要连哪个热点？ssid 不能为空'), { status: 400 })
+    if (ssid === '') throw coreError("service.ssidEmpty", {}, { status: 400 })
     const password = typeof body.password === 'string' && body.password !== '' ? body.password : null
     const keep = body.keep === true
     const timeout = Number.isFinite(Number(body.timeout)) ? Number(body.timeout) : 30
@@ -2571,7 +2565,7 @@ export function createHandler(config) {
     const client = await openCloudClient()
     const { root } = await currentRoot()
     const relPath = typeof body.path === 'string' ? body.path : ''
-    if (relPath === '') throw Object.assign(new Error('path 不能为空'), { status: 400 })
+    if (relPath === '') throw coreError("service.pathEmpty", {}, { status: 400 })
     const result = await pushLocalNote({ client, root, relPath, noteId: typeof body.noteId === 'string' ? body.noteId : undefined })
     send(res, 200, { ok: true, ...result })
   }
@@ -2774,10 +2768,14 @@ export function createHandler(config) {
  * 读配额也会翻倍。
  */
 async function performSyncImpl({ full = false, reason = 'manual', config = {} } = {}) {
-  if (syncState.running) return { ok: false, running: true, error: '已经有一轮同步在跑了' }
+  if (syncState.running) {
+    const busy = coreError('service.syncRunningNow')
+    return { ok: false, running: true, error: busy.message, code: busy.code }
+  }
   const now = Date.now()
   if (reason === 'auto' && now - syncState.lastAttemptAt < SYNC_MIN_GAP_MS) {
-    return { ok: false, skipped: true, error: '距上次同步太近，跳过这一轮' }
+    const tooSoon = coreError('service.syncTooSoon')
+    return { ok: false, skipped: true, error: tooSoon.message, code: tooSoon.code }
   }
   syncState.lastAttemptAt = now
   syncState.running = true
@@ -2794,7 +2792,7 @@ async function performSyncImpl({ full = false, reason = 'manual', config = {} } 
     const settings = await readSettings()
     const configured = settings.vaultRoot || config.vaultPath || null
     const { root, missing } = await resolveVaultRoot(configured)
-    if (missing) throw Object.assign(new Error(`本地库目录不存在：${missing}`), { status: 404 })
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 })
     const state = await readSyncState()
     // 现有本地索引：note_id → 相对路径，省掉为每篇笔记单独扫盘
     const scan = await scanVault(root)

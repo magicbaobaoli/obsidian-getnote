@@ -502,6 +502,118 @@ var init_history = __esm({
   }
 });
 
+// src/core/errors.js
+function fillErrorTemplate(template, params) {
+  if (typeof template !== "string") return "";
+  if (params === null || typeof params !== "object") return template;
+  return template.replace(/\{([A-Za-z0-9_]+)\}/g, (whole, key) => {
+    const value = params[key];
+    return value === void 0 || value === null ? whole : String(value);
+  });
+}
+function coreError(code, params = {}, extra = {}) {
+  const template = ERROR_TEMPLATES[code];
+  const message = template === void 0 ? String(code) : fillErrorTemplate(template, params);
+  const error2 = new Error(message);
+  error2.code = code;
+  error2.lexKey = `err.${code}`;
+  if (params !== null && typeof params === "object" && Object.keys(params).length > 0) {
+    error2.params = { ...params };
+  }
+  if (extra !== null && typeof extra === "object") Object.assign(error2, extra);
+  return error2;
+}
+var ERROR_TEMPLATES;
+var init_errors = __esm({
+  "src/core/errors.js"() {
+    ERROR_TEMPLATES = {
+      "vault.pathEscapes": "path escapes vault root",
+      "vault.readMdOnly": "\u53EA\u80FD\u8BFB\u53D6 .md \u6587\u4EF6",
+      "vault.notAFile": "\u4E0D\u662F\u6587\u4EF6",
+      "vault.fileTooLarge": "\u6587\u4EF6\u8FC7\u5927",
+      "vault.assetMdOnly": "\u53EA\u80FD\u7ED9 .md \u7B14\u8BB0\u5B58\u9644\u4EF6",
+      "vault.emptyFile": "\u6587\u4EF6\u662F\u7A7A\u7684",
+      "vault.tooManyAssets": "\u540C\u540D\u9644\u4EF6\u8FC7\u591A",
+      "vault.writeMdOnly": "\u53EA\u80FD\u5199\u5165 .md \u6587\u4EF6",
+      "vault.contentNotString": "content \u5FC5\u987B\u662F\u5B57\u7B26\u4E32",
+      "vault.contentTooLarge": "\u5185\u5BB9\u8D85\u8FC7 2MB \u4E0A\u9650",
+      "vault.conflict": "\u8FD9\u4E00\u7BC7\u5728\u522B\u5904\u88AB\u6539\u8FC7\u4E86",
+      "vault.tooManyNotes": "\u540C\u540D\u7B14\u8BB0\u8FC7\u591A",
+      "vault.cannotRemoveRoot": "\u4E0D\u80FD\u5220\u9664\u5E93\u6839",
+      "vault.restoreTrashOnly": "\u53EA\u80FD\u4ECE .trash \u76EE\u5F55\u6062\u590D",
+      "vault.trashMissing": "\u56DE\u6536\u7AD9\u91CC\u6CA1\u6709\u8FD9\u4E2A\u6587\u4EF6",
+      "vault.targetEmpty": "\u76EE\u6807\u8DEF\u5F84\u4E0D\u80FD\u4E3A\u7A7A",
+      "vault.emptyTrashOnly": "\u53EA\u80FD\u6E05\u7A7A .trash \u91CC\u7684\u6587\u4EF6",
+      "vault.notConflictPath": "\u4E0D\u662F\u51B2\u7A81\u7559\u6863\u8DEF\u5F84",
+      "vault.conflictNoLocal": "\u627E\u4E0D\u5230\u8FD9\u6761\u51B2\u7A81\u5BF9\u5E94\u7684\u6B63\u672C\u7B14\u8BB0\uFF0C\u53D6\u4E0D\u5230\u672C\u5730\u7248\u5185\u5BB9\uFF1B\u7559\u6863\u4ECD\u7136\u4FDD\u7559\uFF0C\u53EF\u4EE5\u76F4\u63A5\u6253\u5F00\u5BF9\u7167",
+      "vault.conflictNoCloud": "\u8FD9\u6761\u7559\u6863\u91CC\u6CA1\u6709\u4E91\u7AEF\u7248\u6B63\u6587\uFF0C\u53D6\u4E0D\u5230\u4E91\u7AEF\u7248\u672C\uFF1B\u7559\u6863\u4ECD\u7136\u4FDD\u7559\uFF0C\u53EF\u4EE5\u76F4\u63A5\u6253\u5F00\u5BF9\u7167",
+      "vault.dirNameEmpty": "\u76EE\u5F55\u540D\u4E0D\u80FD\u4E3A\u7A7A",
+      "vault.dirReserved": "\u300C{segment}\u300D\u662F\u63D2\u4EF6\u4FDD\u7559\u7684\u76EE\u5F55\u540D\uFF0C\u6362\u4E00\u4E2A",
+      "vault.mkdirFailed": "\u5EFA\u76EE\u5F55\u5931\u8D25\uFF1A{detail}",
+      "vault.dirMissing": "\u8FD9\u4E2A\u76EE\u5F55\u4E0D\u5B58\u5728",
+      "vault.dirNotEmptyNotes": "\u8FD9\u4E2A\u76EE\u5F55\u91CC\u8FD8\u6709 {notes} \u7BC7\u7B14\u8BB0\uFF0C\u5148\u628A\u5B83\u4EEC\u79FB\u8D70\u518D\u5220\u76EE\u5F55",
+      "vault.dirNotEmptyDirs": "\u8FD9\u4E2A\u76EE\u5F55\u91CC\u8FD8\u6709 {dirs} \u4E2A\u5B50\u76EE\u5F55\uFF0C\u5148\u6E05\u7A7A\u518D\u5220",
+      "vault.rmdirFailed": "\u5220\u76EE\u5F55\u5931\u8D25\uFF1A{detail}",
+      "vault.trashMoveFailed": "\u6709 {failed} \u7BC7\u6CA1\u80FD\u79FB\u8FDB\u56DE\u6536\u7AD9\uFF0C\u76EE\u5F55\u5148\u7559\u7740",
+      "vault.renameRoot": "\u8981\u6539\u540D\u7684\u76EE\u5F55\u4E0D\u80FD\u662F\u5E93\u6839",
+      "vault.newDirNameEmpty": "\u65B0\u76EE\u5F55\u540D\u4E0D\u80FD\u4E3A\u7A7A",
+      "vault.notADirectory": "\u8FD9\u4E0D\u662F\u4E00\u4E2A\u76EE\u5F55",
+      "vault.dirExists": "\u300C{path}\u300D\u5DF2\u7ECF\u5B58\u5728\uFF0C\u6362\u4E00\u4E2A\u540D\u5B57",
+      "vault.renameDirFailed": "\u6539\u76EE\u5F55\u540D\u5931\u8D25\uFF1A{detail}",
+      "vault.tagNameEmpty": "\u6807\u7B7E\u540D\u4E0D\u80FD\u4E3A\u7A7A",
+      "vault.fromTagEmpty": "\u8981\u6539\u540D\u7684\u6807\u7B7E\u4E0D\u80FD\u4E3A\u7A7A",
+      "vault.newTagNameEmpty": "\u65B0\u6807\u7B7E\u540D\u4E0D\u80FD\u4E3A\u7A7A",
+      "vault.fromLinkEmpty": "\u8981\u6539\u7684\u94FE\u63A5\u540D\u4E0D\u80FD\u4E3A\u7A7A",
+      "vault.toLinkEmpty": "\u8981\u6307\u5230\u54EA\u4E00\u7BC7\u4E0D\u80FD\u4E3A\u7A7A",
+      "vault.todoIndexInvalid": "\u5F85\u529E\u5E8F\u53F7\u4E0D\u5BF9",
+      "vault.todoMissing": "\u8FD9\u7BC7\u7B14\u8BB0\u91CC\u6CA1\u6709\u8FD9\u4E00\u6761\u5F85\u529E",
+      "service.bodyTooLarge": "\u8BF7\u6C42\u5185\u5BB9\u8FC7\u5927",
+      "service.badJson": "\u8BF7\u6C42\u5185\u5BB9\u4E0D\u662F\u5408\u6CD5 JSON",
+      "service.notLoggedIn": "\u5C1A\u672A\u767B\u5F55\u5F97\u5230\u5927\u8111\uFF08\u6216\u6388\u6743\u5DF2\u8FC7\u671F\uFF09\uFF0C\u5148\u5728\u9762\u677F\u91CC\u70B9\u300C\u767B\u5F55\u5E76\u5BFC\u5165\u300D",
+      "service.noCredentials": "\u8FD8\u6CA1\u6709\u63A5\u5165\u5F97\u5230\u5927\u8111\u3002\u6700\u7701\u4E8B\u7684\u662F\u53BB\u300C\u540C\u6B65\u300D\u9875\u70B9\u300C\u767B\u5F55\u5F97\u5230\u5927\u8111\u300D\uFF08\u4E00\u6B21\u6388\u6743\uFF0C\u4E4B\u540E\u81EA\u52A8\u540C\u6B65\uFF09\uFF1B\u4E5F\u53EF\u4EE5\u5728\u300C\u8BBE\u7F6E \u2192 \u4E91\u7AEF\u63A5\u5165\u300D\u586B API Key \u4E0E Client ID\uFF08\u5728 openapi.biji.com \u63A7\u5236\u53F0\u521B\u5EFA\uFF09\u3002",
+      "service.vaultMissing": "\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A{path}",
+      "service.needFromRename": "\u9700\u8981 from\uFF08\u539F\u6765\u6307\u7684\u90A3\u4E2A\u540D\u5B57\uFF09",
+      "service.needPath": "\u9700\u8981 path",
+      "service.needFromDir": "\u9700\u8981 from\uFF08\u539F\u76EE\u5F55\u8DEF\u5F84\uFF09",
+      "service.needDir": "\u9700\u8981 dir",
+      "service.needTag": "\u9700\u8981 tag",
+      "service.needFromTag": "\u9700\u8981 from\uFF08\u539F\u6807\u7B7E\u540D\uFF09",
+      "service.needPathNote": "\u9700\u8981 path\uFF08\u7B14\u8BB0\u8DEF\u5F84\uFF09",
+      "service.needIndex": "\u9700\u8981 index\uFF08\u7B2C\u51E0\u4E2A\u5F85\u529E\uFF0C\u4ECE 0 \u5F00\u59CB\uFF09",
+      "service.needPathName": "\u9700\u8981 path \u4E0E name",
+      "service.pathEmpty": "path \u4E0D\u80FD\u4E3A\u7A7A",
+      "service.unsupportedFileType": "\u4E0D\u652F\u6301\u7684\u6587\u4EF6\u7C7B\u578B",
+      "service.fileNameEmpty": "\u6587\u4EF6\u540D\u4E0D\u80FD\u4E3A\u7A7A",
+      "service.needPaths": "\u9700\u8981 paths",
+      "service.badBatchAction": "action \u53EA\u80FD\u662F tag / untag / move / delete",
+      "service.pathsEmpty": "paths \u4E0D\u80FD\u4E3A\u7A7A",
+      "service.needPathOrId": "\u9700\u8981 path \u6216 noteId",
+      "service.noNoteId": "\u8FD9\u7BC7\u7B14\u8BB0\u6CA1\u6709 note_id\uFF0C\u65E0\u4ECE\u5237\u65B0",
+      "service.syncRunning": "\u6B63\u5728\u8DD1\u4E00\u8F6E\u540C\u6B65\uFF0C\u7B49\u5B83\u7ED3\u675F\u518D\u63A8",
+      "service.noOrigin": "\u65E0\u6CD5\u786E\u5B9A DSH Web \u7684\u8BBF\u95EE\u5730\u5740",
+      "service.idEmpty": "id \u4E0D\u80FD\u4E3A\u7A7A",
+      "service.cloudNoteMissing": "\u4E91\u7AEF\u6CA1\u6709\u8FD9\u7BC7\u7B14\u8BB0\uFF08\u53EF\u80FD\u5DF2\u88AB\u5220\u9664\uFF09",
+      "service.noteIdEmpty": "noteId \u4E0D\u80FD\u4E3A\u7A7A",
+      "service.noteIdTagsEmpty": "noteId \u4E0E tags \u90FD\u4E0D\u80FD\u4E3A\u7A7A",
+      "service.noteIdTagIdEmpty": "noteId \u4E0E tagId \u90FD\u4E0D\u80FD\u4E3A\u7A7A",
+      "service.topicIdEmpty": "topicId \u4E0D\u80FD\u4E3A\u7A7A",
+      "service.queryEmpty": "query \u4E0D\u80FD\u4E3A\u7A7A",
+      "service.urlEmpty": "url \u4E0D\u80FD\u4E3A\u7A7A",
+      "service.urlInvalid": "url \u4E0D\u662F\u5408\u6CD5\u5730\u5740",
+      "service.urlScheme": "\u53EA\u652F\u6301 http/https",
+      "service.hostNotAllowed": "\u4E0D\u5141\u8BB8\u4EE3\u7406\u8FD9\u4E2A\u57DF\u540D\uFF1A{host}",
+      "service.vaultNotConfigured": "\u7B14\u8BB0\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF0C\u5148\u53BB\u8BBE\u7F6E\u91CC\u9009\u4E00\u4E2A\u76EE\u5F55",
+      "service.cardPythonMissing": "\u5F55\u97F3\u5361\u76F4\u8FDE\u9700\u8981 Python 3.10+ \u548C bleak\u3002\u88C5\u4E00\u4E0B\uFF1Apip install bleak",
+      "service.namesEmpty": "\u8981\u5220\u54EA\u4E2A\u6587\u4EF6\uFF1Fnames \u4E0D\u80FD\u4E3A\u7A7A",
+      "service.ssidEmpty": "\u8981\u8FDE\u54EA\u4E2A\u70ED\u70B9\uFF1Fssid \u4E0D\u80FD\u4E3A\u7A7A",
+      "service.importRunning": "\u5DF2\u6709\u4E00\u4E2A\u5BFC\u5165\u4EFB\u52A1\u5728\u8DD1\uFF0C\u7B49\u5B83\u7ED3\u675F\u518D\u8BD5",
+      "service.syncRunningNow": "\u5DF2\u7ECF\u6709\u4E00\u8F6E\u540C\u6B65\u5728\u8DD1\u4E86",
+      "service.syncTooSoon": "\u8DDD\u4E0A\u6B21\u540C\u6B65\u592A\u8FD1\uFF0C\u8DF3\u8FC7\u8FD9\u4E00\u8F6E",
+      "service.cardImportRunning": "\u5DF2\u7ECF\u6709\u4E00\u4E2A\u5F55\u97F3\u5361\u5BFC\u5165\u5728\u8DD1\u4E86\uFF0C\u7B49\u5B83\u7ED3\u675F\u518D\u8BD5"
+    };
+  }
+});
+
 // src/core/vault.js
 var vault_exports = {};
 __export(vault_exports, {
@@ -578,7 +690,7 @@ function normalizeRel(input) {
   const normalized = import_node_path5.posix.normalize(raw);
   if (normalized === "." || normalized === "./") return "";
   if (normalized.startsWith("../") || normalized === "..") {
-    throw Object.assign(new Error("path escapes vault root"), { status: 400 });
+    throw coreError("vault.pathEscapes", {}, { status: 400 });
   }
   return normalized;
 }
@@ -587,7 +699,7 @@ function resolveInside(root, rel, { create = false } = {}) {
   const abs = normalized === "" ? (0, import_node_path5.resolve)(root) : (0, import_node_path5.resolve)(root, normalized.split("/").join(import_node_path5.sep));
   const relCheck = (0, import_node_path5.relative)((0, import_node_path5.resolve)(root), abs);
   if (relCheck.startsWith("..") || relCheck !== "" && (0, import_node_path5.resolve)(root, relCheck) !== abs) {
-    throw Object.assign(new Error("path escapes vault root"), { status: 400 });
+    throw coreError("vault.pathEscapes", {}, { status: 400 });
   }
   return { abs, rel: normalized, create };
 }
@@ -928,11 +1040,11 @@ function buildTree(entries, emptyDirs = []) {
 async function readNote(root, rel) {
   const { abs, rel: normalized } = resolveInside(root, rel);
   if (!normalized.toLowerCase().endsWith(NOTE_EXT)) {
-    throw Object.assign(new Error("\u53EA\u80FD\u8BFB\u53D6 .md \u6587\u4EF6"), { status: 400 });
+    throw coreError("vault.readMdOnly", {}, { status: 400 });
   }
   const st = await stat2(abs);
-  if (!st.isFile()) throw Object.assign(new Error("\u4E0D\u662F\u6587\u4EF6"), { status: 400 });
-  if (st.size > MAX_READ) throw Object.assign(new Error("\u6587\u4EF6\u8FC7\u5927"), { status: 413 });
+  if (!st.isFile()) throw coreError("vault.notAFile", {}, { status: 400 });
+  if (st.size > MAX_READ) throw coreError("vault.fileTooLarge", {}, { status: 413 });
   const content = await readFile2(abs, "utf8");
   const { data, body } = parseFrontmatter(content);
   return {
@@ -995,10 +1107,10 @@ async function listAssets(root, rel, noteId = "") {
 async function saveAsset(root, relNote, name, data) {
   const { rel: normalized } = resolveInside(root, relNote);
   if (!normalized.toLowerCase().endsWith(NOTE_EXT)) {
-    throw Object.assign(new Error("\u53EA\u80FD\u7ED9 .md \u7B14\u8BB0\u5B58\u9644\u4EF6"), { status: 400 });
+    throw coreError("vault.assetMdOnly", {}, { status: 400 });
   }
   if (!Buffer.isBuffer(data) || data.length === 0) {
-    throw Object.assign(new Error("\u6587\u4EF6\u662F\u7A7A\u7684"), { status: 400 });
+    throw coreError("vault.emptyFile", {}, { status: 400 });
   }
   const dir = import_node_path5.posix.dirname(normalized);
   const stem = import_node_path5.posix.basename(normalized, NOTE_EXT);
@@ -1030,18 +1142,18 @@ async function saveAsset(root, relNote, name, data) {
     invalidateScan(root);
     return { name: candidate, path: relPath, bytes: data.length };
   }
-  throw Object.assign(new Error("\u540C\u540D\u9644\u4EF6\u8FC7\u591A"), { status: 409 });
+  throw coreError("vault.tooManyAssets", {}, { status: 409 });
 }
 async function writeNote(root, rel, content, options = {}) {
   const backup = options.backup !== false;
   const { abs, rel: normalized } = resolveInside(root, rel);
   const expectMtimeMs = typeof options.expectMtimeMs === "number" && Number.isFinite(options.expectMtimeMs) ? options.expectMtimeMs : null;
   if (!normalized.toLowerCase().endsWith(NOTE_EXT)) {
-    throw Object.assign(new Error("\u53EA\u80FD\u5199\u5165 .md \u6587\u4EF6"), { status: 400 });
+    throw coreError("vault.writeMdOnly", {}, { status: 400 });
   }
-  if (typeof content !== "string") throw Object.assign(new Error("content \u5FC5\u987B\u662F\u5B57\u7B26\u4E32"), { status: 400 });
+  if (typeof content !== "string") throw coreError("vault.contentNotString", {}, { status: 400 });
   if (Buffer.byteLength(content, "utf8") > MAX_WRITE) {
-    throw Object.assign(new Error("\u5185\u5BB9\u8D85\u8FC7 2MB \u4E0A\u9650"), { status: 413 });
+    throw coreError("vault.contentTooLarge", {}, { status: 413 });
   }
   if (expectMtimeMs !== null) {
     let nowMs = null;
@@ -1051,12 +1163,7 @@ async function writeNote(root, rel, content, options = {}) {
       nowMs = null;
     }
     if (nowMs !== null && nowMs !== expectMtimeMs) {
-      const err = new Error("\u8FD9\u4E00\u7BC7\u5728\u522B\u5904\u88AB\u6539\u8FC7\u4E86");
-      err.status = 409;
-      err.code = "conflict";
-      err.path = normalized;
-      err.mtimeMs = nowMs;
-      throw err;
+      throw coreError("vault.conflict", {}, { status: 409, path: normalized, mtimeMs: nowMs });
     }
   }
   await mkdir2((0, import_node_path5.dirname)(abs), { recursive: true });
@@ -1094,7 +1201,7 @@ async function createNote(root, { dir = "", title = "", content = "", date, with
       const stem = candidate.slice(0, -NOTE_EXT.length);
       candidate = `${stem}-${counter}${NOTE_EXT}`;
       counter += 1;
-      if (counter > 99) throw Object.assign(new Error("\u540C\u540D\u7B14\u8BB0\u8FC7\u591A"), { status: 409 });
+      if (counter > 99) throw coreError("vault.tooManyNotes", {}, { status: 409 });
     } catch (error2) {
       if (error2 && error2.status === 409) throw error2;
       break;
@@ -1108,7 +1215,7 @@ async function createNote(root, { dir = "", title = "", content = "", date, with
 }
 async function trashNote(root, rel) {
   const { abs, rel: normalized } = resolveInside(root, rel);
-  if (normalized === "") throw Object.assign(new Error("\u4E0D\u80FD\u5220\u9664\u5E93\u6839"), { status: 400 });
+  if (normalized === "") throw coreError("vault.cannotRemoveRoot", {}, { status: 400 });
   const trashDir = (0, import_node_path5.join)(root, ".trash");
   const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
   const target = (0, import_node_path5.join)(trashDir, `${stamp}__${(0, import_node_path5.basename)(abs)}`);
@@ -1222,15 +1329,15 @@ async function listTrash(root) {
 async function restoreNote(root, trashPath, targetRel) {
   const { abs: absTrash, rel: trashRel } = resolveInside(root, trashPath);
   if (!trashRel.startsWith(`${TRASH_DIR}/`)) {
-    throw Object.assign(new Error("\u53EA\u80FD\u4ECE .trash \u76EE\u5F55\u6062\u590D"), { status: 400 });
+    throw coreError("vault.restoreTrashOnly", {}, { status: 400 });
   }
   let st;
   try {
     st = await stat2(absTrash);
   } catch {
-    throw Object.assign(new Error("\u56DE\u6536\u7AD9\u91CC\u6CA1\u6709\u8FD9\u4E2A\u6587\u4EF6"), { status: 404 });
+    throw coreError("vault.trashMissing", {}, { status: 404 });
   }
-  if (!st.isFile()) throw Object.assign(new Error("\u4E0D\u662F\u6587\u4EF6"), { status: 400 });
+  if (!st.isFile()) throw coreError("vault.notAFile", {}, { status: 400 });
   const meta = parseTrashName((0, import_node_path5.basename)(absTrash));
   const wanted = typeof targetRel === "string" && targetRel.trim() !== "" ? normalizeRel(targetRel.trim()) : "";
   let rel = wanted;
@@ -1241,7 +1348,7 @@ async function restoreNote(root, trashPath, targetRel) {
     rel = dir === "" ? meta.originalName : `${dir}/${meta.originalName}`;
   }
   if (rel === "" || rel.endsWith("/")) {
-    throw Object.assign(new Error("\u76EE\u6807\u8DEF\u5F84\u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+    throw coreError("vault.targetEmpty", {}, { status: 400 });
   }
   const { abs: absTarget } = resolveInside(root, rel, { create: true });
   let candidate = rel;
@@ -1250,7 +1357,7 @@ async function restoreNote(root, trashPath, targetRel) {
     try {
       await stat2(resolveInside(root, candidate).abs);
       counter += 1;
-      if (counter > 99) throw Object.assign(new Error("\u540C\u540D\u7B14\u8BB0\u8FC7\u591A"), { status: 409 });
+      if (counter > 99) throw coreError("vault.tooManyNotes", {}, { status: 409 });
       const dir = import_node_path5.posix.dirname(rel);
       const stem = (0, import_node_path5.basename)(rel, (0, import_node_path5.extname)(rel));
       const ext = (0, import_node_path5.extname)(rel);
@@ -1306,7 +1413,7 @@ async function purgeTrash(root, trashPath) {
   if (typeof trashPath === "string" && trashPath.trim() !== "") {
     const { abs, rel } = resolveInside(root, trashPath);
     if (!rel.startsWith(`${TRASH_DIR}/`)) {
-      throw Object.assign(new Error("\u53EA\u80FD\u6E05\u7A7A .trash \u91CC\u7684\u6587\u4EF6"), { status: 400 });
+      throw coreError("vault.emptyTrashOnly", {}, { status: 400 });
     }
     await rm2(abs, { force: true });
     await forgetTrashOrigin(root, (0, import_node_path5.basename)(abs));
@@ -1905,7 +2012,7 @@ async function listConflicts(root) {
 async function readConflict(root, conflictPath) {
   const rel = normalizeRel(conflictPath);
   if (!rel.startsWith(`${CONFLICT_DIR}/`)) {
-    throw Object.assign(new Error("\u4E0D\u662F\u51B2\u7A81\u7559\u6863\u8DEF\u5F84"), { status: 400 });
+    throw coreError("vault.notConflictPath", {}, { status: 400 });
   }
   const { abs } = resolveInside(root, rel);
   const text = await readFile2(abs, "utf8");
@@ -1959,12 +2066,7 @@ async function resolveConflict(root, conflictPath, { keepLocal = false, snapshot
   const cloudContent = archiveIsCloud ? detail.content : liveContent;
   const wanted = keepLocal === true ? localContent : cloudContent;
   if (wanted === null) {
-    throw Object.assign(
-      new Error(
-        keepLocal === true ? "\u627E\u4E0D\u5230\u8FD9\u6761\u51B2\u7A81\u5BF9\u5E94\u7684\u6B63\u672C\u7B14\u8BB0\uFF0C\u53D6\u4E0D\u5230\u672C\u5730\u7248\u5185\u5BB9\uFF1B\u7559\u6863\u4ECD\u7136\u4FDD\u7559\uFF0C\u53EF\u4EE5\u76F4\u63A5\u6253\u5F00\u5BF9\u7167" : "\u8FD9\u6761\u7559\u6863\u91CC\u6CA1\u6709\u4E91\u7AEF\u7248\u6B63\u6587\uFF0C\u53D6\u4E0D\u5230\u4E91\u7AEF\u7248\u672C\uFF1B\u7559\u6863\u4ECD\u7136\u4FDD\u7559\uFF0C\u53EF\u4EE5\u76F4\u63A5\u6253\u5F00\u5BF9\u7167"
-      ),
-      { status: 404 }
-    );
+    throw coreError(keepLocal === true ? "vault.conflictNoLocal" : "vault.conflictNoCloud", {}, { status: 404 });
   }
   if (typeof snapshot === "function" && liveContent !== null) {
     await snapshot(target);
@@ -1981,7 +2083,7 @@ async function resolveConflict(root, conflictPath, { keepLocal = false, snapshot
 async function unresolveConflict(root, conflictPath) {
   const rel = normalizeRel(conflictPath);
   if (!rel.startsWith(`${CONFLICT_DIR}/`)) {
-    throw Object.assign(new Error("\u4E0D\u662F\u51B2\u7A81\u7559\u6863\u8DEF\u5F84"), { status: 400 });
+    throw coreError("vault.notConflictPath", {}, { status: 400 });
   }
   const base = rel.slice(CONFLICT_DIR.length + 1);
   const state = await readConflictState(root);
@@ -1993,41 +2095,41 @@ async function unresolveConflict(root, conflictPath) {
 }
 async function createDir(root, dirInput) {
   const rel = normalizeRel(dirInput);
-  if (rel === "") throw Object.assign(new Error("\u76EE\u5F55\u540D\u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+  if (rel === "") throw coreError("vault.dirNameEmpty", {}, { status: 400 });
   for (const segment of rel.split("/")) {
     if (IGNORED_DIRS.has(segment)) {
-      throw Object.assign(new Error(`\u300C${segment}\u300D\u662F\u63D2\u4EF6\u4FDD\u7559\u7684\u76EE\u5F55\u540D\uFF0C\u6362\u4E00\u4E2A`), { status: 400 });
+      throw coreError("vault.dirReserved", { segment }, { status: 400 });
     }
   }
   const { abs } = resolveInside(root, rel, { create: true });
   try {
     await mkdir2(abs, { recursive: true });
   } catch (error2) {
-    throw Object.assign(new Error(`\u5EFA\u76EE\u5F55\u5931\u8D25\uFF1A${error2 && error2.message ? error2.message : error2}`), { status: 500 });
+    throw coreError("vault.mkdirFailed", { detail: error2 && error2.message ? error2.message : error2 }, { status: 500 });
   }
   invalidateScan(root);
   return { ok: true, path: rel };
 }
 async function removeDir(root, dirInput) {
   const rel = normalizeRel(dirInput);
-  if (rel === "") throw Object.assign(new Error("\u4E0D\u80FD\u5220\u9664\u5E93\u6839"), { status: 400 });
+  if (rel === "") throw coreError("vault.cannotRemoveRoot", {}, { status: 400 });
   const { abs } = resolveInside(root, rel);
   let dirents;
   try {
     dirents = await readdir2(abs, { withFileTypes: true });
   } catch {
-    throw Object.assign(new Error("\u8FD9\u4E2A\u76EE\u5F55\u4E0D\u5B58\u5728"), { status: 404 });
+    throw coreError("vault.dirMissing", {}, { status: 404 });
   }
   const notes = dirents.filter((d3) => d3.isFile() && (0, import_node_path5.extname)(d3.name).toLowerCase() === NOTE_EXT);
   if (notes.length > 0) {
-    throw Object.assign(new Error(`\u8FD9\u4E2A\u76EE\u5F55\u91CC\u8FD8\u6709 ${notes.length} \u7BC7\u7B14\u8BB0\uFF0C\u5148\u628A\u5B83\u4EEC\u79FB\u8D70\u518D\u5220\u76EE\u5F55`), {
+    throw coreError("vault.dirNotEmptyNotes", { notes: notes.length }, {
       status: 409,
       notes: notes.length
     });
   }
   const subdirs = dirents.filter((d3) => d3.isDirectory());
   if (subdirs.length > 0) {
-    throw Object.assign(new Error(`\u8FD9\u4E2A\u76EE\u5F55\u91CC\u8FD8\u6709 ${subdirs.length} \u4E2A\u5B50\u76EE\u5F55\uFF0C\u5148\u6E05\u7A7A\u518D\u5220`), {
+    throw coreError("vault.dirNotEmptyDirs", { dirs: subdirs.length }, {
       status: 409,
       dirs: subdirs.length
     });
@@ -2035,20 +2137,20 @@ async function removeDir(root, dirInput) {
   try {
     await rmdir2(abs);
   } catch (error2) {
-    throw Object.assign(new Error(`\u5220\u76EE\u5F55\u5931\u8D25\uFF1A${error2 && error2.message ? error2.message : error2}`), { status: 500 });
+    throw coreError("vault.rmdirFailed", { detail: error2 && error2.message ? error2.message : error2 }, { status: 500 });
   }
   invalidateScan(root);
   return { ok: true, path: rel };
 }
 async function removeDirTree(root, dirInput) {
   const rel = normalizeRel(dirInput);
-  if (rel === "") throw Object.assign(new Error("\u4E0D\u80FD\u5220\u9664\u5E93\u6839"), { status: 400 });
+  if (rel === "") throw coreError("vault.cannotRemoveRoot", {}, { status: 400 });
   const { abs } = resolveInside(root, rel);
   let top;
   try {
     top = await readdir2(abs, { withFileTypes: true });
   } catch {
-    throw Object.assign(new Error("\u8FD9\u4E2A\u76EE\u5F55\u4E0D\u5B58\u5728"), { status: 404 });
+    throw coreError("vault.dirMissing", {}, { status: 404 });
   }
   const notes = [];
   let dirCount = 0;
@@ -2085,7 +2187,7 @@ async function removeDirTree(root, dirInput) {
   }
   if (failed.length > 0) {
     invalidateScan(root);
-    throw Object.assign(new Error(`\u6709 ${failed.length} \u7BC7\u6CA1\u80FD\u79FB\u8FDB\u56DE\u6536\u7AD9\uFF0C\u76EE\u5F55\u5148\u7559\u7740`), {
+    throw coreError("vault.trashMoveFailed", { failed: failed.length }, {
       status: 409,
       failed,
       notes: trashed
@@ -2094,7 +2196,7 @@ async function removeDirTree(root, dirInput) {
   try {
     await rm2(abs, { recursive: true, force: true });
   } catch (error2) {
-    throw Object.assign(new Error(`\u5220\u76EE\u5F55\u5931\u8D25\uFF1A${error2 && error2.message ? error2.message : error2}`), { status: 500 });
+    throw coreError("vault.rmdirFailed", { detail: error2 && error2.message ? error2.message : error2 }, { status: 500 });
   }
   invalidateScan(root);
   return { ok: true, path: rel, notes: trashed, dirs: dirCount };
@@ -2102,12 +2204,12 @@ async function removeDirTree(root, dirInput) {
 async function renameDir(root, fromInput, toInput) {
   const from = normalizeRel(fromInput);
   const to = normalizeRel(toInput);
-  if (from === "") throw Object.assign(new Error("\u8981\u6539\u540D\u7684\u76EE\u5F55\u4E0D\u80FD\u662F\u5E93\u6839"), { status: 400 });
-  if (to === "") throw Object.assign(new Error("\u65B0\u76EE\u5F55\u540D\u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+  if (from === "") throw coreError("vault.renameRoot", {}, { status: 400 });
+  if (to === "") throw coreError("vault.newDirNameEmpty", {}, { status: 400 });
   if (from === to) return { ok: true, from, to, unchanged: true };
   for (const segment of to.split("/")) {
     if (IGNORED_DIRS.has(segment)) {
-      throw Object.assign(new Error(`\u300C${segment}\u300D\u662F\u63D2\u4EF6\u4FDD\u7559\u7684\u76EE\u5F55\u540D\uFF0C\u6362\u4E00\u4E2A`), { status: 400 });
+      throw coreError("vault.dirReserved", { segment }, { status: 400 });
     }
   }
   const { abs: srcAbs } = resolveInside(root, from);
@@ -2115,13 +2217,13 @@ async function renameDir(root, fromInput, toInput) {
   try {
     srcStat = await stat2(srcAbs);
   } catch {
-    throw Object.assign(new Error("\u8FD9\u4E2A\u76EE\u5F55\u4E0D\u5B58\u5728"), { status: 404 });
+    throw coreError("vault.dirMissing", {}, { status: 404 });
   }
-  if (!srcStat.isDirectory()) throw Object.assign(new Error("\u8FD9\u4E0D\u662F\u4E00\u4E2A\u76EE\u5F55"), { status: 400 });
+  if (!srcStat.isDirectory()) throw coreError("vault.notADirectory", {}, { status: 400 });
   const { abs: dstAbs, rel: dstRel } = resolveInside(root, to, { create: true });
   try {
     await stat2(dstAbs);
-    throw Object.assign(new Error(`\u300C${dstRel}\u300D\u5DF2\u7ECF\u5B58\u5728\uFF0C\u6362\u4E00\u4E2A\u540D\u5B57`), { status: 409 });
+    throw coreError("vault.dirExists", { path: dstRel }, { status: 409 });
   } catch (error2) {
     if (error2 && error2.status === 409) throw error2;
   }
@@ -2129,7 +2231,7 @@ async function renameDir(root, fromInput, toInput) {
     await mkdir2((0, import_node_path5.dirname)(dstAbs), { recursive: true });
     await rename2(srcAbs, dstAbs);
   } catch (error2) {
-    throw Object.assign(new Error(`\u6539\u76EE\u5F55\u540D\u5931\u8D25\uFF1A${error2 && error2.message ? error2.message : error2}`), {
+    throw coreError("vault.renameDirFailed", { detail: error2 && error2.message ? error2.message : error2 }, {
       status: 500
     });
   }
@@ -2189,7 +2291,7 @@ function readTags(text) {
 }
 async function removeTag(root, tagInput, entries, options = {}) {
   const tag = String(tagInput || "").trim();
-  if (tag === "") throw Object.assign(new Error("\u6807\u7B7E\u540D\u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+  if (tag === "") throw coreError("vault.tagNameEmpty", {}, { status: 400 });
   const snapshot = typeof options.snapshot === "function" ? options.snapshot : null;
   let changed = 0;
   const failed = [];
@@ -2222,8 +2324,8 @@ async function removeTag(root, tagInput, entries, options = {}) {
 async function renameTag(root, fromInput, toInput, entries, options = {}) {
   const from = String(fromInput || "").trim();
   const to = String(toInput || "").trim();
-  if (from === "") throw Object.assign(new Error("\u8981\u6539\u540D\u7684\u6807\u7B7E\u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
-  if (to === "") throw Object.assign(new Error("\u65B0\u6807\u7B7E\u540D\u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+  if (from === "") throw coreError("vault.fromTagEmpty", {}, { status: 400 });
+  if (to === "") throw coreError("vault.newTagNameEmpty", {}, { status: 400 });
   if (from === to) return { ok: true, changed: 0, failed: [], total: entries.length, from, to };
   const snapshot = typeof options.snapshot === "function" ? options.snapshot : null;
   let changed = 0;
@@ -2261,8 +2363,8 @@ async function renameTag(root, fromInput, toInput, entries, options = {}) {
 async function rewriteLinkTarget(root, fromInput, toInput, entries, options = {}) {
   const from = String(fromInput || "").trim();
   const to = String(toInput || "").trim();
-  if (from === "") throw Object.assign(new Error("\u8981\u6539\u7684\u94FE\u63A5\u540D\u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
-  if (to === "") throw Object.assign(new Error("\u8981\u6307\u5230\u54EA\u4E00\u7BC7\u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+  if (from === "") throw coreError("vault.fromLinkEmpty", {}, { status: 400 });
+  if (to === "") throw coreError("vault.toLinkEmpty", {}, { status: 400 });
   const list = Array.isArray(entries) ? entries : (await scanVault(root)).entries;
   if (from === to) return { ok: true, changed: 0, failed: [], total: list.length, from, to, files: [] };
   const want = from.toLowerCase();
@@ -2362,7 +2464,7 @@ function heatmapOf(entries, { weeks = 26, today = null } = {}) {
 async function toggleTodo(root, rel, index, options = {}) {
   const position = Number(index);
   if (!Number.isInteger(position) || position < 0) {
-    throw Object.assign(new Error("\u5F85\u529E\u5E8F\u53F7\u4E0D\u5BF9"), { status: 400 });
+    throw coreError("vault.todoIndexInvalid", {}, { status: 400 });
   }
   const note = await readNote(root, rel);
   const content = note.content;
@@ -2405,7 +2507,7 @@ async function toggleTodo(root, rel, index, options = {}) {
     }
   }
   if (targetLine < 0 || targetMatch === null) {
-    throw Object.assign(new Error("\u8FD9\u7BC7\u7B14\u8BB0\u91CC\u6CA1\u6709\u8FD9\u4E00\u6761\u5F85\u529E"), { status: 404 });
+    throw coreError("vault.todoMissing", {}, { status: 404 });
   }
   const wasDone = targetMatch[3].toLowerCase() === "x";
   const indent = targetMatch[1];
@@ -2600,6 +2702,7 @@ var init_vault = __esm({
   "src/core/vault.js"() {
     init_vfs();
     import_node_crypto3 = require("node:crypto");
+    init_errors();
     init_history();
     import_node_path5 = require("node:path");
     NOTE_EXT = ".md";
@@ -4538,6 +4641,7 @@ function serializeCanvas(canvas) {
 
 // src/core/service.js
 init_vfs();
+init_errors();
 var import_node_path7 = require("node:path");
 init_vault();
 init_history();
@@ -6372,7 +6476,7 @@ function readBody(req, cap) {
       size += chunk.length;
       if (size > cap) {
         req.pause();
-        rejectBody(Object.assign(new Error("request body too large"), { status: 413 }));
+        rejectBody(coreError("service.bodyTooLarge", {}, { status: 413 }));
         return;
       }
       chunks.push(chunk);
@@ -6389,7 +6493,7 @@ function readBufferBody(req, cap) {
       size += chunk.length;
       if (size > cap) {
         req.pause();
-        rejectBody(Object.assign(new Error("request body too large"), { status: 413 }));
+        rejectBody(coreError("service.bodyTooLarge", {}, { status: 413 }));
         return;
       }
       chunks.push(chunk);
@@ -6405,7 +6509,7 @@ async function readJsonBody(req, cap = 256 * 1024) {
     const parsed = JSON.parse(text);
     return parsed && typeof parsed === "object" ? parsed : {};
   } catch {
-    throw Object.assign(new Error("body must be valid JSON"), { status: 400 });
+    throw coreError("service.badJson", {}, { status: 400 });
   }
 }
 function sweepPending() {
@@ -6418,6 +6522,8 @@ function fail2(res, error2) {
   const status = error2 && typeof error2.status === "number" ? error2.status : 500;
   const message = error2 && error2.message ? error2.message : "internal error";
   const payload = { error: message };
+  if (error2 && typeof error2.code === "string" && error2.code !== "") payload.code = error2.code;
+  if (error2 && error2.params !== void 0 && error2.params !== null) payload.params = error2.params;
   if (error2 && error2.conflict !== void 0 && error2.conflict !== null) payload.conflict = error2.conflict;
   send(res, status, payload);
 }
@@ -6444,7 +6550,7 @@ async function ensureAccessToken({ allowRefresh = true } = {}) {
 async function openClient() {
   const token = await ensureAccessToken();
   if (!token) {
-    throw Object.assign(new Error("\u5C1A\u672A\u767B\u5F55\u5F97\u5230\u5927\u8111\uFF08\u6216\u6388\u6743\u5DF2\u8FC7\u671F\uFF09\uFF0C\u5148\u5728\u9762\u677F\u91CC\u70B9\u300C\u767B\u5F55\u5E76\u5BFC\u5165\u300D"), { status: 401 });
+    throw coreError("service.notLoggedIn", {}, { status: 401 });
   }
   const client = new McpClient(token);
   await client.initialize();
@@ -6465,10 +6571,7 @@ async function openCloudClient() {
   if (keyReady) {
     return createClient({ apiKey: cloud.apiKey, clientId: cloud.clientId, grantId: cloud.grantId, fetchImpl: netFetch });
   }
-  throw Object.assign(
-    new Error("\u8FD8\u6CA1\u6709\u63A5\u5165\u5F97\u5230\u5927\u8111\u3002\u6700\u7701\u4E8B\u7684\u662F\u53BB\u300C\u540C\u6B65\u300D\u9875\u70B9\u300C\u767B\u5F55\u5F97\u5230\u5927\u8111\u300D\uFF08\u4E00\u6B21\u6388\u6743\uFF0C\u4E4B\u540E\u81EA\u52A8\u540C\u6B65\uFF09\uFF1B\u4E5F\u53EF\u4EE5\u5728\u300C\u8BBE\u7F6E \u2192 \u4E91\u7AEF\u63A5\u5165\u300D\u586B API Key \u4E0E Client ID\uFF08\u5728 openapi.biji.com \u63A7\u5236\u53F0\u521B\u5EFA\uFF09\u3002"),
-    { status: 401, reason: "no_credentials" }
-  );
+  throw coreError("service.noCredentials", {}, { status: 401, reason: "no_credentials" });
 }
 var lastKeyError = null;
 var openApiRejected = false;
@@ -6766,7 +6869,7 @@ function createHandler(config) {
   }
   async function handleRead(res, url) {
     const { root, missing } = await currentRoot();
-    if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 });
     const path = url.searchParams.get("path") || "";
     const note = await readNote(root, path);
     let assets = [];
@@ -6811,10 +6914,10 @@ function createHandler(config) {
     const body = await readJsonBody(req);
     const from = String(body.from || body.name || "").trim();
     const to = String(body.to || body.target || "").trim();
-    if (from === "") throw Object.assign(new Error("\u9700\u8981 from\uFF08\u539F\u6765\u6307\u7684\u90A3\u4E2A\u540D\u5B57\uFF09"), { status: 400 });
-    if (to === "") throw Object.assign(new Error("\u8981\u6307\u5230\u54EA\u4E00\u7BC7\u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+    if (from === "") throw coreError("service.needFromRename", {}, { status: 400 });
+    if (to === "") throw coreError("vault.toLinkEmpty", {}, { status: 400 });
     const { root, missing } = await currentRoot();
-    if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 });
     const { entries } = await scanVault(root);
     const limit = await historyLimitNow();
     const result = await rewriteLinkTarget(root, from, to, entries, {
@@ -6838,7 +6941,7 @@ function createHandler(config) {
   }
   async function handleConflictRead(res, url) {
     const { root, missing } = await currentRoot();
-    if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 });
     const path = url.searchParams.get("path") || "";
     const detail = await readConflict(root, path);
     let local = null;
@@ -6855,9 +6958,9 @@ function createHandler(config) {
   async function handleConflictResolve(req, res) {
     const body = await readJsonBody(req);
     const path = String(body.path || "").trim();
-    if (path === "") throw Object.assign(new Error("\u9700\u8981 path"), { status: 400 });
+    if (path === "") throw coreError("service.needPath", {}, { status: 400 });
     const { root, missing } = await currentRoot();
-    if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 });
     const keepLocal = body.keepLocal === true;
     const limit = await historyLimitNow();
     const snapshot = keepLocal ? null : async (rel) => {
@@ -6872,18 +6975,18 @@ function createHandler(config) {
   async function handleConflictUnresolve(req, res) {
     const body = await readJsonBody(req);
     const path = String(body.path || "").trim();
-    if (path === "") throw Object.assign(new Error("\u9700\u8981 path"), { status: 400 });
+    if (path === "") throw coreError("service.needPath", {}, { status: 400 });
     const { root, missing } = await currentRoot();
-    if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 });
     const result = await unresolveConflict(root, path);
     send(res, 200, { ok: true, ...result });
   }
   async function handleCreateDir(req, res) {
     const body = await readJsonBody(req);
     const dir = String(body.dir || body.path || "").trim();
-    if (dir === "") throw Object.assign(new Error("\u76EE\u5F55\u540D\u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+    if (dir === "") throw coreError("vault.dirNameEmpty", {}, { status: 400 });
     const { root, missing } = await currentRoot();
-    if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 });
     const result = await createDir(root, dir);
     send(res, 200, { ok: true, empty: true, ...result });
   }
@@ -6891,25 +6994,25 @@ function createHandler(config) {
     const body = await readJsonBody(req);
     const from = String(body.from || body.dir || body.path || "").trim();
     const to = String(body.to || body.name || "").trim();
-    if (from === "") throw Object.assign(new Error("\u9700\u8981 from\uFF08\u539F\u76EE\u5F55\u8DEF\u5F84\uFF09"), { status: 400 });
-    if (to === "") throw Object.assign(new Error("\u65B0\u76EE\u5F55\u540D\u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+    if (from === "") throw coreError("service.needFromDir", {}, { status: 400 });
+    if (to === "") throw coreError("vault.newDirNameEmpty", {}, { status: 400 });
     const { root, missing } = await currentRoot();
-    if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 });
     const result = await renameDir(root, from, to);
     send(res, 200, { ok: true, ...result });
   }
   async function handleDeleteDir(req, res) {
     const body = await readJsonBody(req);
     const dir = String(body.dir || body.path || "").trim();
-    if (dir === "") throw Object.assign(new Error("\u9700\u8981 dir"), { status: 400 });
+    if (dir === "") throw coreError("service.needDir", {}, { status: 400 });
     const { root, missing } = await currentRoot();
-    if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 });
     const result = body.recursive === true ? await removeDirTree(root, dir) : await removeDir(root, dir);
     send(res, 200, { ok: true, ...result });
   }
   async function handleDirContents(res, url) {
     const dir = String(url.searchParams.get("dir") || "").trim().replace(/^\/+|\/+$/g, "");
-    if (dir === "") throw Object.assign(new Error("\u9700\u8981 dir"), { status: 400 });
+    if (dir === "") throw coreError("service.needDir", {}, { status: 400 });
     const { root, missing } = await currentRoot();
     if (missing) return send(res, 200, { dir, notes: 0, dirs: 0, missing: true });
     const { entries } = await scanVault(root);
@@ -6928,9 +7031,9 @@ function createHandler(config) {
   async function handleDeleteTag(req, res) {
     const body = await readJsonBody(req);
     const tag = String(body.tag || "").trim();
-    if (tag === "") throw Object.assign(new Error("\u9700\u8981 tag"), { status: 400 });
+    if (tag === "") throw coreError("service.needTag", {}, { status: 400 });
     const { root, missing } = await currentRoot();
-    if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 });
     const { entries } = await scanVault(root);
     const limit = await historyLimitNow();
     const result = await removeTag(root, tag, entries, {
@@ -6944,10 +7047,10 @@ function createHandler(config) {
     const body = await readJsonBody(req);
     const from = String(body.from || body.tag || "").trim();
     const to = String(body.to || body.name || "").trim();
-    if (from === "") throw Object.assign(new Error("\u9700\u8981 from\uFF08\u539F\u6807\u7B7E\u540D\uFF09"), { status: 400 });
-    if (to === "") throw Object.assign(new Error("\u65B0\u6807\u7B7E\u540D\u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+    if (from === "") throw coreError("service.needFromTag", {}, { status: 400 });
+    if (to === "") throw coreError("vault.newTagNameEmpty", {}, { status: 400 });
     const { root, missing } = await currentRoot();
-    if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 });
     const { entries } = await scanVault(root);
     const limit = await historyLimitNow();
     const result = await renameTag(root, from, to, entries, {
@@ -6960,13 +7063,13 @@ function createHandler(config) {
   async function handleToggleTodo(req, res) {
     const body = await readJsonBody(req);
     const path = String(body.path || "").trim();
-    if (path === "") throw Object.assign(new Error("\u9700\u8981 path\uFF08\u7B14\u8BB0\u8DEF\u5F84\uFF09"), { status: 400 });
+    if (path === "") throw coreError("service.needPathNote", {}, { status: 400 });
     const index = Number(body.index);
     if (!Number.isInteger(index) || index < 0) {
-      throw Object.assign(new Error("\u9700\u8981 index\uFF08\u7B2C\u51E0\u4E2A\u5F85\u529E\uFF0C\u4ECE 0 \u5F00\u59CB\uFF09"), { status: 400 });
+      throw coreError("service.needIndex", {}, { status: 400 });
     }
     const { root, missing } = await currentRoot();
-    if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 });
     const limit = await historyLimitNow();
     const result = await toggleTodo(root, path, index, {
       snapshot: async (rel) => {
@@ -6984,7 +7087,7 @@ function createHandler(config) {
   }
   async function handleHistoryRead(res, url) {
     const { root, missing } = await currentRoot();
-    if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 });
     const path = url.searchParams.get("path") || "";
     const name = url.searchParams.get("name") || "";
     const entry = await readHistoryEntry(root, path, name);
@@ -6994,15 +7097,15 @@ function createHandler(config) {
     const body = await readJsonBody(req);
     const path = String(body.path || "").trim();
     const name = String(body.name || "").trim();
-    if (path === "" || name === "") throw Object.assign(new Error("\u9700\u8981 path \u4E0E name"), { status: 400 });
+    if (path === "" || name === "") throw coreError("service.needPathName", {}, { status: 400 });
     const { root, missing } = await currentRoot();
-    if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 });
     const result = await restoreHistoryEntry(root, path, name, { keepCurrent: body.keepCurrent !== false });
     send(res, 200, { ok: true, ...result });
   }
   async function handleArchiveExport(req, res, url) {
     const { root, missing } = await currentRoot();
-    if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 });
     const result = await exportVaultToZip(root, {
       scope: url?.searchParams.get("scope") || "all",
       dir: url?.searchParams.get("dir") || ""
@@ -7057,7 +7160,7 @@ function createHandler(config) {
   }
   async function handleArchiveImport(req, res) {
     const { root, missing } = await currentRoot();
-    if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 });
     const buffer = await readBufferBody(req, 512 * 1024 * 1024);
     const mode = req.headers["x-getnote-import-mode"] === "skip" ? "skip" : "rename";
     const result = await importZipToVault(root, buffer, { mode });
@@ -7091,15 +7194,15 @@ function createHandler(config) {
   }
   async function handleAsset(req, res, url) {
     const { root, missing } = await currentRoot();
-    if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 });
     const rel = url.searchParams.get("path") || "";
-    if (rel === "") throw Object.assign(new Error("path \u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+    if (rel === "") throw coreError("service.pathEmpty", {}, { status: 400 });
     const lower = rel.toLowerCase();
     const type = /\.(mp3)$/.test(lower) ? "audio/mpeg" : /\.(ogg)$/.test(lower) ? "audio/ogg" : /\.(m4a|aac)$/.test(lower) ? "audio/mp4" : /\.(wav)$/.test(lower) ? "audio/wav" : /\.(flac)$/.test(lower) ? "audio/flac" : /\.(png)$/.test(lower) ? "image/png" : /\.(jpe?g)$/.test(lower) ? "image/jpeg" : /\.(gif)$/.test(lower) ? "image/gif" : /\.(webp)$/.test(lower) ? "image/webp" : /\.(md)$/.test(lower) ? "text/markdown; charset=utf-8" : null;
-    if (type === null) throw Object.assign(new Error("\u4E0D\u652F\u6301\u7684\u6587\u4EF6\u7C7B\u578B"), { status: 400 });
+    if (type === null) throw coreError("service.unsupportedFileType", {}, { status: 400 });
     const { abs } = resolveInside(root, rel);
     const st = await stat2(abs);
-    if (!st.isFile()) throw Object.assign(new Error("\u4E0D\u662F\u6587\u4EF6"), { status: 400 });
+    if (!st.isFile()) throw coreError("vault.notAFile", {}, { status: 400 });
     const headers = {
       "content-type": type,
       "accept-ranges": "bytes",
@@ -7134,12 +7237,12 @@ function createHandler(config) {
   async function handleAssetUpload(req, res, url) {
     const { root } = await currentRoot();
     const note = url.searchParams.get("path") || "";
-    if (note === "") throw Object.assign(new Error("path \u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+    if (note === "") throw coreError("service.pathEmpty", {}, { status: 400 });
     const header = req.headers["x-getnote-filename"];
     const name = typeof header === "string" ? decodeURIComponent(header) : "";
-    if (name === "") throw Object.assign(new Error("\u6587\u4EF6\u540D\u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+    if (name === "") throw coreError("service.fileNameEmpty", {}, { status: 400 });
     const data = await readBufferBody(req, MAX_UPLOAD);
-    if (data.length === 0) throw Object.assign(new Error("\u6587\u4EF6\u662F\u7A7A\u7684"), { status: 400 });
+    if (data.length === 0) throw coreError("vault.emptyFile", {}, { status: 400 });
     const saved = await saveAsset(root, note, name, data);
     return send(res, 200, { ok: true, ...saved });
   }
@@ -7148,7 +7251,7 @@ function createHandler(config) {
     const { root } = await currentRoot();
     const path = typeof body.path === "string" ? body.path : "";
     const content = typeof body.content === "string" ? body.content : "";
-    if (path === "") throw Object.assign(new Error("path \u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+    if (path === "") throw coreError("service.pathEmpty", {}, { status: 400 });
     try {
       const before = await readNote(root, path);
       if (before.content === content) {
@@ -7173,9 +7276,7 @@ function createHandler(config) {
         } catch {
           now = null;
         }
-        const conflict = Object.assign(new Error("\u8FD9\u4E00\u7BC7\u5728\u522B\u5904\u88AB\u6539\u8FC7\u4E86"), { status: 409 });
-        conflict.conflict = now;
-        throw conflict;
+        throw coreError("vault.conflict", {}, { status: 409, conflict: now });
       }
       throw error2;
     }
@@ -7185,16 +7286,16 @@ function createHandler(config) {
     const body = await readJsonBody(req, MAX_BODY);
     const action = String(body.action || "");
     const paths = Array.isArray(body.paths) ? body.paths.filter((p3) => typeof p3 === "string" && p3 !== "") : [];
-    if (paths.length === 0) throw Object.assign(new Error("\u9700\u8981 paths"), { status: 400 });
+    if (paths.length === 0) throw coreError("service.needPaths", {}, { status: 400 });
     if (action !== "tag" && action !== "untag" && action !== "move" && action !== "delete") {
-      throw Object.assign(new Error("action \u53EA\u80FD\u662F tag / untag / move / delete"), { status: 400 });
+      throw coreError("service.badBatchAction", {}, { status: 400 });
     }
     const tag = typeof body.tag === "string" ? body.tag.trim() : "";
     const dir = typeof body.dir === "string" ? body.dir.trim() : "";
-    if ((action === "tag" || action === "untag") && tag === "") throw Object.assign(new Error("\u9700\u8981 tag"), { status: 400 });
-    if (action === "move" && dir === "") throw Object.assign(new Error("\u9700\u8981 dir"), { status: 400 });
+    if ((action === "tag" || action === "untag") && tag === "") throw coreError("service.needTag", {}, { status: 400 });
+    if (action === "move" && dir === "") throw coreError("service.needDir", {}, { status: 400 });
     const { root, missing } = await currentRoot();
-    if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 });
     let changed = 0;
     const failed = [];
     const limit = await historyLimitNow();
@@ -7298,7 +7399,7 @@ function createHandler(config) {
     const body = await readJsonBody(req);
     const { root } = await currentRoot();
     const path = typeof body.path === "string" ? body.path : "";
-    if (path === "") throw Object.assign(new Error("path \u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+    if (path === "") throw coreError("service.pathEmpty", {}, { status: 400 });
     try {
       await snapshotNote(root, path, { limit: await historyLimitNow() });
     } catch {
@@ -7316,7 +7417,7 @@ function createHandler(config) {
     const body = await readJsonBody(req);
     const { root } = await currentRoot();
     const path = typeof body.path === "string" ? body.path.trim() : "";
-    if (path === "") throw Object.assign(new Error("path \u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+    if (path === "") throw coreError("service.pathEmpty", {}, { status: 400 });
     const target = typeof body.target === "string" ? body.target : "";
     const result = await restoreNote(root, path, target);
     send(res, 200, { ok: true, ...result });
@@ -7325,7 +7426,7 @@ function createHandler(config) {
     const body = await readJsonBody(req);
     const { root } = await currentRoot();
     const paths = Array.isArray(body.paths) ? body.paths.filter((one) => typeof one === "string" && one.trim() !== "") : [];
-    if (paths.length === 0) throw Object.assign(new Error("paths \u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+    if (paths.length === 0) throw coreError("service.pathsEmpty", {}, { status: 400 });
     const target = typeof body.target === "string" ? body.target : "";
     const result = await restoreNotes(root, paths, target);
     send(res, 200, { ok: true, ...result });
@@ -7334,7 +7435,7 @@ function createHandler(config) {
     const body = await readJsonBody(req);
     const { root } = await currentRoot();
     const paths = Array.isArray(body.paths) ? body.paths.filter((one) => typeof one === "string" && one.trim() !== "") : [];
-    if (paths.length === 0) throw Object.assign(new Error("paths \u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+    if (paths.length === 0) throw coreError("service.pathsEmpty", {}, { status: 400 });
     const result = await purgeTrashMany(root, paths);
     send(res, 200, { ok: true, ...result });
   }
@@ -7360,15 +7461,15 @@ function createHandler(config) {
     const path = String(body.path || "").trim();
     const noteId = String(body.noteId || "").trim();
     if (path === "" && noteId === "") {
-      throw Object.assign(new Error("\u9700\u8981 path \u6216 noteId"), { status: 400 });
+      throw coreError("service.needPathOrId", {}, { status: 400 });
     }
     const settings = await readSettings();
     const { root, missing } = await resolveVaultRoot(settings.vaultRoot || config.vaultPath || null);
-    if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 });
     const client = await openCloudClient();
     const state = await readSyncState();
     const id = noteId !== "" ? noteId : await noteIdOfPath(root, path, state);
-    if (id === "") throw Object.assign(new Error("\u8FD9\u7BC7\u7B14\u8BB0\u6CA1\u6709 note_id\uFF0C\u65E0\u4ECE\u5237\u65B0"), { status: 400 });
+    if (id === "") throw coreError("service.noNoteId", {}, { status: 400 });
     const outcome = await syncSingleNote({ client, root, state, noteId: id });
     await writeSyncState(state);
     let note = null;
@@ -7382,10 +7483,10 @@ function createHandler(config) {
   async function handleSyncPushOne(req, res) {
     const body = await readJsonBody(req);
     const path = String(body.path || "").trim();
-    if (path === "") throw Object.assign(new Error("\u9700\u8981 path"), { status: 400 });
+    if (path === "") throw coreError("service.needPath", {}, { status: 400 });
     const settings = await readSettings();
     const { root, missing } = await resolveVaultRoot(settings.vaultRoot || config.vaultPath || null);
-    if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 });
     const client = await openCloudClient();
     const result = await pushNote({ client, root, relPath: path });
     if (result.noteId) {
@@ -7408,11 +7509,11 @@ function createHandler(config) {
   }
   async function handleSyncPushAll(req, res) {
     const body = await readJsonBody(req);
-    if (syncState.running) throw Object.assign(new Error("\u6B63\u5728\u8DD1\u4E00\u8F6E\u540C\u6B65\uFF0C\u7B49\u5B83\u7ED3\u675F\u518D\u63A8"), { status: 409 });
+    if (syncState.running) throw coreError("service.syncRunning", {}, { status: 409 });
     const dir = typeof body.dir === "string" ? body.dir.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "") : "";
     const limit = Math.min(Math.max(Number(body.limit) || 200, 1), 500);
     const { root, missing } = await currentRoot();
-    if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 });
     const client = await openCloudClient();
     const scan = await scanVault(root);
     const state = await readSyncState();
@@ -7516,7 +7617,7 @@ function createHandler(config) {
   }
   async function handleAuthStart(req, res) {
     const origin = config.getOrigin();
-    if (!origin) throw Object.assign(new Error("\u65E0\u6CD5\u786E\u5B9A DSH Web \u7684\u8BBF\u95EE\u5730\u5740"), { status: 503 });
+    if (!origin) throw coreError("service.noOrigin", {}, { status: 503 });
     const redirectUri = redirectUriFor(origin);
     const registered = await readClient();
     const reusable = registered && registered.clientId && registered.redirectUri === redirectUri;
@@ -7581,7 +7682,8 @@ function createHandler(config) {
   async function handleImport(req, res) {
     const body = await readJsonBody(req);
     if (importState.running) {
-      return send(res, 200, { ok: false, running: true, error: "\u5DF2\u6709\u4E00\u4E2A\u5BFC\u5165\u4EFB\u52A1\u5728\u8DD1\uFF0C\u7B49\u5B83\u7ED3\u675F\u518D\u8BD5" });
+      const busy = coreError("service.importRunning");
+      return send(res, 200, { ok: false, running: true, error: busy.message, code: busy.code });
     }
     const { root } = await currentRoot();
     let client;
@@ -7715,9 +7817,9 @@ function createHandler(config) {
   async function handleCloudRead(res, url) {
     const client = await openCloudClient();
     const noteId = url.searchParams.get("id") || "";
-    if (noteId === "") throw Object.assign(new Error("id \u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+    if (noteId === "") throw coreError("service.idEmpty", {}, { status: 400 });
     const raw = await client.getNote(noteId);
-    if (!raw) throw Object.assign(new Error("\u4E91\u7AEF\u6CA1\u6709\u8FD9\u7BC7\u7B14\u8BB0\uFF08\u53EF\u80FD\u5DF2\u88AB\u5220\u9664\uFF09"), { status: 404 });
+    if (!raw) throw coreError("service.cloudNoteMissing", {}, { status: 404 });
     const state = await readSyncState();
     const record = state.notes[String(noteId)];
     send(res, 200, {
@@ -7743,7 +7845,7 @@ function createHandler(config) {
     const body = await readJsonBody(req, MAX_BODY);
     const client = await openCloudClient();
     const noteId = typeof body.noteId === "string" ? body.noteId : "";
-    if (noteId === "") throw Object.assign(new Error("noteId \u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+    if (noteId === "") throw coreError("service.noteIdEmpty", {}, { status: 400 });
     await client.updateNote({
       noteId,
       title: typeof body.title === "string" ? body.title : void 0,
@@ -7762,7 +7864,7 @@ function createHandler(config) {
     const body = await readJsonBody(req);
     const client = await openCloudClient();
     const noteId = typeof body.noteId === "string" ? body.noteId : "";
-    if (noteId === "") throw Object.assign(new Error("noteId \u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+    if (noteId === "") throw coreError("service.noteIdEmpty", {}, { status: 400 });
     await client.deleteNote(noteId);
     let local = null;
     try {
@@ -7785,7 +7887,7 @@ function createHandler(config) {
     const client = await openCloudClient();
     const noteId = typeof body.noteId === "string" ? body.noteId : "";
     const tags = Array.isArray(body.tags) ? body.tags.map(String) : [];
-    if (noteId === "" || tags.length === 0) throw Object.assign(new Error("noteId \u4E0E tags \u90FD\u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+    if (noteId === "" || tags.length === 0) throw coreError("service.noteIdTagsEmpty", {}, { status: 400 });
     await client.addTags(noteId, tags);
     send(res, 200, { ok: true });
   }
@@ -7794,7 +7896,7 @@ function createHandler(config) {
     const client = await openCloudClient();
     const noteId = typeof body.noteId === "string" ? body.noteId : "";
     const tagId = typeof body.tagId === "string" ? body.tagId : "";
-    if (noteId === "" || tagId === "") throw Object.assign(new Error("noteId \u4E0E tagId \u90FD\u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+    if (noteId === "" || tagId === "") throw coreError("service.noteIdTagIdEmpty", {}, { status: 400 });
     await client.deleteTag(noteId, tagId);
     send(res, 200, { ok: true });
   }
@@ -7807,7 +7909,7 @@ function createHandler(config) {
   async function handleCloudTopicNotes(res, url) {
     const client = await openCloudClient();
     const topicId = url.searchParams.get("topicId") || "";
-    if (topicId === "") throw Object.assign(new Error("topicId \u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+    if (topicId === "") throw coreError("service.topicIdEmpty", {}, { status: 400 });
     const page = Number(url.searchParams.get("page")) || 1;
     const result = await client.listTopicNotes({ topicId, page });
     send(res, 200, { ...result, notes: result.notes.map((n2) => normalizeNote(n2, { topicName: "" })).filter(Boolean) });
@@ -7816,7 +7918,7 @@ function createHandler(config) {
     const body = await readJsonBody(req);
     const client = await openCloudClient();
     const query = typeof body.query === "string" ? body.query.trim() : "";
-    if (query === "") throw Object.assign(new Error("query \u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+    if (query === "") throw coreError("service.queryEmpty", {}, { status: 400 });
     const topK = Number(body.topK) > 0 ? Math.min(Number(body.topK), 10) : 5;
     const results = body.topicId ? await client.recallInTopic({ topicId: body.topicId, query, topK }) : await client.recall(query, topK);
     send(res, 200, {
@@ -7831,23 +7933,23 @@ function createHandler(config) {
     const body = await readJsonBody(req);
     const client = await openCloudClient();
     const noteId = typeof body.noteId === "string" ? body.noteId : "";
-    if (noteId === "") throw Object.assign(new Error("noteId \u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+    if (noteId === "") throw coreError("service.noteIdEmpty", {}, { status: 400 });
     const url = await client.createShareLink({ noteId, excludeAudio: body.excludeAudio === true });
     send(res, 200, { ok: true, url });
   }
   async function handleAudioProxy(req, res, url) {
     const target = url.searchParams.get("url") || "";
-    if (target === "") throw Object.assign(new Error("url \u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+    if (target === "") throw coreError("service.urlEmpty", {}, { status: 400 });
     let parsed;
     try {
       parsed = new URL(target);
     } catch {
-      throw Object.assign(new Error("url \u4E0D\u662F\u5408\u6CD5\u5730\u5740"), { status: 400 });
+      throw coreError("service.urlInvalid", {}, { status: 400 });
     }
-    if (!/^https?:$/.test(parsed.protocol)) throw Object.assign(new Error("\u53EA\u652F\u6301 http/https"), { status: 400 });
+    if (!/^https?:$/.test(parsed.protocol)) throw coreError("service.urlScheme", {}, { status: 400 });
     const host = parsed.hostname.toLowerCase();
     if (!AUDIO_HOST_ALLOWLIST.some((suffix) => host === suffix || host.endsWith(`.${suffix}`))) {
-      throw Object.assign(new Error(`\u4E0D\u5141\u8BB8\u4EE3\u7406\u8FD9\u4E2A\u57DF\u540D\uFF1A${host}`), { status: 403 });
+      throw coreError("service.hostNotAllowed", { host }, { status: 403 });
     }
     const range = req.headers.range;
     const upstream = await fetch(target, {
@@ -7896,7 +7998,10 @@ function createHandler(config) {
   }
   async function handleSyncStart(req, res) {
     const body = await readJsonBody(req);
-    if (syncState.running) return send(res, 200, { ok: false, running: true, error: "\u5DF2\u7ECF\u6709\u4E00\u8F6E\u540C\u6B65\u5728\u8DD1\u4E86" });
+    if (syncState.running) {
+      const busy = coreError("service.syncRunningNow");
+      return send(res, 200, { ok: false, running: true, error: busy.message, code: busy.code });
+    }
     const full = body.full === true;
     try {
       await openCloudClient();
@@ -7944,26 +8049,18 @@ function createHandler(config) {
   }
   async function handleCardImport(req, res) {
     if (cardState.running) {
-      return send(res, 200, {
-        ok: false,
-        running: true,
-        error: "\u5DF2\u7ECF\u6709\u4E00\u4E2A\u5F55\u97F3\u5361\u5BFC\u5165\u5728\u8DD1\u4E86\uFF0C\u7B49\u5B83\u7ED3\u675F\u518D\u8BD5"
-      });
+      const busy = coreError("service.cardImportRunning");
+      return send(res, 200, { ok: false, running: true, error: busy.message, code: busy.code });
     }
     const body = await readJsonBody(req);
     const settings = await readSettings();
     const { root, missing } = await resolveVaultRoot(settings.vaultRoot || config.vaultPath || null);
     if (missing || root === null) {
-      throw Object.assign(new Error("\u7B14\u8BB0\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF0C\u5148\u53BB\u8BBE\u7F6E\u91CC\u9009\u4E00\u4E2A\u76EE\u5F55"), { status: 400 });
+      throw coreError("service.vaultNotConfigured", {}, { status: 400 });
     }
     const env = await checkCardEnvironment();
     if (!env.ready) {
-      throw Object.assign(
-        new Error(
-          env.error || "\u5F55\u97F3\u5361\u76F4\u8FDE\u9700\u8981 Python 3.10+ \u548C bleak\u3002\u88C5\u4E00\u4E0B\uFF1Apip install bleak"
-        ),
-        { status: 503, reason: "no-python" }
-      );
+      throw env.error ? Object.assign(new Error(env.error), { status: 503, reason: "no-python" }) : coreError("service.cardPythonMissing", {}, { status: 503, reason: "no-python" });
     }
     const options = {
       all: body.all !== false,
@@ -7977,7 +8074,7 @@ function createHandler(config) {
   async function handleCardDelete(req, res) {
     const body = await readJsonBody(req);
     if (typeof body.names !== "string" || body.names.trim() === "") {
-      throw Object.assign(new Error("\u8981\u5220\u54EA\u4E2A\u6587\u4EF6\uFF1Fnames \u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+      throw coreError("service.namesEmpty", {}, { status: 400 });
     }
     const result = await deleteCardFiles(body.names);
     return send(res, 200, { ok: true, ...result });
@@ -7999,7 +8096,7 @@ function createHandler(config) {
   async function handleCardWifiJoin(req, res) {
     const body = await readJsonBody(req);
     const ssid = typeof body.ssid === "string" ? body.ssid.trim() : "";
-    if (ssid === "") throw Object.assign(new Error("\u8981\u8FDE\u54EA\u4E2A\u70ED\u70B9\uFF1Fssid \u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+    if (ssid === "") throw coreError("service.ssidEmpty", {}, { status: 400 });
     const password = typeof body.password === "string" && body.password !== "" ? body.password : null;
     const keep = body.keep === true;
     const timeout = Number.isFinite(Number(body.timeout)) ? Number(body.timeout) : 30;
@@ -8024,7 +8121,7 @@ function createHandler(config) {
     const client = await openCloudClient();
     const { root } = await currentRoot();
     const relPath = typeof body.path === "string" ? body.path : "";
-    if (relPath === "") throw Object.assign(new Error("path \u4E0D\u80FD\u4E3A\u7A7A"), { status: 400 });
+    if (relPath === "") throw coreError("service.pathEmpty", {}, { status: 400 });
     const result = await pushNote({ client, root, relPath, noteId: typeof body.noteId === "string" ? body.noteId : void 0 });
     send(res, 200, { ok: true, ...result });
   }
@@ -8165,10 +8262,14 @@ function createHandler(config) {
   };
 }
 async function performSyncImpl({ full = false, reason = "manual", config = {} } = {}) {
-  if (syncState.running) return { ok: false, running: true, error: "\u5DF2\u7ECF\u6709\u4E00\u8F6E\u540C\u6B65\u5728\u8DD1\u4E86" };
+  if (syncState.running) {
+    const busy = coreError("service.syncRunningNow");
+    return { ok: false, running: true, error: busy.message, code: busy.code };
+  }
   const now = Date.now();
   if (reason === "auto" && now - syncState.lastAttemptAt < SYNC_MIN_GAP_MS) {
-    return { ok: false, skipped: true, error: "\u8DDD\u4E0A\u6B21\u540C\u6B65\u592A\u8FD1\uFF0C\u8DF3\u8FC7\u8FD9\u4E00\u8F6E" };
+    const tooSoon = coreError("service.syncTooSoon");
+    return { ok: false, skipped: true, error: tooSoon.message, code: tooSoon.code };
   }
   syncState.lastAttemptAt = now;
   syncState.running = true;
@@ -8184,7 +8285,7 @@ async function performSyncImpl({ full = false, reason = "manual", config = {} } 
     const settings = await readSettings();
     const configured = settings.vaultRoot || config.vaultPath || null;
     const { root, missing } = await resolveVaultRoot(configured);
-    if (missing) throw Object.assign(new Error(`\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A${missing}`), { status: 404 });
+    if (missing) throw coreError("service.vaultMissing", { path: missing }, { status: 404 });
     const state = await readSyncState();
     const scan = await scanVault(root);
     const index = /* @__PURE__ */ new Map();
@@ -12006,7 +12107,90 @@ var LEX = {
     "card.skipped": "\u5DF2\u5B58\u5728",
     "card.failed": "\u5931\u8D25",
     "card.alreadyRunning": "\u5DF2\u7ECF\u6709\u4E00\u4E2A\u5BFC\u5165\u5728\u8DD1\u4E86\u3002",
-    "card.needPython": "\u5148\u88C5\u597D Python \u548C bleak \u624D\u80FD\u7528\u3002"
+    "card.needPython": "\u5148\u88C5\u597D Python \u548C bleak \u624D\u80FD\u7528\u3002",
+    "err.vault.pathEscapes": "path escapes vault root",
+    "err.vault.readMdOnly": "\u53EA\u80FD\u8BFB\u53D6 .md \u6587\u4EF6",
+    "err.vault.notAFile": "\u4E0D\u662F\u6587\u4EF6",
+    "err.vault.fileTooLarge": "\u6587\u4EF6\u8FC7\u5927",
+    "err.vault.assetMdOnly": "\u53EA\u80FD\u7ED9 .md \u7B14\u8BB0\u5B58\u9644\u4EF6",
+    "err.vault.emptyFile": "\u6587\u4EF6\u662F\u7A7A\u7684",
+    "err.vault.tooManyAssets": "\u540C\u540D\u9644\u4EF6\u8FC7\u591A",
+    "err.vault.writeMdOnly": "\u53EA\u80FD\u5199\u5165 .md \u6587\u4EF6",
+    "err.vault.contentNotString": "content \u5FC5\u987B\u662F\u5B57\u7B26\u4E32",
+    "err.vault.contentTooLarge": "\u5185\u5BB9\u8D85\u8FC7 2MB \u4E0A\u9650",
+    "err.vault.conflict": "\u8FD9\u4E00\u7BC7\u5728\u522B\u5904\u88AB\u6539\u8FC7\u4E86",
+    "err.vault.tooManyNotes": "\u540C\u540D\u7B14\u8BB0\u8FC7\u591A",
+    "err.vault.cannotRemoveRoot": "\u4E0D\u80FD\u5220\u9664\u5E93\u6839",
+    "err.vault.restoreTrashOnly": "\u53EA\u80FD\u4ECE .trash \u76EE\u5F55\u6062\u590D",
+    "err.vault.trashMissing": "\u56DE\u6536\u7AD9\u91CC\u6CA1\u6709\u8FD9\u4E2A\u6587\u4EF6",
+    "err.vault.targetEmpty": "\u76EE\u6807\u8DEF\u5F84\u4E0D\u80FD\u4E3A\u7A7A",
+    "err.vault.emptyTrashOnly": "\u53EA\u80FD\u6E05\u7A7A .trash \u91CC\u7684\u6587\u4EF6",
+    "err.vault.notConflictPath": "\u4E0D\u662F\u51B2\u7A81\u7559\u6863\u8DEF\u5F84",
+    "err.vault.conflictNoLocal": "\u627E\u4E0D\u5230\u8FD9\u6761\u51B2\u7A81\u5BF9\u5E94\u7684\u6B63\u672C\u7B14\u8BB0\uFF0C\u53D6\u4E0D\u5230\u672C\u5730\u7248\u5185\u5BB9\uFF1B\u7559\u6863\u4ECD\u7136\u4FDD\u7559\uFF0C\u53EF\u4EE5\u76F4\u63A5\u6253\u5F00\u5BF9\u7167",
+    "err.vault.conflictNoCloud": "\u8FD9\u6761\u7559\u6863\u91CC\u6CA1\u6709\u4E91\u7AEF\u7248\u6B63\u6587\uFF0C\u53D6\u4E0D\u5230\u4E91\u7AEF\u7248\u672C\uFF1B\u7559\u6863\u4ECD\u7136\u4FDD\u7559\uFF0C\u53EF\u4EE5\u76F4\u63A5\u6253\u5F00\u5BF9\u7167",
+    "err.vault.dirNameEmpty": "\u76EE\u5F55\u540D\u4E0D\u80FD\u4E3A\u7A7A",
+    "err.vault.dirReserved": "\u300C{segment}\u300D\u662F\u63D2\u4EF6\u4FDD\u7559\u7684\u76EE\u5F55\u540D\uFF0C\u6362\u4E00\u4E2A",
+    "err.vault.mkdirFailed": "\u5EFA\u76EE\u5F55\u5931\u8D25\uFF1A{detail}",
+    "err.vault.dirMissing": "\u8FD9\u4E2A\u76EE\u5F55\u4E0D\u5B58\u5728",
+    "err.vault.dirNotEmptyNotes": "\u8FD9\u4E2A\u76EE\u5F55\u91CC\u8FD8\u6709 {notes} \u7BC7\u7B14\u8BB0\uFF0C\u5148\u628A\u5B83\u4EEC\u79FB\u8D70\u518D\u5220\u76EE\u5F55",
+    "err.vault.dirNotEmptyDirs": "\u8FD9\u4E2A\u76EE\u5F55\u91CC\u8FD8\u6709 {dirs} \u4E2A\u5B50\u76EE\u5F55\uFF0C\u5148\u6E05\u7A7A\u518D\u5220",
+    "err.vault.rmdirFailed": "\u5220\u76EE\u5F55\u5931\u8D25\uFF1A{detail}",
+    "err.vault.trashMoveFailed": "\u6709 {failed} \u7BC7\u6CA1\u80FD\u79FB\u8FDB\u56DE\u6536\u7AD9\uFF0C\u76EE\u5F55\u5148\u7559\u7740",
+    "err.vault.renameRoot": "\u8981\u6539\u540D\u7684\u76EE\u5F55\u4E0D\u80FD\u662F\u5E93\u6839",
+    "err.vault.newDirNameEmpty": "\u65B0\u76EE\u5F55\u540D\u4E0D\u80FD\u4E3A\u7A7A",
+    "err.vault.notADirectory": "\u8FD9\u4E0D\u662F\u4E00\u4E2A\u76EE\u5F55",
+    "err.vault.dirExists": "\u300C{path}\u300D\u5DF2\u7ECF\u5B58\u5728\uFF0C\u6362\u4E00\u4E2A\u540D\u5B57",
+    "err.vault.renameDirFailed": "\u6539\u76EE\u5F55\u540D\u5931\u8D25\uFF1A{detail}",
+    "err.vault.tagNameEmpty": "\u6807\u7B7E\u540D\u4E0D\u80FD\u4E3A\u7A7A",
+    "err.vault.fromTagEmpty": "\u8981\u6539\u540D\u7684\u6807\u7B7E\u4E0D\u80FD\u4E3A\u7A7A",
+    "err.vault.newTagNameEmpty": "\u65B0\u6807\u7B7E\u540D\u4E0D\u80FD\u4E3A\u7A7A",
+    "err.vault.fromLinkEmpty": "\u8981\u6539\u7684\u94FE\u63A5\u540D\u4E0D\u80FD\u4E3A\u7A7A",
+    "err.vault.toLinkEmpty": "\u8981\u6307\u5230\u54EA\u4E00\u7BC7\u4E0D\u80FD\u4E3A\u7A7A",
+    "err.vault.todoIndexInvalid": "\u5F85\u529E\u5E8F\u53F7\u4E0D\u5BF9",
+    "err.vault.todoMissing": "\u8FD9\u7BC7\u7B14\u8BB0\u91CC\u6CA1\u6709\u8FD9\u4E00\u6761\u5F85\u529E",
+    "err.service.bodyTooLarge": "\u8BF7\u6C42\u5185\u5BB9\u8FC7\u5927",
+    "err.service.badJson": "\u8BF7\u6C42\u5185\u5BB9\u4E0D\u662F\u5408\u6CD5 JSON",
+    "err.service.notLoggedIn": "\u5C1A\u672A\u767B\u5F55\u5F97\u5230\u5927\u8111\uFF08\u6216\u6388\u6743\u5DF2\u8FC7\u671F\uFF09\uFF0C\u5148\u5728\u9762\u677F\u91CC\u70B9\u300C\u767B\u5F55\u5E76\u5BFC\u5165\u300D",
+    "err.service.noCredentials": "\u8FD8\u6CA1\u6709\u63A5\u5165\u5F97\u5230\u5927\u8111\u3002\u6700\u7701\u4E8B\u7684\u662F\u53BB\u300C\u540C\u6B65\u300D\u9875\u70B9\u300C\u767B\u5F55\u5F97\u5230\u5927\u8111\u300D\uFF08\u4E00\u6B21\u6388\u6743\uFF0C\u4E4B\u540E\u81EA\u52A8\u540C\u6B65\uFF09\uFF1B\u4E5F\u53EF\u4EE5\u5728\u300C\u8BBE\u7F6E \u2192 \u4E91\u7AEF\u63A5\u5165\u300D\u586B API Key \u4E0E Client ID\uFF08\u5728 openapi.biji.com \u63A7\u5236\u53F0\u521B\u5EFA\uFF09\u3002",
+    "err.service.vaultMissing": "\u672C\u5730\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF1A{path}",
+    "err.service.needFromRename": "\u9700\u8981 from\uFF08\u539F\u6765\u6307\u7684\u90A3\u4E2A\u540D\u5B57\uFF09",
+    "err.service.needPath": "\u9700\u8981 path",
+    "err.service.needFromDir": "\u9700\u8981 from\uFF08\u539F\u76EE\u5F55\u8DEF\u5F84\uFF09",
+    "err.service.needDir": "\u9700\u8981 dir",
+    "err.service.needTag": "\u9700\u8981 tag",
+    "err.service.needFromTag": "\u9700\u8981 from\uFF08\u539F\u6807\u7B7E\u540D\uFF09",
+    "err.service.needPathNote": "\u9700\u8981 path\uFF08\u7B14\u8BB0\u8DEF\u5F84\uFF09",
+    "err.service.needIndex": "\u9700\u8981 index\uFF08\u7B2C\u51E0\u4E2A\u5F85\u529E\uFF0C\u4ECE 0 \u5F00\u59CB\uFF09",
+    "err.service.needPathName": "\u9700\u8981 path \u4E0E name",
+    "err.service.pathEmpty": "path \u4E0D\u80FD\u4E3A\u7A7A",
+    "err.service.unsupportedFileType": "\u4E0D\u652F\u6301\u7684\u6587\u4EF6\u7C7B\u578B",
+    "err.service.fileNameEmpty": "\u6587\u4EF6\u540D\u4E0D\u80FD\u4E3A\u7A7A",
+    "err.service.needPaths": "\u9700\u8981 paths",
+    "err.service.badBatchAction": "action \u53EA\u80FD\u662F tag / untag / move / delete",
+    "err.service.pathsEmpty": "paths \u4E0D\u80FD\u4E3A\u7A7A",
+    "err.service.needPathOrId": "\u9700\u8981 path \u6216 noteId",
+    "err.service.noNoteId": "\u8FD9\u7BC7\u7B14\u8BB0\u6CA1\u6709 note_id\uFF0C\u65E0\u4ECE\u5237\u65B0",
+    "err.service.syncRunning": "\u6B63\u5728\u8DD1\u4E00\u8F6E\u540C\u6B65\uFF0C\u7B49\u5B83\u7ED3\u675F\u518D\u63A8",
+    "err.service.noOrigin": "\u65E0\u6CD5\u786E\u5B9A DSH Web \u7684\u8BBF\u95EE\u5730\u5740",
+    "err.service.idEmpty": "id \u4E0D\u80FD\u4E3A\u7A7A",
+    "err.service.cloudNoteMissing": "\u4E91\u7AEF\u6CA1\u6709\u8FD9\u7BC7\u7B14\u8BB0\uFF08\u53EF\u80FD\u5DF2\u88AB\u5220\u9664\uFF09",
+    "err.service.noteIdEmpty": "noteId \u4E0D\u80FD\u4E3A\u7A7A",
+    "err.service.noteIdTagsEmpty": "noteId \u4E0E tags \u90FD\u4E0D\u80FD\u4E3A\u7A7A",
+    "err.service.noteIdTagIdEmpty": "noteId \u4E0E tagId \u90FD\u4E0D\u80FD\u4E3A\u7A7A",
+    "err.service.topicIdEmpty": "topicId \u4E0D\u80FD\u4E3A\u7A7A",
+    "err.service.queryEmpty": "query \u4E0D\u80FD\u4E3A\u7A7A",
+    "err.service.urlEmpty": "url \u4E0D\u80FD\u4E3A\u7A7A",
+    "err.service.urlInvalid": "url \u4E0D\u662F\u5408\u6CD5\u5730\u5740",
+    "err.service.urlScheme": "\u53EA\u652F\u6301 http/https",
+    "err.service.hostNotAllowed": "\u4E0D\u5141\u8BB8\u4EE3\u7406\u8FD9\u4E2A\u57DF\u540D\uFF1A{host}",
+    "err.service.vaultNotConfigured": "\u7B14\u8BB0\u5E93\u76EE\u5F55\u4E0D\u5B58\u5728\uFF0C\u5148\u53BB\u8BBE\u7F6E\u91CC\u9009\u4E00\u4E2A\u76EE\u5F55",
+    "err.service.cardPythonMissing": "\u5F55\u97F3\u5361\u76F4\u8FDE\u9700\u8981 Python 3.10+ \u548C bleak\u3002\u88C5\u4E00\u4E0B\uFF1Apip install bleak",
+    "err.service.namesEmpty": "\u8981\u5220\u54EA\u4E2A\u6587\u4EF6\uFF1Fnames \u4E0D\u80FD\u4E3A\u7A7A",
+    "err.service.ssidEmpty": "\u8981\u8FDE\u54EA\u4E2A\u70ED\u70B9\uFF1Fssid \u4E0D\u80FD\u4E3A\u7A7A",
+    "err.service.importRunning": "\u5DF2\u6709\u4E00\u4E2A\u5BFC\u5165\u4EFB\u52A1\u5728\u8DD1\uFF0C\u7B49\u5B83\u7ED3\u675F\u518D\u8BD5",
+    "err.service.syncRunningNow": "\u5DF2\u7ECF\u6709\u4E00\u8F6E\u540C\u6B65\u5728\u8DD1\u4E86",
+    "err.service.syncTooSoon": "\u8DDD\u4E0A\u6B21\u540C\u6B65\u592A\u8FD1\uFF0C\u8DF3\u8FC7\u8FD9\u4E00\u8F6E",
+    "err.service.cardImportRunning": "\u5DF2\u7ECF\u6709\u4E00\u4E2A\u5F55\u97F3\u5361\u5BFC\u5165\u5728\u8DD1\u4E86\uFF0C\u7B49\u5B83\u7ED3\u675F\u518D\u8BD5"
   },
   en: {
     "panel.title": "Getnote Brain",
@@ -12691,7 +12875,90 @@ var LEX = {
     "card.skipped": "Already there",
     "card.failed": "Failed",
     "card.alreadyRunning": "An import is already running.",
-    "card.needPython": "Install Python and bleak first."
+    "card.needPython": "Install Python and bleak first.",
+    "err.vault.pathEscapes": "path escapes vault root",
+    "err.vault.readMdOnly": "Only .md files can be read",
+    "err.vault.notAFile": "Not a file",
+    "err.vault.fileTooLarge": "File too large",
+    "err.vault.assetMdOnly": "Attachments can only be saved for .md notes",
+    "err.vault.emptyFile": "The file is empty",
+    "err.vault.tooManyAssets": "Too many attachments with that name",
+    "err.vault.writeMdOnly": "Only .md files can be written",
+    "err.vault.contentNotString": "content must be a string",
+    "err.vault.contentTooLarge": "Content exceeds the 2 MB limit",
+    "err.vault.conflict": "This note was changed somewhere else",
+    "err.vault.tooManyNotes": "Too many notes with that name",
+    "err.vault.cannotRemoveRoot": "The vault root cannot be deleted",
+    "err.vault.restoreTrashOnly": "Can only restore from the .trash folder",
+    "err.vault.trashMissing": "That file is not in the trash",
+    "err.vault.targetEmpty": "The target path cannot be empty",
+    "err.vault.emptyTrashOnly": "Only files inside .trash can be purged",
+    "err.vault.notConflictPath": "Not a conflict-archive path",
+    "err.vault.conflictNoLocal": "The original note for this conflict cannot be found, so the local copy is unavailable; the archive is kept and can be opened for comparison",
+    "err.vault.conflictNoCloud": "This archive has no cloud version of the body, so the cloud copy is unavailable; the archive is kept and can be opened for comparison",
+    "err.vault.dirNameEmpty": "The folder name cannot be empty",
+    "err.vault.dirReserved": '"{segment}" is reserved by the plugin \u2014 pick another name',
+    "err.vault.mkdirFailed": "Could not create the folder: {detail}",
+    "err.vault.dirMissing": "That folder does not exist",
+    "err.vault.dirNotEmptyNotes": "That folder still holds {notes} notes \u2014 move them out before deleting it",
+    "err.vault.dirNotEmptyDirs": "That folder still holds {dirs} subfolders \u2014 empty it before deleting",
+    "err.vault.rmdirFailed": "Could not delete the folder: {detail}",
+    "err.vault.trashMoveFailed": "{failed} notes could not be moved to the trash, so the folder was kept",
+    "err.vault.renameRoot": "The vault root cannot be renamed",
+    "err.vault.newDirNameEmpty": "The new folder name cannot be empty",
+    "err.vault.notADirectory": "That is not a folder",
+    "err.vault.dirExists": '"{path}" already exists \u2014 pick another name',
+    "err.vault.renameDirFailed": "Could not rename the folder: {detail}",
+    "err.vault.tagNameEmpty": "The tag name cannot be empty",
+    "err.vault.fromTagEmpty": "The tag to rename cannot be empty",
+    "err.vault.newTagNameEmpty": "The new tag name cannot be empty",
+    "err.vault.fromLinkEmpty": "The link to change cannot be empty",
+    "err.vault.toLinkEmpty": "Say which note it should point to",
+    "err.vault.todoIndexInvalid": "That to-do number is out of range",
+    "err.vault.todoMissing": "This note has no such to-do",
+    "err.service.bodyTooLarge": "Request body too large",
+    "err.service.badJson": "Request body is not valid JSON",
+    "err.service.notLoggedIn": 'Not signed in to Getnote (or the authorization expired) \u2014 click "Sign in and import" in the panel first',
+    "err.service.noCredentials": 'Getnote is not connected yet. The easiest way is to click "Sign in to Getnote" on the Sync page (authorize once, then it syncs automatically); you can also fill in an API Key and Client ID under Settings \u2192 Cloud (create them in the openapi.biji.com console).',
+    "err.service.vaultMissing": "The local vault folder does not exist: {path}",
+    "err.service.needFromRename": "from is required (the name it pointed to before)",
+    "err.service.needPath": "path is required",
+    "err.service.needFromDir": "from is required (the previous folder path)",
+    "err.service.needDir": "dir is required",
+    "err.service.needTag": "tag is required",
+    "err.service.needFromTag": "from is required (the previous tag name)",
+    "err.service.needPathNote": "path is required (the note path)",
+    "err.service.needIndex": "index is required (which to-do, starting at 0)",
+    "err.service.needPathName": "path and name are required",
+    "err.service.pathEmpty": "path cannot be empty",
+    "err.service.unsupportedFileType": "Unsupported file type",
+    "err.service.fileNameEmpty": "The file name cannot be empty",
+    "err.service.needPaths": "paths is required",
+    "err.service.badBatchAction": "action must be one of tag / untag / move / delete",
+    "err.service.pathsEmpty": "paths cannot be empty",
+    "err.service.needPathOrId": "path or noteId is required",
+    "err.service.noNoteId": "This note has no note_id, so it cannot be refreshed",
+    "err.service.syncRunning": "A sync is running \u2014 wait for it to finish before pushing",
+    "err.service.noOrigin": "Could not determine the DSH Web address",
+    "err.service.idEmpty": "id cannot be empty",
+    "err.service.cloudNoteMissing": "The cloud has no such note (it may have been deleted)",
+    "err.service.noteIdEmpty": "noteId cannot be empty",
+    "err.service.noteIdTagsEmpty": "noteId and tags cannot be empty",
+    "err.service.noteIdTagIdEmpty": "noteId and tagId cannot be empty",
+    "err.service.topicIdEmpty": "topicId cannot be empty",
+    "err.service.queryEmpty": "query cannot be empty",
+    "err.service.urlEmpty": "url cannot be empty",
+    "err.service.urlInvalid": "url is not a valid address",
+    "err.service.urlScheme": "Only http/https is supported",
+    "err.service.hostNotAllowed": "Proxying this host is not allowed: {host}",
+    "err.service.vaultNotConfigured": "The vault folder does not exist \u2014 pick one in Settings first",
+    "err.service.cardPythonMissing": "Direct recorder-card access needs Python 3.10+ and bleak. Install it with: pip install bleak",
+    "err.service.namesEmpty": "Which files should be deleted? names cannot be empty",
+    "err.service.ssidEmpty": "Which hotspot should it join? ssid cannot be empty",
+    "err.service.importRunning": "An import is already running \u2014 wait for it to finish and try again",
+    "err.service.syncRunningNow": "A sync round is already running",
+    "err.service.syncTooSoon": "Synced too recently \u2014 skipping this round",
+    "err.service.cardImportRunning": "A recorder-card import is already running \u2014 wait for it to finish and try again"
   },
   nl: {
     "panel.title": "Getnote Brain",
@@ -13373,7 +13640,90 @@ var LEX = {
     "card.skipped": "Al aanwezig",
     "card.failed": "Mislukt",
     "card.alreadyRunning": "Er loopt al een import.",
-    "card.needPython": "Installeer eerst Python en bleak."
+    "card.needPython": "Installeer eerst Python en bleak.",
+    "err.vault.pathEscapes": "Pad valt buiten de kluis",
+    "err.vault.readMdOnly": "Alleen .md-bestanden kunnen worden gelezen",
+    "err.vault.notAFile": "Geen bestand",
+    "err.vault.fileTooLarge": "Bestand te groot",
+    "err.vault.assetMdOnly": "Bijlagen kunnen alleen bij .md-notities worden opgeslagen",
+    "err.vault.emptyFile": "Het bestand is leeg",
+    "err.vault.tooManyAssets": "Te veel bijlagen met die naam",
+    "err.vault.writeMdOnly": "Alleen .md-bestanden kunnen worden geschreven",
+    "err.vault.contentNotString": "content moet een tekst zijn",
+    "err.vault.contentTooLarge": "Inhoud overschrijdt de limiet van 2 MB",
+    "err.vault.conflict": "Deze notitie is elders gewijzigd",
+    "err.vault.tooManyNotes": "Te veel notities met die naam",
+    "err.vault.cannotRemoveRoot": "De kluisroot kan niet worden verwijderd",
+    "err.vault.restoreTrashOnly": "Alleen herstellen uit de map .trash",
+    "err.vault.trashMissing": "Dat bestand staat niet in de prullenbak",
+    "err.vault.targetEmpty": "Het doelpand mag niet leeg zijn",
+    "err.vault.emptyTrashOnly": "Alleen bestanden in .trash kunnen worden gewist",
+    "err.vault.notConflictPath": "Geen pad van een conflictarchief",
+    "err.vault.conflictNoLocal": "De oorspronkelijke notitie van dit conflict is niet gevonden, dus de lokale versie is niet beschikbaar; het archief blijft bewaard en kan ter vergelijking worden geopend",
+    "err.vault.conflictNoCloud": "Dit archief bevat geen cloudversie van de tekst, dus de cloudversie is niet beschikbaar; het archief blijft bewaard en kan ter vergelijking worden geopend",
+    "err.vault.dirNameEmpty": "De mapnaam mag niet leeg zijn",
+    "err.vault.dirReserved": '"{segment}" is gereserveerd door de plug-in \u2014 kies een andere naam',
+    "err.vault.mkdirFailed": "Map aanmaken mislukt: {detail}",
+    "err.vault.dirMissing": "Die map bestaat niet",
+    "err.vault.dirNotEmptyNotes": "Die map bevat nog {notes} notities \u2014 verplaats ze voordat je de map verwijdert",
+    "err.vault.dirNotEmptyDirs": "Die map bevat nog {dirs} submappen \u2014 maak die eerst leeg",
+    "err.vault.rmdirFailed": "Map verwijderen mislukt: {detail}",
+    "err.vault.trashMoveFailed": "{failed} notities konden niet naar de prullenbak, dus de map is bewaard",
+    "err.vault.renameRoot": "De kluisroot kan niet worden hernoemd",
+    "err.vault.newDirNameEmpty": "De nieuwe mapnaam mag niet leeg zijn",
+    "err.vault.notADirectory": "Dat is geen map",
+    "err.vault.dirExists": '"{path}" bestaat al \u2014 kies een andere naam',
+    "err.vault.renameDirFailed": "Map hernoemen mislukt: {detail}",
+    "err.vault.tagNameEmpty": "De tagnaam mag niet leeg zijn",
+    "err.vault.fromTagEmpty": "De te hernoemen tag mag niet leeg zijn",
+    "err.vault.newTagNameEmpty": "De nieuwe tagnaam mag niet leeg zijn",
+    "err.vault.fromLinkEmpty": "De te wijzigen link mag niet leeg zijn",
+    "err.vault.toLinkEmpty": "Geef aan naar welke notitie het moet wijzen",
+    "err.vault.todoIndexInvalid": "Dat takenummer klopt niet",
+    "err.vault.todoMissing": "Deze notitie heeft die taak niet",
+    "err.service.bodyTooLarge": "Verzoekinhoud te groot",
+    "err.service.badJson": "Verzoekinhoud is geen geldige JSON",
+    "err.service.notLoggedIn": 'Niet ingelogd bij Getnote (of de autorisatie is verlopen) \u2014 klik eerst op "Inloggen en importeren" in het paneel',
+    "err.service.noCredentials": 'Getnote is nog niet gekoppeld. Het eenvoudigst is op de pagina Sync op "Inloggen bij Getnote" te klikken (eenmalig autoriseren, daarna synchroniseert het automatisch); je kunt ook een API-sleutel en Client ID invullen onder Instellingen \u2192 Cloud (aanmaken in de console van openapi.biji.com).',
+    "err.service.vaultMissing": "De lokale kluismap bestaat niet: {path}",
+    "err.service.needFromRename": "from is verplicht (de naam waarnaar het eerder wees)",
+    "err.service.needPath": "path is verplicht",
+    "err.service.needFromDir": "from is verplicht (het vorige mappad)",
+    "err.service.needDir": "dir is verplicht",
+    "err.service.needTag": "tag is verplicht",
+    "err.service.needFromTag": "from is verplicht (de vorige tagnaam)",
+    "err.service.needPathNote": "path is verplicht (het notitiepad)",
+    "err.service.needIndex": "index is verplicht (welke taak, vanaf 0)",
+    "err.service.needPathName": "path en name zijn verplicht",
+    "err.service.pathEmpty": "path mag niet leeg zijn",
+    "err.service.unsupportedFileType": "Bestandstype wordt niet ondersteund",
+    "err.service.fileNameEmpty": "De bestandsnaam mag niet leeg zijn",
+    "err.service.needPaths": "paths is verplicht",
+    "err.service.badBatchAction": "action moet tag / untag / move / delete zijn",
+    "err.service.pathsEmpty": "paths mag niet leeg zijn",
+    "err.service.needPathOrId": "path of noteId is verplicht",
+    "err.service.noNoteId": "Deze notitie heeft geen note_id en kan dus niet worden vernieuwd",
+    "err.service.syncRunning": "Er loopt een synchronisatie \u2014 wacht tot die klaar is voordat je pusht",
+    "err.service.noOrigin": "Het adres van DSH Web is niet vast te stellen",
+    "err.service.idEmpty": "id mag niet leeg zijn",
+    "err.service.cloudNoteMissing": "De cloud heeft die notitie niet (mogelijk verwijderd)",
+    "err.service.noteIdEmpty": "noteId mag niet leeg zijn",
+    "err.service.noteIdTagsEmpty": "noteId en tags mogen niet leeg zijn",
+    "err.service.noteIdTagIdEmpty": "noteId en tagId mogen niet leeg zijn",
+    "err.service.topicIdEmpty": "topicId mag niet leeg zijn",
+    "err.service.queryEmpty": "query mag niet leeg zijn",
+    "err.service.urlEmpty": "url mag niet leeg zijn",
+    "err.service.urlInvalid": "url is geen geldig adres",
+    "err.service.urlScheme": "Alleen http/https wordt ondersteund",
+    "err.service.hostNotAllowed": "Deze host mag niet via de proxy: {host}",
+    "err.service.vaultNotConfigured": "De kluismap bestaat niet \u2014 kies er eerst een in Instellingen",
+    "err.service.cardPythonMissing": "Directe toegang tot de opnamekaart vereist Python 3.10+ en bleak. Installeer met: pip install bleak",
+    "err.service.namesEmpty": "Welke bestanden verwijderen? names mag niet leeg zijn",
+    "err.service.ssidEmpty": "Met welke hotspot verbinden? ssid mag niet leeg zijn",
+    "err.service.importRunning": "Er loopt al een import \u2014 wacht tot die klaar is en probeer opnieuw",
+    "err.service.syncRunningNow": "Er loopt al een synchronisatieronde",
+    "err.service.syncTooSoon": "Te kort geleden gesynchroniseerd \u2014 deze ronde wordt overgeslagen",
+    "err.service.cardImportRunning": "Er loopt al een import van de opnamekaart \u2014 wacht tot die klaar is"
   }
 };
 
@@ -13805,6 +14155,47 @@ function getT() {
   if (panelT === null) panelT = makeT(void 0);
   return panelT;
 }
+function fillText(template, params) {
+  if (typeof template !== "string") return "";
+  if (params === null || typeof params !== "object") return template;
+  return template.replace(/\{([A-Za-z0-9_]+)\}/g, (whole, key) => {
+    const value = params[key];
+    return value === void 0 || value === null ? whole : String(value);
+  });
+}
+function errText(err, fallback) {
+  if (err === null || err === void 0) return fallback === void 0 ? "" : fallback;
+  const lexKey = typeof err.lexKey === "string" ? err.lexKey : null;
+  if (lexKey !== null) {
+    const picked = resolveLocale();
+    const dict = picked !== null ? LEX[picked] : null;
+    let template = dict && typeof dict[lexKey] === "string" ? dict[lexKey] : null;
+    if (template === null && typeof LEX.zh[lexKey] === "string") template = LEX.zh[lexKey];
+    if (template !== null) return fillText(template, err.params);
+  }
+  if (typeof err.message === "string" && err.message !== "") return err.message;
+  return fallback === void 0 ? String(err) : fallback;
+}
+function apiError(json, status) {
+  const body = json !== null && typeof json === "object" ? json : {};
+  const err = new Error(body.error || `HTTP ${status}`);
+  err.status = status;
+  err.body = body;
+  if (typeof body.code === "string" && body.code !== "") {
+    err.code = body.code;
+    err.lexKey = "err." + body.code;
+  }
+  if (body.params !== void 0 && body.params !== null) err.params = body.params;
+  return err;
+}
+function payloadText(payload, fallback) {
+  const body = payload !== null && typeof payload === "object" ? payload : {};
+  if (typeof body.code === "string" && body.code !== "") {
+    return errText({ lexKey: "err." + body.code, message: body.error, params: body.params }, fallback);
+  }
+  if (typeof body.error === "string" && body.error !== "") return body.error;
+  return fallback === void 0 ? "" : fallback;
+}
 var inflight = /* @__PURE__ */ new Map();
 function requestId() {
   const bytes = new Uint8Array(8);
@@ -13846,10 +14237,7 @@ async function api(path, init) {
       } catch {
       }
       if (!res.ok) {
-        const err = new Error(json && json.error || `HTTP ${res.status}`);
-        err.status = res.status;
-        err.body = json;
-        throw err;
+        throw apiError(json, res.status);
       }
       return json;
     } catch (error2) {
@@ -13880,7 +14268,7 @@ async function uploadAsset(notePath, file) {
     }
   );
   const json = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(json && json.error || `HTTP ${response.status}`);
+  if (!response.ok) throw apiError(json, response.status);
   return json;
 }
 function formatBytes2(bytes) {
@@ -15870,7 +16258,7 @@ function GetnotePage() {
       setDirs(Array.isArray(treeJson.dirs) ? treeJson.dirs : []);
       refreshOutcome.current = "ok";
     } catch (err) {
-      setError(err && err.message ? err.message : String(err));
+      setError(errText(err));
       refreshOutcome.current = "fail";
     } finally {
       refreshSpinTimer.current = window.setTimeout(() => {
@@ -16103,7 +16491,7 @@ function GetnotePage() {
         if (openSeq.current !== seq) return;
         setCurrent(null);
         setDraft(null);
-        setError(err && err.message ? err.message : String(err));
+        setError(errText(err));
       }
     },
     [current, pushNav]
@@ -16375,7 +16763,7 @@ function GetnotePage() {
         );
         return;
       }
-      setError(err && err.message ? err.message : String(err));
+      setError(errText(err));
     } finally {
       setBusy(false);
     }
@@ -16489,7 +16877,7 @@ function GetnotePage() {
         await refresh();
         await openNote(created.path);
       } catch (err) {
-        setError(err && err.message ? err.message : String(err));
+        setError(errText(err));
       } finally {
         setBusy(false);
       }
@@ -16578,7 +16966,7 @@ function GetnotePage() {
           showToast(t4("note.created"));
           await refresh();
           await openNote(created.path);
-        }).catch((err) => setError(err && err.message ? err.message : String(err))).finally(() => setBusy(false));
+        }).catch((err) => setError(errText(err))).finally(() => setBusy(false));
         return;
       }
       if (kind === "capture") {
@@ -16607,7 +16995,7 @@ function GetnotePage() {
           showToast(t4("capture.saved"));
           await refresh();
           await openNote(created.path);
-        }).catch((err) => setError(err && err.message ? err.message : String(err))).finally(() => setBusy(false));
+        }).catch((err) => setError(errText(err))).finally(() => setBusy(false));
         return;
       }
       if (kind === "sync") {
@@ -16620,7 +17008,7 @@ function GetnotePage() {
         }).then(() => {
           showToast(t4("sync.running"));
           return waitForSync();
-        }).catch((err) => setError(err && err.message ? err.message : String(err))).finally(() => setBusy(false));
+        }).catch((err) => setError(errText(err))).finally(() => setBusy(false));
         return;
       }
       if (kind === "card") {
@@ -16629,7 +17017,7 @@ function GetnotePage() {
         void api("/card/scan?timeout=8").then((json) => {
           const count = Array.isArray(json && json.cards) ? json.cards.length : 0;
           showToast(count > 0 ? `${t4("card.scanFound")}\uFF1A${count}` : t4("card.scanNone"));
-        }).catch((err) => setError(err && err.message ? err.message : String(err))).finally(() => setBusy(false));
+        }).catch((err) => setError(errText(err))).finally(() => setBusy(false));
       }
     }),
     [activeDir, entries, newNote, openNote, refresh, showToast, status, t4]
@@ -16684,7 +17072,7 @@ ${insert}
         if (tooBig > 0) showToast(t4("attach.tooBig").replace("{max}", formatBytes2(ATTACH_MAX_BYTES)));
         else showToast(failed > 0 ? t4("attach.failed") : t4("attach.added"));
       } catch (err) {
-        setError(err && err.message ? err.message : String(err));
+        setError(errText(err));
       } finally {
         setBusy(false);
       }
@@ -16750,7 +17138,7 @@ ${insert}
       showToast(t4("note.deleted"));
       void refresh();
     } catch (err) {
-      setError(err && err.message ? err.message : String(err));
+      setError(errText(err));
     } finally {
       setBusy(false);
     }
@@ -16784,7 +17172,7 @@ ${insert}
         await navigator.clipboard.writeText(body2);
         showToast(t4("note.copiedBody").replace("{n}", String(countWords(body2))));
       } catch (err) {
-        setError(err && err.message ? err.message : String(err));
+        setError(errText(err));
       }
     },
     [setError, showToast, t4]
@@ -16844,7 +17232,7 @@ ${insert}
         await refresh();
         await openNote(created.path);
       } catch (err) {
-        setError(err && err.message ? err.message : String(err));
+        setError(errText(err));
       } finally {
         setBusy(false);
       }
@@ -16881,7 +17269,7 @@ ${insert}
         await refresh();
         await openNote(created.path);
       } catch (err) {
-        setError(err && err.message ? err.message : String(err));
+        setError(errText(err));
       } finally {
         setBusy(false);
       }
@@ -16914,7 +17302,7 @@ ${insert}
         await refresh();
         await openNote(created.path);
       } catch (err) {
-        setError(err && err.message ? err.message : String(err));
+        setError(errText(err));
       } finally {
         setBusy(false);
       }
@@ -16936,7 +17324,7 @@ ${insert}
         await openNote(current.path);
         return json;
       } catch (err) {
-        setError(err && err.message ? err.message : String(err));
+        setError(errText(err));
         return null;
       } finally {
         setBusy(false);
@@ -17094,7 +17482,7 @@ ${insert}
         await refresh();
         if (current !== null && picked.has(current.path)) setCurrent(null);
       } catch (err) {
-        setError(err && err.message ? err.message : String(err));
+        setError(errText(err));
       } finally {
         setBusy(false);
       }
@@ -17162,7 +17550,7 @@ ${insert}
         );
         await refresh();
       } catch (err) {
-        setError(err && err.message ? err.message : String(err));
+        setError(errText(err));
       } finally {
         setBusy(false);
       }
@@ -17197,7 +17585,7 @@ ${insert}
           setCurrent({ ...current, path: landed });
         }
       } catch (err) {
-        setError(err && err.message ? err.message : String(err));
+        setError(errText(err));
       } finally {
         setBusy(false);
       }
@@ -17226,7 +17614,7 @@ ${insert}
           await openNote(from, false, true);
         }
       } catch (err) {
-        setError(err && err.message ? err.message : String(err));
+        setError(errText(err));
       } finally {
         setBusy(false);
       }
@@ -17650,7 +18038,7 @@ ${insert}
           setTab("notes");
           await openNote(created.path);
         } catch (err) {
-          setError(err && err.message ? err.message : String(err));
+          setError(errText(err));
         }
       },
       showToast
@@ -17756,7 +18144,7 @@ ${insert}
             showToast(t4("tree.dirCreated"));
             await refresh();
           } catch (err) {
-            setError(err && err.message ? err.message : String(err));
+            setError(errText(err));
           }
         },
         // 目录行右键「在这里新建笔记」：直接建在这个目录里并当场打开，
@@ -17779,7 +18167,7 @@ ${insert}
             await refresh();
             await openNote(created.path);
           } catch (err) {
-            setError(err && err.message ? err.message : String(err));
+            setError(errText(err));
           }
         },
         onDeleteDir: async (name, recursive = false) => {
@@ -17796,8 +18184,9 @@ ${insert}
             if (activeDir === name) setActiveDir("");
             await refresh();
           } catch (err) {
-            const message = err && err.message ? err.message : String(err);
-            setError(/还有|not empty|409/.test(message) ? t4("tree.dirNotEmpty") : message);
+            const message = errText(err);
+            const notEmpty = err && (err.code === "vault.dirNotEmptyNotes" || err.code === "vault.dirNotEmptyDirs") || /还有|not empty|409/.test(message);
+            setError(notEmpty ? t4("tree.dirNotEmpty") : message);
           }
         },
         onDeleteTag: async (name) => {
@@ -17811,7 +18200,7 @@ ${insert}
             if (activeTag === name) setActiveTag("");
             await refresh();
           } catch (err) {
-            setError(err && err.message ? err.message : String(err));
+            setError(errText(err));
           }
         },
         onCreateTag: async (name) => {
@@ -17828,7 +18217,7 @@ ${insert}
             showToast(t4("tree.tagCreated"));
             await refresh();
           } catch (err) {
-            setError(err && err.message ? err.message : String(err));
+            setError(errText(err));
           }
         },
         onRenameTag: async (from, to) => {
@@ -17843,7 +18232,7 @@ ${insert}
             showToast(`${t4("tree.tagRenamed")} \xB7 ${changed}`);
             await refresh();
           } catch (err) {
-            setError(err && err.message ? err.message : String(err));
+            setError(errText(err));
           }
         },
         onRenameDir: async (from, to) => {
@@ -17861,7 +18250,7 @@ ${insert}
             showToast(t4("tree.dirRenamed"));
             await refresh();
           } catch (err) {
-            setError(err && err.message ? err.message : String(err));
+            setError(errText(err));
           }
         },
         currentNoteId: current !== null && current.noteId ? current.noteId : null,
@@ -19019,7 +19408,7 @@ ${insert}
             await openNote(current.path);
             showToast(`${done ? t4("todo.done") : t4("todo.undone")}`);
           } catch (err) {
-            setError(err && err.message ? err.message : String(err));
+            setError(errText(err));
           }
         }
       })
@@ -19376,7 +19765,7 @@ function CloudPane(props) {
       setHasMore(page.hasMore === true);
       if (listRef.current) listRef.current.scrollTop = 0;
     } catch (err) {
-      onError(err && err.message ? err.message : String(err));
+      onError(errText(err));
     } finally {
       setLoading(false);
     }
@@ -19391,7 +19780,7 @@ function CloudPane(props) {
       setCursor(page.cursor ?? null);
       setHasMore(page.hasMore === true);
     } catch (err) {
-      onError(err && err.message ? err.message : String(err));
+      onError(errText(err));
     } finally {
       setLoading(false);
     }
@@ -19440,7 +19829,7 @@ function CloudPane(props) {
         setHasMore(false);
         if (listRef.current) listRef.current.scrollTop = 0;
       } catch (err) {
-        onError(err && err.message ? err.message : String(err));
+        onError(errText(err));
       } finally {
         setLoading(false);
       }
@@ -19471,7 +19860,7 @@ function CloudPane(props) {
         await openCloudNote({ noteId: String(result.noteId), title });
       }
     } catch (err) {
-      onError(err && err.message ? err.message : String(err));
+      onError(errText(err));
     } finally {
       setBusy(false);
     }
@@ -19497,7 +19886,7 @@ function CloudPane(props) {
         setDraftTitle(result.note.title || "");
         setDraftBody(result.note.content || result.note.original || "");
       } catch (err) {
-        onError(err && err.message ? err.message : String(err));
+        onError(errText(err));
       } finally {
         setDetailLoading(false);
       }
@@ -19518,7 +19907,7 @@ function CloudPane(props) {
       await openCloudNote(detail);
       if (typeof onSynced === "function") onSynced();
     } catch (err) {
-      onError(err && err.message ? err.message : String(err));
+      onError(errText(err));
     } finally {
       setBusy(false);
     }
@@ -19539,7 +19928,7 @@ function CloudPane(props) {
       await loadFirst();
       if (typeof onSynced === "function") onSynced();
     } catch (err) {
-      onError(err && err.message ? err.message : String(err));
+      onError(errText(err));
     } finally {
       setBusy(false);
     }
@@ -19556,7 +19945,7 @@ function CloudPane(props) {
       showToast(result.local && result.local.path ? result.local.path : t4("cloud.localCopy"));
       if (typeof onSynced === "function") onSynced();
     } catch (err) {
-      onError(err && err.message ? err.message : String(err));
+      onError(errText(err));
     } finally {
       setBusy(false);
     }
@@ -19574,7 +19963,7 @@ function CloudPane(props) {
       });
       setRecallHits(Array.isArray(result.results) ? result.results : []);
     } catch (err) {
-      onError(err && err.message ? err.message : String(err));
+      onError(errText(err));
     } finally {
       setRecalling(false);
     }
@@ -19594,7 +19983,7 @@ function CloudPane(props) {
         await openCloudNote(detail);
         await loadFirst();
       } catch (err) {
-        onError(err && err.message ? err.message : String(err));
+        onError(errText(err));
       } finally {
         setBusy(false);
       }
@@ -19616,7 +20005,7 @@ function CloudPane(props) {
         await openCloudNote(detail);
         await loadFirst();
       } catch (err) {
-        onError(err && err.message ? err.message : String(err));
+        onError(errText(err));
       } finally {
         setBusy(false);
       }
@@ -19646,7 +20035,7 @@ function CloudPane(props) {
           showToast(t4("cloud.shareCreated"));
         }
       } catch (err) {
-        onError(err && err.message ? err.message : String(err));
+        onError(errText(err));
       } finally {
         setBusy(false);
       }
@@ -19673,7 +20062,7 @@ ${t4("cloud.pushHint")}`)) return;
       showToast(t4("cloud.pushed"));
       await openCloudNote(detail);
     } catch (err) {
-      onError(err && err.message ? err.message : String(err));
+      onError(errText(err));
     } finally {
       setBusy(false);
     }
@@ -20189,7 +20578,7 @@ function LanguageCard(props) {
         onLocaleChange(next);
         await onSaved(t4("lang.saved"));
       } catch (err) {
-        onError(err && err.message ? err.message : String(err));
+        onError(errText(err));
       } finally {
         setBusy(false);
       }
@@ -20236,7 +20625,7 @@ function FollowCard(props) {
         });
         await onSaved(t4("settings.followSaved"));
       } catch (err) {
-        onError(err && err.message ? err.message : String(err));
+        onError(errText(err));
       } finally {
         setBusy(false);
       }
@@ -20277,7 +20666,7 @@ function HeatmapCard(props) {
         });
         await onSaved(t4("settings.heatmapSaved"));
       } catch (err) {
-        onError(err && err.message ? err.message : String(err));
+        onError(errText(err));
       } finally {
         setBusy(false);
       }
@@ -20331,7 +20720,7 @@ function HistoryCard(props) {
         pruned > 0 ? t4("settings.historySaved") + " \xB7 " + t4("settings.historyPruned").replace("{n}", String(pruned)) : t4("settings.historySaved")
       );
     } catch (err) {
-      onError(err && err.message ? err.message : String(err));
+      onError(errText(err));
     } finally {
       setBusy(false);
     }
@@ -20407,7 +20796,7 @@ function TemplateCard(props) {
       setDraft(null);
       await onSaved(t4("settings.templateSaved"));
     } catch (err) {
-      onError(err && err.message ? err.message : String(err));
+      onError(errText(err));
     } finally {
       setBusy(false);
     }
@@ -20541,7 +20930,7 @@ function CardPane(props) {
       setEnv(json);
       return json;
     } catch (err) {
-      setEnv({ ready: false, error: err && err.message ? err.message : String(err) });
+      setEnv({ ready: false, error: errText(err) });
       return null;
     } finally {
       setEnvBusy(false);
@@ -20556,7 +20945,7 @@ function CardPane(props) {
       setInstallLog(json);
       if (json && json.ok === true) showToast(t4("card.installOk"));
     } catch (err) {
-      const message = err && err.message ? err.message : String(err);
+      const message = errText(err);
       setInstallLog({ ok: false, log: message });
       onError(message);
     } finally {
@@ -20579,7 +20968,7 @@ function CardPane(props) {
       void api("/card/status").then((json) => {
         setRun(json);
         if (json.running !== true) {
-          if (json.error) onError(json.error);
+          if (json.error) onError(payloadText(json));
           else if (json.result) {
             showToast(`${t4("card.imported")}\uFF1A${json.result.downloaded}`);
             void onChanged();
@@ -20608,7 +20997,7 @@ function CardPane(props) {
         onError(t4("card.scanNone"));
       }
     } catch (err) {
-      onError(err && err.message ? err.message : String(err));
+      onError(errText(err));
     } finally {
       setScanning(false);
     }
@@ -20620,7 +21009,7 @@ function CardPane(props) {
       setFiles(Array.isArray(json.files) ? json.files : []);
     } catch (err) {
       setFiles([]);
-      onError(err && err.message ? err.message : String(err));
+      onError(errText(err));
     } finally {
       setListBusy(false);
     }
@@ -20637,12 +21026,12 @@ function CardPane(props) {
         body: JSON.stringify({ all: true, dir, deleteAfter })
       });
       if (json.ok !== true) {
-        onError(json.error || t4("card.alreadyRunning"));
+        onError(payloadText(json, t4("card.alreadyRunning")));
         return;
       }
       setRun({ running: true, lines: [] });
     } catch (err) {
-      onError(err && err.message ? err.message : String(err));
+      onError(errText(err));
     }
   }, [deleteAfter, dir, onError, t4]);
   const wifiRefresh = q2(async () => {
@@ -20651,7 +21040,7 @@ function CardPane(props) {
       setWifiNet(json);
       return json;
     } catch (err) {
-      onError(err && err.message ? err.message : String(err));
+      onError(errText(err));
       return null;
     }
   }, [onError]);
@@ -20673,10 +21062,10 @@ function CardPane(props) {
       } else if (json && json.ok === true) {
         onError(t4("card.wifiNoHotspot"));
       } else {
-        onError(json && json.error || t4("card.wifiFail"));
+        onError(payloadText(json, t4("card.wifiFail")));
       }
     } catch (err) {
-      onError(err && err.message ? err.message : String(err));
+      onError(errText(err));
     } finally {
       setWifiBusy(false);
       void wifiRefresh();
@@ -20703,9 +21092,9 @@ function CardPane(props) {
       });
       setWifiHot(json);
       if (json && json.ok === true) showToast(`${t4("card.wifiOn")}\uFF1A${ssid}`);
-      else onError(json && json.error || t4("card.wifiFail"));
+      else onError(payloadText(json, t4("card.wifiFail")));
     } catch (err) {
-      onError(err && err.message ? err.message : String(err));
+      onError(errText(err));
     } finally {
       setWifiBusy(false);
       void wifiRefresh();
@@ -20718,7 +21107,7 @@ function CardPane(props) {
       setWifiHot(null);
       if (json && json.ok === true) showToast(t4("card.wifiLeft"));
     } catch (err) {
-      onError(err && err.message ? err.message : String(err));
+      onError(errText(err));
     } finally {
       setWifiBusy(false);
       void wifiRefresh();
@@ -21079,11 +21468,11 @@ function ArchiveCard(props) {
           body: buffer
         });
         const json = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(json.error || `HTTP ${response.status}`);
+        if (!response.ok) throw apiError(json, response.status);
         showToast(`${t4("archive.imported")} ${json.written || 0} / ${json.skipped || 0}`);
         if (typeof onChanged === "function") await onChanged();
       } catch (err) {
-        onError(err && err.message ? err.message : String(err));
+        onError(errText(err));
       } finally {
         setBusy(false);
         if (fileRef.current) fileRef.current.value = "";
@@ -21177,7 +21566,7 @@ function ConflictPane(props) {
       const result = await api("/conflict/list");
       setItems(Array.isArray(result.items) ? result.items : []);
     } catch (err) {
-      onError(err && err.message ? err.message : String(err));
+      onError(errText(err));
     } finally {
       setLoading(false);
     }
@@ -21192,7 +21581,7 @@ function ConflictPane(props) {
         const result = await api(`/conflict/read?path=${encodeURIComponent(item.path)}`);
         setDetail(result);
       } catch (err) {
-        onError(err && err.message ? err.message : String(err));
+        onError(errText(err));
       } finally {
         setBusy(false);
       }
@@ -21215,7 +21604,7 @@ function ConflictPane(props) {
         if (typeof onChanged === "function") await onChanged();
         return result;
       } catch (err) {
-        onError(err && err.message ? err.message : String(err));
+        onError(errText(err));
         return null;
       } finally {
         setBusy(false);
@@ -21242,7 +21631,7 @@ function ConflictPane(props) {
       await load();
       if (typeof onChanged === "function") await onChanged();
     } catch (err) {
-      onError(err && err.message ? err.message : String(err));
+      onError(errText(err));
     } finally {
       setBusy(false);
     }
@@ -21521,7 +21910,7 @@ function BrokenPane(props) {
       setScanned(Number(result.scanned) || 0);
       setTruncated(result.truncated === true);
     } catch (err) {
-      onError(err && err.message ? err.message : String(err));
+      onError(errText(err));
     } finally {
       setLoading(false);
     }
@@ -21576,7 +21965,7 @@ function BrokenPane(props) {
       setRetarget(null);
       await load();
     } catch (err) {
-      onError(err && err.message ? err.message : String(err));
+      onError(errText(err));
     } finally {
       setRetargetBusy(false);
     }
@@ -21837,7 +22226,7 @@ function TodoPane(props) {
       setScanned(Number(result.scanned) || 0);
       setTruncated(result.truncated === true);
     } catch (err) {
-      onError(err && err.message ? err.message : String(err));
+      onError(errText(err));
     } finally {
       setLoading(false);
     }
@@ -21859,7 +22248,7 @@ function TodoPane(props) {
         if (typeof showToast === "function") showToast(t4("todo.done"));
         if (typeof onChanged === "function") await onChanged();
       } catch (err) {
-        onError(err && err.message ? err.message : String(err));
+        onError(errText(err));
       } finally {
         setBusy("");
       }
@@ -21907,7 +22296,7 @@ function TodoPane(props) {
         if (typeof showToast === "function") showToast(t4("todos.untickedDone").replace("{n}", String(group.items.length)));
         if (typeof onChanged === "function") await onChanged();
       } catch (err) {
-        onError(err && err.message ? err.message : String(err));
+        onError(errText(err));
         await load();
       } finally {
         setBusy("");
@@ -22362,7 +22751,7 @@ function TrashPane(props) {
         const body = String(note && note.body !== void 0 && note.body !== null ? note.body : note && note.content ? note.content : "");
         setPeek({ text: body });
       } catch (err) {
-        setPeek({ error: err && err.message ? err.message : String(err) });
+        setPeek({ error: errText(err) });
       }
     },
     [peekPath]
@@ -22373,7 +22762,7 @@ function TrashPane(props) {
       const result = await api("/trash/list");
       setItems(Array.isArray(result.items) ? result.items : []);
     } catch (err) {
-      onError(err && err.message ? err.message : String(err));
+      onError(errText(err));
     } finally {
       setLoading(false);
     }
@@ -22396,7 +22785,7 @@ function TrashPane(props) {
         await load();
         if (typeof onChanged === "function") await onChanged();
       } catch (err) {
-        onError(err && err.message ? err.message : String(err));
+        onError(errText(err));
       } finally {
         setBusy(false);
       }
@@ -22417,7 +22806,7 @@ function TrashPane(props) {
         await load();
         if (typeof onChanged === "function") await onChanged();
       } catch (err) {
-        onError(err && err.message ? err.message : String(err));
+        onError(errText(err));
       } finally {
         setBusy(false);
       }
@@ -22437,7 +22826,7 @@ function TrashPane(props) {
       await load();
       if (typeof onChanged === "function") await onChanged();
     } catch (err) {
-      onError(err && err.message ? err.message : String(err));
+      onError(errText(err));
     } finally {
       setBusy(false);
     }
@@ -22471,7 +22860,7 @@ function TrashPane(props) {
       await load();
       if (typeof onChanged === "function") await onChanged();
     } catch (err) {
-      onError(err && err.message ? err.message : String(err));
+      onError(errText(err));
     } finally {
       setBusy(false);
     }
@@ -22493,7 +22882,7 @@ function TrashPane(props) {
       await load();
       if (typeof onChanged === "function") await onChanged();
     } catch (err) {
-      onError(err && err.message ? err.message : String(err));
+      onError(errText(err));
     } finally {
       setBusy(false);
     }
@@ -22879,7 +23268,7 @@ function SyncPane(props) {
         });
         if (typeof onChanged === "function") await onChanged();
       } catch (err) {
-        onError(err && err.message ? err.message : String(err));
+        onError(errText(err));
       }
     },
     [onChanged, onError]
@@ -22911,7 +23300,7 @@ function SyncPane(props) {
       });
       setRunning(true);
     } catch (err) {
-      onError(err && err.message ? err.message : String(err));
+      onError(errText(err));
     } finally {
       setBusy(false);
     }
@@ -22933,7 +23322,7 @@ ${t4("sync.pushAllHint")}`)) return;
       showToast(`${t4("sync.pushAllDone")}\uFF1A${json.pushed}`);
       if (typeof onChanged === "function") await onChanged();
     } catch (err) {
-      onError(err && err.message ? err.message : String(err));
+      onError(errText(err));
     } finally {
       setBusy(false);
     }
@@ -24588,7 +24977,7 @@ function NotePane(props) {
         const json = await api(`/history/read?path=${encodeURIComponent(current.path)}&name=${encodeURIComponent(name)}`);
         setHistoryPreview(json);
       } catch (err) {
-        onError(err && err.message ? err.message : String(err));
+        onError(errText(err));
       } finally {
         setHistoryBusy(false);
       }
@@ -24610,7 +24999,7 @@ function NotePane(props) {
         await loadHistory(current.path);
         if (typeof onRestored === "function") await onRestored();
       } catch (err) {
-        onError(err && err.message ? err.message : String(err));
+        onError(errText(err));
       } finally {
         setHistoryBusy(false);
       }
@@ -26213,7 +26602,7 @@ function ImportPane(props) {
       } catch {
       }
     } catch (err) {
-      setError(err && err.message ? err.message : String(err));
+      setError(errText(err));
     } finally {
       setBusy(false);
     }
@@ -26242,11 +26631,11 @@ function ImportPane(props) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({})
       });
-      if (json && json.ok === false) setError(json.error || "import failed");
+      if (json && json.ok === false) setError(payloadText(json, "import failed"));
       setState((previous) => ({ ...previous || {}, running: json.ok === true }));
       await loadStatus();
     } catch (err) {
-      setError(err && err.message ? err.message : String(err));
+      setError(errText(err));
     } finally {
       setBusy(false);
     }
@@ -26257,7 +26646,7 @@ function ImportPane(props) {
       await api("/logout", { method: "POST" });
       await onRefresh();
     } catch (err) {
-      setError(err && err.message ? err.message : String(err));
+      setError(errText(err));
     } finally {
       setBusy(false);
     }
@@ -26363,8 +26752,8 @@ function VersionCard(props) {
       setState(json.ok === true ? "done" : "fail");
     } catch (err) {
       setState("fail");
-      setResult({ ok: false, reason: err && err.message ? err.message : String(err) });
-      if (onError) onError(err && err.message ? err.message : String(err));
+      setResult({ ok: false, reason: errText(err) });
+      if (onError) onError(errText(err));
     }
   }, [onError]);
   let badge = null;
@@ -26437,7 +26826,7 @@ function SettingsPane(props) {
         setTouched(false);
         await onSaved(t4("settings.saved"));
       } catch (err) {
-        onError(err && err.message ? err.message : String(err));
+        onError(errText(err));
       } finally {
         setBusy(false);
       }
@@ -26550,7 +26939,7 @@ function AppearanceCard(props) {
         });
         await onSaved(t4("appearance.saved"));
       } catch (err) {
-        onError(err && err.message ? err.message : String(err));
+        onError(errText(err));
       } finally {
         setBusy(false);
       }
@@ -26612,7 +27001,7 @@ function ThemeCard(props) {
         await onSaved(t4("theme.saved"));
         setDraft(null);
       } catch (err) {
-        onError(err && err.message ? err.message : String(err));
+        onError(errText(err));
       } finally {
         setBusy(false);
       }
@@ -26710,7 +27099,7 @@ function CloudCredCard(props) {
       setGrantId("");
       await onSaved(t4("api.saved"));
     } catch (err) {
-      onError(err && err.message ? err.message : String(err));
+      onError(errText(err));
     } finally {
       setBusy(false);
     }
@@ -26722,8 +27111,8 @@ function CloudCredCard(props) {
       const result = await api("/api/probe");
       setProbe({ ok: true, text: `${t4("api.ok")}${result.total !== void 0 ? ` \xB7 ${result.total}` : ""}` });
     } catch (err) {
-      setProbe({ ok: false, text: err && err.message ? err.message : String(err) });
-      onError(err && err.message ? err.message : String(err));
+      setProbe({ ok: false, text: errText(err) });
+      onError(errText(err));
     } finally {
       setTesting(false);
     }
@@ -26736,7 +27125,7 @@ function CloudCredCard(props) {
       await api("/api/clear", { method: "POST" });
       await onSaved(t4("api.cleared"));
     } catch (err) {
-      onError(err && err.message ? err.message : String(err));
+      onError(errText(err));
     } finally {
       setBusy(false);
     }

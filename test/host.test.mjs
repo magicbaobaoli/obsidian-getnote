@@ -330,7 +330,13 @@ try {
   const tooBigBody = JSON.stringify({ path: '随手记/太大的一篇', content: 'x'.repeat(2 * 1024 * 1024 + 128 * 1024), requestId: 'host-413' })
   const tooBig = await call('/save', { method: 'POST', headers: { 'content-type': 'application/json' }, body: tooBigBody })
   check('POST 超大正文 → 413', tooBig.status === 413, `status=${tooBig.status} ${JSON.stringify(tooBig.json)}`)
-  check('413 里说清是请求体太大', String(tooBig.json && tooBig.json.error).includes('too large'), tooBig.json && tooBig.json.error)
+  // 文案现在走 core 的 code（面板按 code 翻成当前语言），所以这里守两件事：
+  // 状态码是 413，而且带回来的 code 明确是「请求体太大」，中文兜底也说的是这回事。
+  check(
+    '413 里说清是请求体太大',
+    tooBig.json && tooBig.json.code === 'service.bodyTooLarge' && String(tooBig.json.error).includes('请求内容过大'),
+    tooBig.json && tooBig.json.error + ' / ' + (tooBig.json && tooBig.json.code),
+  )
   const afterTooBig = await call('/create', postJson('/create', { dir: '随手记', title: '撞过上限之后还能建', withDatePrefix: false }))
   check('撞过上限之后服务照常能用', afterTooBig.status === 200 && typeof afterTooBig.json.path === 'string', `status=${afterTooBig.status} ${JSON.stringify(afterTooBig.json)}`)
 

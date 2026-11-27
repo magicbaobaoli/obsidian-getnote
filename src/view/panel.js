@@ -715,6 +715,64 @@ async function saveFile(url, filename) {
       return panelT
     }
 
+    /** 把 {name} 占位符替换成 params 里的值；缺值原样留着，便于发现漏传。 */
+    function fillText(template, params) {
+      if (typeof template !== 'string') return ''
+      if (params === null || typeof params !== 'object') return template
+      return template.replace(/\{([A-Za-z0-9_]+)\}/g, (whole, key) => {
+        const value = params[key]
+        return value === undefined || value === null ? whole : String(value)
+      })
+    }
+
+    /**
+     * 一条错误该显示成什么。
+     *
+     * core 层现在会带回 code（→ lexKey）与 params，于是英文 / 荷兰文界面里也能
+     * 显示对应语言的报错，而不是一律冒中文。取不到译文就退回 err.message——
+     * 老代码抛的裸 Error 走的正是这条路，行为与以前一致。
+     */
+    function errText(err, fallback) {
+      if (err === null || err === undefined) return fallback === undefined ? '' : fallback
+      const lexKey = typeof err.lexKey === 'string' ? err.lexKey : null
+      if (lexKey !== null) {
+        const picked = resolveLocale()
+        const dict = picked !== null ? LEX[picked] : null
+        let template = dict && typeof dict[lexKey] === 'string' ? dict[lexKey] : null
+        if (template === null && typeof LEX.zh[lexKey] === 'string') template = LEX.zh[lexKey]
+        if (template !== null) return fillText(template, err.params)
+      }
+      if (typeof err.message === 'string' && err.message !== '') return err.message
+      return fallback === undefined ? String(err) : fallback
+    }
+
+    /** 把服务端错误响应变成一条带 code / params 的 Error。 */
+    function apiError(json, status) {
+      const body = json !== null && typeof json === 'object' ? json : {}
+      const err = new Error(body.error || `HTTP ${status}`)
+      err.status = status
+      err.body = body
+      if (typeof body.code === 'string' && body.code !== '') {
+        err.code = body.code
+        err.lexKey = 'err.' + body.code
+      }
+      if (body.params !== undefined && body.params !== null) err.params = body.params
+      return err
+    }
+
+    /**
+     * 服务端用 `{ ok: false, error, code }` 这种「HTTP 200 但业务失败」的写法回话时，
+     * 用它把 code 翻成当前语言的文案；没有 code 就退回原文。
+     */
+    function payloadText(payload, fallback) {
+      const body = payload !== null && typeof payload === 'object' ? payload : {}
+      if (typeof body.code === 'string' && body.code !== '') {
+        return errText({ lexKey: 'err.' + body.code, message: body.error, params: body.params }, fallback)
+      }
+      if (typeof body.error === 'string' && body.error !== '') return body.error
+      return fallback === undefined ? '' : fallback
+    }
+
     // ── HTTP ──────────────────────────────────────────────────────────────────
 
     /**
@@ -784,12 +842,9 @@ async function saveFile(url, filename) {
             // 非 JSON 响应：保留状态码，让上层给出「宿主版本不匹配」这类可操作提示
           }
           if (!res.ok) {
-            const err = new Error((json && json.error) || `HTTP ${res.status}`)
-            err.status = res.status
             // 响应正文也挂上：409 撞车时服务端会附带「磁盘上现在是哪一版」，
             // 只留一句 error 文案的话，上层想知道细节还得再打一次请求。
-            err.body = json
-            throw err
+            throw apiError(json, res.status)
           }
           return json
         } catch (error) {
@@ -836,7 +891,7 @@ async function saveFile(url, filename) {
         },
       )
       const json = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error((json && json.error) || `HTTP ${response.status}`)
+      if (!response.ok) throw apiError(json, response.status)
       return json
     }
 
@@ -3743,7 +3798,7 @@ async function saveFile(url, filename) {
           setDirs(Array.isArray(treeJson.dirs) ? treeJson.dirs : [])
           refreshOutcome.current = 'ok'
         } catch (err) {
-          setError(err && err.message ? err.message : String(err))
+          setError(errText(err))
           refreshOutcome.current = 'fail'
         } finally {
           // 等动画播完再揭晓结果：转圈途中就变绿，等于告诉用户「还没转完就已经好了」，
@@ -4070,7 +4125,7 @@ async function saveFile(url, filename) {
             if (openSeq.current !== seq) return
             setCurrent(null)
             setDraft(null)
-            setError(err && err.message ? err.message : String(err))
+            setError(errText(err))
           }
         },
         [current, pushNav],
@@ -4453,7 +4508,7 @@ async function saveFile(url, filename) {
             )
             return
           }
-          setError(err && err.message ? err.message : String(err))
+          setError(errText(err))
         } finally {
           setBusy(false)
         }
@@ -4551,7 +4606,7 @@ async function saveFile(url, filename) {
             await refresh()
             await openNote(created.path)
           } catch (err) {
-            setError(err && err.message ? err.message : String(err))
+            setError(errText(err))
           } finally {
             setBusy(false)
           }
@@ -4683,7 +4738,7 @@ async function saveFile(url, filename) {
                   await refresh()
                   await openNote(created.path)
                 })
-                .catch((err) => setError(err && err.message ? err.message : String(err)))
+                .catch((err) => setError(errText(err)))
                 .finally(() => setBusy(false))
               return
             }
@@ -4725,7 +4780,7 @@ async function saveFile(url, filename) {
                   await refresh()
                   await openNote(created.path)
                 })
-                .catch((err) => setError(err && err.message ? err.message : String(err)))
+                .catch((err) => setError(errText(err)))
                 .finally(() => setBusy(false))
               return
             }
@@ -4743,7 +4798,7 @@ async function saveFile(url, filename) {
                   // 这里等到这一轮结束，再把结果交给宿主（写进当天日记）。
                   return waitForSync()
                 })
-                .catch((err) => setError(err && err.message ? err.message : String(err)))
+                .catch((err) => setError(errText(err)))
                 .finally(() => setBusy(false))
               return
             }
@@ -4757,7 +4812,7 @@ async function saveFile(url, filename) {
                   const count = Array.isArray(json && json.cards) ? json.cards.length : 0
                   showToast(count > 0 ? `${t('card.scanFound')}：${count}` : t('card.scanNone'))
                 })
-                .catch((err) => setError(err && err.message ? err.message : String(err)))
+                .catch((err) => setError(errText(err)))
                 .finally(() => setBusy(false))
             }
           }),
@@ -4821,7 +4876,7 @@ async function saveFile(url, filename) {
             if (tooBig > 0) showToast(t('attach.tooBig').replace('{max}', formatBytes(ATTACH_MAX_BYTES)))
             else showToast(failed > 0 ? t('attach.failed') : t('attach.added'))
           } catch (err) {
-            setError(err && err.message ? err.message : String(err))
+            setError(errText(err))
           } finally {
             setBusy(false)
           }
@@ -4921,7 +4976,7 @@ async function saveFile(url, filename) {
           showToast(t('note.deleted'))
           void refresh()
         } catch (err) {
-          setError(err && err.message ? err.message : String(err))
+          setError(errText(err))
         } finally {
           setBusy(false)
         }
@@ -4964,7 +5019,7 @@ async function saveFile(url, filename) {
             showToast(t('note.copiedBody').replace('{n}', String(countWords(body))))
           } catch (err) {
             // 没接剪贴板时不能一声不吭：至少把原因写进错误条
-            setError(err && err.message ? err.message : String(err))
+            setError(errText(err))
           }
         },
         [setError, showToast, t],
@@ -5039,7 +5094,7 @@ async function saveFile(url, filename) {
             await refresh()
             await openNote(created.path)
           } catch (err) {
-            setError(err && err.message ? err.message : String(err))
+            setError(errText(err))
           } finally {
             setBusy(false)
           }
@@ -5082,7 +5137,7 @@ async function saveFile(url, filename) {
             await refresh()
             await openNote(created.path)
           } catch (err) {
-            setError(err && err.message ? err.message : String(err))
+            setError(errText(err))
           } finally {
             setBusy(false)
           }
@@ -5119,7 +5174,7 @@ async function saveFile(url, filename) {
             await refresh()
             await openNote(created.path)
           } catch (err) {
-            setError(err && err.message ? err.message : String(err))
+            setError(errText(err))
           } finally {
             setBusy(false)
           }
@@ -5146,7 +5201,7 @@ async function saveFile(url, filename) {
             await openNote(current.path)
             return json
           } catch (err) {
-            setError(err && err.message ? err.message : String(err))
+            setError(errText(err))
             return null
           } finally {
             setBusy(false)
@@ -5376,7 +5431,7 @@ async function saveFile(url, filename) {
             await refresh()
             if (current !== null && picked.has(current.path)) setCurrent(null)
           } catch (err) {
-            setError(err && err.message ? err.message : String(err))
+            setError(errText(err))
           } finally {
             setBusy(false)
           }
@@ -5470,7 +5525,7 @@ async function saveFile(url, filename) {
             )
             await refresh()
           } catch (err) {
-            setError(err && err.message ? err.message : String(err))
+            setError(errText(err))
           } finally {
             setBusy(false)
           }
@@ -5518,7 +5573,7 @@ async function saveFile(url, filename) {
               setCurrent({ ...current, path: landed })
             }
           } catch (err) {
-            setError(err && err.message ? err.message : String(err))
+            setError(errText(err))
           } finally {
             setBusy(false)
           }
@@ -5560,7 +5615,7 @@ async function saveFile(url, filename) {
               await openNote(from, false, true)
             }
           } catch (err) {
-            setError(err && err.message ? err.message : String(err))
+            setError(errText(err))
           } finally {
             setBusy(false)
           }
@@ -6040,7 +6095,7 @@ async function saveFile(url, filename) {
               setTab('notes')
               await openNote(created.path)
             } catch (err) {
-              setError(err && err.message ? err.message : String(err))
+              setError(errText(err))
             }
           },
           showToast,
@@ -6148,7 +6203,7 @@ async function saveFile(url, filename) {
                 showToast(t('tree.dirCreated'))
                 await refresh()
               } catch (err) {
-                setError(err && err.message ? err.message : String(err))
+                setError(errText(err))
               }
             },
             // 目录行右键「在这里新建笔记」：直接建在这个目录里并当场打开，
@@ -6171,7 +6226,7 @@ async function saveFile(url, filename) {
                 await refresh()
                 await openNote(created.path)
               } catch (err) {
-                setError(err && err.message ? err.message : String(err))
+                setError(errText(err))
               }
             },
             onDeleteDir: async (name, recursive = false) => {
@@ -6193,9 +6248,12 @@ async function saveFile(url, filename) {
                 if (activeDir === name) setActiveDir('')
                 await refresh()
               } catch (err) {
-                const message = err && err.message ? err.message : String(err)
+                const message = errText(err)
                 // 非空目录是预期内的失败（用户得先把笔记移走），单独给一句人话
-                setError(/还有|not empty|409/.test(message) ? t('tree.dirNotEmpty') : message)
+                const notEmpty =
+                  (err && (err.code === 'vault.dirNotEmptyNotes' || err.code === 'vault.dirNotEmptyDirs')) ||
+                  /还有|not empty|409/.test(message)
+                setError(notEmpty ? t('tree.dirNotEmpty') : message)
               }
             },
             onDeleteTag: async (name) => {
@@ -6209,7 +6267,7 @@ async function saveFile(url, filename) {
                 if (activeTag === name) setActiveTag('')
                 await refresh()
               } catch (err) {
-                setError(err && err.message ? err.message : String(err))
+                setError(errText(err))
               }
             },
             onCreateTag: async (name) => {
@@ -6228,7 +6286,7 @@ async function saveFile(url, filename) {
                 showToast(t('tree.tagCreated'))
                 await refresh()
               } catch (err) {
-                setError(err && err.message ? err.message : String(err))
+                setError(errText(err))
               }
             },
             onRenameTag: async (from, to) => {
@@ -6244,7 +6302,7 @@ async function saveFile(url, filename) {
                 showToast(`${t('tree.tagRenamed')} · ${changed}`)
                 await refresh()
               } catch (err) {
-                setError(err && err.message ? err.message : String(err))
+                setError(errText(err))
               }
             },
             onRenameDir: async (from, to) => {
@@ -6265,7 +6323,7 @@ async function saveFile(url, filename) {
                 showToast(t('tree.dirRenamed'))
                 await refresh()
               } catch (err) {
-                setError(err && err.message ? err.message : String(err))
+                setError(errText(err))
               }
             },
             currentNoteId: current !== null && current.noteId ? current.noteId : null,
@@ -7562,7 +7620,7 @@ async function saveFile(url, filename) {
                 await openNote(current.path)
                 showToast(`${done ? t('todo.done') : t('todo.undone')}`)
               } catch (err) {
-                setError(err && err.message ? err.message : String(err))
+                setError(errText(err))
               }
             },
           }),
@@ -8020,7 +8078,7 @@ async function saveFile(url, filename) {
           // 换回第一页就回到顶上：不然新的一批从刚才那个高度开始铺，头几条被跳过。
           if (listRef.current) listRef.current.scrollTop = 0
         } catch (err) {
-          onError(err && err.message ? err.message : String(err))
+          onError(errText(err))
         } finally {
           setLoading(false)
         }
@@ -8036,7 +8094,7 @@ async function saveFile(url, filename) {
           setCursor(page.cursor ?? null)
           setHasMore(page.hasMore === true)
         } catch (err) {
-          onError(err && err.message ? err.message : String(err))
+          onError(errText(err))
         } finally {
           setLoading(false)
         }
@@ -8094,7 +8152,7 @@ async function saveFile(url, filename) {
             setHasMore(false)
             if (listRef.current) listRef.current.scrollTop = 0
           } catch (err) {
-            onError(err && err.message ? err.message : String(err))
+            onError(errText(err))
           } finally {
             setLoading(false)
           }
@@ -8127,7 +8185,7 @@ async function saveFile(url, filename) {
             await openCloudNote({ noteId: String(result.noteId), title })
           }
         } catch (err) {
-          onError(err && err.message ? err.message : String(err))
+          onError(errText(err))
         } finally {
           setBusy(false)
         }
@@ -8160,7 +8218,7 @@ async function saveFile(url, filename) {
             setDraftTitle(result.note.title || '')
             setDraftBody(result.note.content || result.note.original || '')
           } catch (err) {
-            onError(err && err.message ? err.message : String(err))
+            onError(errText(err))
           } finally {
             setDetailLoading(false)
           }
@@ -8183,7 +8241,7 @@ async function saveFile(url, filename) {
           await openCloudNote(detail)
           if (typeof onSynced === 'function') onSynced()
         } catch (err) {
-          onError(err && err.message ? err.message : String(err))
+          onError(errText(err))
         } finally {
           setBusy(false)
         }
@@ -8205,7 +8263,7 @@ async function saveFile(url, filename) {
           await loadFirst()
           if (typeof onSynced === 'function') onSynced()
         } catch (err) {
-          onError(err && err.message ? err.message : String(err))
+          onError(errText(err))
         } finally {
           setBusy(false)
         }
@@ -8223,7 +8281,7 @@ async function saveFile(url, filename) {
           showToast(result.local && result.local.path ? result.local.path : t('cloud.localCopy'))
           if (typeof onSynced === 'function') onSynced()
         } catch (err) {
-          onError(err && err.message ? err.message : String(err))
+          onError(errText(err))
         } finally {
           setBusy(false)
         }
@@ -8243,7 +8301,7 @@ async function saveFile(url, filename) {
           })
           setRecallHits(Array.isArray(result.results) ? result.results : [])
         } catch (err) {
-          onError(err && err.message ? err.message : String(err))
+          onError(errText(err))
         } finally {
           setRecalling(false)
         }
@@ -8267,7 +8325,7 @@ async function saveFile(url, filename) {
             await openCloudNote(detail)
             await loadFirst()
           } catch (err) {
-            onError(err && err.message ? err.message : String(err))
+            onError(errText(err))
           } finally {
             setBusy(false)
           }
@@ -8291,7 +8349,7 @@ async function saveFile(url, filename) {
             await openCloudNote(detail)
             await loadFirst()
           } catch (err) {
-            onError(err && err.message ? err.message : String(err))
+            onError(errText(err))
           } finally {
             setBusy(false)
           }
@@ -8325,7 +8383,7 @@ async function saveFile(url, filename) {
               showToast(t('cloud.shareCreated'))
             }
           } catch (err) {
-            onError(err && err.message ? err.message : String(err))
+            onError(errText(err))
           } finally {
             setBusy(false)
           }
@@ -8353,7 +8411,7 @@ async function saveFile(url, filename) {
           showToast(t('cloud.pushed'))
           await openCloudNote(detail)
         } catch (err) {
-          onError(err && err.message ? err.message : String(err))
+          onError(errText(err))
         } finally {
           setBusy(false)
         }
@@ -8985,7 +9043,7 @@ async function saveFile(url, filename) {
             onLocaleChange(next)
             await onSaved(t('lang.saved'))
           } catch (err) {
-            onError(err && err.message ? err.message : String(err))
+            onError(errText(err))
           } finally {
             setBusy(false)
           }
@@ -9045,7 +9103,7 @@ async function saveFile(url, filename) {
             })
             await onSaved(t('settings.followSaved'))
           } catch (err) {
-            onError(err && err.message ? err.message : String(err))
+            onError(errText(err))
           } finally {
             setBusy(false)
           }
@@ -9095,7 +9153,7 @@ async function saveFile(url, filename) {
             })
             await onSaved(t('settings.heatmapSaved'))
           } catch (err) {
-            onError(err && err.message ? err.message : String(err))
+            onError(errText(err))
           } finally {
             setBusy(false)
           }
@@ -9169,7 +9227,7 @@ async function saveFile(url, filename) {
               : t('settings.historySaved'),
           )
         } catch (err) {
-          onError(err && err.message ? err.message : String(err))
+          onError(errText(err))
         } finally {
           setBusy(false)
         }
@@ -9267,7 +9325,7 @@ async function saveFile(url, filename) {
           setDraft(null)
           await onSaved(t('settings.templateSaved'))
         } catch (err) {
-          onError(err && err.message ? err.message : String(err))
+          onError(errText(err))
         } finally {
           setBusy(false)
         }
@@ -9425,7 +9483,7 @@ async function saveFile(url, filename) {
           setEnv(json)
           return json
         } catch (err) {
-          setEnv({ ready: false, error: err && err.message ? err.message : String(err) })
+          setEnv({ ready: false, error: errText(err) })
           return null
         } finally {
           setEnvBusy(false)
@@ -9445,7 +9503,7 @@ async function saveFile(url, filename) {
           setInstallLog(json)
           if (json && json.ok === true) showToast(t('card.installOk'))
         } catch (err) {
-          const message = err && err.message ? err.message : String(err)
+          const message = errText(err)
           setInstallLog({ ok: false, log: message })
           onError(message)
         } finally {
@@ -9472,7 +9530,7 @@ async function saveFile(url, filename) {
             .then((json) => {
               setRun(json)
               if (json.running !== true) {
-                if (json.error) onError(json.error)
+                if (json.error) onError(payloadText(json))
                 else if (json.result) {
                   showToast(`${t('card.imported')}：${json.result.downloaded}`)
                   void onChanged()
@@ -9504,7 +9562,7 @@ async function saveFile(url, filename) {
             onError(t('card.scanNone'))
           }
         } catch (err) {
-          onError(err && err.message ? err.message : String(err))
+          onError(errText(err))
         } finally {
           setScanning(false)
         }
@@ -9517,7 +9575,7 @@ async function saveFile(url, filename) {
           setFiles(Array.isArray(json.files) ? json.files : [])
         } catch (err) {
           setFiles([])
-          onError(err && err.message ? err.message : String(err))
+          onError(errText(err))
         } finally {
           setListBusy(false)
         }
@@ -9535,12 +9593,12 @@ async function saveFile(url, filename) {
             body: JSON.stringify({ all: true, dir, deleteAfter }),
           })
           if (json.ok !== true) {
-            onError(json.error || t('card.alreadyRunning'))
+            onError(payloadText(json, t('card.alreadyRunning')))
             return
           }
           setRun({ running: true, lines: [] })
         } catch (err) {
-          onError(err && err.message ? err.message : String(err))
+          onError(errText(err))
         }
       }, [deleteAfter, dir, onError, t])
 
@@ -9555,7 +9613,7 @@ async function saveFile(url, filename) {
           setWifiNet(json)
           return json
         } catch (err) {
-          onError(err && err.message ? err.message : String(err))
+          onError(errText(err))
           return null
         }
       }, [onError])
@@ -9579,10 +9637,10 @@ async function saveFile(url, filename) {
           } else if (json && json.ok === true) {
             onError(t('card.wifiNoHotspot'))
           } else {
-            onError((json && json.error) || t('card.wifiFail'))
+            onError(payloadText(json, t('card.wifiFail')))
           }
         } catch (err) {
-          onError(err && err.message ? err.message : String(err))
+          onError(errText(err))
         } finally {
           setWifiBusy(false)
           void wifiRefresh()
@@ -9610,9 +9668,9 @@ async function saveFile(url, filename) {
           })
           setWifiHot(json)
           if (json && json.ok === true) showToast(`${t('card.wifiOn')}：${ssid}`)
-          else onError((json && json.error) || t('card.wifiFail'))
+          else onError(payloadText(json, t('card.wifiFail')))
         } catch (err) {
-          onError(err && err.message ? err.message : String(err))
+          onError(errText(err))
         } finally {
           setWifiBusy(false)
           void wifiRefresh()
@@ -9626,7 +9684,7 @@ async function saveFile(url, filename) {
           setWifiHot(null)
           if (json && json.ok === true) showToast(t('card.wifiLeft'))
         } catch (err) {
-          onError(err && err.message ? err.message : String(err))
+          onError(errText(err))
         } finally {
           setWifiBusy(false)
           void wifiRefresh()
@@ -10034,11 +10092,11 @@ async function saveFile(url, filename) {
               body: buffer,
             })
             const json = await response.json().catch(() => ({}))
-            if (!response.ok) throw new Error(json.error || `HTTP ${response.status}`)
+            if (!response.ok) throw apiError(json, response.status)
             showToast(`${t('archive.imported')} ${json.written || 0} / ${json.skipped || 0}`)
             if (typeof onChanged === 'function') await onChanged()
           } catch (err) {
-            onError(err && err.message ? err.message : String(err))
+            onError(errText(err))
           } finally {
             setBusy(false)
             if (fileRef.current) fileRef.current.value = ''
@@ -10147,7 +10205,7 @@ async function saveFile(url, filename) {
           const result = await api('/conflict/list')
           setItems(Array.isArray(result.items) ? result.items : [])
         } catch (err) {
-          onError(err && err.message ? err.message : String(err))
+          onError(errText(err))
         } finally {
           setLoading(false)
         }
@@ -10164,7 +10222,7 @@ async function saveFile(url, filename) {
             const result = await api(`/conflict/read?path=${encodeURIComponent(item.path)}`)
             setDetail(result)
           } catch (err) {
-            onError(err && err.message ? err.message : String(err))
+            onError(errText(err))
           } finally {
             setBusy(false)
           }
@@ -10190,7 +10248,7 @@ async function saveFile(url, filename) {
             if (typeof onChanged === 'function') await onChanged()
             return result
           } catch (err) {
-            onError(err && err.message ? err.message : String(err))
+            onError(errText(err))
             return null
           } finally {
             setBusy(false)
@@ -10220,7 +10278,7 @@ async function saveFile(url, filename) {
           await load()
           if (typeof onChanged === 'function') await onChanged()
         } catch (err) {
-          onError(err && err.message ? err.message : String(err))
+          onError(errText(err))
         } finally {
           setBusy(false)
         }
@@ -10567,7 +10625,7 @@ async function saveFile(url, filename) {
           setScanned(Number(result.scanned) || 0)
           setTruncated(result.truncated === true)
         } catch (err) {
-          onError(err && err.message ? err.message : String(err))
+          onError(errText(err))
         } finally {
           setLoading(false)
         }
@@ -10633,7 +10691,7 @@ async function saveFile(url, filename) {
           setRetarget(null)
           await load()
         } catch (err) {
-          onError(err && err.message ? err.message : String(err))
+          onError(errText(err))
         } finally {
           setRetargetBusy(false)
         }
@@ -10940,7 +10998,7 @@ async function saveFile(url, filename) {
           setScanned(Number(result.scanned) || 0)
           setTruncated(result.truncated === true)
         } catch (err) {
-          onError(err && err.message ? err.message : String(err))
+          onError(errText(err))
         } finally {
           setLoading(false)
         }
@@ -10966,7 +11024,7 @@ async function saveFile(url, filename) {
             if (typeof showToast === 'function') showToast(t('todo.done'))
             if (typeof onChanged === 'function') await onChanged()
           } catch (err) {
-            onError(err && err.message ? err.message : String(err))
+            onError(errText(err))
           } finally {
             setBusy('')
           }
@@ -11024,7 +11082,7 @@ async function saveFile(url, filename) {
             if (typeof showToast === 'function') showToast(t('todos.untickedDone').replace('{n}', String(group.items.length)))
             if (typeof onChanged === 'function') await onChanged()
           } catch (err) {
-            onError(err && err.message ? err.message : String(err))
+            onError(errText(err))
             await load()
           } finally {
             setBusy('')
@@ -11551,7 +11609,7 @@ async function saveFile(url, filename) {
             const body = String(note && note.body !== undefined && note.body !== null ? note.body : note && note.content ? note.content : '')
             setPeek({ text: body })
           } catch (err) {
-            setPeek({ error: err && err.message ? err.message : String(err) })
+            setPeek({ error: errText(err) })
           }
         },
         [peekPath],
@@ -11563,7 +11621,7 @@ async function saveFile(url, filename) {
           const result = await api('/trash/list')
           setItems(Array.isArray(result.items) ? result.items : [])
         } catch (err) {
-          onError(err && err.message ? err.message : String(err))
+          onError(errText(err))
         } finally {
           setLoading(false)
         }
@@ -11590,7 +11648,7 @@ async function saveFile(url, filename) {
             await load()
             if (typeof onChanged === 'function') await onChanged()
           } catch (err) {
-            onError(err && err.message ? err.message : String(err))
+            onError(errText(err))
           } finally {
             setBusy(false)
           }
@@ -11612,7 +11670,7 @@ async function saveFile(url, filename) {
             await load()
             if (typeof onChanged === 'function') await onChanged()
           } catch (err) {
-            onError(err && err.message ? err.message : String(err))
+            onError(errText(err))
           } finally {
             setBusy(false)
           }
@@ -11633,7 +11691,7 @@ async function saveFile(url, filename) {
           await load()
           if (typeof onChanged === 'function') await onChanged()
         } catch (err) {
-          onError(err && err.message ? err.message : String(err))
+          onError(errText(err))
         } finally {
           setBusy(false)
         }
@@ -11673,7 +11731,7 @@ async function saveFile(url, filename) {
           await load()
           if (typeof onChanged === 'function') await onChanged()
         } catch (err) {
-          onError(err && err.message ? err.message : String(err))
+          onError(errText(err))
         } finally {
           setBusy(false)
         }
@@ -11696,7 +11754,7 @@ async function saveFile(url, filename) {
           await load()
           if (typeof onChanged === 'function') await onChanged()
         } catch (err) {
-          onError(err && err.message ? err.message : String(err))
+          onError(errText(err))
         } finally {
           setBusy(false)
         }
@@ -12134,7 +12192,7 @@ async function saveFile(url, filename) {
             })
             if (typeof onChanged === 'function') await onChanged()
           } catch (err) {
-            onError(err && err.message ? err.message : String(err))
+            onError(errText(err))
           }
         },
         [onChanged, onError],
@@ -12169,7 +12227,7 @@ async function saveFile(url, filename) {
           })
           setRunning(true)
         } catch (err) {
-          onError(err && err.message ? err.message : String(err))
+          onError(errText(err))
         } finally {
           setBusy(false)
         }
@@ -12193,7 +12251,7 @@ async function saveFile(url, filename) {
           showToast(`${t('sync.pushAllDone')}：${json.pushed}`)
           if (typeof onChanged === 'function') await onChanged()
         } catch (err) {
-          onError(err && err.message ? err.message : String(err))
+          onError(errText(err))
         } finally {
           setBusy(false)
         }
@@ -14309,7 +14367,7 @@ async function saveFile(url, filename) {
             const json = await api(`/history/read?path=${encodeURIComponent(current.path)}&name=${encodeURIComponent(name)}`)
             setHistoryPreview(json)
           } catch (err) {
-            onError(err && err.message ? err.message : String(err))
+            onError(errText(err))
           } finally {
             setHistoryBusy(false)
           }
@@ -14334,7 +14392,7 @@ async function saveFile(url, filename) {
             await loadHistory(current.path)
             if (typeof onRestored === 'function') await onRestored()
           } catch (err) {
-            onError(err && err.message ? err.message : String(err))
+            onError(errText(err))
           } finally {
             setHistoryBusy(false)
           }
@@ -16242,7 +16300,7 @@ async function saveFile(url, filename) {
             // 打开失败也没关系，下面有手动链接
           }
         } catch (err) {
-          setError(err && err.message ? err.message : String(err))
+          setError(errText(err))
         } finally {
           setBusy(false)
         }
@@ -16275,11 +16333,11 @@ async function saveFile(url, filename) {
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({}),
           })
-          if (json && json.ok === false) setError(json.error || 'import failed')
+          if (json && json.ok === false) setError(payloadText(json, 'import failed'))
           setState((previous) => ({ ...(previous || {}), running: json.ok === true }))
           await loadStatus()
         } catch (err) {
-          setError(err && err.message ? err.message : String(err))
+          setError(errText(err))
         } finally {
           setBusy(false)
         }
@@ -16291,7 +16349,7 @@ async function saveFile(url, filename) {
           await api('/logout', { method: 'POST' })
           await onRefresh()
         } catch (err) {
-          setError(err && err.message ? err.message : String(err))
+          setError(errText(err))
         } finally {
           setBusy(false)
         }
@@ -16421,8 +16479,8 @@ async function saveFile(url, filename) {
           setState(json.ok === true ? 'done' : 'fail')
         } catch (err) {
           setState('fail')
-          setResult({ ok: false, reason: err && err.message ? err.message : String(err) })
-          if (onError) onError(err && err.message ? err.message : String(err))
+          setResult({ ok: false, reason: errText(err) })
+          if (onError) onError(errText(err))
         }
       }, [onError])
 
@@ -16508,7 +16566,7 @@ async function saveFile(url, filename) {
             setTouched(false)
             await onSaved(t('settings.saved'))
           } catch (err) {
-            onError(err && err.message ? err.message : String(err))
+            onError(errText(err))
           } finally {
             setBusy(false)
           }
@@ -16660,7 +16718,7 @@ async function saveFile(url, filename) {
             })
             await onSaved(t('appearance.saved'))
           } catch (err) {
-            onError(err && err.message ? err.message : String(err))
+            onError(errText(err))
           } finally {
             setBusy(false)
           }
@@ -16734,7 +16792,7 @@ async function saveFile(url, filename) {
             await onSaved(t('theme.saved'))
             setDraft(null)
           } catch (err) {
-            onError(err && err.message ? err.message : String(err))
+            onError(errText(err))
           } finally {
             setBusy(false)
           }
@@ -16851,7 +16909,7 @@ async function saveFile(url, filename) {
           setGrantId('')
           await onSaved(t('api.saved'))
         } catch (err) {
-          onError(err && err.message ? err.message : String(err))
+          onError(errText(err))
         } finally {
           setBusy(false)
         }
@@ -16864,8 +16922,8 @@ async function saveFile(url, filename) {
           const result = await api('/api/probe')
           setProbe({ ok: true, text: `${t('api.ok')}${result.total !== undefined ? ` · ${result.total}` : ''}` })
         } catch (err) {
-          setProbe({ ok: false, text: err && err.message ? err.message : String(err) })
-          onError(err && err.message ? err.message : String(err))
+          setProbe({ ok: false, text: errText(err) })
+          onError(errText(err))
         } finally {
           setTesting(false)
         }
@@ -16879,7 +16937,7 @@ async function saveFile(url, filename) {
           await api('/api/clear', { method: 'POST' })
           await onSaved(t('api.cleared'))
         } catch (err) {
-          onError(err && err.message ? err.message : String(err))
+          onError(errText(err))
         } finally {
           setBusy(false)
         }

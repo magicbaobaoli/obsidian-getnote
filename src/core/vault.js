@@ -10,6 +10,7 @@
  */
 import { readdir, readFile, writeFile, rename, mkdir, stat, rm, rmdir, realpath, copyFile } from './vfs.js'
 import { createHash, randomBytes } from 'node:crypto'
+import { coreError } from './errors.js'
 import { moveHistoryEntries } from './history.js'
 import { basename, dirname, extname, join, posix, relative, resolve, sep } from 'node:path'
 
@@ -44,7 +45,7 @@ export function normalizeRel(input) {
   const normalized = posix.normalize(raw)
   if (normalized === '.' || normalized === './') return ''
   if (normalized.startsWith('../') || normalized === '..') {
-    throw Object.assign(new Error('path escapes vault root'), { status: 400 })
+    throw coreError("vault.pathEscapes", {}, { status: 400 })
   }
   return normalized
 }
@@ -58,7 +59,7 @@ export function resolveInside(root, rel, { create = false } = {}) {
   const abs = normalized === '' ? resolve(root) : resolve(root, normalized.split('/').join(sep))
   const relCheck = relative(resolve(root), abs)
   if (relCheck.startsWith('..') || (relCheck !== '' && resolve(root, relCheck) !== abs)) {
-    throw Object.assign(new Error('path escapes vault root'), { status: 400 })
+    throw coreError("vault.pathEscapes", {}, { status: 400 })
   }
   return { abs, rel: normalized, create }
 }
@@ -575,11 +576,11 @@ export function buildTree(entries, emptyDirs = []) {
 export async function readNote(root, rel) {
   const { abs, rel: normalized } = resolveInside(root, rel)
   if (!normalized.toLowerCase().endsWith(NOTE_EXT)) {
-    throw Object.assign(new Error('只能读取 .md 文件'), { status: 400 })
+    throw coreError("vault.readMdOnly", {}, { status: 400 })
   }
   const st = await stat(abs)
-  if (!st.isFile()) throw Object.assign(new Error('不是文件'), { status: 400 })
-  if (st.size > MAX_READ) throw Object.assign(new Error('文件过大'), { status: 413 })
+  if (!st.isFile()) throw coreError("vault.notAFile", {}, { status: 400 })
+  if (st.size > MAX_READ) throw coreError("vault.fileTooLarge", {}, { status: 413 })
   const content = await readFile(abs, 'utf8')
   const { data, body } = parseFrontmatter(content)
   return {
@@ -670,10 +671,10 @@ export async function listAssets(root, rel, noteId = '') {
 export async function saveAsset(root, relNote, name, data) {
   const { rel: normalized } = resolveInside(root, relNote)
   if (!normalized.toLowerCase().endsWith(NOTE_EXT)) {
-    throw Object.assign(new Error('只能给 .md 笔记存附件'), { status: 400 })
+    throw coreError("vault.assetMdOnly", {}, { status: 400 })
   }
   if (!Buffer.isBuffer(data) || data.length === 0) {
-    throw Object.assign(new Error('文件是空的'), { status: 400 })
+    throw coreError("vault.emptyFile", {}, { status: 400 })
   }
   const dir = posix.dirname(normalized)
   const stem = posix.basename(normalized, NOTE_EXT)
@@ -711,7 +712,7 @@ export async function saveAsset(root, relNote, name, data) {
     invalidateScan(root)
     return { name: candidate, path: relPath, bytes: data.length }
   }
-  throw Object.assign(new Error('同名附件过多'), { status: 409 })
+  throw coreError("vault.tooManyAssets", {}, { status: 409 })
 }
 
 /**
@@ -733,11 +734,11 @@ export async function writeNote(root, rel, content, options = {}) {
     ? options.expectMtimeMs
     : null
   if (!normalized.toLowerCase().endsWith(NOTE_EXT)) {
-    throw Object.assign(new Error('只能写入 .md 文件'), { status: 400 })
+    throw coreError("vault.writeMdOnly", {}, { status: 400 })
   }
-  if (typeof content !== 'string') throw Object.assign(new Error('content 必须是字符串'), { status: 400 })
+  if (typeof content !== 'string') throw coreError("vault.contentNotString", {}, { status: 400 })
   if (Buffer.byteLength(content, 'utf8') > MAX_WRITE) {
-    throw Object.assign(new Error('内容超过 2MB 上限'), { status: 413 })
+    throw coreError("vault.contentTooLarge", {}, { status: 413 })
   }
   if (expectMtimeMs !== null) {
     let nowMs = null
@@ -748,12 +749,7 @@ export async function writeNote(root, rel, content, options = {}) {
       nowMs = null
     }
     if (nowMs !== null && nowMs !== expectMtimeMs) {
-      const err = new Error('这一篇在别处被改过了')
-      err.status = 409
-      err.code = 'conflict'
-      err.path = normalized
-      err.mtimeMs = nowMs
-      throw err
+      throw coreError('vault.conflict', {}, { status: 409, path: normalized, mtimeMs: nowMs })
     }
   }
   await mkdir(dirname(abs), { recursive: true })
@@ -809,7 +805,7 @@ export async function createNote(root, { dir = '', title = '', content = '', dat
       const stem = candidate.slice(0, -NOTE_EXT.length)
       candidate = `${stem}-${counter}${NOTE_EXT}`
       counter += 1
-      if (counter > 99) throw Object.assign(new Error('同名笔记过多'), { status: 409 })
+      if (counter > 99) throw coreError("vault.tooManyNotes", {}, { status: 409 })
     } catch (error) {
       if (error && error.status === 409) throw error
       break
@@ -824,7 +820,7 @@ export async function createNote(root, { dir = '', title = '', content = '', dat
 /** 删除笔记：移进库内 `.trash/`（可恢复），不真删。 */
 export async function trashNote(root, rel) {
   const { abs, rel: normalized } = resolveInside(root, rel)
-  if (normalized === '') throw Object.assign(new Error('不能删除库根'), { status: 400 })
+  if (normalized === '') throw coreError("vault.cannotRemoveRoot", {}, { status: 400 })
   const trashDir = join(root, '.trash')
   const stamp = new Date().toISOString().replace(/[:.]/g, '-')
   const target = join(trashDir, `${stamp}__${basename(abs)}`)
@@ -995,15 +991,15 @@ export async function listTrash(root) {
 export async function restoreNote(root, trashPath, targetRel) {
   const { abs: absTrash, rel: trashRel } = resolveInside(root, trashPath)
   if (!trashRel.startsWith(`${TRASH_DIR}/`)) {
-    throw Object.assign(new Error('只能从 .trash 目录恢复'), { status: 400 })
+    throw coreError("vault.restoreTrashOnly", {}, { status: 400 })
   }
   let st
   try {
     st = await stat(absTrash)
   } catch {
-    throw Object.assign(new Error('回收站里没有这个文件'), { status: 404 })
+    throw coreError("vault.trashMissing", {}, { status: 404 })
   }
-  if (!st.isFile()) throw Object.assign(new Error('不是文件'), { status: 400 })
+  if (!st.isFile()) throw coreError("vault.notAFile", {}, { status: 400 })
 
   const meta = parseTrashName(basename(absTrash))
   const wanted = typeof targetRel === 'string' && targetRel.trim() !== ''
@@ -1021,7 +1017,7 @@ export async function restoreNote(root, trashPath, targetRel) {
     rel = dir === '' ? meta.originalName : `${dir}/${meta.originalName}`
   }
   if (rel === '' || rel.endsWith('/')) {
-    throw Object.assign(new Error('目标路径不能为空'), { status: 400 })
+    throw coreError("vault.targetEmpty", {}, { status: 400 })
   }
   const { abs: absTarget } = resolveInside(root, rel, { create: true })
 
@@ -1032,7 +1028,7 @@ export async function restoreNote(root, trashPath, targetRel) {
     try {
       await stat(resolveInside(root, candidate).abs)
       counter += 1
-      if (counter > 99) throw Object.assign(new Error('同名笔记过多'), { status: 409 })
+      if (counter > 99) throw coreError("vault.tooManyNotes", {}, { status: 409 })
       const dir = posix.dirname(rel)
       const stem = basename(rel, extname(rel))
       const ext = extname(rel)
@@ -1106,7 +1102,7 @@ export async function purgeTrash(root, trashPath) {
   if (typeof trashPath === 'string' && trashPath.trim() !== '') {
     const { abs, rel } = resolveInside(root, trashPath)
     if (!rel.startsWith(`${TRASH_DIR}/`)) {
-      throw Object.assign(new Error('只能清空 .trash 里的文件'), { status: 400 })
+      throw coreError("vault.emptyTrashOnly", {}, { status: 400 })
     }
     await rm(abs, { force: true })
     await forgetTrashOrigin(root, basename(abs))
@@ -1965,7 +1961,7 @@ export async function listConflicts(root) {
 export async function readConflict(root, conflictPath) {
   const rel = normalizeRel(conflictPath)
   if (!rel.startsWith(`${CONFLICT_DIR}/`)) {
-    throw Object.assign(new Error('不是冲突留档路径'), { status: 400 })
+    throw coreError("vault.notConflictPath", {}, { status: 400 })
   }
   const { abs } = resolveInside(root, rel)
   const text = await readFile(abs, 'utf8')
@@ -2053,14 +2049,7 @@ export async function resolveConflict(root, conflictPath, { keepLocal = false, s
   // 想要的那一边拿不到（例如正本已被删除，而留档存的是本地版，云端版就无从取回），
   // 就如实报错。拿另一边硬顶上等于把用户的内容伪装成另一版，比失败更糟。
   if (wanted === null) {
-    throw Object.assign(
-      new Error(
-        keepLocal === true
-          ? '找不到这条冲突对应的正本笔记，取不到本地版内容；留档仍然保留，可以直接打开对照'
-          : '这条留档里没有云端版正文，取不到云端版本；留档仍然保留，可以直接打开对照',
-      ),
-      { status: 404 },
-    )
+    throw coreError(keepLocal === true ? "vault.conflictNoLocal" : "vault.conflictNoCloud", {}, { status: 404 })
   }
 
   // 写回正本前，把正本当前内容存进版本历史，两份内容都不会凭空消失。
@@ -2086,7 +2075,7 @@ export async function resolveConflict(root, conflictPath, { keepLocal = false, s
 export async function unresolveConflict(root, conflictPath) {
   const rel = normalizeRel(conflictPath)
   if (!rel.startsWith(`${CONFLICT_DIR}/`)) {
-    throw Object.assign(new Error('不是冲突留档路径'), { status: 400 })
+    throw coreError("vault.notConflictPath", {}, { status: 400 })
   }
   const base = rel.slice(CONFLICT_DIR.length + 1)
   const state = await readConflictState(root)
@@ -2106,19 +2095,19 @@ export async function unresolveConflict(root, conflictPath) {
  */
 export async function createDir(root, dirInput) {
   const rel = normalizeRel(dirInput)
-  if (rel === '') throw Object.assign(new Error('目录名不能为空'), { status: 400 })
+  if (rel === '') throw coreError("vault.dirNameEmpty", {}, { status: 400 })
   // 逐级校验：normalizeRel 已经拒绝 `..`，这里再确认没有混进保留目录名，
   // 否则用户建一个叫 `.trash` 的目录会把自己的回收站搞乱。
   for (const segment of rel.split('/')) {
     if (IGNORED_DIRS.has(segment)) {
-      throw Object.assign(new Error(`「${segment}」是插件保留的目录名，换一个`), { status: 400 })
+      throw coreError("vault.dirReserved", { segment }, { status: 400 })
     }
   }
   const { abs } = resolveInside(root, rel, { create: true })
   try {
     await mkdir(abs, { recursive: true })
   } catch (error) {
-    throw Object.assign(new Error(`建目录失败：${error && error.message ? error.message : error}`), { status: 500 })
+    throw coreError("vault.mkdirFailed", { detail: error && error.message ? error.message : error }, { status: 500 })
   }
   invalidateScan(root)
   return { ok: true, path: rel }
@@ -2134,17 +2123,17 @@ export async function createDir(root, dirInput) {
  */
 export async function removeDir(root, dirInput) {
   const rel = normalizeRel(dirInput)
-  if (rel === '') throw Object.assign(new Error('不能删除库根'), { status: 400 })
+  if (rel === '') throw coreError("vault.cannotRemoveRoot", {}, { status: 400 })
   const { abs } = resolveInside(root, rel)
   let dirents
   try {
     dirents = await readdir(abs, { withFileTypes: true })
   } catch {
-    throw Object.assign(new Error('这个目录不存在'), { status: 404 })
+    throw coreError("vault.dirMissing", {}, { status: 404 })
   }
   const notes = dirents.filter((d) => d.isFile() && extname(d.name).toLowerCase() === NOTE_EXT)
   if (notes.length > 0) {
-    throw Object.assign(new Error(`这个目录里还有 ${notes.length} 篇笔记，先把它们移走再删目录`), {
+    throw coreError("vault.dirNotEmptyNotes", { notes: notes.length }, {
       status: 409,
       notes: notes.length,
     })
@@ -2152,7 +2141,7 @@ export async function removeDir(root, dirInput) {
   // 子目录也拦一下：删父目录会连带删掉子目录，同样容易误伤
   const subdirs = dirents.filter((d) => d.isDirectory())
   if (subdirs.length > 0) {
-    throw Object.assign(new Error(`这个目录里还有 ${subdirs.length} 个子目录，先清空再删`), {
+    throw coreError("vault.dirNotEmptyDirs", { dirs: subdirs.length }, {
       status: 409,
       dirs: subdirs.length,
     })
@@ -2163,7 +2152,7 @@ export async function removeDir(root, dirInput) {
     // 「万一是空目录」这个判断也一起放行了，真出 bug 时会连带删掉子内容。
     await rmdir(abs)
   } catch (error) {
-    throw Object.assign(new Error(`删目录失败：${error && error.message ? error.message : error}`), { status: 500 })
+    throw coreError("vault.rmdirFailed", { detail: error && error.message ? error.message : error }, { status: 500 })
   }
   invalidateScan(root)
   return { ok: true, path: rel }
@@ -2182,13 +2171,13 @@ export async function removeDir(root, dirInput) {
  */
 export async function removeDirTree(root, dirInput) {
   const rel = normalizeRel(dirInput)
-  if (rel === '') throw Object.assign(new Error('不能删除库根'), { status: 400 })
+  if (rel === '') throw coreError("vault.cannotRemoveRoot", {}, { status: 400 })
   const { abs } = resolveInside(root, rel)
   let top
   try {
     top = await readdir(abs, { withFileTypes: true })
   } catch {
-    throw Object.assign(new Error('这个目录不存在'), { status: 404 })
+    throw coreError("vault.dirMissing", {}, { status: 404 })
   }
   // 先收集这个目录底下所有笔记（含子目录）。目录树的遍历走一遍就够了，
   // 后面 trashNote 只认文件、不依赖目录还在不在。
@@ -2228,7 +2217,7 @@ export async function removeDirTree(root, dirInput) {
   }
   if (failed.length > 0) {
     invalidateScan(root)
-    throw Object.assign(new Error(`有 ${failed.length} 篇没能移进回收站，目录先留着`), {
+    throw coreError("vault.trashMoveFailed", { failed: failed.length }, {
       status: 409,
       failed,
       notes: trashed,
@@ -2240,7 +2229,7 @@ export async function removeDirTree(root, dirInput) {
     // 这条路径已经把该搬的都搬走了，剩下的内容不再有可恢复的价值。
     await rm(abs, { recursive: true, force: true })
   } catch (error) {
-    throw Object.assign(new Error(`删目录失败：${error && error.message ? error.message : error}`), { status: 500 })
+    throw coreError("vault.rmdirFailed", { detail: error && error.message ? error.message : error }, { status: 500 })
   }
   invalidateScan(root)
   return { ok: true, path: rel, notes: trashed, dirs: dirCount }
@@ -2260,12 +2249,12 @@ export async function removeDirTree(root, dirInput) {
 export async function renameDir(root, fromInput, toInput) {
   const from = normalizeRel(fromInput)
   const to = normalizeRel(toInput)
-  if (from === '') throw Object.assign(new Error('要改名的目录不能是库根'), { status: 400 })
-  if (to === '') throw Object.assign(new Error('新目录名不能为空'), { status: 400 })
+  if (from === '') throw coreError("vault.renameRoot", {}, { status: 400 })
+  if (to === '') throw coreError("vault.newDirNameEmpty", {}, { status: 400 })
   if (from === to) return { ok: true, from, to, unchanged: true }
   for (const segment of to.split('/')) {
     if (IGNORED_DIRS.has(segment)) {
-      throw Object.assign(new Error(`「${segment}」是插件保留的目录名，换一个`), { status: 400 })
+      throw coreError("vault.dirReserved", { segment }, { status: 400 })
     }
   }
   const { abs: srcAbs } = resolveInside(root, from)
@@ -2273,13 +2262,13 @@ export async function renameDir(root, fromInput, toInput) {
   try {
     srcStat = await stat(srcAbs)
   } catch {
-    throw Object.assign(new Error('这个目录不存在'), { status: 404 })
+    throw coreError("vault.dirMissing", {}, { status: 404 })
   }
-  if (!srcStat.isDirectory()) throw Object.assign(new Error('这不是一个目录'), { status: 400 })
+  if (!srcStat.isDirectory()) throw coreError("vault.notADirectory", {}, { status: 400 })
   const { abs: dstAbs, rel: dstRel } = resolveInside(root, to, { create: true })
   try {
     await stat(dstAbs)
-    throw Object.assign(new Error(`「${dstRel}」已经存在，换一个名字`), { status: 409 })
+    throw coreError("vault.dirExists", { path: dstRel }, { status: 409 })
   } catch (error) {
     if (error && error.status === 409) throw error
   }
@@ -2287,7 +2276,7 @@ export async function renameDir(root, fromInput, toInput) {
     await mkdir(dirname(dstAbs), { recursive: true })
     await rename(srcAbs, dstAbs)
   } catch (error) {
-    throw Object.assign(new Error(`改目录名失败：${error && error.message ? error.message : error}`), {
+    throw coreError("vault.renameDirFailed", { detail: error && error.message ? error.message : error }, {
       status: 500,
     })
   }
@@ -2387,7 +2376,7 @@ export function readTags(text) {
  */
 export async function removeTag(root, tagInput, entries, options = {}) {
   const tag = String(tagInput || '').trim()
-  if (tag === '') throw Object.assign(new Error('标签名不能为空'), { status: 400 })
+  if (tag === '') throw coreError("vault.tagNameEmpty", {}, { status: 400 })
   const snapshot = typeof options.snapshot === 'function' ? options.snapshot : null
   let changed = 0
   const failed = []
@@ -2438,8 +2427,8 @@ export async function removeTag(root, tagInput, entries, options = {}) {
 export async function renameTag(root, fromInput, toInput, entries, options = {}) {
   const from = String(fromInput || '').trim()
   const to = String(toInput || '').trim()
-  if (from === '') throw Object.assign(new Error('要改名的标签不能为空'), { status: 400 })
-  if (to === '') throw Object.assign(new Error('新标签名不能为空'), { status: 400 })
+  if (from === '') throw coreError("vault.fromTagEmpty", {}, { status: 400 })
+  if (to === '') throw coreError("vault.newTagNameEmpty", {}, { status: 400 })
   if (from === to) return { ok: true, changed: 0, failed: [], total: entries.length, from, to }
   const snapshot = typeof options.snapshot === 'function' ? options.snapshot : null
   let changed = 0
@@ -2496,8 +2485,8 @@ export async function renameTag(root, fromInput, toInput, entries, options = {})
 export async function rewriteLinkTarget(root, fromInput, toInput, entries, options = {}) {
   const from = String(fromInput || '').trim()
   const to = String(toInput || '').trim()
-  if (from === '') throw Object.assign(new Error('要改的链接名不能为空'), { status: 400 })
-  if (to === '') throw Object.assign(new Error('要指到哪一篇不能为空'), { status: 400 })
+  if (from === '') throw coreError("vault.fromLinkEmpty", {}, { status: 400 })
+  if (to === '') throw coreError("vault.toLinkEmpty", {}, { status: 400 })
   const list = Array.isArray(entries) ? entries : (await scanVault(root)).entries
   if (from === to) return { ok: true, changed: 0, failed: [], total: list.length, from, to, files: [] }
   const want = from.toLowerCase()
@@ -2639,7 +2628,7 @@ export function heatmapOf(entries, { weeks = 26, today = null } = {}) {
 export async function toggleTodo(root, rel, index, options = {}) {
   const position = Number(index)
   if (!Number.isInteger(position) || position < 0) {
-    throw Object.assign(new Error('待办序号不对'), { status: 400 })
+    throw coreError("vault.todoIndexInvalid", {}, { status: 400 })
   }
   const note = await readNote(root, rel)
   const content = note.content
@@ -2688,7 +2677,7 @@ export async function toggleTodo(root, rel, index, options = {}) {
   }
 
   if (targetLine < 0 || targetMatch === null) {
-    throw Object.assign(new Error('这篇笔记里没有这一条待办'), { status: 404 })
+    throw coreError("vault.todoMissing", {}, { status: 404 })
   }
 
   const wasDone = targetMatch[3].toLowerCase() === 'x'
