@@ -17660,3 +17660,80 @@ test('日历页把有笔记的日子标上篇数，点一天列出那天写的�
   if (back) back.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
   await waitFor(() => rootNode().getAttribute('data-has-note') === 'false', 5000, '退回空态')
 })
+/**
+ * 宿主（Obsidian）的快捷键挂在 document 的冒泡监听上，真实按键先 document 后 window；
+ * 面板原来只在 window 上挂 keydown，于是 Alt+← 会「宿主退一页 + 面板退一篇」各跑一次。
+ * 现在明确跟宿主撞车的键在 document 的捕获阶段就被面板认领并 stopPropagation，
+ * 宿主那一层收不到；没认领的键照常放行。
+ */
+test('Alt+← 由面板在捕获阶段独占，宿主挂在 document 上的监听收不到', async () => {
+  const notePath = () => {
+    const el = window.document.querySelector('.dshgn_notePath')
+    return el ? el.textContent : null
+  }
+  const seedOne = async (title, requestId) => {
+    const res = await realFetch(server.origin + '/getnote/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+      body: JSON.stringify({
+        dir: '随手记',
+        title,
+        content: '# ' + title + '\n\n正文。\n',
+        withDatePrefix: false,
+        requestId,
+      }),
+    })
+    return (await res.json()).path
+  }
+  const pathA = await seedOne('按键归属A', 'seed-key-own-a')
+  const pathB = await seedOne('按键归属B', 'seed-key-own-b')
+
+  await clickTab('笔记')
+  const refreshBtn = () =>
+    Array.from(window.document.querySelectorAll('.dshgn_iconBtn')).find((el) => el.title === '刷新')
+  refreshBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+  await sleep(400)
+  const openCard = async (path) => {
+    const card = await waitFor(
+      () =>
+        Array.from(window.document.querySelectorAll('.dshgn_card')).find(
+          (el) => el.getAttribute('title') === path,
+        ) || null,
+      8000,
+      '列表里应该有 ' + path,
+    )
+    card.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+    await waitFor(() => notePath() === path, 5000, '打开 ' + path)
+  }
+  await openCard(pathA)
+  await openCard(pathB)
+  assert.equal(notePath(), pathB)
+
+  // 宿主的监听挂在 document 的冒泡阶段（Obsidian 的键位就是这么注册的）
+  const seen = []
+  const onDoc = (event) => seen.push(event.key)
+  window.document.addEventListener('keydown', onDoc)
+  try {
+    // 真实按键落在聚焦元素上：用面板里的搜索框当目标，事件照样冒泡到 document/window
+    const box = window.document.querySelector('.dshgn_search')
+    box.dispatchEvent(
+      new window.KeyboardEvent('keydown', { key: 'ArrowLeft', altKey: true, bubbles: true }),
+    )
+    await waitFor(() => notePath() === pathA, 5000, '面板应该回上一篇')
+    assert.deepEqual(seen, [], 'Alt+← 被面板认领了，宿主那层不该收到')
+    // 只退一篇：捕获层和窗口层都跑一遍的话会连退两篇（这里会掉到空态）
+    assert.equal(notePath(), pathA, '一次按键只该退一篇')
+
+    // 面板不管的键照常放行，不能顺手把宿主的其它快捷键一起掐掉
+    box.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'q', bubbles: true }))
+    assert.deepEqual(seen, ['q'], '没认领的键要交给宿主')
+
+    // 直接派发到 window 的事件（没有 target 节点）仍走窗口那一份，保持旧行为
+    window.dispatchEvent(
+      new window.KeyboardEvent('keydown', { key: 'ArrowRight', altKey: true, bubbles: true }),
+    )
+    await waitFor(() => notePath() === pathB, 5000, 'Alt+→ 该回到下一篇')
+  } finally {
+    window.document.removeEventListener('keydown', onDoc)
+  }
+})

@@ -16125,21 +16125,44 @@ function removeAllCss() {
 }
 var pendingAttach = /* @__PURE__ */ new Set();
 var pendingSync = /* @__PURE__ */ new Set();
-function attachOnPanelWindows(type, fn2, capture) {
+function attachOnPanelWindows(type, fn2, capture, owns) {
   const done = /* @__PURE__ */ new Set();
+  const guarded = /* @__PURE__ */ new Set();
+  const handled = /* @__PURE__ */ new WeakSet();
+  const onWin = (event) => {
+    if (handled.has(event)) return;
+    fn2(event);
+  };
+  const onCapture = (event) => {
+    if (handled.has(event) || !owns(event)) return;
+    const target = event.target;
+    if (!target || typeof target.nodeType !== "number") return;
+    if (!inPanel(event)) return;
+    handled.add(event);
+    fn2(event);
+    event.stopPropagation();
+  };
   const apply = () => {
     for (const win of panelWindows()) {
       if (done.has(win)) continue;
       done.add(win);
-      win.addEventListener(type, fn2, capture);
+      win.addEventListener(type, onWin, capture);
+    }
+    if (!owns) return;
+    for (const doc of panelDocuments()) {
+      if (guarded.has(doc)) continue;
+      guarded.add(doc);
+      doc.addEventListener(type, onCapture, true);
     }
   };
   apply();
   pendingAttach.add(apply);
   return () => {
     pendingAttach.delete(apply);
-    for (const win of done) win.removeEventListener(type, fn2, capture);
+    for (const win of done) win.removeEventListener(type, onWin, capture);
+    for (const doc of guarded) doc.removeEventListener(type, onCapture, true);
     done.clear();
+    guarded.clear();
   };
 }
 function registerPanelRoot(el) {
@@ -17738,7 +17761,12 @@ ${insert}
         }
       }
     };
-    return attachOnPanelWindows("keydown", onKey);
+    const ownsKey = (event) => {
+      if (event.altKey && !event.ctrlKey && !event.metaKey && (event.key === "ArrowLeft" || event.key === "ArrowRight")) return true;
+      const meta = event.ctrlKey || event.metaKey;
+      return meta && !event.altKey && (event.key.toLowerCase() === "k" || event.key.toLowerCase() === "n");
+    };
+    return attachOnPanelWindows("keydown", onKey, false, ownsKey);
   }, [clearPicked, current, navBack, navForward, newNote, openNote, pickedCount, shown, tab, togglePick, vaultReady]);
   y2(() => {
     const onDragOver = (event) => {
@@ -24881,7 +24909,12 @@ function NotePane(props) {
         });
       }
     };
-    return attachOnPanelWindows("keydown", onKey);
+    const ownsKey = (event) => {
+      if (editingRef.current) return false;
+      const meta = event.ctrlKey || event.metaKey;
+      return meta && !event.altKey && !event.shiftKey && String(event.key || "").toLowerCase() === "f";
+    };
+    return attachOnPanelWindows("keydown", onKey, false, ownsKey);
   }, []);
   y2(() => {
     const onKey = (event) => {
@@ -24897,7 +24930,8 @@ function NotePane(props) {
         stepZoomRef.current(event.key === "ArrowLeft" ? -1 : 1);
       }
     };
-    return attachOnPanelWindows("keydown", onKey);
+    const ownsKey = (event) => zoomRef.current !== null && (event.key === "Escape" || event.key === "ArrowLeft" || event.key === "ArrowRight");
+    return attachOnPanelWindows("keydown", onKey, false, ownsKey);
   }, []);
   const currentPathOf = current === null || current === void 0 ? "" : String(current.path || "");
   const scaleNow = noteScales[currentPathOf] !== void 0 && SCALES.indexOf(noteScales[currentPathOf]) !== -1 ? noteScales[currentPathOf] : textScale;
@@ -25075,7 +25109,11 @@ function NotePane(props) {
         dropDraft(current !== null ? String(current.path || "") : "");
       }
     };
-    return attachOnPanelWindows("keydown", onKey);
+    const ownsKey = (event) => {
+      const meta = event.ctrlKey || event.metaKey;
+      return meta && !event.altKey && String(event.key).toLowerCase() === "s";
+    };
+    return attachOnPanelWindows("keydown", onKey, false, ownsKey);
   }, [busy, current, dirty, editing, onSave, setDraft]);
   y2(() => {
     const onKey = (event) => {
@@ -25091,7 +25129,8 @@ function NotePane(props) {
       if (dirty && !busy) void Promise.resolve(onSave()).then(leave, leave);
       else leave();
     };
-    return attachOnPanelWindows("keydown", onKey);
+    const ownsKey = (event) => (event.ctrlKey || event.metaKey) && !event.altKey && String(event.key).toLowerCase() === "e";
+    return attachOnPanelWindows("keydown", onKey, false, ownsKey);
   }, [busy, current, dirty, editing, onSave]);
   const pathKey = current !== null ? current.path : null;
   const [lastPathKey, setLastPathKey] = h2(pathKey);

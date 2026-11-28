@@ -3485,21 +3485,62 @@ async function saveFile(url, filename) {
     // 就补一遍」的回调，新根节点出现时重放。
     const pendingAttach = new Set()
     const pendingSync = new Set()
-    function attachOnPanelWindows(type, fn, capture) {
+    /**
+     * 在面板的每个窗口上挂监听；传了 owns 时，再在对应 document 的**捕获阶段**补一层。
+     *
+     * 为什么需要捕获层：宿主（Obsidian）的快捷键挂在 document 的冒泡监听上，真实按键
+     * 先到 document 再到 window，所以面板挂在 window 上的处理器永远是后跑的那个——
+     * 只 preventDefault 拦不住宿主，它已经处理完了（Alt+← 会变成「宿主退一页、面板退
+     * 一篇」两件事一起发生）。在 document 捕获阶段就地处理并 stopPropagation，宿主那层
+     * 根本收不到。
+     *
+     * 捕获层只在 owns(event) 命中、且事件确实来自面板子树时才接管：捕获阶段停传播会连带
+     * 掐掉宿主和 React 的委托监听，所以范围必须小到只覆盖明确冲突的那几个键。没认领
+     * （没 preventDefault）的按键照常放行给宿主。
+     */
+    function attachOnPanelWindows(type, fn, capture, owns) {
       const done = new Set()
+      const guarded = new Set()
+      /** 这一份监听已经在捕获阶段认领过的按键，window 那一份别再跑一遍。 */
+      const handled = new WeakSet()
+      const onWin = (event) => {
+        if (handled.has(event)) return
+        fn(event)
+      }
+      const onCapture = (event) => {
+        if (handled.has(event) || !owns(event)) return
+        const target = event.target
+        // 直接派发到 window 的事件没有 target 节点，走窗口那一份就行。
+        if (!target || typeof target.nodeType !== 'number') return
+        if (!inPanel(event)) return
+        handled.add(event)
+        fn(event)
+        // 走到这里就是「这个键归面板管」：截断传播，宿主那份收不到。
+        // 不能拿 defaultPrevented 当条件——事件可能不可取消（cancelable: false），
+        // 那时 preventDefault 不生效，宿主照样跑一遍，等于没拦。
+        event.stopPropagation()
+      }
       const apply = () => {
         for (const win of panelWindows()) {
           if (done.has(win)) continue
           done.add(win)
-          win.addEventListener(type, fn, capture)
+          win.addEventListener(type, onWin, capture)
+        }
+        if (!owns) return
+        for (const doc of panelDocuments()) {
+          if (guarded.has(doc)) continue
+          guarded.add(doc)
+          doc.addEventListener(type, onCapture, true)
         }
       }
       apply()
       pendingAttach.add(apply)
       return () => {
         pendingAttach.delete(apply)
-        for (const win of done) win.removeEventListener(type, fn, capture)
+        for (const win of done) win.removeEventListener(type, onWin, capture)
+        for (const doc of guarded) doc.removeEventListener(type, onCapture, true)
         done.clear()
+        guarded.clear()
       }
     }
     /**
@@ -5700,8 +5741,15 @@ async function saveFile(url, filename) {
             }
           }
         }
+        // 捕获阶段只认领明确跟宿主撞车的那几个键：其它键（j/k/x/?/Esc）继续走
+        // 窗口那一份，免得在捕获阶段把宿主和 React 的委托监听一起掐掉。
+        const ownsKey = (event) => {
+          if (event.altKey && !event.ctrlKey && !event.metaKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) return true
+          const meta = event.ctrlKey || event.metaKey
+          return meta && !event.altKey && (event.key.toLowerCase() === 'k' || event.key.toLowerCase() === 'n')
+        }
         // 每个面板窗口各挂一份：popout 里按 Ctrl+K 也得能聚焦搜索框。
-        return attachOnPanelWindows('keydown', onKey)
+        return attachOnPanelWindows('keydown', onKey, false, ownsKey)
       }, [clearPicked, current, navBack, navForward, newNote, openNote, pickedCount, shown, tab, togglePick, vaultReady])
 
       // 把宿主的文件拖进面板时，别让浏览器把它当成「打开这个文件」。
@@ -14157,7 +14205,14 @@ async function saveFile(url, filename) {
             })
           }
         }
-        return attachOnPanelWindows('keydown', onKey)
+        const ownsKey = (event) => {
+          // 编辑态不认领：那边的 Ctrl+F 归 textarea 自己的 onKeyDown（见下面编辑区那段），
+          // 捕获阶段抢过来会让事件到不了 textarea，查找条就打不开了。
+          if (editingRef.current) return false
+          const meta = event.ctrlKey || event.metaKey
+          return meta && !event.altKey && !event.shiftKey && String(event.key || '').toLowerCase() === 'f'
+        }
+        return attachOnPanelWindows('keydown', onKey, false, ownsKey)
       }, [])
       // 放大态按 Esc 关掉。挂到面板窗口上而不是根节点上：焦点可能还在别处，
       // 用户在遮罩上按 Esc 时事件未必从根节点冒上来。
@@ -14177,7 +14232,12 @@ async function saveFile(url, filename) {
             stepZoomRef.current(event.key === 'ArrowLeft' ? -1 : 1)
           }
         }
-        return attachOnPanelWindows('keydown', onKey)
+        // 放大态是面板自己的模态层，Esc 和左右键都该由它独占：宿主在同一份
+        // document 上也监听左右键（历史前进后退），不截断就会一次翻两张图。
+        const ownsKey = (event) =>
+          zoomRef.current !== null &&
+          (event.key === 'Escape' || event.key === 'ArrowLeft' || event.key === 'ArrowRight')
+        return attachOnPanelWindows('keydown', onKey, false, ownsKey)
       }, [])
       // 换笔记时放大自动失效：放大态里记着「这是哪一篇的图」，渲染时对一下路径就行。
       // 不用 effect 去清——那个 effect 每次挂载都会跑，点开图之后紧接着的一次
@@ -14417,7 +14477,15 @@ async function saveFile(url, filename) {
             dropDraft(current !== null ? String(current.path || '') : '')
           }
         }
-        return attachOnPanelWindows('keydown', onKey)
+        // 编辑态的 Ctrl+S 是「存这一篇」，宿主那份会去存当前文件，不能两边都跑。
+        // Escape 不在这里认领：查找条、改名框这些面板自己的输入框在冒泡阶段也要
+        // 用 Escape 收自己那一层（查找条收起后还得把焦点还给编辑区）。捕获阶段
+        // 抢先处理会直接跳过那一层，用户按 Esc 就变成「整篇退出编辑」。
+        const ownsKey = (event) => {
+          const meta = event.ctrlKey || event.metaKey
+          return meta && !event.altKey && String(event.key).toLowerCase() === 's'
+        }
+        return attachOnPanelWindows('keydown', onKey, false, ownsKey)
       }, [busy, current, dirty, editing, onSave, setDraft])
 
       // Ctrl/Cmd+E：宿主里这个键在「编辑」和「阅读」之间来回切，是最省事的那条路
@@ -14437,7 +14505,10 @@ async function saveFile(url, filename) {
           if (dirty && !busy) void Promise.resolve(onSave()).then(leave, leave)
           else leave()
         }
-        return attachOnPanelWindows('keydown', onKey)
+        // 宿主的 Ctrl+E 也是编辑/阅读切换，两边都响应会一次翻两下（等于没变）。
+        const ownsKey = (event) =>
+          (event.ctrlKey || event.metaKey) && !event.altKey && String(event.key).toLowerCase() === 'e'
+        return attachOnPanelWindows('keydown', onKey, false, ownsKey)
       }, [busy, current, dirty, editing, onSave])
 
       // 换笔记时退出编辑态与历史面板：留着编辑态会让用户以为新笔记也是可编辑草稿，
