@@ -209,7 +209,10 @@ export default class GetnoteObsidianPlugin extends Plugin {
     // 模块）。所以这里自己把 zip 拉下来写到临时目录，再在系统文件管理器里定位到
     // 它——用户拿到的是真文件，而不是一个可能没反应的下载动作。
     setSaveFile(async (url, filename) => {
-      const res = await fetch(url)
+      // 这是插件主进程自己发起的进程内请求：没有 Origin，也不是浏览器资源加载，
+      // 本地服务的来源校验只认这个启动时生成的内部标记。
+      const internalKey = this.server && this.server.internalKey ? this.server.internalKey : ''
+      const res = await fetch(url, { headers: { 'x-getnote-internal': internalKey } })
       if (!res.ok) throw new Error(`导出失败：HTTP ${res.status}`)
       const bytes = Buffer.from(await res.arrayBuffer())
       const dir = join(tmpdir(), 'getnote-export')

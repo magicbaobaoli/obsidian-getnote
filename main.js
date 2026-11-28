@@ -8492,12 +8492,16 @@ var import_node_http2 = require("node:http");
 var import_node_crypto7 = require("node:crypto");
 var HOST = "127.0.0.1";
 var TOKEN_EXEMPT = /* @__PURE__ */ new Set(["oauth"]);
+var INTERNAL_HEADER = "x-getnote-internal";
+var INTERNAL_KEY = (0, import_node_crypto7.randomBytes)(18).toString("hex");
+var BROWSER_ONLY = /* @__PURE__ */ new Set(["asset", "audio"]);
+var APP_ORIGIN = "app://obsidian.md";
 function applyCors(res) {
   res.setHeader("access-control-allow-origin", "*");
   res.setHeader("access-control-allow-methods", "GET, POST, PUT, DELETE, OPTIONS");
   res.setHeader(
     "access-control-allow-headers",
-    "content-type, range, x-getnote-import-mode, x-getnote-token"
+    "content-type, range, x-getnote-import-mode, x-getnote-token, x-getnote-internal"
   );
   res.setHeader(
     "access-control-expose-headers",
@@ -8511,6 +8515,17 @@ function tokenOf(req, url) {
   if (typeof header === "string" && header !== "") return header;
   const fromQuery = url.searchParams.get("t");
   return typeof fromQuery === "string" ? fromQuery : "";
+}
+function isTrustedCaller(req) {
+  const internal = req.headers[INTERNAL_HEADER];
+  if (typeof internal === "string" && internal !== "" && internal === INTERNAL_KEY) return true;
+  const site = req.headers["sec-fetch-site"];
+  if (site === "same-origin" || site === "none") return true;
+  const origin = req.headers.origin;
+  if (typeof origin === "string" && origin.startsWith(APP_ORIGIN)) return true;
+  const referer = req.headers.referer;
+  if (typeof referer === "string" && referer.startsWith(APP_ORIGIN)) return true;
+  return false;
 }
 function listenOn(server, port) {
   return new Promise((resolve4, reject) => {
@@ -8551,6 +8566,11 @@ async function startLocalServer({ vaultPath = "", preferredPort = 0, token = "" 
       res.end(JSON.stringify({ error: "unauthorized", hint: "\u8BF7\u6C42\u7F3A\u5C11\u6216\u5E26\u9519\u4E86\u672C\u673A\u670D\u52A1\u4EE4\u724C" }));
       return;
     }
+    if (!TOKEN_EXEMPT.has(action) && !BROWSER_ONLY.has(action) && !isTrustedCaller(req)) {
+      res.writeHead(403, { "content-type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ error: "forbidden", hint: "\u8FD9\u4E2A\u8BF7\u6C42\u4E0D\u662F\u4ECE Obsidian \u91CC\u53D1\u51FA\u6765\u7684" }));
+      return;
+    }
     Promise.resolve(handler(req, res)).catch((error2) => {
       const message = error2 && error2.message ? error2.message : String(error2);
       try {
@@ -8589,6 +8609,8 @@ async function startLocalServer({ vaultPath = "", preferredPort = 0, token = "" 
     origin,
     port: actualPort,
     token: secret,
+    /** 进程内请求（如整库导出拉 zip）要带的头值。 */
+    internalKey: INTERNAL_KEY,
     portFallback: usedFallback,
     /** 停止监听，插件 unload 时调。 */
     close() {
@@ -27624,7 +27646,8 @@ var GetnoteObsidianPlugin = class extends import_obsidian2.Plugin {
       return false;
     });
     setSaveFile(async (url, filename) => {
-      const res = await fetch(url);
+      const internalKey = this.server && this.server.internalKey ? this.server.internalKey : "";
+      const res = await fetch(url, { headers: { "x-getnote-internal": internalKey } });
       if (!res.ok) throw new Error(`\u5BFC\u51FA\u5931\u8D25\uFF1AHTTP ${res.status}`);
       const bytes = Buffer.from(await res.arrayBuffer());
       const dir = (0, import_node_path8.join)((0, import_node_os2.tmpdir)(), "getnote-export");

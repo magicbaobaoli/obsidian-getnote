@@ -37,7 +37,13 @@ panel.setApiToken(server.token)
 // 走服务接口建，和面板里点「新建」是同一条路。
 await fetch(server.origin + '/getnote/create', {
   method: 'POST',
-  headers: { 'content-type': 'application/json', 'x-getnote-token': server.token },
+  headers: {
+    'content-type': 'application/json',
+    'x-getnote-token': server.token,
+    // 本地服务还有一道来源校验：真宿主里 Origin/sec-fetch-site 由 Electron 带，
+    // node 的 fetch 不会，这里补上。
+    'sec-fetch-site': 'same-origin',
+  },
   body: JSON.stringify({ dir: '', title: '右键菜单验收', content: '正文', requestId: 'seed-menu-note' }),
 })
 
@@ -48,11 +54,18 @@ const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></
 })
 
 const { window } = dom
-const realFetch = globalThis.fetch
+const bareFetch = globalThis.fetch
+// 本地服务除了令牌还有一道来源校验：请求得能证明自己是从 Obsidian 里发出来的。
+// 真宿主里这些头由 Electron 自动带，node 的 fetch 不会，所以所有出站请求统一
+// 在这一层补上——用例里直接调 realFetch 打种子请求的也一并覆盖到。
+const realFetch = async (input, init = {}) => {
+  const headers = { ...(init.headers || {}), 'sec-fetch-site': 'same-origin' }
+  return bareFetch(input, { ...init, headers })
+}
 const fetchCalls = []
 
 // jsdom 没有 fetch，也没有 clipboard；面板两处都用到。
-window.fetch = globalThis.fetch = async (input, init) => {
+window.fetch = globalThis.fetch = async (input, init = {}) => {
   const url = typeof input === 'string' ? input : String(input && input.url)
   fetchCalls.push(url)
   return realFetch(url, init)

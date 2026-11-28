@@ -14,6 +14,15 @@ import { mkdtemp, copyFile, rm, access, readdir, readFile } from 'node:fs/promis
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+// 本地服务除了令牌还有一道来源校验：请求得能证明自己是从 Obsidian 里发出来的。
+// 真宿主里这些头是浏览器/Electron 自动带的，node 的 fetch 不会，所以统一在
+// 这一层补上——单个用例不必各自操心。要测「来源不对被拒」的用例请用 rawFetch。
+const rawFetch = globalThis.fetch
+const fetch = async (input, init = {}) => {
+  const headers = { ...(init.headers || {}), 'sec-fetch-site': 'same-origin' }
+  return rawFetch(input, { ...init, headers })
+}
+
 // ── 假 obsidian 模块 ────────────────────────────────────────────────────────
 const calls = { views: [], ribbons: [], commands: [], settings: [], intervals: [], statusBar: [], protocols: [], suggest: [], hoverSources: [] }
 
@@ -593,9 +602,25 @@ test('面板能打到本地服务，并且走的是 adapter 后端', async () =>
   // 令牌错了也是 401，不能因为「有头」就放行
   const wrong = await fetch(origin + '/getnote/status', { headers: { 'x-getnote-token': 'nope' } })
   assert.equal(wrong.status, 401)
-  // img/audio 加不了头，走 ?t= 查询参数，这条通道必须能用
-  const viaQuery = await fetch(origin + '/getnote/status?t=' + encodeURIComponent(plugin.server.token))
-  assert.equal(viaQuery.status, 200, '查询参数里的令牌也该放行')
+  // img/audio 加不了头，走 ?t= 查询参数，这条通道必须能用。
+  // 这里刻意用 rawFetch：浏览器原生 img/audio 加载既不带自定义头也不带 Origin，
+  // 补了来源头的 fetch 测不出这条通道真实的样子。打的也必须是 asset 这类
+  // 浏览器原生资源路径——普通接口没有「不带 Origin」这个真实场景，来源门照拦。
+  const viaQuery = await rawFetch(
+    origin + '/getnote/asset?path=' + encodeURIComponent('没有这张图.png') + '&t=' + encodeURIComponent(plugin.server.token),
+  )
+  assert.notEqual(viaQuery.status, 401, '查询参数里的令牌也该放行')
+  assert.notEqual(viaQuery.status, 403, '浏览器资源加载不该被来源门挡住')
+  // 而「有令牌、来源却不对」必须被第二道门挡住：令牌可能从 ?t= 泄露出去。
+  const foreign = await rawFetch(origin + '/getnote/status', {
+    headers: { 'x-getnote-token': plugin.server.token, origin: 'https://evil.example' },
+  })
+  assert.equal(foreign.status, 403, '来源不对应被拒')
+  // 进程内请求带内部标记头即可，不必伪造 Origin
+  const internal = await rawFetch(origin + '/getnote/status', {
+    headers: { 'x-getnote-token': plugin.server.token, 'x-getnote-internal': plugin.server.internalKey },
+  })
+  assert.equal(internal.status, 200, '进程内请求应放行')
 })
 
 test('扫描缓存不会给出过期数据：库在别处被改，面板立刻看到新内容', async () => {

@@ -28,8 +28,29 @@ import { createRouter } from '../core/service.js'
 
 const HOST = '127.0.0.1'
 const FALLBACK_PORTS = 12
-/** 放行名单：系统浏览器整页跳转过来的 OAuth 回调带不了自定义头。 */
+/**
+ * 放行名单：系统浏览器整页跳转过来的 OAuth 回调带不了自定义头。
+ *
+ * 这一条同时绕过两道门（令牌 + 来源）：系统浏览器整页跳过来时既没有
+ * `x-getnote-token`，Origin 也不是 `app://obsidian.md`（通常压根不带）。
+ * 名单必须保持只有这一条——每多一条就多一条「外部网页能直接打进来」的路。
+ */
 const TOKEN_EXEMPT = new Set(['oauth'])
+
+/** 插件主进程自己发起的进程内请求带的头（如整库导出时拉 zip）。 */
+const INTERNAL_HEADER = 'x-getnote-internal'
+/** 每次启动随机生成、只在内存里：外部网页拿不到，也就伪造不了这个头。 */
+const INTERNAL_KEY = randomBytes(18).toString('hex')
+/**
+ * 浏览器原生资源加载放行名单。
+ *
+ * `<img src="/getnote/asset?...">` 和 `<audio src="/getnote/audio?...">` 是浏览器
+ * 自己发的请求：带不了自定义头，也不带 Origin，只能靠 `?t=` 里的令牌。恶意网页
+ * 拿不到令牌，所以这两条路径不按来源拦——否则面板里所有图片和录音都会裂。
+ */
+const BROWSER_ONLY = new Set(['asset', 'audio'])
+/** 渲染进程真实的源。 */
+const APP_ORIGIN = 'app://obsidian.md'
 
 /**
  * 渲染进程的源是 `app://obsidian.md`，对本机 http 端口发 fetch 属于跨源，
@@ -41,7 +62,7 @@ function applyCors(res) {
   res.setHeader('access-control-allow-methods', 'GET, POST, PUT, DELETE, OPTIONS')
   res.setHeader(
     'access-control-allow-headers',
-    'content-type, range, x-getnote-import-mode, x-getnote-token',
+    'content-type, range, x-getnote-import-mode, x-getnote-token, x-getnote-internal',
   )
   res.setHeader(
     'access-control-expose-headers',
@@ -66,6 +87,32 @@ function tokenOf(req, url) {
   if (typeof header === 'string' && header !== '') return header
   const fromQuery = url.searchParams.get('t')
   return typeof fromQuery === 'string' ? fromQuery : ''
+}
+
+/**
+ * 第二道门：只认从 Obsidian 自己发出来的请求。
+ *
+ * 令牌已经挡住了「拿不到令牌的本机网页」，但令牌会随 `?t=` 出现在 URL 里
+ * （img/audio 加载必须这样），一旦被日志、历史记录、截图带出去就漏了。所以再按
+ * 浏览器自动附带、网页脚本伪造不了的头判一次来源：
+ *   - `x-getnote-internal`：插件主进程自己发起的进程内请求，值是启动时随机生成、
+ *     只存在于内存的密钥；
+ *   - `sec-fetch-site: same-origin | none`：浏览器标注的「同源」或「用户直接打开」；
+ *   - `Origin` / `Referer` 以 `app://obsidian.md` 开头：渲染进程的真实源。
+ *
+ * 老版本 Electron 不一定带 `sec-fetch-site`，所以三条满足任意一条就放行；判不
+ * 出来时宁可放过也不误伤面板——令牌仍是第一道、也是最硬的一道门。
+ */
+function isTrustedCaller(req) {
+  const internal = req.headers[INTERNAL_HEADER]
+  if (typeof internal === 'string' && internal !== '' && internal === INTERNAL_KEY) return true
+  const site = req.headers['sec-fetch-site']
+  if (site === 'same-origin' || site === 'none') return true
+  const origin = req.headers.origin
+  if (typeof origin === 'string' && origin.startsWith(APP_ORIGIN)) return true
+  const referer = req.headers.referer
+  if (typeof referer === 'string' && referer.startsWith(APP_ORIGIN)) return true
+  return false
 }
 
 function listenOn(server, port) {
@@ -119,6 +166,12 @@ export async function startLocalServer({ vaultPath = '', preferredPort = 0, toke
       res.end(JSON.stringify({ error: 'unauthorized', hint: '请求缺少或带错了本机服务令牌' }))
       return
     }
+    // 令牌对了还要看是谁发的：令牌可能从 ?t= 泄露出去，这里再按来源收一道。
+    if (!TOKEN_EXEMPT.has(action) && !BROWSER_ONLY.has(action) && !isTrustedCaller(req)) {
+      res.writeHead(403, { 'content-type': 'application/json; charset=utf-8' })
+      res.end(JSON.stringify({ error: 'forbidden', hint: '这个请求不是从 Obsidian 里发出来的' }))
+      return
+    }
     Promise.resolve(handler(req, res)).catch((error) => {
       // handler 内部已经把业务错误变成 JSON 了，走到这里说明是没兜住的异常。
       // 必须给客户端一个响应，否则面板会一直挂在 pending 上。
@@ -164,6 +217,8 @@ export async function startLocalServer({ vaultPath = '', preferredPort = 0, toke
     origin,
     port: actualPort,
     token: secret,
+    /** 进程内请求（如整库导出拉 zip）要带的头值。 */
+    internalKey: INTERNAL_KEY,
     portFallback: usedFallback,
     /** 停止监听，插件 unload 时调。 */
     close() {

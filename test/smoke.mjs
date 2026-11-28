@@ -41,8 +41,15 @@ const base = server.origin
 console.log('server:', base)
 console.log('vault :', root)
 
+// 本地服务有两道门：令牌（挡住拿不到令牌的本机网页）+ 来源（挡住令牌从 ?t=
+// 泄露出去之后的滥用）。这里走的是面板那条路，所以照面板的方式带令牌；来源头
+// 在真宿主里由 Electron 自动带，node 的 fetch 不会，得手动补。
+const authHeaders = { 'x-getnote-token': server.token, 'sec-fetch-site': 'same-origin' }
+
 async function api(path, init) {
-  const res = await fetch(base + '/getnote' + path, init)
+  const options = { ...(init || {}) }
+  options.headers = { ...authHeaders, ...(options.headers || {}) }
+  const res = await fetch(base + '/getnote' + path, options)
   const text = await res.text()
   let json = null
   try {
@@ -118,13 +125,19 @@ try {
   await mkdir(join(root, 'asset'), { recursive: true })
   const assetAbs = join(root, 'asset', 'smoke.md')
   await writeFile(assetAbs, 'hello-asset', 'utf8')
-  const asset = await fetch(base + '/getnote/asset?path=' + encodeURIComponent(assetAbs))
+  const asset = await fetch(base + '/getnote/asset?path=' + encodeURIComponent(assetAbs), {
+    headers: authHeaders,
+  })
   const assetText = await asset.text()
   check('GET /asset', asset.status === 200 && assetText === 'hello-asset', `HTTP ${asset.status}`)
 
-  // 9. 越界路径必须被挡住（adapter 只能碰库内文件）
-  const escape = await fetch(base + '/getnote/asset?path=' + encodeURIComponent('C:/Windows/win.ini'))
-  check('GET /asset 越界被拒', escape.status >= 400, `HTTP ${escape.status}`)
+  // 9. 越界路径必须被挡住（adapter 只能碰库内文件）。
+  // 令牌和来源都带对了，所以这条只能靠路径校验本身挡住：必须是 400，
+  // 不能是 401/403（那样等于这道校验根本没被测到）。
+  const escape = await fetch(base + '/getnote/asset?path=' + encodeURIComponent('C:/Windows/win.ini'), {
+    headers: authHeaders,
+  })
+  check('GET /asset 越界被拒', escape.status === 400, `HTTP ${escape.status}`)
 
   // 10. 云端探活：没配凭证时要回「未配置」，而不是 500 或抛异常
   const probe = await api('/api/probe')
